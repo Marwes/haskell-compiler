@@ -1,4 +1,3 @@
-use typecheck::*;
 use compiler::*;
 
 mod typecheck;
@@ -9,7 +8,8 @@ mod compiler;
 enum Node {
     Application(@Node, @Node),
     Int(int),
-    Combinator(@SuperCombinator)
+    Combinator(@SuperCombinator),
+    Indirection(@Node)
 }
 
 struct VM {
@@ -64,27 +64,36 @@ impl VM {
                     assert!(newStack.len() == 1);
                     stack[stack.len() - 1] = newStack[0];
                 }
+                &Pop(num) => {
+                    for _ in range(0, num) {
+                        stack.pop();
+                    }
+                }
+                &Update(index) => {
+                    stack[index] = @Indirection(stack[stack.len() - 1]);
+                }
                 &Unwind => {
                     match *stack[stack.len() - 1] {
-                        Application(func, arg) => {
+                        Application(func, _) => {
                             stack.push(func);
                             i -= 1;//Redo the unwind instruction
                         }
                         Combinator(comb) => {
                             for j in range(stack.len() - (comb.arity as uint) - 1, stack.len()) {
                                 stack[j] = match stack[j] {
-                                    @Application(func, arg) => arg,
+                                    @Application(_, arg) => arg,
                                     _ => fail!("Expected Application")
                                 };
                             }
                             let mut newStack = ~[stack[stack.len() - 1]];
                             self.execute(&mut newStack, comb.instructions);
                             assert!(newStack.len() == 0);
-                            for i in range(0, comb.arity) {
+                            for _ in range(0, comb.arity) {
                                 stack.pop();
                             }
                             stack.push(newStack[0]);
                         }
+                        Indirection(node) => stack[stack.len() - 1] = node,
                         Int(_) => ()
                     }
                 }

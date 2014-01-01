@@ -11,6 +11,8 @@ pub enum Instruction {
     Mkap,
     Eval,
     Unwind,
+    Update(int),
+    Pop(int),
     Slide(int),
 }
 
@@ -71,7 +73,10 @@ impl Compiler {
         let mut comb = SuperCombinator::new();
         match &expr.expr {
             &Lambda(_, _) => {
-                
+                self.compile(expr, &mut comb.instructions);
+                comb.instructions.push(Update(0));
+                comb.instructions.push(Pop(comb.arity));
+                comb.instructions.push(Unwind);
             }
             _ => self.compile(expr, &mut comb.instructions)
        }
