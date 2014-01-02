@@ -1,6 +1,6 @@
 #[crate_id = "vm#0.0"];
 #[crate_type = "bin"];
-#[feature(managed_boxes)];
+#[feature(managed_boxes, macro_rules)];
 use std::rc::Rc;
 use compiler::{
     Instruction, Add, Sub, Push, PushGlobal, PushInt, Mkap, Eval, Unwind, Update, Pop, Slide,
@@ -124,5 +124,4 @@ fn main() {
     println!("Add : {:?}", stack);
 
 }
-
 
