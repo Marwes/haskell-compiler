@@ -1,3 +1,6 @@
+extern mod extra;
+use extra::container::Deque;
+use extra::ringbuf::RingBuf;
 use std::iter::Peekable;
 #[deriving(Eq, ToStr)]
 enum TokenEnum {
@@ -47,8 +50,11 @@ impl Token {
         Token { token : EOF, value : ~"", location : Location { column : -1, row : -1, absolute : -1} }
     }
 
-    fn new(token : TokenEnum, value : ~str) -> Token {
-        Token { token : token, value : value, location : Location { column : -1, row : -1, absolute : -1 } }
+    fn new(token : TokenEnum, value : ~str, loc : Location) -> Token {
+        Token { token : token, value : value, location : loc }
+    }
+    fn new_(token : TokenEnum, value : ~str) -> Token {
+        Token::new(token, value, Location { column : -1, row : -1, absolute : -1 })
     }
 }
 
@@ -95,7 +101,11 @@ fn is_operator(first_char : char) -> bool {
 struct Lexer<Stream> {
     input : Peekable<char, Stream>,
     location : Location,
-    previousLocation : Location
+    previousLocation : Location,
+    unprocessedTokens : ~[Token],
+    tokens : extra::ringbuf::RingBuf<Token>,
+    indentLevels : ~[int],
+    offset : uint
 }
 
 
@@ -103,7 +113,14 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
     
     pub fn new(input : Stream) -> Lexer<Stream> {
         let start = Location { column : 0, row : 0, absolute : 0};
-        Lexer { input : input.peekable(), location : start, previousLocation : start }
+        Lexer { 
+            input : input.peekable(),
+            location : start,
+            previousLocation : start,
+            unprocessedTokens : ~[],
+            tokens : extra::ringbuf::RingBuf::with_capacity(20),
+            indentLevels : ~[],
+            offset : 0}
     }
 
 
@@ -148,7 +165,7 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
         result
     }
 
-    fn scan_number(&mut self, c : char) -> Token {
+    fn scan_number(&mut self, c : char, location : Location) -> Token {
         let mut number = c.to_str() + self.scan_digits();
         let mut token = NUMBER;
         match self.peek() {
@@ -159,10 +176,159 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
             }
             _ => ()
         }
-        Token { token : NUMBER, value : number, location : self.location }
+        Token { token : NUMBER, value : number, location : location }
     }
 
-    pub fn next(&mut self) -> Token {
+    pub fn next_<'a>(&'a mut self) -> &'a Token {
+        self.next(|_| false)
+    }
+    pub fn next<'a>(&'a mut self, parseError : |TokenEnum| -> bool) -> &'a Token {
+        if self.offset > 0 {
+            match self.tokens.iter().idx(self.tokens.len() - 1 - self.offset) {
+                Some(token) => token,
+                None => fail!("Impossible empty tokens stream")
+            }
+        }
+        else if self.unprocessedTokens.len() > 0 {
+            self.layout_independent_token(parseError);
+            self.tokens.back().unwrap()
+        }
+        else {
+            self.new_token(parseError)
+        }
+    }
+    
+    fn new_token<'a>(&'a mut self, parseError : |TokenEnum| -> bool) -> &'a Token {
+        let mut newline = false;
+        let n = self.next_indent_token(&mut newline);
+        self.unprocessedTokens.push(n);
+        let newTok = self.unprocessedTokens[self.unprocessedTokens.len() - 1].token;
+
+        if newTok != LBRACE {
+            match self.tokens.back() {
+                Some(tok) => {
+                    if tok.token == LET || tok.token == WHERE || tok.token == OF {
+                        let loc = self.unprocessedTokens[self.unprocessedTokens.len() - 1].location;
+                        let indentstart = Token { token : INDENTSTART, value : ~"{n}", location : loc };
+                        self.unprocessedTokens.push(indentstart);
+                    }
+                }
+                None => ()
+            }
+        }
+        if newline {
+            self.unprocessedTokens.push(Token::new(INDENTLEVEL, ~"<n>", self.location));
+        }
+        self.layout_independent_token(parseError);
+        self.tokens.back().unwrap()
+    }
+
+    fn layout_independent_token(&mut self, parseError : |TokenEnum| -> bool) {
+        if self.unprocessedTokens.len() > 0 {
+            let tok = self.unprocessedTokens[self.unprocessedTokens.len() - 1].token;
+            let location = self.unprocessedTokens[self.unprocessedTokens.len() - 1].location;
+            match tok {
+                INDENTLEVEL => {
+                    if (self.indentLevels.len() > 0) {
+                        //m:ms
+                        let m = self.indentLevels[self.indentLevels.len() - 1];
+                        //m == n
+                        if (m == location.column) {
+                            self.tokens.push_back(Token::new(SEMICOLON, ~";", location));
+                            self.unprocessedTokens.pop();
+                            return;
+                        }
+                        else if (location.column < m)// n < m
+                        {
+                            //TODO
+                            self.indentLevels.pop();
+                            self.tokens.push_back(Token::new(RBRACE, ~"}", location));
+                            return;
+                        }
+                    }
+                    self.unprocessedTokens.pop();
+                    if (self.unprocessedTokens.len() == 0) {
+                        debug!("Skipping to next");
+                        self.new_token(parseError);
+                        return;
+                    }
+                    else {
+                        return self.layout_independent_token(parseError);
+                    }
+                }
+                INDENTSTART => {
+                    //{n} token
+                    let n = location.column;
+                    if (self.indentLevels.len() != 0) {
+                        //m:ms
+                        let m = self.indentLevels[self.indentLevels.len() - 1];
+                        if (n > m) {
+                            self.unprocessedTokens.pop();
+                            self.tokens.push_back(Token::new(LBRACE, ~"{", location));
+                            self.indentLevels.push(n);
+                            return;
+                        }
+                    }
+                    if (n > 0)
+                    {
+                        self.tokens.push_back(Token::new(LBRACE, ~"{", location));
+                        self.unprocessedTokens.pop();
+                        self.indentLevels.push(n);
+                        return;
+                    }
+                    self.tokens.push_back(Token::new(LBRACE, ~"{", location));
+                    self.tokens.push_back(Token::new(RBRACE, ~"}", location));
+                    self.unprocessedTokens.pop();
+                    self.unprocessedTokens.push(Token::new(INDENTLEVEL, ~"<n>", location));
+                    self.offset += 1;
+                    return;
+                }
+                RBRACE => {
+                    if (self.indentLevels.len() > 0 && self.indentLevels[self.indentLevels.len()] == 0) {
+                        self.tokens.push_back(self.unprocessedTokens.pop());
+                        self.indentLevels.pop();
+                        return;
+                    }
+                    else {
+                        return;//parse-error
+                    }
+                }
+                LBRACE => {
+                    self.tokens.push_back(self.unprocessedTokens.pop());
+                    self.indentLevels.push(0);
+                    return;
+                }
+
+                _ => ()
+            }
+            if (self.indentLevels.len() != 0) {
+                //L (t:ts) (m:ms) 	= 	} : (L (t:ts) ms) 	if m /= 0 and parse-error(t)
+                let m = self.indentLevels[self.indentLevels.len() - 1];
+                if (m != 0 && parseError(tok))
+                {
+                    self.tokens.push_back(Token::new(RBRACE, ~"}", location));
+                    self.indentLevels.pop();
+                    return;
+                }
+            }
+            self.tokens.push_back(self.unprocessedTokens.pop());
+            return;
+        }
+        else {
+            if (self.indentLevels.len() == 0)//End of stream
+            {
+                return;
+            }
+            else if (self.indentLevels[self.indentLevels.len() - 1] != 0)//Keep pusing righ brackets
+            {
+                self.indentLevels.pop();
+                self.tokens.push_back(Token::new_(RBRACE, ~"}"));
+                return;
+            }
+        }
+    }
+
+    fn next_indent_token(&mut self, newline : &mut bool) -> Token {
         let mut c = ' ';
         //Skip all whitespace before the token
         while c.is_whitespace() {
@@ -171,12 +337,13 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
                     c = x;
                     if (self.location.column == 0)//newline detected
                     {
-                        //*newline = true;
+                        *newline = true;
                     }
                 }
                 None => { return Token::eof() }
             }
         }
+        let startLocation = self.location;
 
         //Decide how to tokenize depending on what the first char is
         //ie if its an operator then more operators will follow
@@ -201,11 +368,11 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
                 ~"::" => TYPEDECL,
                 _    => OPERATOR
             };
-            return Token { token : tok, value : result, location : self.location };
+            return Token { token : tok, value : result, location : startLocation };
         }
         else if (c.is_digit())
         {
-            return self.scan_number(c);
+            return self.scan_number(c, startLocation);
         }
         else if (c.is_alphabetic() || c == '_')
         {
@@ -224,7 +391,7 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
             }
             return Token {
                 token : name_or_keyword(result),
-                location : self.location,
+                location : startLocation,
                 value : result};
         }
         let tok = match c {
@@ -238,17 +405,32 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
             ',' => COMMA,
             _   => EOF
         };
-        Token { token : tok, location : self.location, value : c.to_str() }
+        Token { token : tok, location : startLocation, value : c.to_str() }
     }
 }
 
 
 #[test]
-fn test() {
+fn simple() {
     let mut lexer = Lexer::new("test 2 + 3".chars());
 
-    assert_eq!(lexer.next(), Token::new(NAME, ~"test"));
-    assert_eq!(lexer.next(), Token::new(NUMBER, ~"2"));
-    assert_eq!(lexer.next(), Token::new(OPERATOR, ~"+"));
-    assert_eq!(lexer.next(), Token::new(NUMBER, ~"3"));
+    assert_eq!(*lexer.next_(), Token::new_(NAME, ~"test"));
+    assert_eq!(*lexer.next_(), Token::new_(NUMBER, ~"2"));
+    assert_eq!(*lexer.next_(), Token::new_(OPERATOR, ~"+"));
+    assert_eq!(*lexer.next_(), Token::new_(NUMBER, ~"3"));
+}
+#[test]
+fn let_bind() {
+    let mut lexer = Lexer::new(
+r"let
+    test = 2 + 3
+in test".chars());
+
+    assert_eq!(*lexer.next_(), Token::new_(LET, ~"let"));
+    assert_eq!(*lexer.next_(), Token::new_(LBRACE, ~"{"));
+    assert_eq!(*lexer.next_(), Token::new_(NAME, ~"test"));
+    assert_eq!(*lexer.next_(), Token::new_(EQUALSSIGN, ~"="));
+    assert_eq!(*lexer.next_(), Token::new_(NUMBER, ~"2"));
+    assert_eq!(*lexer.next_(), Token::new_(OPERATOR, ~"+"));
+    assert_eq!(*lexer.next_(), Token::new_(NUMBER, ~"3"));
 }
