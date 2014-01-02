@@ -8,13 +8,13 @@ pub enum Type {
     Operator(~str, ~[Type])
 }
 
-struct TypedExpr {
+pub struct TypedExpr {
     expr : Expr<~TypedExpr>,
     typ : @mut Type
 }
 
 impl TypedExpr {
-    fn new(expr : Expr<~TypedExpr>) -> TypedExpr {
+    pub fn new(expr : Expr<~TypedExpr>) -> TypedExpr {
         TypedExpr { expr : expr, typ : @mut Variable(0) }
     }
 }
@@ -27,7 +27,7 @@ pub enum Expr<T> {
     Let(~[(~str, T)], T)
 }
 
-pub struct TypeEnvironment<'self> {
+pub struct TypeEnvironment {
     namedTypes : HashMap<~str, @mut Type>,
     types : ~[@mut Type],
     variableIndex : int
@@ -54,7 +54,7 @@ impl TypeEnvironment {
         }
     }
 
-    fn typecheck(&mut self, expr : &mut TypedExpr) {
+    pub fn typecheck(&mut self, expr : &mut TypedExpr) {
         *expr.typ = Variable(self.variableIndex);
         self.variableIndex += 1;
         self.types.push(expr.typ);

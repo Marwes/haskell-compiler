@@ -1,7 +1,8 @@
 use std::hashmap::HashMap;
-use typecheck::*;
+use typecheck::{Expr, TypedExpr, Identifier, Apply, Number, Lambda, Let};
 mod typecheck;
 
+#[deriving(Eq)]
 pub enum Instruction {
     Add,
     Sub,
@@ -21,7 +22,7 @@ enum Var {
     GlobalVariable(int)
 }
 
-struct SuperCombinator {
+pub struct SuperCombinator {
     arity : int,
     instructions : ~[Instruction]
 }
@@ -66,11 +67,23 @@ struct Compiler {
 }
 
 impl Compiler {
-    fn compileBinding(&mut self, identifier : ~str, expr : &TypedExpr) {
-        self.variables.insert(identifier.clone(), GlobalVariable(self.globalIndex));
-        self.globalIndex += 1;
+    fn new() -> Compiler {
+        Compiler { stackSize : 0, globals : HashMap::new(), variables : HashMap::new(), globalIndex : 0 }
+    }
+
+    fn compileModule(&mut self) {
+        //TODO
+        let bindings : ~[(~str, int, TypedExpr)] = ~[];
+        for &(ref identifier, arity, ref expr) in bindings.iter() {
+            self.variables.insert(identifier.clone(), GlobalVariable(self.globalIndex));
+            self.globalIndex += 1;
+            self.compileBinding(arity, expr);
+        }
+    }
+    fn compileBinding(&mut self, arity : int, expr : &TypedExpr) -> SuperCombinator {
 
         let mut comb = SuperCombinator::new();
+        comb.arity = arity;
         match &expr.expr {
             &Lambda(_, _) => {
                 self.compile(expr, &mut comb.instructions);
@@ -80,7 +93,7 @@ impl Compiler {
             }
             _ => self.compile(expr, &mut comb.instructions)
        }
-       self.globals.insert(identifier, comb);
+       comb
     }
 
     fn compile(&mut self, expr : &TypedExpr, instructions : &mut ~[Instruction]) {
@@ -118,4 +131,30 @@ impl Compiler {
             }
         }
     }
+}
+
+fn identifier(i : ~str) -> TypedExpr {
+    TypedExpr::new(Identifier(i))
+}
+
+fn lambda(arg : ~str, body : TypedExpr) -> TypedExpr {
+    TypedExpr::new(Lambda(arg, ~body))
+}
+fn number(i : int) -> TypedExpr {
+    TypedExpr::new(Number(i))
+}
+fn apply(func : TypedExpr, arg : TypedExpr) -> TypedExpr {
+    TypedExpr::new(Apply(~func, ~arg))
+}
+fn let_(bindings : ~[(~str, ~TypedExpr)], expr : TypedExpr) -> TypedExpr {
+    TypedExpr::new(Let(bindings, ~expr))
+}
+
+#[test]
+fn test_add() {
+    let e = apply(identifier(~"primIntAdd"), apply(number(1), number(2)));
+    let mut comp = Compiler::new();
+    let comb = comp.compileBinding(0, &e);
+
+    assert!(comb.instructions == ~[PushInt(1), PushInt(2), Add]);
 }
