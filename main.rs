@@ -1,6 +1,7 @@
 #[crate_id = "vm#0.0"];
 #[crate_type = "bin"];
-#[feature(managed_boxes, macro_rules)];
+#[feature(managed_boxes, macro_rules, globs)];
+extern mod extra;
 use std::rc::Rc;
 use compiler::{
     Instruction, Add, Sub, Push, PushGlobal, PushInt, Mkap, Eval, Unwind, Update, Pop, Slide,
@@ -8,6 +9,8 @@ use compiler::{
 
 mod compiler;
 mod typecheck;
+mod lexer;
+mod parser;
 
 
 #[deriving(Clone)]
