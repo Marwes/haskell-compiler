@@ -3,7 +3,7 @@ use extra::container::Deque;
 use extra::ringbuf::RingBuf;
 use std::iter::Peekable;
 #[deriving(Eq, ToStr)]
-enum TokenEnum {
+pub enum TokenEnum {
 	EOF,
 	NAME,
 	OPERATOR,
@@ -34,13 +34,13 @@ enum TokenEnum {
 }
 
 #[deriving(Eq, ToStr)]
-struct Location {
+pub struct Location {
     column : int,
     row : int,
     absolute : int
 }
 
-struct Token {
+pub struct Token {
     token : TokenEnum,
     value : ~str,
     location : Location
@@ -98,14 +98,14 @@ fn is_operator(first_char : char) -> bool {
     }
 }
 
-struct Lexer<Stream> {
-    input : Peekable<char, Stream>,
-    location : Location,
-    previousLocation : Location,
-    unprocessedTokens : ~[Token],
-    tokens : extra::ringbuf::RingBuf<Token>,
-    indentLevels : ~[int],
-    offset : uint
+pub struct Lexer<Stream> {
+    priv input : Peekable<char, Stream>,
+    priv location : Location,
+    priv previousLocation : Location,
+    priv unprocessedTokens : ~[Token],
+    priv tokens : extra::ringbuf::RingBuf<Token>,
+    priv indentLevels : ~[int],
+    priv offset : uint
 }
 
 

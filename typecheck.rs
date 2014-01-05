@@ -4,12 +4,12 @@ use lexer::{Location};
 mod lexer;
 
 #[deriving(Clone, Eq, ToStr)]
-struct TypeOperator {
+pub struct TypeOperator {
     name : ~str,
     types : ~[Type]
 }
 #[deriving(Clone, Eq, ToStr, IterBytes)]
-struct TypeVariable {
+pub struct TypeVariable {
     id : int
 }
 #[deriving(Clone, Eq, ToStr)]
