@@ -192,7 +192,7 @@ fn class(&mut self) -> Class {
 	self.requireNext(LBRACE);
 	let typeVariableMapping = HashMap::new();
 	typeVariableMapping[typeVariable] = typeVariable;
-	let declarations = self.sepBy1(&Parser::typeDeclaration_, typeVariableMapping, SEMICOLON);
+	let declarations = self.sepBy1(|this| this.typeDeclaration_(typeVariableMapping), SEMICOLON);
 	
 	self.lexer.backtrack();
 	self.requireNext(RBRACE);
@@ -210,7 +210,7 @@ fn instance(&mut self) -> Instance {
 	self.requireNext(WHERE);
 	self.requireNext(LBRACE);
 
-	let mut bindings = self.sepBy1(&Parser::binding, SEMICOLON);
+	let mut bindings = self.sepBy1(|this| this.binding(), SEMICOLON);
 	for bind in bindings
 	{
 		bind.name = encodeBindingIdentifier(typeDecl.name, bind.name);
@@ -281,7 +281,7 @@ fn subExpression(&mut self, parseError : |&Token| -> bool) -> TypedExpr {
 	match token.token {
 	    LPARENS =>
 		{
-			let expressions = self.sepBy1(&Parser::expression, COMMA);
+			let expressions = self.sepBy1(|this| this.expression(), COMMA);
 
 			let maybeParens = self.lexer.current();
 
@@ -303,7 +303,7 @@ fn subExpression(&mut self, parseError : |&Token| -> bool) -> TypedExpr {
 		{
 			self.requireNext(LBRACE);
 
-			let binds = self.sepBy1(&Parser::binding, SEMICOLON);
+			let binds = self.sepBy1(|this| this.binding(), SEMICOLON);
 
 			let rBracket = self.lexer.current();
 			if (rBracket.token != RBRACE)
@@ -512,7 +512,7 @@ fn patternParameter(&mut self) -> ~[Pattern] {
 				let maybeComma = self.lexer.nextToken();
 				if (maybeComma.token == COMMA)
 				{
-					let tupleArgs = self.sepBy1(&Parser::pattern, COMMA);
+					let tupleArgs = self.sepBy1(|this| this.pattern(), COMMA);
 					let rParens = self.lexer.current();
 					if (rParens.token != RPARENS)
 					{
@@ -560,7 +560,7 @@ fn pattern(&mut self) -> Pattern {
 	    NUMBER => NumberPattern(nameToken.name.from_str()),
 	    LPARENS =>
 		{
-			let tupleArgs = self.sepBy1(&Parser::pattern, COMMA);
+			let tupleArgs = self.sepBy1(|this| this.pattern(), COMMA);
 			let rParens = self.lexer.current();
 			if (rParens.token != RPARENS) {
 				fail!(ParseError(self.lexer, RPARENS));
@@ -658,7 +658,7 @@ fn dataDefinition(&mut self) -> DataDefinition {
 		fail!(ParseError(self.lexer, EQUALSSIGN));
 	}
 	definition.name = dataName.name;
-	definition.constructors = self.sepBy1(&Parser::constructor, definition,
+	definition.constructors = self.sepBy1_func(|this| this.constructor(definition),
 		|t : &Token| t.token == OPERATOR && t.name == "|");
 	for ii in range(0, definition.constructors.len())
 	{
@@ -700,7 +700,7 @@ fn parse_type_(&mut self, typeVariableMapping : &mut HashMap<~str, TypeVariable>
 			let maybeComma = self.lexer.nextToken();
 			if (maybeComma.token == COMMA)
 			{
-				let tupleArgs = self.sepBy1(&Parser::parse_type, typeVariableMapping, COMMA);
+				let tupleArgs = self.sepBy1_1(|this, map| this.parse_type(map), typeVariableMapping, COMMA);
 				tupleArgs.insert(tupleArgs.begin(), t);
 				let rParens = self.lexer.current();
 				if (rParens.token != RPARENS)
@@ -762,6 +762,20 @@ fn parse_type_(&mut self, typeVariableMapping : &mut HashMap<~str, TypeVariable>
 	}
 }
 
+fn sepBy1<T>(&mut self, f : |&mut Parser| -> T, sep : TokenEnum) -> ~[T] {
+    self.sepBy1_func(f, |tok| tok.token == sep)
+}
+
+fn sepBy1_func<T>(&mut self, f : |&mut Parser| -> T, sep : |&Token| -> bool) -> ~[T] {
+    let mut result = ~[];
+    loop {
+        result.push(f(self));
+        if (sep(self.tokenizer.nextToken())) {
+            break;
+        }
+    }
+    result
+}
 }//end impl Parser
 
 fn isPlusMinusOP(token : &Token) -> bool
