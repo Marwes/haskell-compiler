@@ -5,9 +5,13 @@ struct TypeOperator {
     name : ~str,
     types : ~[Type]
 }
+#[deriving(Clone, Eq, ToStr, IterBytes)]
+struct TypeVariable {
+    id : int
+}
 #[deriving(Clone, Eq, ToStr)]
 pub enum Type {
-    TypeVariable(int),
+    TypeVariable(TypeVariable),
     TypeOperator(TypeOperator)
 }
 
@@ -18,7 +22,7 @@ pub struct TypedExpr {
 
 impl TypedExpr {
     pub fn new(expr : Expr<~TypedExpr>) -> TypedExpr {
-        TypedExpr { expr : expr, typ : @mut TypeVariable(0) }
+        TypedExpr { expr : expr, typ : @mut TypeVariable(TypeVariable { id : 0 }) }
     }
 }
 
@@ -33,15 +37,15 @@ pub enum Expr<T> {
 pub struct TypeEnvironment {
     namedTypes : HashMap<~str, @mut Type>,
     types : ~[@mut Type],
-    variableIndex : int
+    variableIndex : TypeVariable
 }
 
 impl TypeEnvironment {
     pub fn new() -> TypeEnvironment {
-        TypeEnvironment { namedTypes : HashMap::new(), types : ~[] , variableIndex : 0 }
+        TypeEnvironment { namedTypes : HashMap::new(), types : ~[] , variableIndex : TypeVariable { id : 0 } }
     }
 
-    fn replace(old : &mut Type, subs : &HashMap<int, Type>) {
+    fn replace(old : &mut Type, subs : &HashMap<TypeVariable, Type>) {
         match old {
             &TypeVariable(id) => {
                 match subs.find(&id) {
@@ -59,7 +63,7 @@ impl TypeEnvironment {
 
     pub fn typecheck(&mut self, expr : &mut TypedExpr) {
         *expr.typ = TypeVariable(self.variableIndex);
-        self.variableIndex += 1;
+        self.variableIndex.id += 1;
         self.types.push(expr.typ);
         match &mut expr.expr {
             &Number(_) => {
@@ -76,7 +80,7 @@ impl TypeEnvironment {
                 self.typecheck(*func);
                 self.typecheck(*arg);
                 let mut funcType = TypeOperator(TypeOperator { name : ~"->", types : ~[(*arg.typ).clone(), TypeVariable(self.variableIndex)]});
-                self.variableIndex += 1;
+                self.variableIndex.id += 1;
                 let subs = unify(self, func.typ, &funcType);
                 self.substitute(&subs);
                 TypeEnvironment::replace(&mut funcType, &subs);
@@ -89,7 +93,7 @@ impl TypeEnvironment {
         };
     }
 
-    fn substitute(&mut self, subs : &HashMap<int, Type>) {
+    fn substitute(&mut self, subs : &HashMap<TypeVariable, Type>) {
         //println!("Substituting {:?}", subs);
         for t in self.types.iter() {
             println!("Type : {:?}", *t);
@@ -107,12 +111,12 @@ impl TypeEnvironment {
     }
 }
 
-fn unify(env : &mut TypeEnvironment, lhs : &Type, rhs : &Type) -> HashMap<int, Type> {
+fn unify(env : &mut TypeEnvironment, lhs : &Type, rhs : &Type) -> HashMap<TypeVariable, Type> {
     let mut subs = HashMap::new();
     unify_(env, &mut subs, lhs, rhs);
     subs
 }
-fn unify_(env : &mut TypeEnvironment, subs : &mut HashMap<int, Type>, lhs : &Type, rhs : &Type) {
+fn unify_(env : &mut TypeEnvironment, subs : &mut HashMap<TypeVariable, Type>, lhs : &Type, rhs : &Type) {
     
     //println!("Unifying {:?} and {:?}", lhs, rhs);
     match (lhs, rhs) {
