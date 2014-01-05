@@ -18,6 +18,16 @@ pub enum Type {
     TypeOperator(TypeOperator)
 }
 
+impl Type {
+    pub fn new_var(id : int) -> Type {
+        TypeVariable(TypeVariable { id : id })
+    }
+    pub fn new_op(name : ~str, types : ~[Type]) -> Type {
+        TypeOperator(TypeOperator { name : name, types : types })
+    }
+}
+
+#[deriving(Eq)]
 pub struct TypedExpr {
     expr : Expr<~TypedExpr>,
     typ : @mut Type,
@@ -33,6 +43,7 @@ impl TypedExpr {
     }
 }
 
+#[deriving(Eq)]
 pub enum Expr<T> {
     Identifier(~str),
     Apply(T, T),

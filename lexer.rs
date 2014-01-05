@@ -142,8 +142,16 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
         }
     }
 
+    pub fn current<'a>(&'a self) -> &'a Token {
+        self.tokens.back().unwrap()
+    }
+
     pub fn backtrack(&mut self) {
         self.offset += 1;
+    }
+
+    pub fn valid(&self) -> bool {
+        self.offset > 0 || match self.tokens.back() { None => true, Some(x) => x.token != EOF }
     }
 
     fn peek(&mut self) -> Option<char> {
