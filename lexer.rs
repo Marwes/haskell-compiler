@@ -123,6 +123,28 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
             offset : 0}
     }
 
+    pub fn next_<'a>(&'a mut self) -> &'a Token {
+        self.next(|_| false)
+    }
+    pub fn next<'a>(&'a mut self, parseError : |TokenEnum| -> bool) -> &'a Token {
+        if self.offset > 0 {
+            match self.tokens.iter().idx(self.tokens.len() - 1 - self.offset) {
+                Some(token) => token,
+                None => fail!("Impossible empty tokens stream")
+            }
+        }
+        else if self.unprocessedTokens.len() > 0 {
+            self.layout_independent_token(parseError);
+            self.tokens.back().unwrap()
+        }
+        else {
+            self.new_token(parseError)
+        }
+    }
+
+    pub fn backtrack(&mut self) {
+        self.offset += 1;
+    }
 
     fn peek(&mut self) -> Option<char> {
         match self.input.peek() {
@@ -178,26 +200,7 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
         }
         Token { token : NUMBER, value : number, location : location }
     }
-
-    pub fn next_<'a>(&'a mut self) -> &'a Token {
-        self.next(|_| false)
-    }
-    pub fn next<'a>(&'a mut self, parseError : |TokenEnum| -> bool) -> &'a Token {
-        if self.offset > 0 {
-            match self.tokens.iter().idx(self.tokens.len() - 1 - self.offset) {
-                Some(token) => token,
-                None => fail!("Impossible empty tokens stream")
-            }
-        }
-        else if self.unprocessedTokens.len() > 0 {
-            self.layout_independent_token(parseError);
-            self.tokens.back().unwrap()
-        }
-        else {
-            self.new_token(parseError)
-        }
-    }
-    
+ 
     fn new_token<'a>(&'a mut self, parseError : |TokenEnum| -> bool) -> &'a Token {
         let mut newline = false;
         let n = self.next_indent_token(&mut newline);
