@@ -1,4 +1,7 @@
 use std::hashmap::HashMap;
+use lexer::{Location};
+
+mod lexer;
 
 #[deriving(Clone, Eq, ToStr)]
 struct TypeOperator {
@@ -17,12 +20,16 @@ pub enum Type {
 
 pub struct TypedExpr {
     expr : Expr<~TypedExpr>,
-    typ : @mut Type
+    typ : @mut Type,
+    location : Location
 }
 
 impl TypedExpr {
     pub fn new(expr : Expr<~TypedExpr>) -> TypedExpr {
-        TypedExpr { expr : expr, typ : @mut TypeVariable(TypeVariable { id : 0 }) }
+        TypedExpr { expr : expr, typ : @mut TypeVariable(TypeVariable { id : 0 }), location : Location { column : -1, row : -1, absolute : -1 } }
+    }
+    pub fn with_location(expr : Expr<~TypedExpr>, loc : Location) -> TypedExpr {
+        TypedExpr { expr : expr, typ : @mut TypeVariable(TypeVariable { id : 0 }), location : loc }
     }
 }
 

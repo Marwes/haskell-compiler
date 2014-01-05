@@ -1,3 +1,4 @@
+extern mod extra;
 use extra::container::Deque;
 use extra::ringbuf::RingBuf;
 use std::iter::Peekable;
