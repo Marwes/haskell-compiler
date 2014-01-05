@@ -2,7 +2,7 @@ extern mod extra;
 use extra::container::Deque;
 use extra::ringbuf::RingBuf;
 use std::iter::Peekable;
-#[deriving(Eq, ToStr)]
+#[deriving(Clone, Eq, ToStr)]
 pub enum TokenEnum {
 	EOF,
 	NAME,
@@ -33,13 +33,14 @@ pub enum TokenEnum {
 	DATA
 }
 
-#[deriving(Eq, ToStr)]
+#[deriving(Clone, Eq, ToStr)]
 pub struct Location {
     column : int,
     row : int,
     absolute : int
 }
 
+#[deriving(Clone)]
 pub struct Token {
     token : TokenEnum,
     value : ~str,

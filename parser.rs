@@ -636,7 +636,7 @@ fn typeDeclaration_(&mut self, typeVariableMapping : &mut HashMap<~str, TypeVari
             TypeOperator(x) => x,
             _ => fail!("Expected type context since '=>' was parsed")
         };
-		return TypeDeclaration { name : name, typ : t, context : createTypeConstraints(&op) };
+		return TypeDeclaration { name : name, typ : t, context : createTypeConstraints(op) };
 	}
 	self.lexer.backtrack();
 	TypeDeclaration { name : name, typ : typeOrContext, context : ~[] }
@@ -699,12 +699,12 @@ fn dataDefinition(&mut self) -> DataDefinition {
 
 fn parse_type(&mut self) -> Type {
 	let mut vars = HashMap::new();
-	return self.parse_type_(&vars);
+	return self.parse_type_(&mut vars);
 }
 
 fn parse_type_(&mut self, typeVariableMapping : &mut HashMap<~str, TypeVariable>) -> Type {
 	let result = Type::new_var(0);
-	let token = self.lexer.next_();
+	let token = (*self.lexer.next_()).clone();
 	match token.token {
 	    LBRACKET =>
 		{
@@ -712,60 +712,40 @@ fn parse_type_(&mut self, typeVariableMapping : &mut HashMap<~str, TypeVariable>
 			self.requireNext(RBRACKET);
 			let args = ~[t];
 			let listType = Type::new_op(~"[]", args);
-
-			let arrow = self.lexer.next_();
-			if (arrow.token == ARROW) {
-				return function_type(&listType, &self.parse_type_(typeVariableMapping));
-			}
-            else {
-                self.lexer.backtrack();
-                return listType
-            }
+            
+            return self.parse_return_type(listType, typeVariableMapping);
 		}
 	    LPARENS =>
 		{
 			let t = self.parse_type_(typeVariableMapping);
-			let maybeComma = self.lexer.next_();
-			if (maybeComma.token == COMMA)
+			let maybeComma = self.lexer.next_().token;
+			if (maybeComma == COMMA)
 			{
-				let tupleArgs = self.sepBy1(|this| this.parse_type_(typeVariableMapping), COMMA);
+				let mut tupleArgs = self.sepBy1(|this| this.parse_type_(typeVariableMapping), COMMA);
 				tupleArgs.unshift(t);
-				let rParens = self.lexer.current();
-				if (rParens.token != RPARENS)
-				{
-					fail!(ParseError(&self.lexer, RPARENS));
-				}
-				let arrow = self.lexer.next_();
-				if (arrow.token == ARROW) {
-					return function_type(&tupleType(tupleArgs), &self.parse_type_(typeVariableMapping));
-				}
-                else {
-				    self.lexer.backtrack();
-				    return tupleType(tupleArgs);
-                }
+                self.requireNext(RPARENS);
+
+                return self.parse_return_type(tupleType(tupleArgs), typeVariableMapping);
 			}
-			else if (maybeComma.token == RPARENS)
+			else if (maybeComma == RPARENS)
 			{
-				let arrow = self.lexer.next_();
-				if (arrow.token == ARROW) {
-					return function_type(&t, &self.parse_type_(typeVariableMapping));
-                }
-				else {
-					self.lexer.backtrack();
-					return t
-				}
+                return self.parse_return_type(t, typeVariableMapping);
 			}
 		}
 	    NAME =>
 		{
-			let next = &self.lexer.next_();
-			let typeArguments = ~[];
-			while next.token == NAME
-			{
-                let var = typeVariableMapping.find_or_insert(next.value, TypeVariable { id : -1});
-				typeArguments.push(TypeVariable(*var));
-				next = &self.lexer.next_();
-			}
+			let mut typeArguments = ~[];
+            {
+                loop {
+                    let next = &self.lexer.next_();
+                    if next.token != NAME {
+                        break;
+                    }
+                    let var = typeVariableMapping.find_or_insert(next.value.clone(), TypeVariable { id : -1});
+                    typeArguments.push(TypeVariable(*var));
+                }
+            }
+            let next : Token = (*self.lexer.current()).clone();
 			let mut thisType = Type::new_var(0);
 			if (token.value.char_at(0).is_uppercase())
 			{
@@ -776,17 +756,23 @@ fn parse_type_(&mut self, typeVariableMapping : &mut HashMap<~str, TypeVariable>
                 let t = typeVariableMapping.find_or_insert(token.value, TypeVariable { id : -1});
 				thisType = TypeVariable(t.clone());
 			}
-			if (next.token == ARROW) {
-				thisType = function_type(&thisType, &self.parse_type_(typeVariableMapping));
-			}
-			else {
-				self.lexer.backtrack();
-			}
-			return thisType;
+			return self.parse_return_type(thisType, typeVariableMapping);
 		}
 	    _ => { return Type::new_var(-1); }
 	};
     return Type::new_var(-1);
+}
+
+fn parse_return_type(&mut self, typ : Type, typeVariableMapping : &mut HashMap<~str, TypeVariable>) -> Type {
+
+    let arrow = self.lexer.next_().token;
+    if (arrow == ARROW) {
+        return function_type(&typ, &self.parse_type_(typeVariableMapping));
+    }
+    else {
+        self.lexer.backtrack();
+        return typ
+    }
 }
 
 fn sepBy1<T>(&mut self, f : |&mut Parser<Iter>| -> T, sep : TokenEnum) -> ~[T] {
@@ -858,38 +844,39 @@ fn constructorError(tok : &Token) -> bool
 
 fn tuple_name(size : uint) -> ~str
 {
-	let name = ~"";
-    for _ in range(0, size + 1) {
+	let mut name = ~"(";
+    for _ in range(1, size) {
         name.push_char(',');
     }
-	name[0] = '(' as u8;
-	name[size - 1] = ')' as u8;
-	return name;
+	name.push_char(')');
+	name
 }
 
-fn makeApplication(func : TypedExpr, args : &[TypedExpr]) -> TypedExpr {
+fn makeApplication(func : TypedExpr, a : ~[TypedExpr]) -> TypedExpr {
+    let mut args = a;
 	assert!(args.len() >= 1);
-	let mut arg = args[args.len() - 1];
-    let ii = args.len() - 2;
+	let mut arg = args.pop();
+    let mut ii = args.len() - 1;
 	while ii >= 0 {
-		arg = TypedExpr::new(Apply(~args[ii], ~arg));
+		arg = TypedExpr::new(Apply(~args.pop(), ~arg));
         ii -= 1;
 	}
 	TypedExpr::new(Apply(~func, ~arg))
 }
-fn makeLambda(args : ~[~str], body : TypedExpr) -> TypedExpr {
+fn makeLambda(a : ~[~str], body : TypedExpr) -> TypedExpr {
+    let mut args = a;
 	assert!(args.len() >= 1);
 	let mut body = body;
-    let ii = args.len() - 1;
+    let mut ii = args.len() - 1;
 	while ii >= 0 {
-		body = TypedExpr::new(Lambda(args[ii], ~body));
+		body = TypedExpr::new(Lambda(args.pop(), ~body));
         ii -= 1;
 	}
     body
 }
 
 //Create a tuple with the constructor name inferred from the number of arguments passed in
-fn newTuple(arguments : &[TypedExpr]) -> TypedExpr {
+fn newTuple(arguments : ~[TypedExpr]) -> TypedExpr {
 	let name = TypedExpr::new(Identifier(tuple_name(arguments.len())));
 	makeApplication(name, arguments)
 }
@@ -943,13 +930,13 @@ fn errorIfNotRParens(tok : &Token) -> bool {
 	tok.token != RPARENS
 }
 
-fn createTypeConstraints(context : &TypeOperator) -> ~[TypeOperator] {
-	let mapping = ~[];
+fn createTypeConstraints(context : TypeOperator) -> ~[TypeOperator] {
+	let mut mapping = ~[];
 
 	if (context.name.char_at(0) == '(') {
-		for t in context.types.iter() {
+		for t in context.types.move_iter() {
             let op = match t {
-                &TypeOperator(op) => op,
+                TypeOperator(op) => op,
                 _ => fail!("Expected TypeOperator when creating constraints")
             };
 			mapping.push(op);
