@@ -1,68 +1,20 @@
 
-fn requireNext(expected : Token) -> &Token {
+
+struct Parser {
+    tokenizer : Tokenizer,
+}
+
+impl Parser {
+
+fn requireNext(&mut self, expected : Token) -> &Token {
 	let tok = self.tokenizer.nextToken();
 	if (tok.token != expected) {
 		fail!(ParseError(self.tokenizer, expected));
     }
 	return tok;
 }
-    
-fn isPlusMinusOP(token : &Token) -> bool
-{
-    return token.token == OPERATOR && (token.name == "+" || token.name == "-");
-}
 
-fn isMultDivOp(token : &Token) -> bool
-{
-    return token.token == OPERATOR && (token.name == "*" || token.name == "/" || token.name == "%");
-}
-
-fn precedence(s : &str) -> int {
-    match s {
-        "+" => 1,
-        "-" => 1,
-        "*" => 3,
-        "/" => 3,
-        "%" => 3,
-        "==" => 1,
-        "/=" => 1,
-        "<" => 1,
-        ">" => 1,
-        "<=" => 1,
-        ">=" => 1,
-        _ => 9
-    }
-}
-
-
-fn toplevelError(t : &Token) -> bool
-{
-	return t.token != NAME
-		&& t.token != RBRACKET
-		&& t.token != SEMICOLON
-		&& t.token != DATA
-		&& t.token != LPARENS
-		&& t.token != CLASS
-		&& t.token != INSTANCE;
-}
-
-fn toplevelNewBindError(t : &Token) -> bool
-{
-	return t.token != RBRACKET
-		&& t.token != SEMICOLON;
-}
-
-fn bindingError(t : &Token) -> bool
-{
-	return t.token != EQUALSSIGN
-		&& t.token != NAME
-		&& t.token != TYPEDECL
-		&& t.token != OPERATOR
-		&& t.token != RPARENS;
-}
-
-
-fn module() -> Module {
+fn module(&mut self) -> Module {
 	let mut module = Module::new();
 	let lBracketOrModule = self.tokenizer.tokenizeModule();
 	if (lBracketOrModule.token == MODULE)
@@ -162,7 +114,7 @@ fn module() -> Module {
     module
 }
 
-fn klass() -> Class {
+fn klass(&mut self) -> Class {
 	let klass = Class;
 
 	self.requireNext(CLASS);
@@ -176,7 +128,7 @@ fn klass() -> Class {
 	self.requireNext(LBRACE);
 	let typeVariableMapping = HashMap::new();
 	typeVariableMapping[typeVariable.name] = klass.variable;
-	let decls = self.sepBy1(&Parser::typeDeclaration, typeVariableMapping, SEMICOLON);
+	let decls = self.sepBy1(&Parser::typeDeclaration_, typeVariableMapping, SEMICOLON);
 	for decl in decls.iter()
 	{
 		klass.declarations.insert(name, decl);
@@ -188,7 +140,7 @@ fn klass() -> Class {
 	klass
 }
 
-fn instance() -> Instance {
+fn instance(&mut self) -> Instance {
 	let inst = Instance;
 	self.requireNext(INSTANCE);
 
@@ -211,51 +163,11 @@ fn instance() -> Instance {
 	return inst;
 }
 
-fn expression() -> ParsedExpr {
+fn expression(&mut self) -> ParsedExpr {
 	let app = application();
 	parseOperatorExpression(app, 0)
 }
 
-fn tupleName(size : uint) -> ~str
-{
-	let name = str::from_chars([',', ..size]);
-	name[0] = '(';
-	name[size - 1] = ')';
-	return name;
-}
-
-fn makeApplication(func : ParsedExpr, args : &[ParsedExpr]) -> ParsedExpr {
-	assert!(args.len() >= 1);
-	let arg = args[args.len() - 1];
-    let ii = args.len() - 2;
-	while ii >= 0 {
-		arg = newApply(args[ii], arg);
-        ii -= 1;
-	}
-	return newApply(func, arg);
-}
-
-//Create a tuple with the constructor name inferred from the number of arguments passed in
-fn newTuple(arguments : &[ParsedExpr]) -> ParsedExpr {
-	let name = Name(tupleName(arguments.len()));
-	makeApplication(name, arguments)
-}
-
-fn subExpressionError(t : &Token) -> bool {
-	t.token != LPARENS
-		&& t.token != LET
-		&& t.token != CASE
-		&& t.token != NAME
-		&& t.token != NUMBER
-		&& t.token != FLOAT
-		&& t.token != SEMICOLON
-		&& t.token != LBRACKET
-}
-
-
-fn letExpressionEndError(t : &Token) -> bool {
-	t.token != IN
-}
 
 fn parseList(parser : &Parser, tokenizer : &Tokenizer) -> ParsedExpr {
 	let expressions = ~[];
@@ -306,7 +218,7 @@ fn parseList(parser : &Parser, tokenizer : &Tokenizer) -> ParsedExpr {
 	}
 }
 
-fn subExpression(parseError : |&Token| -> bool) -> ParsedExpr {
+fn subExpression(&mut self, parseError : |&Token| -> bool) -> ParsedExpr {
 	let token = self.tokenizer.nextToken(parseError);
 	match token.token {
 	    LPARENS =>
@@ -371,7 +283,7 @@ fn subExpression(parseError : |&Token| -> bool) -> ParsedExpr {
     }
 }
 
-fn alternative() -> Alternative {
+fn alternative(&mut self) -> Alternative {
 	let pat = pattern();
 
 	self.requireNext(ARROW);
@@ -379,7 +291,7 @@ fn alternative() -> Alternative {
 	Alternative(pat, expression())
 }
 
-fn parseOperatorExpression(lhs : ParsedExpr, minPrecedence : int) -> ParsedExpr {
+fn parseOperatorExpression(&mut self, lhs : ParsedExpr, minPrecedence : int) -> ParsedExpr {
 	self.tokenizer.nextToken();
 	let f = self.tokenizer.current();
 	while (self.tokenizer.valid() && self.tokenizer.token == OPERATOR
@@ -438,24 +350,7 @@ fn parseOperatorExpression(lhs : ParsedExpr, minPrecedence : int) -> ParsedExpr 
 	lhs
 }
 
-
-fn applicationError(t :&Token) -> bool
-{
-	return t.token != LPARENS
-		&& t.token != RPARENS
-		&& t.token != LBRACKET
-		&& t.token != RBRACKET
-		&& t.token != LET
-		&& t.token != OF
-		&& t.token != NAME
-		&& t.token != NUMBER
-		&& t.token != FLOAT
-		&& t.token != OPERATOR
-		&& t.token != SEMICOLON
-		&& t.token != COMMA;
-}
-
-fn application() -> ParsedExpr {
+fn application(&mut self) -> ParsedExpr {
 	let lhs = subExpression();
 	if (lhs == None) {
 		return None;
@@ -478,31 +373,7 @@ fn application() -> ParsedExpr {
 }
 
 
-fn errorIfNotNameOrLParens(tok : &Token) -> bool
-{
-	return tok.token != NAME
-		&& tok.token != LPARENS;
-}
-fn errorIfNotName(tok : &Token) -> bool
-{
-	return tok.token != NAME;
-}
-fn errorIfNotNameOrOperator(tok : &Token) -> bool
-{
-	return tok.token != NAME
-		&& tok.token != OPERATOR;
-}
-
-fn errorIfNotNameOrEqual(tok : &Token)
-{
-	return tok.token != NAME && tok.token != EQUALSSIGN;
-}
-fn errorIfNotRParens(tok : &Token)
-{
-	return tok.token != RPARENS;
-}
-
-fn binding() -> ParsedBinding {
+fn binding(&mut self) -> ParsedBinding {
 	//name1 = expr
 	//or
 	//name2 x y = expr
@@ -562,7 +433,7 @@ fn binding() -> ParsedBinding {
 }
 
 
-fn patternParameter() -> ~[Pattern] {
+fn patternParameter(&mut self) -> ~[Pattern] {
 	let mut parameters = ~[];
 	loop {
 		let token = self.tokenizer.nextToken();
@@ -597,7 +468,7 @@ fn patternParameter() -> ~[Pattern] {
 	return parameters;
 }
 
-fn pattern() -> Pattern {
+fn pattern(&mut self) -> Pattern {
 	let nameToken = self.tokenizer.nextToken();
 	match nameToken.token {
 	    LBRACKET =>
@@ -636,26 +507,12 @@ fn pattern() -> Pattern {
 	return None;//fail?
 }
 
-fn createTypeConstraints(context : &TypeOperator) -> ~[TypeOperator] {
-	let mapping = ~[];
-
-	if (context.name[0] == '(') {
-		for t in context.tokens {
-			mapping.push(t);//match TypeOperator
-		}
-	}
-	else {
-		mapping.push(context);
-	}
-	mapping
-}
-
-fn typeDeclaration() -> TypeDeclaration {
+fn typeDeclaration(&mut self) -> TypeDeclaration {
 	let typeVariableMapping = HashMap::new();
 	self.typeDeclaration_(typeVariableMapping)
 }
 
-fn typeDeclaration(typeVariableMapping : &mut HashMap<~str, TypeVariable>) -> TypeDeclaration {
+fn typeDeclaration_(&mut self, typeVariableMapping : &mut HashMap<~str, TypeVariable>) -> TypeDeclaration {
 	let nameToken = self.tokenizer.nextToken(errorIfNotNameOrLParens);
 	let name = nameToken.name;
 	if (nameToken.token == LPARENS) {
@@ -690,14 +547,7 @@ fn typeDeclaration(typeVariableMapping : &mut HashMap<~str, TypeVariable>) -> Ty
 	TypeDeclaration(name, typeOrContext)
 }
 
-fn constructorError(tok : &Token) -> bool
-{
-	return tok.token != NAME
-		&& tok.token != OPERATOR
-		&& tok.token != LPARENS;
-}
-
-fn constructorType(tokenizer : &Tokenizer, arity : &mut int, dataDef : &DataDefinition) -> Type
+fn constructorType(&mut self, tokenizer : &Tokenizer, arity : &mut int, dataDef : &DataDefinition) -> Type
 {
 	let token = self.tokenizer.nextToken(constructorError);
 	if (token.token == NAME) {
@@ -720,15 +570,8 @@ fn constructorType(tokenizer : &Tokenizer, arity : &mut int, dataDef : &DataDefi
 	}
 }
 
-fn constructor(dataDef : &DataDefinition) -> Constructor {
-	let nameToken = self.tokenizer.nextToken();
-	let arity = 0;
-	let typ = constructorType(self.tokenizer, arity, dataDef);
-	self.tokenizer.backtrack();
-	Constructor(nameToken.name, typ, 0, arity)
-}
 
-fn dataDefinition() -> DataDefinition {
+fn dataDefinition(&mut self) -> DataDefinition {
 	self.requireNext(DATA);
 	let dataName = self.requireNext(NAME);
 
@@ -756,37 +599,26 @@ fn dataDefinition() -> DataDefinition {
 	definition
 }
 
-fn typeParseError(t : &Token) -> bool
-{
-	return t.token != ARROW
-		&& t.token != SEMICOLON
-		&& t.token != RBRACE
-		&& t.token != RPARENS
-		&& t.token != RBRACKET;
-}
-
-fn tupleType(types : ~&[Type]) -> Type {
-	TypeOperator(tupleName(types.len()), types)
-}
 
 fn parse_type() -> Type {
 	let mut vars = HashMap::new();
 	return self.parse_type(&vars);
 }
-fn parse_type(typeVariableMapping : &mut HashMap<~str, TypeVariable>) -> Type {
+
+fn parse_type_(&mut self, typeVariableMapping : &mut HashMap<~str, TypeVariable>) -> Type {
 	let result = TypeVariable(0);
 	let token = self.tokenizer.nextToken();
 	match token.token {
 	    LBRACKET =>
 		{
-			let t = self.parse_type(typeVariableMapping);
+			let t = self.parse_type_(typeVariableMapping);
 			self.requireNext(RBRACKET);
 			let args = ~[t];
 			let listType = TypeOperator("[]", args);
 
 			let arrow = self.tokenizer.nextToken();
 			if (arrow.token == ARROW) {
-				functionType(listType, self.parse_type(typeVariableMapping));
+				functionType(listType, self.parse_type_(typeVariableMapping));
 			}
             else {
                 self.tokenizer.backtrack();
@@ -795,7 +627,7 @@ fn parse_type(typeVariableMapping : &mut HashMap<~str, TypeVariable>) -> Type {
 		}
 	    LPARENS =>
 		{
-			let t = self.parse_type(typeVariableMapping);
+			let t = self.parse_type_(typeVariableMapping);
 			let maybeComma = self.tokenizer.nextToken();
 			if (maybeComma.token == COMMA)
 			{
@@ -850,7 +682,7 @@ fn parse_type(typeVariableMapping : &mut HashMap<~str, TypeVariable>) -> Type {
 				thisType = typeVariableMapping.find_or_insert(token.name, token.name, TypeVariable());
 			}
 			if (next.token == ARROW) {
-				thisType = functionType(thisType, self.parse_type(typeVariableMapping));
+				thisType = functionType(thisType, self.parse_type_(typeVariableMapping));
 			}
 			else {
 				self.tokenizer.backtrack();
@@ -861,4 +693,181 @@ fn parse_type(typeVariableMapping : &mut HashMap<~str, TypeVariable>) -> Type {
 	}
 }
 
+}//end impl Parser
 
+fn isPlusMinusOP(token : &Token) -> bool
+{
+    return token.token == OPERATOR && (token.name == "+" || token.name == "-");
+}
+
+fn isMultDivOp(token : &Token) -> bool
+{
+    return token.token == OPERATOR && (token.name == "*" || token.name == "/" || token.name == "%");
+}
+
+fn precedence(s : &str) -> int {
+    match s {
+        "+" => 1,
+        "-" => 1,
+        "*" => 3,
+        "/" => 3,
+        "%" => 3,
+        "==" => 1,
+        "/=" => 1,
+        "<" => 1,
+        ">" => 1,
+        "<=" => 1,
+        ">=" => 1,
+        _ => 9
+    }
+}
+
+
+fn toplevelError(t : &Token) -> bool
+{
+	return t.token != NAME
+		&& t.token != RBRACKET
+		&& t.token != SEMICOLON
+		&& t.token != DATA
+		&& t.token != LPARENS
+		&& t.token != CLASS
+		&& t.token != INSTANCE;
+}
+
+fn toplevelNewBindError(t : &Token) -> bool
+{
+	return t.token != RBRACKET
+		&& t.token != SEMICOLON;
+}
+
+fn bindingError(t : &Token) -> bool
+{
+	return t.token != EQUALSSIGN
+		&& t.token != NAME
+		&& t.token != TYPEDECL
+		&& t.token != OPERATOR
+		&& t.token != RPARENS;
+}
+
+fn constructorError(tok : &Token) -> bool
+{
+	return tok.token != NAME
+		&& tok.token != OPERATOR
+		&& tok.token != LPARENS;
+}
+
+fn tupleName(size : uint) -> ~str
+{
+	let name = str::from_chars([',', ..size]);
+	name[0] = '(';
+	name[size - 1] = ')';
+	return name;
+}
+
+fn makeApplication(func : ParsedExpr, args : &[ParsedExpr]) -> ParsedExpr {
+	assert!(args.len() >= 1);
+	let arg = args[args.len() - 1];
+    let ii = args.len() - 2;
+	while ii >= 0 {
+		arg = newApply(args[ii], arg);
+        ii -= 1;
+	}
+	return newApply(func, arg);
+}
+
+//Create a tuple with the constructor name inferred from the number of arguments passed in
+fn newTuple(arguments : &[ParsedExpr]) -> ParsedExpr {
+	let name = Name(tupleName(arguments.len()));
+	makeApplication(name, arguments)
+}
+
+fn subExpressionError(t : &Token) -> bool {
+	t.token != LPARENS
+		&& t.token != LET
+		&& t.token != CASE
+		&& t.token != NAME
+		&& t.token != NUMBER
+		&& t.token != FLOAT
+		&& t.token != SEMICOLON
+		&& t.token != LBRACKET
+}
+
+fn letExpressionEndError(t : &Token) -> bool {
+	t.token != IN
+}
+
+fn applicationError(t :&Token) -> bool
+{
+	return t.token != LPARENS
+		&& t.token != RPARENS
+		&& t.token != LBRACKET
+		&& t.token != RBRACKET
+		&& t.token != LET
+		&& t.token != OF
+		&& t.token != NAME
+		&& t.token != NUMBER
+		&& t.token != FLOAT
+		&& t.token != OPERATOR
+		&& t.token != SEMICOLON
+		&& t.token != COMMA;
+}
+
+
+fn errorIfNotNameOrLParens(tok : &Token) -> bool
+{
+	return tok.token != NAME
+		&& tok.token != LPARENS;
+}
+fn errorIfNotName(tok : &Token) -> bool
+{
+	return tok.token != NAME;
+}
+fn errorIfNotNameOrOperator(tok : &Token) -> bool
+{
+	return tok.token != NAME
+		&& tok.token != OPERATOR;
+}
+
+fn errorIfNotNameOrEqual(tok : &Token)
+{
+	return tok.token != NAME && tok.token != EQUALSSIGN;
+}
+fn errorIfNotRParens(tok : &Token)
+{
+	return tok.token != RPARENS;
+}
+
+fn createTypeConstraints(context : &TypeOperator) -> ~[TypeOperator] {
+	let mapping = ~[];
+
+	if (context.name[0] == '(') {
+		for t in context.tokens {
+			mapping.push(t);//match TypeOperator
+		}
+	}
+	else {
+		mapping.push(context);
+	}
+	mapping
+}
+
+fn constructor(dataDef : &DataDefinition) -> Constructor {
+	let nameToken = self.tokenizer.nextToken();
+	let arity = 0;
+	let typ = constructorType(self.tokenizer, arity, dataDef);
+	self.tokenizer.backtrack();
+	Constructor(nameToken.name, typ, 0, arity)
+}
+
+fn typeParseError(t : &Token) -> bool
+{
+	return t.token != ARROW
+		&& t.token != SEMICOLON
+		&& t.token != RBRACE
+		&& t.token != RPARENS
+		&& t.token != RBRACKET;
+}
+
+fn tupleType(types : ~&[Type]) -> Type {
+	TypeOperator(tupleName(types.len()), types)
+}
