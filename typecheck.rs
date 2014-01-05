@@ -1,11 +1,14 @@
 use std::hashmap::HashMap;
 
-#[deriving(Clone)]
-#[deriving(Eq)]
-#[deriving(ToStr)]
+#[deriving(Clone, Eq, ToStr)]
+struct TypeOperator {
+    name : ~str,
+    types : ~[Type]
+}
+#[deriving(Clone, Eq, ToStr)]
 pub enum Type {
-    Variable(int),
-    Operator(~str, ~[Type])
+    TypeVariable(int),
+    TypeOperator(TypeOperator)
 }
 
 pub struct TypedExpr {
@@ -15,7 +18,7 @@ pub struct TypedExpr {
 
 impl TypedExpr {
     pub fn new(expr : Expr<~TypedExpr>) -> TypedExpr {
-        TypedExpr { expr : expr, typ : @mut Variable(0) }
+        TypedExpr { expr : expr, typ : @mut TypeVariable(0) }
     }
 }
 
@@ -40,14 +43,14 @@ impl TypeEnvironment {
 
     fn replace(old : &mut Type, subs : &HashMap<int, Type>) {
         match old {
-            &Variable(id) => {
+            &TypeVariable(id) => {
                 match subs.find(&id) {
                     Some(new) => { *old = new.clone() }
                     None => ()
                 }
             }
-            &Operator(_, ref mut oldTypes) => {
-                for t in oldTypes.mut_iter() {
+            &TypeOperator(ref mut op) => {
+                for t in op.types.mut_iter() {
                     TypeEnvironment::replace(t, subs); 
                 }
             }
@@ -55,12 +58,12 @@ impl TypeEnvironment {
     }
 
     pub fn typecheck(&mut self, expr : &mut TypedExpr) {
-        *expr.typ = Variable(self.variableIndex);
+        *expr.typ = TypeVariable(self.variableIndex);
         self.variableIndex += 1;
         self.types.push(expr.typ);
         match &mut expr.expr {
             &Number(_) => {
-                expr.typ = @mut Operator(~"Int", ~[]);
+                expr.typ = @mut TypeOperator(TypeOperator {name : ~"Int", types : ~[]});
             }
             &Identifier(ref name) => {
                 match self.namedTypes.find(name) {
@@ -72,13 +75,13 @@ impl TypeEnvironment {
                 println!("Applying");
                 self.typecheck(*func);
                 self.typecheck(*arg);
-                let mut funcType = Operator(~"->", ~[(*arg.typ).clone(), Variable(self.variableIndex)]);
+                let mut funcType = TypeOperator(TypeOperator { name : ~"->", types : ~[(*arg.typ).clone(), TypeVariable(self.variableIndex)]});
                 self.variableIndex += 1;
                 let subs = unify(self, func.typ, &funcType);
                 self.substitute(&subs);
                 TypeEnvironment::replace(&mut funcType, &subs);
                 *expr.typ = match funcType {
-                    Operator(_, t) => t[1],
+                    TypeOperator(t) => t.types[1],
                     _ => fail!("Can't happen")
                 };
             }
@@ -113,26 +116,26 @@ fn unify_(env : &mut TypeEnvironment, subs : &mut HashMap<int, Type>, lhs : &Typ
     
     //println!("Unifying {:?} and {:?}", lhs, rhs);
     match (lhs, rhs) {
-        (&Variable(lid), &Variable(rid)) => {
+        (&TypeVariable(lid), &TypeVariable(rid)) => {
             if lid != rid {
-                subs.insert(lid, Variable(rid));
+                subs.insert(lid, TypeVariable(rid));
             }
         }
-        (&Operator(ref lName, ref lTypes), &Operator(ref rName, ref rTypes)) => {
-            if *lName != *rName || lTypes.len() != rTypes.len() {
-                fail!("Could not unify Operators " + *lName + " and " + *rName);
+        (&TypeOperator(ref l), &TypeOperator(ref r)) => {
+            if l.name != r.name || l.types.len() != r.types.len() {
+                fail!("Could not unify TypeOperators " + l.name + " and " + r.name);
             }
-            for i in range(0, lTypes.len()) {
-                unify_(env, subs, &lTypes[i], &rTypes[i]);
+            for i in range(0, l.types.len()) {
+                unify_(env, subs, &l.types[i], &r.types[i]);
             }
         }
-        (&Variable(lid), &Operator(_, _)) => { subs.insert(lid, (*rhs).clone()); }
+        (&TypeVariable(lid), &TypeOperator(_)) => { subs.insert(lid, (*rhs).clone()); }
         _ => { unify_(env, subs, rhs, lhs); }
     }
 }
 
 pub fn function_type(func : &Type, arg : &Type) -> Type {
-    Operator(~"->", ~[func.clone(), arg.clone()])
+    TypeOperator(TypeOperator { name : ~"->", types : ~[func.clone(), arg.clone()]})
 }
 
 #[test]
@@ -141,7 +144,7 @@ fn test() {
     let n = ~TypedExpr::new(Identifier(~"add"));
     let num = ~TypedExpr::new(Number(1));
     let mut expr = TypedExpr::new(Apply(n, num));
-    let type_int = Operator(~"Int", ~[]);
+    let type_int = TypeOperator(TypeOperator { name : ~"Int", types : ~[]});
     let unary_func = function_type(&type_int, &type_int);
     let add_type = @mut function_type(&type_int, &unary_func);
     env.addName(~"add", add_type);
