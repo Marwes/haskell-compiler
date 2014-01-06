@@ -28,11 +28,16 @@ impl Type {
     }
 }
 
-#[deriving(Eq)]
 pub struct Typed<T> {
     expr : T,
     typ : @mut Type,
     location : Location
+}
+
+impl <T : Eq> Eq for Typed<T> {
+    fn eq(&self, other : &Typed<T>) -> bool {
+        self.expr == other.expr
+    }
 }
 
 impl <T : fmt::Default> fmt::Default for ~Typed<T> {
