@@ -32,7 +32,8 @@ pub struct Instance {
 pub struct Binding {
     name : ~str,
     expression : Typed<Expr>,
-    typeDecl : TypeDeclaration
+    typeDecl : TypeDeclaration,
+    arity : int
 }
 
 pub struct Constructor {
@@ -336,7 +337,7 @@ fn subExpression(&mut self, parseError : |&Token| -> bool) -> Option<Typed<Expr>
 			match self.expression() {
                 Some(e) => {
                     let mut x = ~[];
-                    for Binding { name : n, expression : exp, typeDecl : _ } in binds.move_iter() {
+                    for Binding { name : n, expression : exp, typeDecl : _, arity : _ } in binds.move_iter() {
                         x.push((n, ~exp));
                     }
                     Some(Typed::new(Let(x, ~e)))
@@ -524,12 +525,13 @@ fn binding(&mut self) -> Binding {
 	}
 	if (arguments.len() > 0)
     {
+        let arity = arguments.len() as int;
 		let lambda = makeLambda(arguments, self.expression_());
-		Binding { name : name, typeDecl : TypeDeclaration { context : ~[], typ : Type::new_var(-1), name : ~"" }, expression : lambda }
+		Binding { name : name, typeDecl : TypeDeclaration { context : ~[], typ : Type::new_var(-1), name : ~"" }, expression : lambda, arity : arity }
 	}
 	else
 	{
-		Binding { name : name, typeDecl : TypeDeclaration { context : ~[], typ : Type::new_var(-1), name : ~"" }, expression : self.expression_() }
+		Binding { name : name, typeDecl : TypeDeclaration { context : ~[], typ : Type::new_var(-1), name : ~"" }, expression : self.expression_(), arity : 0 }
 	}
 }
 
