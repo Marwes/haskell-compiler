@@ -61,7 +61,7 @@ impl ScopedLookup {
     }
 }
 
-struct Compiler {
+pub struct Compiler {
     stackSize : int,
     globals : HashMap<~str, SuperCombinator>,
     variables : HashMap<~str, Var>,
@@ -69,17 +69,16 @@ struct Compiler {
 }
 
 impl Compiler {
-    fn new() -> Compiler {
+    pub fn new() -> Compiler {
         Compiler { stackSize : 0, globals : HashMap::new(), variables : HashMap::new(), globalIndex : 0 }
     }
 
-    fn compileModule(&mut self) {
+    pub fn compileModule(&mut self, module : &Module) {
         //TODO
-        let bindings : ~[(~str, int, Typed<Expr>)] = ~[];
-        for &(ref identifier, arity, ref expr) in bindings.iter() {
-            self.variables.insert(identifier.clone(), GlobalVariable(self.globalIndex));
+        for bind in module.bindings.iter() {
+            self.variables.insert(bind.name.clone(), GlobalVariable(self.globalIndex));
             self.globalIndex += 1;
-            self.compileBinding(arity, expr);
+            self.compileBinding(bind.arity, &bind.expression);
         }
     }
     fn compileBinding(&mut self, arity : int, expr : &Typed<Expr>) -> SuperCombinator {
@@ -118,8 +117,9 @@ impl Compiler {
                 instructions.push(Mkap);
                 instructions.push(Eval);
             }
-            &Lambda(_, _) => {
-                fail!("Can't compile a lambda");
+            &Lambda(ref varname, ref body) => {
+                self.variables.insert(varname.clone(), StackVariable(0));
+                self.compile(*body, instructions);
             }
             &Let(ref bindings, ref body) => {
                 for &(ref name, ref expr) in bindings.iter() {

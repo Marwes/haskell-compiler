@@ -66,7 +66,7 @@ pub enum Pattern {
     IdentifierPattern(~str),
     ConstructorPattern(~str, ~[Pattern])
 }
-struct Parser<Iter> {
+pub struct Parser<Iter> {
     lexer : Lexer<Iter>,
 }
 
@@ -84,8 +84,8 @@ fn requireNext<'a>(&'a mut self, expected : TokenEnum) -> &'a Token {
 	return self.lexer.current();
 }
 
-fn module(&mut self) -> Module {
-	let lBracketOrModule = self.lexer.next_().token;//tokenizeModule??
+pub fn module(&mut self) -> Module {
+	let lBracketOrModule = self.lexer.module_next().token;//tokenizeModule??
 	let modulename = match lBracketOrModule {
         MODULE => {
             let modulename = self.requireNext(NAME).value.clone();
@@ -133,6 +133,7 @@ fn module(&mut self) -> Module {
 			else
 			{
 				let bind = self.binding();
+                debug!("Parsed binding {}", bind.name);
 				bindings.push(bind);
 			}
 		}
@@ -156,6 +157,7 @@ fn module(&mut self) -> Module {
 			break;
 		}
 		let semicolon = self.lexer.next(toplevelNewBindError);
+        debug!("More bindings? {:?}", semicolon.token);
 	    if (semicolon.token != SEMICOLON) {
             break;
         }
@@ -242,7 +244,7 @@ fn expression_(&mut self) -> Typed<Expr> {
     }
 }
 
-fn expression(&mut self) -> Option<Typed<Expr>> {
+pub fn expression(&mut self) -> Option<Typed<Expr>> {
 	let app = self.application();
 	self.parseOperatorExpression(app, 0)
 }
@@ -298,6 +300,7 @@ fn parseList(&mut self) -> Typed<Expr> {
 
 fn subExpression(&mut self, parseError : |&Token| -> bool) -> Option<Typed<Expr>> {
 	let token = self.lexer.next(parseError).token;
+    debug!("Begin SubExpr {:?}", self.lexer.current());
 	match token {
 	    LPARENS =>
 		{
@@ -388,12 +391,14 @@ fn alternative(&mut self) -> Alternative {
 fn parseOperatorExpression(&mut self, inL : Option<Typed<Expr>>, minPrecedence : int) -> Option<Typed<Expr>> {
 	let mut lhs = inL;
     self.lexer.next_();
+    debug!("Parse operator exression, {:?}", self.lexer.current());
 	while (self.lexer.valid() && self.lexer.current().token == OPERATOR
 		&& precedence(self.lexer.current().value) >= minPrecedence)
 	{
 		let op = (*self.lexer.current()).clone();
 		let mut rhs = self.application();
 		let nextOP = self.lexer.next_().token;
+        debug!("Parsing operator? {:?}", nextOP);
 		while (self.lexer.valid() && nextOP == OPERATOR
 			&& precedence(self.lexer.current().value) > precedence(op.value))
 		{
@@ -479,6 +484,7 @@ fn constructor(&mut self, dataDef : &DataDefinition) -> Constructor {
 }
 
 fn binding(&mut self) -> Binding {
+    debug!("Begin binding");
 	//name1 = expr
 	//or
 	//name2 x y = expr
@@ -975,8 +981,8 @@ fn tupleType(types : ~[Type]) -> Type {
 	Type::new_op(tuple_name(types.len()), types)
 }
 
-fn ParseError<Iter>(lexer : &Lexer<Iter>, expected : TokenEnum) -> ~str {
-    format!("Expected {:?}", expected)
+fn ParseError<Iter : Iterator<char>>(lexer : &Lexer<Iter>, expected : TokenEnum) -> ~str {
+    format!("Expected {:?} but found {:?}, at {:?}", expected, lexer.current().token, lexer.current().location)
 }
 fn encodeBindingIdentifier(instancename : &str, bindingname : &str) -> ~str {
     fail!("Unimplemented function encodeBinding " + instancename + " " + bindingname);

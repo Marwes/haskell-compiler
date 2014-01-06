@@ -128,12 +128,13 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
         let n = self.next_indent_token(&mut newline);
         self.unprocessedTokens.push(n);
         let newTok = self.unprocessedTokens[self.unprocessedTokens.len() - 1].token;
+        let loc = self.unprocessedTokens[self.unprocessedTokens.len() - 1].location;
 
         if newTok != LBRACE && newTok != MODULE {
-            self.unprocessedTokens.push(Token::new(INDENTSTART, ~"{n}", self.location));
+            self.unprocessedTokens.push(Token::new(INDENTSTART, ~"{n}", loc));
         }
         if newline {
-            self.unprocessedTokens.push(Token::new(INDENTLEVEL, ~"<n>", self.location));
+            self.unprocessedTokens.push(Token::new(INDENTLEVEL, ~"<n>", loc));
         }
         
         self.layout_independent_token(|_| false);
@@ -145,11 +146,9 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
     }
     pub fn next<'a>(&'a mut self, parseError : |&Token| -> bool) -> &'a Token {
         if self.offset > 0 {
+            self.offset -= 1;
             match self.tokens.iter().idx(self.tokens.len() - 1 - self.offset) {
-                Some(token) => {
-                    self.offset -= 1;
-                    token
-                }
+                Some(token) => token,
                 None => fail!("Impossible empty tokens stream")
             }
         }
@@ -187,7 +186,7 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
     fn read_char(&mut self) -> Option<char> {
         match self.input.next() {
             Some(c) => {
-                self.location = self.location;
+                self.previousLocation = self.location;
                 self.location.absolute += 1;
                 self.location.column += 1;
                 if (c == '\n' || c == '\r')
@@ -251,7 +250,8 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
             }
         }
         if newline {
-            self.unprocessedTokens.push(Token::new(INDENTLEVEL, ~"<n>", self.location));
+            let loc = self.unprocessedTokens[self.unprocessedTokens.len() - 1].location;
+            self.unprocessedTokens.push(Token::new(INDENTLEVEL, ~"<n>", loc));
         }
         self.layout_independent_token(parseError);
         self.tokens.back().unwrap()
@@ -267,6 +267,7 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
                         let m = self.indentLevels[self.indentLevels.len() - 1];
                         //m == n
                         if (m == tok.location.column) {
+                            debug!("Indents are same, inserted semicolon");
                             self.tokens.push_back(Token::new(SEMICOLON, ~";", tok.location));
                             self.unprocessedTokens.pop();
                             return;
@@ -274,6 +275,7 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
                         else if (tok.location.column < m)// n < m
                         {
                             //TODO
+                            debug!("n < m, insert \\}");
                             self.indentLevels.pop();
                             self.tokens.push_back(Token::new(RBRACE, ~"}", tok.location));
                             return;
@@ -281,7 +283,6 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
                     }
                     self.unprocessedTokens.pop();
                     if (self.unprocessedTokens.len() == 0) {
-                        debug!("Skipping to next");
                         self.new_token(parseError);
                         return;
                     }
@@ -296,6 +297,7 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
                         //m:ms
                         let m = self.indentLevels[self.indentLevels.len() - 1];
                         if (n > m) {
+                            debug!("n > m + INDENTSTART, insert \\{");
                             self.unprocessedTokens.pop();
                             self.tokens.push_back(Token::new(LBRACE, ~"{", tok.location));
                             self.indentLevels.push(n);
@@ -339,6 +341,7 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
                 let m = self.indentLevels[self.indentLevels.len() - 1];
                 if (m != 0 && parseError(&tok))
                 {
+                    debug!("ParseError on token {:?}, inserting \\}", tok.token);
                     self.tokens.push_back(Token::new(RBRACE, ~"}", tok.location));
                     self.indentLevels.pop();
                     return;

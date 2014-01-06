@@ -3,9 +3,13 @@
 #[feature(managed_boxes, macro_rules, globs)];
 extern mod extra;
 use std::rc::Rc;
-use compiler::{
+use std::path::Path;
+use std::io::File;
+use std::str::{from_utf8};
+use compiler::{Compiler,
     Instruction, Add, Sub, Push, PushGlobal, PushInt, Mkap, Eval, Unwind, Update, Pop, Slide,
     SuperCombinator};
+use parser::Parser;    
 
 mod compiler;
 mod typecheck;
@@ -119,6 +123,21 @@ impl VM {
 }
 
 fn main() {
+    let arguments = std::os::args();
+    if arguments.len() != 2 {
+        return println!("Expected one argument which is the file to run");
+    }
+    let arg = arguments[1];
+    let path = &Path::new(arg);
+    let s  =File::open(path).read_to_end();
+    let contents : &str = from_utf8(s);
+    
+    let mut parser = Parser::new(contents.chars());
+    let module = parser.module();
+    
+    let mut compiler = Compiler::new();
+    compiler.compileModule(&module);
+
     let instr = [PushInt(2), PushInt(3), Add];
     let vm = VM::new();
     let mut stack = ~[];
