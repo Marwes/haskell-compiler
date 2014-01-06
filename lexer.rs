@@ -123,6 +123,22 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
             indentLevels : ~[],
             offset : 0}
     }
+    pub fn module_next<'a>(&'a mut self) -> &'a Token {
+        let mut newline = false;
+        let n = self.next_indent_token(&mut newline);
+        self.unprocessedTokens.push(n);
+        let newTok = self.unprocessedTokens[self.unprocessedTokens.len() - 1].token;
+
+        if newTok != LBRACE && newTok != MODULE {
+            self.unprocessedTokens.push(Token::new(INDENTSTART, ~"{n}", self.location));
+        }
+        if newline {
+            self.unprocessedTokens.push(Token::new(INDENTLEVEL, ~"<n>", self.location));
+        }
+        
+        self.layout_independent_token(|_| false);
+        self.current()
+    }
 
     pub fn next_<'a>(&'a mut self) -> &'a Token {
         self.next(|_| false)
