@@ -5,7 +5,7 @@ use lexer::*;
 use lexer::{Lexer, Token, TokenEnum,
     EOF, NAME, OPERATOR, NUMBER, FLOAT, LPARENS, RPARENS, LBRACKET, RBRACKET, LBRACE, RBRACE, INDENTSTART, INDENTLEVEL, COMMA, EQUALSSIGN, SEMICOLON, MODULE, CLASS, INSTANCE, WHERE, LET, IN, CASE, OF, ARROW, TYPEDECL, DATA
 };
-use typecheck::{Type, TypeVariable, TypeOperator, Expr, Identifier, Number, Apply, Lambda, Let, TypedExpr, function_type, identifier, apply, number, lambda, let_};
+use typecheck::{Type, TypeVariable, TypeOperator, Expr, Identifier, Number, Apply, Lambda, Let, Typed, function_type, identifier, apply, number, lambda, let_};
 
 mod lexer;
 
@@ -31,7 +31,7 @@ pub struct Instance {
 
 pub struct Binding {
     name : ~str,
-    expression : TypedExpr,
+    expression : Typed<Expr>,
     typeDecl : TypeDeclaration
 }
 
@@ -57,7 +57,7 @@ pub struct TypeDeclaration {
 
 pub struct Alternative {
     pattern : Pattern,
-    expression : TypedExpr
+    expression : Typed<Expr>
 }
 
 pub enum Pattern {
@@ -234,20 +234,20 @@ fn instance(&mut self) -> Instance {
 	Instance { typ : typ, classname : classname, bindings : bindings }
 }
 
-fn expression_(&mut self) -> TypedExpr {
+fn expression_(&mut self) -> Typed<Expr> {
     match self.expression() {
         Some(expr) => expr,
         None => fail!("Failed to parse expression at {:?}", "ASD")
     }
 }
 
-fn expression(&mut self) -> Option<TypedExpr> {
+fn expression(&mut self) -> Option<Typed<Expr>> {
 	let app = self.application();
 	self.parseOperatorExpression(app, 0)
 }
 
 
-fn parseList(&mut self) -> TypedExpr {
+fn parseList(&mut self) -> Typed<Expr> {
 	let mut expressions = ~[];
 	loop {
 		match self.expression() {
@@ -262,26 +262,26 @@ fn parseList(&mut self) -> TypedExpr {
 
 	if (expressions.len() == 0)
 	{
-		return TypedExpr::new(Identifier(~"[]"));
+		return Typed::new(Identifier(~"[]"));
 	}
 
 	let mut application;
 	{
-		let mut arguments = ~[TypedExpr::new(Number(0)), TypedExpr::new(Number(0))];//Must be 2 in length
+		let mut arguments = ~[Typed::new(Number(0)), Typed::new(Number(0))];//Must be 2 in length
 		swap(&mut arguments[0], &mut expressions[expressions.len() - 1]);
 		expressions.pop();
-		arguments[1] = TypedExpr::new(Identifier(~"[]"));
+		arguments[1] = Typed::new(Identifier(~"[]"));
 
-		application = makeApplication(TypedExpr::new(Identifier(~":")), arguments);
+		application = makeApplication(Typed::new(Identifier(~":")), arguments);
 	}
 	while (expressions.len() > 0)
 	{
-		let mut arguments = ~[TypedExpr::new(Number(0)), TypedExpr::new(Number(0))];//Must be 2 in length
+		let mut arguments = ~[Typed::new(Number(0)), Typed::new(Number(0))];//Must be 2 in length
 		swap(&mut arguments[0], &mut expressions[expressions.len() - 1]);
 		expressions.pop();
 		arguments[1] = application;
 
-		application = makeApplication(TypedExpr::new(Identifier(~":")), arguments);
+		application = makeApplication(Typed::new(Identifier(~":")), arguments);
 	}
 
 	let maybeParens = self.lexer.current().token;
@@ -295,7 +295,7 @@ fn parseList(&mut self) -> TypedExpr {
 	}
 }
 
-fn subExpression(&mut self, parseError : |&Token| -> bool) -> Option<TypedExpr> {
+fn subExpression(&mut self, parseError : |&Token| -> bool) -> Option<Typed<Expr>> {
 	let token = self.lexer.next(parseError).token;
 	match token {
 	    LPARENS =>
@@ -339,7 +339,7 @@ fn subExpression(&mut self, parseError : |&Token| -> bool) -> Option<TypedExpr> 
                     for Binding { name : n, expression : exp, typeDecl : _ } in binds.move_iter() {
                         x.push((n, ~exp));
                     }
-                    Some(TypedExpr::new(Let(x, ~e)))
+                    Some(Typed::new(Let(x, ~e)))
                 }
                 None => None
             }
@@ -358,18 +358,18 @@ fn subExpression(&mut self, parseError : |&Token| -> bool) -> Option<TypedExpr> 
 			{
 				fail!(ParseError(&self.lexer, RBRACE));
 			}
-			return TypedExpr::with_location(Case(expr, alts), token.location);
+			return Typed::with_location(Case(expr, alts), token.location);
 		}*/
         NAME => {
             let token = self.lexer.current();
-            Some(TypedExpr::with_location(Identifier(token.value.clone()), token.location))
+            Some(Typed::with_location(Identifier(token.value.clone()), token.location))
         }
         NUMBER => {
             let token = self.lexer.current();
             println!("Number {:?}", token.value);
-            Some(TypedExpr::with_location(Number(from_str(token.value).unwrap()), token.location))
+            Some(Typed::with_location(Number(from_str(token.value).unwrap()), token.location))
         }
-	    //FLOAT => TypedExpr::with_location(Rational(token.value.from_str()), token.location),
+	    //FLOAT => Typed::with_location(Rational(token.value.from_str()), token.location),
 	    _ => {
 		self.lexer.backtrack();
         None
@@ -385,7 +385,7 @@ fn alternative(&mut self) -> Alternative {
 	Alternative { pattern : pat, expression : self.expression_() }
 }
 
-fn parseOperatorExpression(&mut self, inL : Option<TypedExpr>, minPrecedence : int) -> Option<TypedExpr> {
+fn parseOperatorExpression(&mut self, inL : Option<Typed<Expr>>, minPrecedence : int) -> Option<Typed<Expr>> {
 	let mut lhs = inL;
     self.lexer.next_();
 	while (self.lexer.valid() && self.lexer.current().token == OPERATOR
@@ -402,7 +402,7 @@ fn parseOperatorExpression(&mut self, inL : Option<TypedExpr>, minPrecedence : i
 			rhs = self.parseOperatorExpression(rhs, lookaheadPrecedence);
 			self.lexer.next_();
 		}
-		let mut name = TypedExpr::with_location(Identifier(op.value.clone()), op.location);
+		let mut name = Typed::with_location(Identifier(op.value.clone()), op.location);
 		let loc = match &lhs {
             &Some(ref l) => l.location,
             &None => op.location
@@ -413,7 +413,7 @@ fn parseOperatorExpression(&mut self, inL : Option<TypedExpr>, minPrecedence : i
                 Some(makeApplication(name, args))
             }
             (Some(lhs), None) => {
-                let args = ~[lhs, TypedExpr::with_location(Identifier(~"#"), loc)];
+                let args = ~[lhs, Typed::with_location(Identifier(~"#"), loc)];
                 let mut apply = makeApplication(name, args);
                 apply.location = loc;
                 let params = ~[~"#"];
@@ -432,7 +432,7 @@ fn parseOperatorExpression(&mut self, inL : Option<TypedExpr>, minPrecedence : i
                 }
                 else
                 {
-                    let args = ~[TypedExpr::with_location(Identifier(~"#"), loc), rhs];
+                    let args = ~[Typed::with_location(Identifier(~"#"), loc), rhs];
                     let mut apply = makeApplication(name, args);
                     apply.location = loc;
                     let params = ~[~"#"];
@@ -447,7 +447,7 @@ fn parseOperatorExpression(&mut self, inL : Option<TypedExpr>, minPrecedence : i
 	lhs
 }
 
-fn application(&mut self) -> Option<TypedExpr> {
+fn application(&mut self) -> Option<Typed<Expr>> {
     let e = self.subExpression(|t| false);
 	match e {
         Some(lhs) => {
@@ -868,29 +868,29 @@ fn tuple_name(size : uint) -> ~str
 	name
 }
 
-fn makeApplication(f : TypedExpr, args : ~[TypedExpr]) -> TypedExpr {
+fn makeApplication(f : Typed<Expr>, args : ~[Typed<Expr>]) -> Typed<Expr> {
 	assert!(args.len() >= 1);
     let mut func = f;
 	for a in args.move_iter() {
-		func = TypedExpr::new(Apply(~func, ~a));
+		func = Typed::new(Apply(~func, ~a));
 	}
     func
 }
-fn makeLambda(a : ~[~str], body : TypedExpr) -> TypedExpr {
+fn makeLambda(a : ~[~str], body : Typed<Expr>) -> Typed<Expr> {
     let mut args = a;
 	assert!(args.len() >= 1);
 	let mut body = body;
     let mut ii = args.len() - 1;
 	while ii >= 0 {
-		body = TypedExpr::new(Lambda(args.pop(), ~body));
+		body = Typed::new(Lambda(args.pop(), ~body));
         ii -= 1;
 	}
     body
 }
 
 //Create a tuple with the constructor name inferred from the number of arguments passed in
-fn newTuple(arguments : ~[TypedExpr]) -> TypedExpr {
-	let name = TypedExpr::new(Identifier(tuple_name(arguments.len())));
+fn newTuple(arguments : ~[Typed<Expr>]) -> Typed<Expr> {
+	let name = Typed::new(Identifier(tuple_name(arguments.len())));
 	makeApplication(name, arguments)
 }
 

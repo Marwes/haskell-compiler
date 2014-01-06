@@ -1,5 +1,5 @@
 use std::hashmap::HashMap;
-use typecheck::{Expr, TypedExpr, Identifier, Apply, Number, Lambda, Let, identifier, apply, number, lambda, let_};
+use typecheck::{Expr, Typed, Identifier, Apply, Number, Lambda, Let, identifier, apply, number, lambda, let_};
 use parser::{Module, Class, Instance, Binding, DataDefinition, Constructor, TypeDeclaration,
     Pattern, ConstructorPattern, NumberPattern, IdentifierPattern, Alternative};
 mod typecheck;
@@ -75,14 +75,14 @@ impl Compiler {
 
     fn compileModule(&mut self) {
         //TODO
-        let bindings : ~[(~str, int, TypedExpr)] = ~[];
+        let bindings : ~[(~str, int, Typed<Expr>)] = ~[];
         for &(ref identifier, arity, ref expr) in bindings.iter() {
             self.variables.insert(identifier.clone(), GlobalVariable(self.globalIndex));
             self.globalIndex += 1;
             self.compileBinding(arity, expr);
         }
     }
-    fn compileBinding(&mut self, arity : int, expr : &TypedExpr) -> SuperCombinator {
+    fn compileBinding(&mut self, arity : int, expr : &Typed<Expr>) -> SuperCombinator {
 
         let mut comb = SuperCombinator::new();
         comb.arity = arity;
@@ -98,7 +98,7 @@ impl Compiler {
        comb
     }
 
-    fn compile(&mut self, expr : &TypedExpr, instructions : &mut ~[Instruction]) {
+    fn compile(&mut self, expr : &Typed<Expr>, instructions : &mut ~[Instruction]) {
         match &expr.expr {
             &Identifier(ref name) => {
                 match self.variables.find(name) {

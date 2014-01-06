@@ -29,44 +29,39 @@ impl Type {
 }
 
 #[deriving(Eq)]
-pub struct TypedExpr {
-    expr : Expr<~TypedExpr>,
+pub struct Typed<T> {
+    expr : T,
     typ : @mut Type,
     location : Location
 }
 
-impl fmt::Default for ~TypedExpr {
-    fn fmt(expr: &~TypedExpr, f: &mut fmt::Formatter) {
-        write!(f.buf, "{}", expr.expr)
-    }
-}
-impl fmt::Default for TypedExpr {
-    fn fmt(expr: &TypedExpr, f: &mut fmt::Formatter) {
+impl <T : fmt::Default> fmt::Default for ~Typed<T> {
+    fn fmt(expr: &~Typed<T>, f: &mut fmt::Formatter) {
         write!(f.buf, "{}", expr.expr)
     }
 }
 
-impl TypedExpr {
-    pub fn new(expr : Expr<~TypedExpr>) -> TypedExpr {
-        TypedExpr { expr : expr, typ : @mut TypeVariable(TypeVariable { id : 0 }), location : Location { column : -1, row : -1, absolute : -1 } }
+impl <T> Typed<T> {
+    pub fn new(expr : T) -> Typed<T> {
+        Typed { expr : expr, typ : @mut TypeVariable(TypeVariable { id : 0 }), location : Location { column : -1, row : -1, absolute : -1 } }
     }
-    pub fn with_location(expr : Expr<~TypedExpr>, loc : Location) -> TypedExpr {
-        TypedExpr { expr : expr, typ : @mut TypeVariable(TypeVariable { id : 0 }), location : loc }
+    pub fn with_location(expr : T, loc : Location) -> Typed<T> {
+        Typed { expr : expr, typ : @mut TypeVariable(TypeVariable { id : 0 }), location : loc }
     }
 }
 
 
 #[deriving(Eq)]
-pub enum Expr<T> {
+pub enum Expr {
     Identifier(~str),
-    Apply(T, T),
+    Apply(~Typed<Expr>, ~Typed<Expr>),
     Number(int),
-    Lambda(~str, T),
-    Let(~[(~str, T)], T)
+    Lambda(~str, ~Typed<Expr>),
+    Let(~[(~str, ~Typed<Expr>)], ~Typed<Expr>)
 }
 
-impl <T : fmt::Default> fmt::Default for Expr<T> {
-    fn fmt(expr: &Expr<T>, f: &mut fmt::Formatter) {
+impl fmt::Default for Expr {
+    fn fmt(expr: &Expr, f: &mut fmt::Formatter) {
         match expr {
             &Identifier(ref s) => write!(f.buf, "{}", *s),
             &Apply(ref func, ref arg) => write!(f.buf, "({} {})", *func, *arg),
@@ -74,6 +69,11 @@ impl <T : fmt::Default> fmt::Default for Expr<T> {
             &Lambda(ref arg, ref body) => write!(f.buf, "({} -> {})", *arg, *body),
             &Let(_,_) => write!(f.buf, "Let ... ")
         }
+    }
+}
+impl fmt::Default for ~Expr {
+    fn fmt(expr: &~Expr, f: &mut fmt::Formatter) {
+        write!(f.buf, "{}", *expr)
     }
 }
 
@@ -104,7 +104,7 @@ impl TypeEnvironment {
         }
     }
 
-    pub fn typecheck(&mut self, expr : &mut TypedExpr) {
+    pub fn typecheck(&mut self, expr : &mut Typed<Expr>) {
         *expr.typ = TypeVariable(self.variableIndex);
         self.variableIndex.id += 1;
         self.types.push(expr.typ);
@@ -180,30 +180,30 @@ pub fn function_type(func : &Type, arg : &Type) -> Type {
     TypeOperator(TypeOperator { name : ~"->", types : ~[func.clone(), arg.clone()]})
 }
 
-pub fn identifier(i : ~str) -> TypedExpr {
-    TypedExpr::new(Identifier(i))
+pub fn identifier(i : ~str) -> Typed<Expr> {
+    Typed::new(Identifier(i))
 }
 
-pub fn lambda(arg : ~str, body : TypedExpr) -> TypedExpr {
-    TypedExpr::new(Lambda(arg, ~body))
+pub fn lambda(arg : ~str, body : Typed<Expr>) -> Typed<Expr> {
+    Typed::new(Lambda(arg, ~body))
 }
-pub fn number(i : int) -> TypedExpr {
-    TypedExpr::new(Number(i))
+pub fn number(i : int) -> Typed<Expr> {
+    Typed::new(Number(i))
 }
-pub fn apply(func : TypedExpr, arg : TypedExpr) -> TypedExpr {
-    TypedExpr::new(Apply(~func, ~arg))
+pub fn apply(func : Typed<Expr>, arg : Typed<Expr>) -> Typed<Expr> {
+    Typed::new(Apply(~func, ~arg))
 }
-pub fn let_(bindings : ~[(~str, ~TypedExpr)], expr : TypedExpr) -> TypedExpr {
-    TypedExpr::new(Let(bindings, ~expr))
+pub fn let_(bindings : ~[(~str, ~Typed<Expr>)], expr : Typed<Expr>) -> Typed<Expr> {
+    Typed::new(Let(bindings, ~expr))
 }
 
 
 #[test]
 fn test() {
     let mut env = TypeEnvironment::new();
-    let n = ~TypedExpr::new(Identifier(~"add"));
-    let num = ~TypedExpr::new(Number(1));
-    let mut expr = TypedExpr::new(Apply(n, num));
+    let n = ~Typed::new(Identifier(~"add"));
+    let num = ~Typed::new(Number(1));
+    let mut expr = Typed::new(Apply(n, num));
     let type_int = TypeOperator(TypeOperator { name : ~"Int", types : ~[]});
     let unary_func = function_type(&type_int, &type_int);
     let add_type = @mut function_type(&type_int, &unary_func);
