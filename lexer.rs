@@ -237,7 +237,7 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
 
     fn layout_independent_token(&mut self, parseError : |&Token| -> bool) {
         if self.unprocessedTokens.len() > 0 {
-            let tok = self.unprocessedTokens[self.unprocessedTokens.len() - 1];
+            let tok = self.unprocessedTokens[self.unprocessedTokens.len() - 1].clone();//TODO dont use clone
             match tok.token {
                 INDENTLEVEL => {
                     if (self.indentLevels.len() > 0) {
