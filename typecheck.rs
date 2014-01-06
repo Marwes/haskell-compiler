@@ -1,5 +1,6 @@
 use std::hashmap::HashMap;
 use lexer::{Location};
+use std::fmt;
 
 mod lexer;
 
@@ -34,6 +35,17 @@ pub struct TypedExpr {
     location : Location
 }
 
+impl fmt::Default for ~TypedExpr {
+    fn fmt(expr: &~TypedExpr, f: &mut fmt::Formatter) {
+        write!(f.buf, "{}", expr.expr)
+    }
+}
+impl fmt::Default for TypedExpr {
+    fn fmt(expr: &TypedExpr, f: &mut fmt::Formatter) {
+        write!(f.buf, "{}", expr.expr)
+    }
+}
+
 impl TypedExpr {
     pub fn new(expr : Expr<~TypedExpr>) -> TypedExpr {
         TypedExpr { expr : expr, typ : @mut TypeVariable(TypeVariable { id : 0 }), location : Location { column : -1, row : -1, absolute : -1 } }
@@ -43,6 +55,7 @@ impl TypedExpr {
     }
 }
 
+
 #[deriving(Eq)]
 pub enum Expr<T> {
     Identifier(~str),
@@ -50,6 +63,18 @@ pub enum Expr<T> {
     Number(int),
     Lambda(~str, T),
     Let(~[(~str, T)], T)
+}
+
+impl <T : fmt::Default> fmt::Default for Expr<T> {
+    fn fmt(expr: &Expr<T>, f: &mut fmt::Formatter) {
+        match expr {
+            &Identifier(ref s) => write!(f.buf, "{}", *s),
+            &Apply(ref func, ref arg) => write!(f.buf, "({} {})", *func, *arg),
+            &Number(num) => write!(f.buf, "{}", num),
+            &Lambda(ref arg, ref body) => write!(f.buf, "({} -> {})", *arg, *body),
+            &Let(_,_) => write!(f.buf, "Let ... ")
+        }
+    }
 }
 
 pub struct TypeEnvironment {
@@ -94,7 +119,6 @@ impl TypeEnvironment {
                 }
             }
             &Apply(ref mut func, ref mut arg) => {
-                println!("Applying");
                 self.typecheck(*func);
                 self.typecheck(*arg);
                 let mut funcType = TypeOperator(TypeOperator { name : ~"->", types : ~[(*arg.typ).clone(), TypeVariable(self.variableIndex)]});
@@ -112,9 +136,7 @@ impl TypeEnvironment {
     }
 
     fn substitute(&mut self, subs : &HashMap<TypeVariable, Type>) {
-        //println!("Substituting {:?}", subs);
         for t in self.types.iter() {
-            println!("Type : {:?}", *t);
             TypeEnvironment::replace(*t, subs);
         }
     }
@@ -135,8 +157,6 @@ fn unify(env : &mut TypeEnvironment, lhs : &Type, rhs : &Type) -> HashMap<TypeVa
     subs
 }
 fn unify_(env : &mut TypeEnvironment, subs : &mut HashMap<TypeVariable, Type>, lhs : &Type, rhs : &Type) {
-    
-    //println!("Unifying {:?} and {:?}", lhs, rhs);
     match (lhs, rhs) {
         (&TypeVariable(lid), &TypeVariable(rid)) => {
             if lid != rid {
@@ -159,6 +179,24 @@ fn unify_(env : &mut TypeEnvironment, subs : &mut HashMap<TypeVariable, Type>, l
 pub fn function_type(func : &Type, arg : &Type) -> Type {
     TypeOperator(TypeOperator { name : ~"->", types : ~[func.clone(), arg.clone()]})
 }
+
+pub fn identifier(i : ~str) -> TypedExpr {
+    TypedExpr::new(Identifier(i))
+}
+
+pub fn lambda(arg : ~str, body : TypedExpr) -> TypedExpr {
+    TypedExpr::new(Lambda(arg, ~body))
+}
+pub fn number(i : int) -> TypedExpr {
+    TypedExpr::new(Number(i))
+}
+pub fn apply(func : TypedExpr, arg : TypedExpr) -> TypedExpr {
+    TypedExpr::new(Apply(~func, ~arg))
+}
+pub fn let_(bindings : ~[(~str, ~TypedExpr)], expr : TypedExpr) -> TypedExpr {
+    TypedExpr::new(Let(bindings, ~expr))
+}
+
 
 #[test]
 fn test() {

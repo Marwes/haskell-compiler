@@ -128,3 +128,8 @@ fn main() {
 
 }
 
+#[test]
+fn test()
+{
+    format!("{:?}", main);
+}

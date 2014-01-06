@@ -5,11 +5,11 @@ use lexer::*;
 use lexer::{Lexer, Token, TokenEnum,
     EOF, NAME, OPERATOR, NUMBER, FLOAT, LPARENS, RPARENS, LBRACKET, RBRACKET, LBRACE, RBRACE, INDENTSTART, INDENTLEVEL, COMMA, EQUALSSIGN, SEMICOLON, MODULE, CLASS, INSTANCE, WHERE, LET, IN, CASE, OF, ARROW, TYPEDECL, DATA
 };
-use typecheck::{Type, TypeVariable, TypeOperator, Expr, Identifier, Number, Apply, Lambda, Let, TypedExpr, function_type};
+use typecheck::{Type, TypeVariable, TypeOperator, Expr, Identifier, Number, Apply, Lambda, Let, TypedExpr, function_type, identifier, apply, number, lambda, let_};
 
 mod lexer;
 
-struct Module {
+pub struct Module {
     name : ~str,
     bindings : ~[Binding],
     typeDeclarations : ~[TypeDeclaration],
@@ -18,59 +18,62 @@ struct Module {
     dataDefinitions : ~[DataDefinition]
 }
 
-struct Class {
+pub struct Class {
     name : ~str,
     declarations : ~[TypeDeclaration]
 }
 
-struct Instance {
+pub struct Instance {
     bindings : ~[Binding],
     typ : TypeOperator,
     classname : ~str
 }
 
-struct Binding {
+pub struct Binding {
     name : ~str,
     expression : TypedExpr,
     typeDecl : TypeDeclaration
 }
 
-struct Constructor {
+pub struct Constructor {
     name : ~str,
     typ : Type,
     tag : int,
     arity : int
 }
 
-struct DataDefinition {
+pub struct DataDefinition {
     constructors : ~[Constructor],
     typ : TypeOperator,
     parameters : HashMap<~str, Type>
 }
 
 #[deriving(Clone)]
-struct TypeDeclaration {
+pub struct TypeDeclaration {
     context : ~[TypeOperator],
     typ : Type,
     name : ~str
 }
 
-struct Alternative {
+pub struct Alternative {
     pattern : Pattern,
     expression : TypedExpr
 }
 
-enum Pattern {
+pub enum Pattern {
     NumberPattern(int),
     IdentifierPattern(~str),
     ConstructorPattern(~str, ~[Pattern])
 }
-
 struct Parser<Iter> {
     lexer : Lexer<Iter>,
 }
 
 impl <Iter : Iterator<char>> Parser<Iter> {
+
+pub fn new(iterator : Iter) -> Parser<Iter> {
+    Parser { lexer : Lexer::new(iterator) }
+}
 
 fn requireNext<'a>(&'a mut self, expected : TokenEnum) -> &'a Token {
 	let tok = self.lexer.next_().token;
@@ -363,6 +366,7 @@ fn subExpression(&mut self, parseError : |&Token| -> bool) -> Option<TypedExpr> 
         }
         NUMBER => {
             let token = self.lexer.current();
+            println!("Number {:?}", token.value);
             Some(TypedExpr::with_location(Number(from_str(token.value).unwrap()), token.location))
         }
 	    //FLOAT => TypedExpr::with_location(Rational(token.value.from_str()), token.location),
@@ -864,16 +868,13 @@ fn tuple_name(size : uint) -> ~str
 	name
 }
 
-fn makeApplication(func : TypedExpr, a : ~[TypedExpr]) -> TypedExpr {
-    let mut args = a;
+fn makeApplication(f : TypedExpr, args : ~[TypedExpr]) -> TypedExpr {
 	assert!(args.len() >= 1);
-	let mut arg = args.pop();
-    let mut ii = args.len() - 1;
-	while ii >= 0 {
-		arg = TypedExpr::new(Apply(~args.pop(), ~arg));
-        ii -= 1;
+    let mut func = f;
+	for a in args.move_iter() {
+		func = TypedExpr::new(Apply(~func, ~a));
 	}
-	TypedExpr::new(Apply(~func, ~arg))
+    func
 }
 fn makeLambda(a : ~[~str], body : TypedExpr) -> TypedExpr {
     let mut args = a;
@@ -977,6 +978,14 @@ fn ParseError<Iter>(lexer : &Lexer<Iter>, expected : TokenEnum) -> ~str {
     format!("Expected {:?}", expected)
 }
 fn encodeBindingIdentifier(instancename : &str, bindingname : &str) -> ~str {
-    fail!("Unimplemented function encodeBinding")
-    ~""
+    fail!("Unimplemented function encodeBinding " + instancename + " " + bindingname);
+}
+
+
+#[test]
+fn simple()
+{
+    let mut parser = Parser::new("2 + 3".chars());
+    let expr = parser.expression_();
+    assert_eq!(expr, apply(apply(identifier(~"+"), number(2)), number(3)));
 }

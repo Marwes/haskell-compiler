@@ -130,7 +130,10 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
     pub fn next<'a>(&'a mut self, parseError : |&Token| -> bool) -> &'a Token {
         if self.offset > 0 {
             match self.tokens.iter().idx(self.tokens.len() - 1 - self.offset) {
-                Some(token) => token,
+                Some(token) => {
+                    self.offset -= 1;
+                    token
+                }
                 None => fail!("Impossible empty tokens stream")
             }
         }
@@ -144,7 +147,10 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
     }
 
     pub fn current<'a>(&'a self) -> &'a Token {
-        self.tokens.back().unwrap()
+        match self.tokens.iter().idx(self.tokens.len() - 1 - self.offset) {
+            Some(token) => token,
+            None => fail!("Attempted to access Lexer::current() on when tokens is empty")
+        }
     }
 
     pub fn backtrack(&mut self) {

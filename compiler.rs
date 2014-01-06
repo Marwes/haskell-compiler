@@ -1,5 +1,7 @@
 use std::hashmap::HashMap;
-use typecheck::{Expr, TypedExpr, Identifier, Apply, Number, Lambda, Let};
+use typecheck::{Expr, TypedExpr, Identifier, Apply, Number, Lambda, Let, identifier, apply, number, lambda, let_};
+use parser::{Module, Class, Instance, Binding, DataDefinition, Constructor, TypeDeclaration,
+    Pattern, ConstructorPattern, NumberPattern, IdentifierPattern, Alternative};
 mod typecheck;
 
 #[deriving(Eq)]
@@ -131,23 +133,6 @@ impl Compiler {
             }
         }
     }
-}
-
-fn identifier(i : ~str) -> TypedExpr {
-    TypedExpr::new(Identifier(i))
-}
-
-fn lambda(arg : ~str, body : TypedExpr) -> TypedExpr {
-    TypedExpr::new(Lambda(arg, ~body))
-}
-fn number(i : int) -> TypedExpr {
-    TypedExpr::new(Number(i))
-}
-fn apply(func : TypedExpr, arg : TypedExpr) -> TypedExpr {
-    TypedExpr::new(Apply(~func, ~arg))
-}
-fn let_(bindings : ~[(~str, ~TypedExpr)], expr : TypedExpr) -> TypedExpr {
-    TypedExpr::new(Let(bindings, ~expr))
 }
 
 #[test]
