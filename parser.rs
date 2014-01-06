@@ -366,7 +366,6 @@ fn subExpression(&mut self, parseError : |&Token| -> bool) -> Option<Typed<Expr>
         }
         NUMBER => {
             let token = self.lexer.current();
-            println!("Number {:?}", token.value);
             Some(Typed::with_location(Number(from_str(token.value).unwrap()), token.location))
         }
 	    //FLOAT => Typed::with_location(Rational(token.value.from_str()), token.location),
@@ -880,7 +879,7 @@ fn makeLambda(a : ~[~str], body : Typed<Expr>) -> Typed<Expr> {
     let mut args = a;
 	assert!(args.len() >= 1);
 	let mut body = body;
-    let mut ii = args.len() - 1;
+    let mut ii = args.len() as int - 1;
 	while ii >= 0 {
 		body = Typed::new(Lambda(args.pop(), ~body));
         ii -= 1;
@@ -988,4 +987,12 @@ fn simple()
     let mut parser = Parser::new("2 + 3".chars());
     let expr = parser.expression_();
     assert_eq!(expr, apply(apply(identifier(~"+"), number(2)), number(3)));
+}
+#[test]
+fn binding()
+{
+    let mut parser = Parser::new("test x = x + 3".chars());
+    let bind = parser.binding();
+    assert_eq!(bind.expression, lambda(~"x", apply(apply(identifier(~"+"), identifier(~"x")), number(3))));
+    assert_eq!(bind.name, ~"test");
 }
