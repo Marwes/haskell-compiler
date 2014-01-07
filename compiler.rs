@@ -169,9 +169,9 @@ impl <'a> CompilerNode<'a> {
                 self.compile(*body, instructions, false);
             }
             &Let(ref bindings, ref body) => {
-                for &(ref name, ref expr) in bindings.iter() {
-                    self.newStackVar(name.clone());
-                    self.compile(*expr, instructions, false);
+                for bind in bindings.iter() {
+                    self.newStackVar(bind.name.clone());
+                    self.compile(&bind.expression, instructions, false);
                 }
                 self.compile(*body, instructions, strict);
                 instructions.push(Slide(bindings.len() as int));

@@ -1,7 +1,7 @@
 use std::hashmap::HashMap;
 use lexer::Location;
 use std::fmt;
-use module::{Type, TypeVariable, TypeOperator, Expr, Identifier, Number, Apply, Lambda, Let, Typed, Alternative};
+use module::{Type, TypeVariable, TypeOperator, Expr, Identifier, Number, Apply, Lambda, Let, Typed, Alternative, Binding};
 use Scope;
 
 
@@ -89,7 +89,13 @@ impl <'a> TypeScope<'a> {
                 }
             }
             &Let(ref mut bindings, ref mut body) => {
-                fail!("Typechecking Let are not implemented");
+                let mut childScope = self.child();
+                for bind in bindings.mut_iter() {
+                    childScope.insert(bind.name.clone(), bind.expression.typ);
+                    childScope.typecheck(&mut bind.expression);
+                }
+                childScope.typecheck(*body);
+                expr.typ = body.typ;
             }
         };
     }
@@ -168,7 +174,7 @@ pub fn number(i : int) -> Typed<Expr> {
 pub fn apply(func : Typed<Expr>, arg : Typed<Expr>) -> Typed<Expr> {
     Typed::new(Apply(~func, ~arg))
 }
-pub fn let_(bindings : ~[(~str, ~Typed<Expr>)], expr : Typed<Expr>) -> Typed<Expr> {
+pub fn let_(bindings : ~[Binding], expr : Typed<Expr>) -> Typed<Expr> {
     Typed::new(Let(bindings, ~expr))
 }
 
@@ -198,6 +204,24 @@ fn typecheck_lambda() {
     let add_type = @mut function_type(&type_int, &unary_func);
 
     let mut expr = lambda(~"x", apply(apply(identifier(~"add"), identifier(~"x")), number(1)));
+    env.addName(~"add", add_type);
+    env.typecheck(&mut expr);
+
+    assert_eq!(*expr.typ, unary_func);
+}
+
+#[test]
+fn typecheck_let() {
+    let mut env = TypeEnvironment::new();
+    let n = ~Typed::new(Identifier(~"add"));
+    let num = ~Typed::new(Number(1));
+    let type_int = TypeOperator(TypeOperator { name : ~"Int", types : ~[]});
+    let unary_func = function_type(&type_int, &type_int);
+    let add_type = @mut function_type(&type_int, &unary_func);
+
+    //let test x = add x in test
+    let unary_bind = lambda(~"x", apply(apply(identifier(~"add"), identifier(~"x")), number(1)));
+    let mut expr = let_(~[Binding { arity: 1, name: ~"test", expression: unary_bind, typeDecl: Default::default() }], identifier(~"test"));
     env.addName(~"add", add_type);
     env.typecheck(&mut expr);
 
