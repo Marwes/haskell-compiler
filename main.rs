@@ -35,10 +35,14 @@ impl <'a> VM<'a> {
         VM { assembly : Assembly { superCombinators : ~[] }, heap : ~[] }
     }
     fn execute(&'a self, stack : &mut ~[Rc<Node<'a>>], code : &[Instruction]) {
-        debug!("Entering frame");
+        debug!("----------------------------");
+        debug!("Entering frame with stack");
+        for x in stack.iter() {
+            debug!("{:?}", x.borrow());
+        }
         let mut i = 0;
         while i < code.len() {
-            println!("Executing instruction : {:?}", code[i]);
+            debug!("Executing instruction : {:?}", code[i]);
             match &code[i] {
                 &Add => primitive(stack, |l, r| { l + r }),
                 &Sub => primitive(stack, |l, r| { l - r }),
@@ -58,13 +62,14 @@ impl <'a> VM<'a> {
                 &Mkap => {
                     let func = stack.pop();
                     let arg = stack.pop();
+                    debug!("Mkap {:?} {:?}", func.borrow(), arg.borrow());
                     stack.push(Rc::new(Application(func, arg)));
                 }
                 &Eval => {
                     static unwindCode : &'static [Instruction] = &[Unwind];
                     let mut newStack = ~[stack.pop()];
                     self.execute(&mut newStack, unwindCode);
-                    assert!(newStack.len() == 1);
+                    assert_eq!(newStack.len(), 1);
                     stack.push(newStack.pop());
                 }
                 &Pop(num) => {
@@ -83,16 +88,20 @@ impl <'a> VM<'a> {
                         }
                         Combinator(comb_ptr) => {
                             let comb = comb_ptr;
-                            for j in range(stack.len() - (comb.arity as uint) - 1, stack.len()) {
+                            for j in range(stack.len() - (comb.arity as uint) - 1, stack.len() - 1) {
                                 stack[j] = match stack[j].borrow() {
                                     &Application(_, ref arg) => arg.clone(),
                                     _ => fail!("Expected Application")
                                 };
                             }
-                            let mut newStack = ~[stack[stack.len() - 1].clone()];
+                            let mut newStack = ~[];
+                            for i in range(0, comb.arity as uint) {
+                                let index = stack.len() - comb.arity as uint + i - 1;
+                                newStack.push(stack[index].clone());
+                            }
                             self.execute(&mut newStack, comb.instructions);
-                            assert!(newStack.len() == 0);
-                            for _ in range(0, comb.arity) {
+                            assert_eq!(newStack.len(), 1);
+                            for _ in range(0, comb.arity + 1) {
                                 stack.pop();
                             }
                             stack.push(newStack.pop());
@@ -109,6 +118,8 @@ impl <'a> VM<'a> {
             }
             i += 1;
         }
+        debug!("End frame");
+        debug!("--------------------------");
     }
 }
 
@@ -153,6 +164,7 @@ fn main() {
                     assert!(sc.arity == 0);
                     let mut stack = ~[];
                     vm.execute(&mut stack, sc.instructions);
+                    println!("{:?}", stack[0].borrow());
                 }
                 None => ()
             }

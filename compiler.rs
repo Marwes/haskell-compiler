@@ -1,6 +1,6 @@
 use std::hashmap::HashMap;
 use typecheck::{Expr, Typed, Identifier, Apply, Number, Lambda, Let, identifier, apply, number, lambda, let_};
-use parser::{Module, Class, Instance, Binding, DataDefinition, Constructor, TypeDeclaration,
+use parser::{Parser, Module, Class, Instance, Binding, DataDefinition, Constructor, TypeDeclaration,
     Pattern, ConstructorPattern, NumberPattern, IdentifierPattern, Alternative};
 mod typecheck;
 
@@ -103,7 +103,10 @@ impl Compiler {
         for bind in module.bindings.iter() {
             self.variables.insert(bind.name.clone(), GlobalVariable(self.globalIndex));
             self.globalIndex += 1;
-            let sc = self.compileBinding(bind.arity, &bind.expression);
+            let mut sc = self.compileBinding(bind.arity, &bind.expression);
+            if bind.name == ~"main" {
+                sc.instructions.push(Eval);
+            }
             superCombinators.push((bind.name.clone(), sc));
         }
         Assembly { superCombinators: superCombinators }
@@ -115,13 +118,13 @@ impl Compiler {
         let mut stack = CompilerNode { compiler: self, stack: Scope::new() };
         match &expr.expr {
             &Lambda(_, _) => {
-                stack.compile(expr, &mut comb.instructions);
+                stack.compile(expr, &mut comb.instructions, false);
                 comb.instructions.push(Update(0));
                 comb.instructions.push(Pop(comb.arity));
                 comb.instructions.push(Unwind);
             }
             _ => {
-                stack.compile(expr, &mut comb.instructions);
+                stack.compile(expr, &mut comb.instructions, false);
                 comb.instructions.push(Update(0));
                 comb.instructions.push(Unwind);
             }
@@ -131,7 +134,7 @@ impl Compiler {
     pub fn compileExpression(&mut self, expr: &Typed<Expr>) -> ~[Instruction] {
         let mut stack = CompilerNode { compiler: self, stack: Scope::new() };
         let mut instructions = ~[];
-        stack.compile(expr, &mut instructions);
+        stack.compile(expr, &mut instructions, false);
         instructions
     }
 
@@ -169,7 +172,7 @@ impl <'a> CompilerNode<'a> {
         CompilerNode { compiler: self.compiler, stack : self.stack.child() }
     }
 
-    fn compile<'a>(&mut self, expr : &Typed<Expr>, instructions : &mut ~[Instruction]) {
+    fn compile<'a>(&mut self, expr : &Typed<Expr>, instructions : &mut ~[Instruction], strict: bool) {
         match &expr.expr {
             &Identifier(ref name) => {
                 match self.find(*name) {
@@ -185,22 +188,24 @@ impl <'a> CompilerNode<'a> {
             &Number(num) => instructions.push(PushInt(num)),
             &Apply(ref func, ref arg) => {
                 if !self.primitive(*func, *arg, instructions) {
-                    self.compile(*arg, instructions);
-                    self.compile(*func, instructions);
+                    self.compile(*arg, instructions, false);
+                    self.compile(*func, instructions, strict);
                     instructions.push(Mkap);
-                    instructions.push(Eval);
+                    if strict {
+                        instructions.push(Eval);
+                    }
                 }
             }
             &Lambda(ref varname, ref body) => {
                 self.newStackVar(varname.clone());
-                self.compile(*body, instructions);
+                self.compile(*body, instructions, false);
             }
             &Let(ref bindings, ref body) => {
                 for &(ref name, ref expr) in bindings.iter() {
                     self.newStackVar(name.clone());
-                    self.compile(*expr, instructions);
+                    self.compile(*expr, instructions, false);
                 }
-                self.compile(*body, instructions);
+                self.compile(*body, instructions, strict);
                 instructions.push(Slide(bindings.len() as int));
             }
         }
@@ -221,8 +226,8 @@ impl <'a> CompilerNode<'a> {
                         };
                         match maybeOP {
                             Some(op) => {
-                                self.compile(*arg2, instructions);
-                                self.compile(arg, instructions);
+                                self.compile(*arg2, instructions, true);
+                                self.compile(arg, instructions, true);
                                 instructions.push(op);
                                 true
                             }
@@ -246,4 +251,17 @@ fn test_add() {
     let instr = comp.compileExpression(&e);
 
     assert_eq!(instr, ~[PushInt(1), PushInt(2), Add]);
+}
+
+#[test]
+fn test_apply() {
+    let file =
+r"add x y = primIntAdd x y
+main = add 2 3";
+    let mut parser = Parser::new(file.chars());
+    let module = parser.module();
+    let mut comp = Compiler::new();
+    let assembly = comp.compileModule(&module);
+
+    assert_eq!(assembly.superCombinators[1].n1().instructions, ~[PushInt(3), PushInt(2), PushGlobal(0), Mkap, Mkap, Update(0), Unwind, Eval]);
 }
