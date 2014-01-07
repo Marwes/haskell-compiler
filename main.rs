@@ -121,32 +121,31 @@ fn primitive(stack: &mut ~[Rc<Node>], f: |int, int| -> int) {
 
 fn main() {
     let arguments = std::os::args();
-    if arguments.len() == 2 {
-        let mut parser = Parser::new(arguments[1].chars());
-        let expr = parser.expression_();
-        
-        let mut compiler = Compiler::new();
-        let instr = compiler.compileExpression(&expr);
+    match arguments {
+        [_, expr_str] => {
+            let mut parser = Parser::new(expr_str.chars());
+            let expr = parser.expression_();
+            
+            let mut compiler = Compiler::new();
+            let instr = compiler.compileExpression(&expr);
 
-        let vm = VM::new();
-        let mut stack = ~[];
-        vm.execute(&mut stack, instr);
-        println!("{:?}", stack[0].borrow());
-    }
-    else if arguments.len() == 3 {
-        let arg = arguments[2];
-        let path = &Path::new(arg);
-        let s  = File::open(path).read_to_end();
-        let contents : &str = from_utf8(s);
-        
-        let mut parser = Parser::new(contents.chars());
-        let module = parser.module();
-        
-        let mut compiler = Compiler::new();
-        compiler.compileModule(&module);
-    }
-    else {
-        return println!("Expected one argument which is the expression or 2 arguments where the first is -l and the second the file to run (needs a main function)");
+            let vm = VM::new();
+            let mut stack = ~[];
+            vm.execute(&mut stack, instr);
+            println!("{:?}", stack[0].borrow());
+        }
+        [_, ~"-l", filename] => {
+            let path = &Path::new(filename);
+            let s  = File::open(path).read_to_end();
+            let contents : &str = from_utf8(s);
+            
+            let mut parser = Parser::new(contents.chars());
+            let module = parser.module();
+            
+            let mut compiler = Compiler::new();
+            compiler.compileModule(&module);
+        }
+        _ => return println!("Expected one argument which is the expression or 2 arguments where the first is -l and the second the file to run (needs a main function)")
     }
 }
 
