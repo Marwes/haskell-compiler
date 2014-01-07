@@ -104,9 +104,6 @@ impl Compiler {
             self.variables.insert(bind.name.clone(), GlobalVariable(self.globalIndex));
             self.globalIndex += 1;
             let mut sc = self.compileBinding(bind.arity, &bind.expression);
-            if bind.name == ~"main" {
-                sc.instructions.push(Eval);
-            }
             superCombinators.push((bind.name.clone(), sc));
         }
         Assembly { superCombinators: superCombinators }
@@ -263,5 +260,5 @@ main = add 2 3";
     let mut comp = Compiler::new();
     let assembly = comp.compileModule(&module);
 
-    assert_eq!(assembly.superCombinators[1].n1().instructions, ~[PushInt(3), PushInt(2), PushGlobal(0), Mkap, Mkap, Update(0), Unwind, Eval]);
+    assert_eq!(assembly.superCombinators[1].n1().instructions, ~[PushInt(3), PushInt(2), PushGlobal(0), Mkap, Mkap, Update(0), Unwind]);
 }

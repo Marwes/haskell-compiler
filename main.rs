@@ -34,6 +34,16 @@ impl <'a> VM<'a> {
     fn new() -> VM {
         VM { assembly : Assembly { superCombinators : ~[] }, heap : ~[] }
     }
+
+    fn evaluate(&'a self, code: &[Instruction]) -> Node<'a> {
+        let mut stack = ~[];
+        self.execute(&mut stack, code);
+        static evalCode : &'static [Instruction] = &[Eval];
+        self.execute(&mut stack, evalCode);
+        assert_eq!(stack.len(), 1);
+        stack[0].borrow().clone()
+    }
+
     fn execute(&'a self, stack : &mut ~[Rc<Node<'a>>], code : &[Instruction]) {
         debug!("----------------------------");
         debug!("Entering frame with stack");
@@ -162,9 +172,8 @@ fn main() {
             match x {
                 Some(&(_, ref sc)) => {
                     assert!(sc.arity == 0);
-                    let mut stack = ~[];
-                    vm.execute(&mut stack, sc.instructions);
-                    println!("{:?}", stack[0].borrow());
+                    let result = vm.evaluate(sc.instructions);
+                    println!("{:?}", result);
                 }
                 None => ()
             }
