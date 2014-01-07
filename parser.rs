@@ -10,6 +10,7 @@ use module::{Module, Class, Instance, Binding,
     DataDefinition, Constructor, TypeDeclaration,
     Alternative, Pattern, ConstructorPattern, NumberPattern, IdentifierPattern,
     Type, TypeVariable, TypeOperator, Expr, Identifier, Number, Apply, Lambda, Let, Typed};
+use Scope;
 
 pub struct Parser<Iter> {
     lexer : Lexer<Iter>,
@@ -284,11 +285,7 @@ fn subExpression(&mut self, parseError : |&Token| -> bool) -> Option<Typed<Expr>
             }
 			match self.expression() {
                 Some(e) => {
-                    let mut x = ~[];
-                    for Binding { name : n, expression : exp, typeDecl : _, arity : _ } in binds.move_iter() {
-                        x.push((n, ~exp));
-                    }
-                    Some(Typed::new(Let(x, ~e)))
+                    Some(Typed::new(Let(binds, ~e)))
                 }
                 None => None
             }

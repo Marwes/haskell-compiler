@@ -2,6 +2,7 @@
 #[crate_type = "bin"];
 #[feature(managed_boxes, macro_rules, globs)];
 extern mod extra;
+use std::hashmap::HashMap;
 use std::rc::Rc;
 use std::path::Path;
 use std::io::File;
@@ -17,6 +18,35 @@ mod lexer;
 mod parser;
 mod module;
 
+struct Scope<'a, T> {
+    variables: HashMap<~str, T>,
+    parent: Option<&'a Scope<'a, T>>
+}
+
+impl <'a, T> Scope<'a, T> {
+    
+    fn new() -> Scope<T> {
+        Scope { variables : HashMap::new(), parent : None }
+    }
+
+    fn insert(&mut self, identifier : ~str, value : T) {
+        self.variables.insert(identifier, value);
+    }
+
+    fn find(&'a self, identifier : &str) -> Option<&'a T> {
+       match self.variables.find_equiv(&identifier) {
+            Some(var) => Some(var),
+            None => match self.parent {
+                Some(parent) => parent.find(identifier),
+                None => None
+            }
+       }
+    }
+
+    fn child(&'a self) -> Scope<'a, T> {
+        Scope { variables : HashMap::new(), parent : Some(self) }
+    }
+}
 
 #[deriving(Clone)]
 enum Node<'a> {

@@ -21,6 +21,7 @@ pub struct Instance {
     classname : ~str
 }
 
+#[deriving(Eq)]
 pub struct Binding {
     name : ~str,
     expression : Typed<Expr>,
@@ -41,19 +42,19 @@ pub struct DataDefinition {
     parameters : HashMap<~str, Type>
 }
 
-#[deriving(Clone)]
+#[deriving(Clone, Eq, Default)]
 pub struct TypeDeclaration {
     context : ~[TypeOperator],
     typ : Type,
     name : ~str
 }
 
-#[deriving(Clone, Eq, ToStr)]
+#[deriving(Clone, Default, Eq, ToStr)]
 pub struct TypeOperator {
     name : ~str,
     types : ~[Type]
 }
-#[deriving(Clone, Eq, ToStr, IterBytes)]
+#[deriving(Clone, Default, Eq, ToStr, IterBytes)]
 pub struct TypeVariable {
     id : int
 }
@@ -61,6 +62,12 @@ pub struct TypeVariable {
 pub enum Type {
     TypeVariable(TypeVariable),
     TypeOperator(TypeOperator)
+}
+
+impl Default for Type {
+    fn default() -> Type {
+        Type::new_var(-1)
+    }
 }
 
 impl Type {
@@ -118,7 +125,7 @@ pub enum Expr {
     Apply(~Typed<Expr>, ~Typed<Expr>),
     Number(int),
     Lambda(~str, ~Typed<Expr>),
-    Let(~[(~str, ~Typed<Expr>)], ~Typed<Expr>),
+    Let(~[Binding], ~Typed<Expr>),
     Case(~Typed<Expr>, ~[Alternative])
 }
 
