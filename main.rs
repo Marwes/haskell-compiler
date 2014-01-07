@@ -7,7 +7,7 @@ use std::path::Path;
 use std::io::File;
 use std::str::{from_utf8};
 use compiler::{Compiler,
-    Instruction, Add, Sub, Push, PushGlobal, PushInt, Mkap, Eval, Unwind, Update, Pop, Slide,
+    Instruction, Add, Sub, Multiply, Divide, Remainder, Push, PushGlobal, PushInt, Mkap, Eval, Unwind, Update, Pop, Slide,
     SuperCombinator};
 use parser::Parser;    
 
@@ -40,23 +40,11 @@ impl VM {
         while i < code.len() {
             println!("Executing instruction : {:?}", code[i]);
             match &code[i] {
-                &Add => {
-                    let l = stack.pop();
-                    let r = stack.pop();
-                    println!("{:?} + {:?}", l, r);
-                    match (l.borrow(), r.borrow()) {
-                        (&Int(lhs), &Int(rhs)) => { stack.push(Rc::new(Int(lhs + rhs))); }
-                        _ => fail!("Expected fully evaluted numbers in Add instruction")
-                    }
-                }
-                &Sub => {
-                    let l = stack.pop();
-                    let r = stack.pop();
-                    match (l.borrow(), r.borrow()) {
-                        (&Int(lhs), &Int(rhs)) => { stack.push(Rc::new(Int(lhs - rhs))); }
-                        _ => fail!("Expected fully evaluted numbers in Sub instruction")
-                    }
-                }
+                &Add => primitive(stack, |l, r| { l + r }),
+                &Sub => primitive(stack, |l, r| { l - r }),
+                &Multiply => primitive(stack, |l, r| { l * r }),
+                &Divide => primitive(stack, |l, r| { l / r }),
+                &Remainder => primitive(stack, |l, r| { l % r }),
                 &PushInt(value) => { stack.push(Rc::new(Int(value))); }
                 &Push(index) => {
                     let x = stack[index].clone();
@@ -122,29 +110,44 @@ impl VM {
     }
 }
 
+fn primitive(stack: &mut ~[Rc<Node>], f: |int, int| -> int) {
+    let l = stack.pop();
+    let r = stack.pop();
+    match (l.borrow(), r.borrow()) {
+        (&Int(lhs), &Int(rhs)) => stack.push(Rc::new(Int(f(lhs, rhs)))),
+        _ => fail!("Expected fully evaluted numbers in Add instruction")
+    }
+}
+
 fn main() {
     let arguments = std::os::args();
-    if arguments.len() != 2 {
-        return println!("Expected one argument which is the file to run");
+    if arguments.len() == 2 {
+        let mut parser = Parser::new(arguments[1].chars());
+        let expr = parser.expression_();
+        
+        let mut compiler = Compiler::new();
+        let instr = compiler.compileExpression(&expr);
+
+        let vm = VM::new();
+        let mut stack = ~[];
+        vm.execute(&mut stack, instr);
+        println!("{:?}", stack[0].borrow());
     }
-    let arg = arguments[1];
-    let path = &Path::new(arg);
-    let s  =File::open(path).read_to_end();
-    let contents : &str = from_utf8(s);
-    
-    let mut parser = Parser::new(contents.chars());
-    let module = parser.module();
-    
-    let mut compiler = Compiler::new();
-    compiler.compileModule(&module);
-
-    let instr = [PushInt(2), PushInt(3), Add];
-    let vm = VM::new();
-    let mut stack = ~[];
-    vm.execute(&mut stack, instr);
-
-    println!("Add : {:?}", stack);
-
+    else if arguments.len() == 3 {
+        let arg = arguments[2];
+        let path = &Path::new(arg);
+        let s  = File::open(path).read_to_end();
+        let contents : &str = from_utf8(s);
+        
+        let mut parser = Parser::new(contents.chars());
+        let module = parser.module();
+        
+        let mut compiler = Compiler::new();
+        compiler.compileModule(&module);
+    }
+    else {
+        return println!("Expected one argument which is the expression or 2 arguments where the first is -l and the second the file to run (needs a main function)");
+    }
 }
 
 #[test]

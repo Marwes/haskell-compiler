@@ -8,6 +8,9 @@ mod typecheck;
 pub enum Instruction {
     Add,
     Sub,
+    Multiply,
+    Divide,
+    Remainder,
     Push(int),
     PushGlobal(int),
     PushInt(int),
@@ -122,7 +125,7 @@ impl Compiler {
        }
        comb
     }
-    fn compileExpression(&mut self, expr: &Typed<Expr>) -> ~[Instruction] {
+    pub fn compileExpression(&mut self, expr: &Typed<Expr>) -> ~[Instruction] {
         let mut stack = CompilerNode { compiler: self, stack: Scope::new() };
         let mut instructions = ~[];
         stack.compile(expr, &mut instructions);
@@ -208,6 +211,9 @@ impl <'a> CompilerNode<'a> {
                         let maybeOP = match *name {
                             ~"primIntAdd" => Some(Add),
                             ~"primIntSubtract" => Some(Sub),
+                            ~"primIntMultiply" => Some(Multiply),
+                            ~"primIntDivide" => Some(Divide),
+                            ~"primIntRemainder" => Some(Remainder),
                             _ => None
                         };
                         match maybeOP {
