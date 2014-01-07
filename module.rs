@@ -118,7 +118,8 @@ pub enum Expr {
     Apply(~Typed<Expr>, ~Typed<Expr>),
     Number(int),
     Lambda(~str, ~Typed<Expr>),
-    Let(~[(~str, ~Typed<Expr>)], ~Typed<Expr>)
+    Let(~[(~str, ~Typed<Expr>)], ~Typed<Expr>),
+    Case(~Typed<Expr>, ~[Alternative])
 }
 
 impl fmt::Default for Expr {
@@ -128,7 +129,8 @@ impl fmt::Default for Expr {
             &Apply(ref func, ref arg) => write!(f.buf, "({} {})", *func, *arg),
             &Number(num) => write!(f.buf, "{}", num),
             &Lambda(ref arg, ref body) => write!(f.buf, "({} -> {})", *arg, *body),
-            &Let(_,_) => write!(f.buf, "Let ... ")
+            &Let(_,_) => write!(f.buf, "Let ... "),
+            &Case(_,_) => write!(f.buf, "Case ...")
         }
     }
 }

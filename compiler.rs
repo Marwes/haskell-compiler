@@ -1,6 +1,6 @@
 use std::hashmap::HashMap;
 use typecheck::{identifier, apply, number, lambda, let_};
-use module::{Type, TypeVariable, TypeOperator, Expr, Identifier, Number, Apply, Lambda, Let, Typed, Alternative, Module, Class, Instance, Binding, DataDefinition, Constructor, TypeDeclaration,
+use module::{Type, TypeVariable, TypeOperator, Expr, Identifier, Number, Apply, Lambda, Let, Case, Typed, Alternative, Module, Class, Instance, Binding, DataDefinition, Constructor, TypeDeclaration,
     Pattern, ConstructorPattern, NumberPattern, IdentifierPattern};
 use parser::Parser;
 mod typecheck;
@@ -205,6 +205,9 @@ impl <'a> CompilerNode<'a> {
                 }
                 self.compile(*body, instructions, strict);
                 instructions.push(Slide(bindings.len() as int));
+            }
+            &Case(_, _) => {
+                fail!("Compiling case are not implemented")
             }
         }
     }

@@ -1,7 +1,7 @@
 use std::hashmap::HashMap;
 use lexer::Location;
 use std::fmt;
-use module::{Type, TypeVariable, TypeOperator, Expr, Identifier, Number, Apply, Lambda, Let, Typed, Alternative};
+use module::{Type, TypeVariable, TypeOperator, Expr, Identifier, Number, Apply, Lambda, Let, Case, Typed, Alternative};
 
 
 pub struct TypeEnvironment {
@@ -63,6 +63,9 @@ impl TypeEnvironment {
             }
             &Let(ref mut bindings, ref mut body) => {
                 fail!("Typechecking Let are not implemented");
+            }
+            &Case(_, _) => {
+                fail!("Typechecking Case are not implemented");
             }
         };
     }
