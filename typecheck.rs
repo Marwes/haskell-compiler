@@ -136,7 +136,12 @@ impl TypeEnvironment {
                     _ => fail!("Can't happen")
                 };
             }
-            _ => { () }
+            &Lambda(ref arg, ref mut body) => {
+                fail!("Typechecking lambda are not implemented");
+            }
+            &Let(ref mut bindings, ref mut body) => {
+                fail!("Typechecking Let are not implemented");
+            }
         };
     }
 

@@ -228,7 +228,7 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
             }
             _ => ()
         }
-        Token { token : NUMBER, value : number, location : location }
+        Token { token : token, value : number, location : location }
     }
  
     fn new_token<'a>(&'a mut self, parseError : |&Token| -> bool) -> &'a Token {

@@ -432,8 +432,7 @@ fn parseOperatorExpression(&mut self, inL : Option<Typed<Expr>>, minPrecedence :
                         _ => fail!("WTF")
                     }
                     let args = ~[rhs];
-                    let mut l = makeApplication(name, args);
-                    Some(l)
+                    Some(makeApplication(name, args))
                 }
                 else
                 {
@@ -441,8 +440,7 @@ fn parseOperatorExpression(&mut self, inL : Option<Typed<Expr>>, minPrecedence :
                     let mut apply = makeApplication(name, args);
                     apply.location = loc;
                     let params = ~[~"#"];
-                    let mut l = makeLambda(params, apply);
-                    Some(l)
+                    Some(makeLambda(params, apply))
                 }
             }
             (None, None) => return None
@@ -453,9 +451,9 @@ fn parseOperatorExpression(&mut self, inL : Option<Typed<Expr>>, minPrecedence :
 }
 
 fn application(&mut self) -> Option<Typed<Expr>> {
-    let e = self.subExpression(|t| false);
+    let e = self.subExpression(|_| false);
 	match e {
-        Some(lhs) => {
+        Some(mut lhs) => {
             let mut expressions = ~[];
             loop {
                 let expr = self.subExpression(applicationError);
@@ -468,6 +466,7 @@ fn application(&mut self) -> Option<Typed<Expr>> {
             {
                 let loc = lhs.location;
                 lhs = makeApplication(lhs, expressions);//, loc);
+                lhs.location = loc;
             }
             Some(lhs)
         }
@@ -726,7 +725,6 @@ fn parse_type(&mut self) -> Type {
 }
 
 fn parse_type_(&mut self, typeVariableMapping : &mut HashMap<~str, TypeVariable>) -> Type {
-	let result = Type::new_var(0);
 	let token = (*self.lexer.next_()).clone();
 	match token.token {
 	    LBRACKET =>
@@ -768,17 +766,13 @@ fn parse_type_(&mut self, typeVariableMapping : &mut HashMap<~str, TypeVariable>
                     typeArguments.push(TypeVariable(*var));
                 }
             }
-            let next : Token = (*self.lexer.current()).clone();
-			let mut thisType = Type::new_var(0);
-			if (token.value.char_at(0).is_uppercase())
-			{
-				thisType = Type::new_op(token.value, typeArguments);
+			let thisType = if (token.value.char_at(0).is_uppercase()) {
+				Type::new_op(token.value, typeArguments)
 			}
-			else
-			{
+			else {
                 let t = typeVariableMapping.find_or_insert(token.value, TypeVariable { id : -1});
-				thisType = TypeVariable(t.clone());
-			}
+				TypeVariable(t.clone())
+			};
 			return self.parse_return_type(thisType, typeVariableMapping);
 		}
 	    _ => { return Type::new_var(-1); }
@@ -901,17 +895,6 @@ fn newTuple(arguments : ~[Typed<Expr>]) -> Typed<Expr> {
 	makeApplication(name, arguments)
 }
 
-fn subExpressionError(t : &Token) -> bool {
-	t.token != LPARENS
-		&& t.token != LET
-		&& t.token != CASE
-		&& t.token != NAME
-		&& t.token != NUMBER
-		&& t.token != FLOAT
-		&& t.token != SEMICOLON
-		&& t.token != LBRACKET
-}
-
 fn letExpressionEndError(t : &Token) -> bool {
 	t.token != IN
 }
@@ -935,9 +918,6 @@ fn applicationError(t :&Token) -> bool
 
 fn errorIfNotNameOrLParens(tok : &Token) -> bool {
     tok.token != NAME && tok.token != LPARENS
-}
-fn errorIfNotIdentifier(tok : &Token) -> bool {
-	tok.token != NAME
 }
 fn errorIfNotNameOrOperator(tok : &Token) -> bool {
 	tok.token != NAME && tok.token != OPERATOR
@@ -966,15 +946,6 @@ fn createTypeConstraints(context : TypeOperator) -> ~[TypeOperator] {
 		mapping.push(context.clone());
 	}
 	mapping
-}
-
-fn typeParseError(t : &Token) -> bool
-{
-	return t.token != ARROW
-		&& t.token != SEMICOLON
-		&& t.token != RBRACE
-		&& t.token != RPARENS
-		&& t.token != RBRACKET;
 }
 
 fn tupleType(types : ~[Type]) -> Type {

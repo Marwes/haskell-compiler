@@ -61,6 +61,23 @@ impl ScopedLookup {
     }
 }
 
+struct Assembly {
+    superCombinators: ~[(~str, SuperCombinator)]
+}
+
+impl Assembly {
+    fn find(&self, name: &str) -> Option<Var> {
+        let mut index = 0;
+        for &(ref n, ref comb) in self.superCombinators.iter() {
+            if name == *n {
+                return Some(GlobalVariable(-1));
+            }
+            index += 1;
+        }
+        return None;
+    }
+}
+
 pub struct Compiler {
     stackSize : int,
     globals : HashMap<~str, SuperCombinator>,
