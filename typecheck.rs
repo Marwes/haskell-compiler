@@ -1,84 +1,8 @@
 use std::hashmap::HashMap;
-use lexer::{Location};
+use lexer::Location;
 use std::fmt;
+use module::{Type, TypeVariable, TypeOperator, Expr, Identifier, Number, Apply, Lambda, Let, Typed, Alternative};
 
-#[deriving(Clone, Eq, ToStr)]
-pub struct TypeOperator {
-    name : ~str,
-    types : ~[Type]
-}
-#[deriving(Clone, Eq, ToStr, IterBytes)]
-pub struct TypeVariable {
-    id : int
-}
-#[deriving(Clone, Eq, ToStr)]
-pub enum Type {
-    TypeVariable(TypeVariable),
-    TypeOperator(TypeOperator)
-}
-
-impl Type {
-    pub fn new_var(id : int) -> Type {
-        TypeVariable(TypeVariable { id : id })
-    }
-    pub fn new_op(name : ~str, types : ~[Type]) -> Type {
-        TypeOperator(TypeOperator { name : name, types : types })
-    }
-}
-
-pub struct Typed<T> {
-    expr : T,
-    typ : @mut Type,
-    location : Location
-}
-
-impl <T : Eq> Eq for Typed<T> {
-    fn eq(&self, other : &Typed<T>) -> bool {
-        self.expr == other.expr
-    }
-}
-
-impl <T : fmt::Default> fmt::Default for ~Typed<T> {
-    fn fmt(expr: &~Typed<T>, f: &mut fmt::Formatter) {
-        write!(f.buf, "{}", expr.expr)
-    }
-}
-
-impl <T> Typed<T> {
-    pub fn new(expr : T) -> Typed<T> {
-        Typed { expr : expr, typ : @mut TypeVariable(TypeVariable { id : 0 }), location : Location { column : -1, row : -1, absolute : -1 } }
-    }
-    pub fn with_location(expr : T, loc : Location) -> Typed<T> {
-        Typed { expr : expr, typ : @mut TypeVariable(TypeVariable { id : 0 }), location : loc }
-    }
-}
-
-
-#[deriving(Eq)]
-pub enum Expr {
-    Identifier(~str),
-    Apply(~Typed<Expr>, ~Typed<Expr>),
-    Number(int),
-    Lambda(~str, ~Typed<Expr>),
-    Let(~[(~str, ~Typed<Expr>)], ~Typed<Expr>)
-}
-
-impl fmt::Default for Expr {
-    fn fmt(expr: &Expr, f: &mut fmt::Formatter) {
-        match expr {
-            &Identifier(ref s) => write!(f.buf, "{}", *s),
-            &Apply(ref func, ref arg) => write!(f.buf, "({} {})", *func, *arg),
-            &Number(num) => write!(f.buf, "{}", num),
-            &Lambda(ref arg, ref body) => write!(f.buf, "({} -> {})", *arg, *body),
-            &Let(_,_) => write!(f.buf, "Let ... ")
-        }
-    }
-}
-impl fmt::Default for ~Expr {
-    fn fmt(expr: &~Expr, f: &mut fmt::Formatter) {
-        write!(f.buf, "{}", *expr)
-    }
-}
 
 pub struct TypeEnvironment {
     namedTypes : HashMap<~str, @mut Type>,

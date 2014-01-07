@@ -1,7 +1,8 @@
 use std::hashmap::HashMap;
-use typecheck::{Expr, Typed, Identifier, Apply, Number, Lambda, Let, identifier, apply, number, lambda, let_};
-use parser::{Parser, Module, Class, Instance, Binding, DataDefinition, Constructor, TypeDeclaration,
-    Pattern, ConstructorPattern, NumberPattern, IdentifierPattern, Alternative};
+use typecheck::{identifier, apply, number, lambda, let_};
+use module::{Type, TypeVariable, TypeOperator, Expr, Identifier, Number, Apply, Lambda, Let, Typed, Alternative, Module, Class, Instance, Binding, DataDefinition, Constructor, TypeDeclaration,
+    Pattern, ConstructorPattern, NumberPattern, IdentifierPattern};
+use parser::Parser;
 mod typecheck;
 
 #[deriving(Eq)]

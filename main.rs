@@ -15,6 +15,7 @@ mod compiler;
 mod typecheck;
 mod lexer;
 mod parser;
+mod module;
 
 
 #[deriving(Clone)]

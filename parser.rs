@@ -5,65 +5,12 @@ use lexer::*;
 use lexer::{Lexer, Token, TokenEnum,
     EOF, NAME, OPERATOR, NUMBER, FLOAT, LPARENS, RPARENS, LBRACKET, RBRACKET, LBRACE, RBRACE, INDENTSTART, INDENTLEVEL, COMMA, EQUALSSIGN, SEMICOLON, MODULE, CLASS, INSTANCE, WHERE, LET, IN, CASE, OF, ARROW, TYPEDECL, DATA
 };
-use typecheck::{Type, TypeVariable, TypeOperator, Expr, Identifier, Number, Apply, Lambda, Let, Typed, function_type, identifier, apply, number, lambda, let_};
+use typecheck::{function_type, identifier, apply, number, lambda, let_};
+use module::{Module, Class, Instance, Binding,
+    DataDefinition, Constructor, TypeDeclaration,
+    Alternative, Pattern, ConstructorPattern, NumberPattern, IdentifierPattern,
+    Type, TypeVariable, TypeOperator, Expr, Identifier, Number, Apply, Lambda, Let, Typed};
 
-pub struct Module {
-    name : ~str,
-    bindings : ~[Binding],
-    typeDeclarations : ~[TypeDeclaration],
-    classes : ~[Class],
-    instances : ~[Instance],
-    dataDefinitions : ~[DataDefinition]
-}
-
-pub struct Class {
-    name : ~str,
-    declarations : ~[TypeDeclaration]
-}
-
-pub struct Instance {
-    bindings : ~[Binding],
-    typ : TypeOperator,
-    classname : ~str
-}
-
-pub struct Binding {
-    name : ~str,
-    expression : Typed<Expr>,
-    typeDecl : TypeDeclaration,
-    arity : int
-}
-
-pub struct Constructor {
-    name : ~str,
-    typ : Type,
-    tag : int,
-    arity : int
-}
-
-pub struct DataDefinition {
-    constructors : ~[Constructor],
-    typ : TypeOperator,
-    parameters : HashMap<~str, Type>
-}
-
-#[deriving(Clone)]
-pub struct TypeDeclaration {
-    context : ~[TypeOperator],
-    typ : Type,
-    name : ~str
-}
-
-pub struct Alternative {
-    pattern : Pattern,
-    expression : Typed<Expr>
-}
-
-pub enum Pattern {
-    NumberPattern(int),
-    IdentifierPattern(~str),
-    ConstructorPattern(~str, ~[Pattern])
-}
 pub struct Parser<Iter> {
     lexer : Lexer<Iter>,
 }
