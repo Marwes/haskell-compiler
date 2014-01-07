@@ -3,7 +3,7 @@ use typecheck::{identifier, apply, number, lambda, let_};
 use module::{Type, TypeVariable, TypeOperator, Expr, Identifier, Number, Apply, Lambda, Let, Typed, Alternative, Module, Class, Instance, Binding, DataDefinition, Constructor, TypeDeclaration,
     Pattern, ConstructorPattern, NumberPattern, IdentifierPattern};
 use parser::Parser;
-mod typecheck;
+use Scope;
 
 #[deriving(Eq)]
 pub enum Instruction {
@@ -35,36 +35,6 @@ pub struct SuperCombinator {
 impl SuperCombinator {
     fn new() -> SuperCombinator {
         SuperCombinator { arity : 0, instructions : ~[] }
-    }
-}
-
-struct Scope<'a, T> {
-    variables: HashMap<~str, T>,
-    parent: Option<&'a Scope<'a, T>>
-}
-
-impl <'a, T> Scope<'a, T> {
-    
-    fn new() -> Scope<T> {
-        Scope { variables : HashMap::new(), parent : None }
-    }
-
-    fn insert(&mut self, identifier : ~str, value : T) {
-        self.variables.insert(identifier, value);
-    }
-
-    fn find(&'a self, identifier : &str) -> Option<&'a T> {
-       match self.variables.find_equiv(&identifier) {
-            Some(var) => Some(var),
-            None => match self.parent {
-                Some(parent) => parent.find(identifier),
-                None => None
-            }
-       }
-    }
-
-    fn child(&'a self) -> Scope<'a, T> {
-        Scope { variables : HashMap::new(), parent : Some(self) }
     }
 }
 

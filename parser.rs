@@ -10,6 +10,7 @@ use module::{Module, Class, Instance, Binding,
     DataDefinition, Constructor, TypeDeclaration,
     Alternative, Pattern, ConstructorPattern, NumberPattern, IdentifierPattern,
     Type, TypeVariable, TypeOperator, Expr, Identifier, Number, Apply, Lambda, Let, Typed};
+use Scope;
 
 pub struct Parser<Iter> {
     lexer : Lexer<Iter>,

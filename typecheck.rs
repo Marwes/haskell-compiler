@@ -2,6 +2,7 @@ use std::hashmap::HashMap;
 use lexer::Location;
 use std::fmt;
 use module::{Type, TypeVariable, TypeOperator, Expr, Identifier, Number, Apply, Lambda, Let, Typed, Alternative};
+use Scope;
 
 
 pub struct TypeEnvironment {
@@ -10,66 +11,25 @@ pub struct TypeEnvironment {
     variableIndex : TypeVariable
 }
 
+struct TypeScope<'a> {
+    scope: Scope<'a, @mut Type>,
+    env: &'a mut TypeEnvironment,
+    non_generic: ~[@mut Type]
+}
+
 impl TypeEnvironment {
     pub fn new() -> TypeEnvironment {
         TypeEnvironment { namedTypes : HashMap::new(), types : ~[] , variableIndex : TypeVariable { id : 0 } }
     }
 
-    fn replace(old : &mut Type, subs : &HashMap<TypeVariable, Type>) {
-        match old {
-            &TypeVariable(id) => {
-                match subs.find(&id) {
-                    Some(new) => { *old = new.clone() }
-                    None => ()
-                }
-            }
-            &TypeOperator(ref mut op) => {
-                for t in op.types.mut_iter() {
-                    TypeEnvironment::replace(t, subs); 
-                }
-            }
-        }
-    }
-
     pub fn typecheck(&mut self, expr : &mut Typed<Expr>) {
-        *expr.typ = TypeVariable(self.variableIndex);
-        self.variableIndex.id += 1;
-        self.types.push(expr.typ);
-        match &mut expr.expr {
-            &Number(_) => {
-                expr.typ = @mut TypeOperator(TypeOperator {name : ~"Int", types : ~[]});
-            }
-            &Identifier(ref name) => {
-                match self.namedTypes.find(name) {
-                    Some(t) => { expr.typ = (*t).clone(); }
-                    None => { fail!("Undefined identifier " + *name); }
-                }
-            }
-            &Apply(ref mut func, ref mut arg) => {
-                self.typecheck(*func);
-                self.typecheck(*arg);
-                let mut funcType = TypeOperator(TypeOperator { name : ~"->", types : ~[(*arg.typ).clone(), TypeVariable(self.variableIndex)]});
-                self.variableIndex.id += 1;
-                let subs = unify(self, func.typ, &funcType);
-                self.substitute(&subs);
-                TypeEnvironment::replace(&mut funcType, &subs);
-                *expr.typ = match funcType {
-                    TypeOperator(t) => t.types[1],
-                    _ => fail!("Can't happen")
-                };
-            }
-            &Lambda(ref arg, ref mut body) => {
-                fail!("Typechecking lambda are not implemented");
-            }
-            &Let(ref mut bindings, ref mut body) => {
-                fail!("Typechecking Let are not implemented");
-            }
-        };
+        let mut scope = TypeScope { env: self, scope: Scope::new(), non_generic: ~[] };
+        scope.typecheck(expr)
     }
 
     fn substitute(&mut self, subs : &HashMap<TypeVariable, Type>) {
         for t in self.types.iter() {
-            TypeEnvironment::replace(*t, subs);
+            replace(*t, subs);
         }
     }
 
@@ -80,6 +40,89 @@ impl TypeEnvironment {
 
     fn addType(&mut self, t : @mut Type) {
         self.types.push(t);
+    }
+
+    fn new_var(&mut self) -> Type {
+        self.variableIndex.id += 1;
+        TypeVariable(self.variableIndex)
+    }
+}
+
+impl <'a> TypeScope<'a> {
+
+    fn typecheck(&mut self, expr : &mut Typed<Expr>) {
+        *expr.typ = self.env.new_var();
+        self.env.types.push(expr.typ);
+
+        match &mut expr.expr {
+            &Number(_) => {
+                expr.typ = @mut TypeOperator(TypeOperator {name : ~"Int", types : ~[]});
+            }
+            &Identifier(ref name) => {
+                match self.find(*name) {
+                    Some(t) => { expr.typ = (*t).clone(); }
+                    None => { fail!("Undefined identifier " + *name); }
+                }
+            }
+            &Apply(ref mut func, ref mut arg) => {
+                self.typecheck(*func);
+                self.typecheck(*arg);
+                let mut funcType = TypeOperator(TypeOperator { name : ~"->", types : ~[(*arg.typ).clone(), self.env.new_var()]});
+                let subs = unify(self.env, func.typ, &funcType);
+                self.env.substitute(&subs);
+                replace(&mut funcType, &subs);
+                *expr.typ = match funcType {
+                    TypeOperator(t) => t.types[1],
+                    _ => fail!("Can't happen")
+                };
+            }
+            &Lambda(ref arg, ref mut body) => {
+                let argType = @mut self.env.new_var();
+                *expr.typ = function_type(argType, &self.env.new_var());
+                let mut childScope = self.child();
+                childScope.insert(arg.clone(), argType);
+                childScope.non_generic.push(argType);
+                childScope.typecheck(*body);
+                match &mut *expr.typ {
+                    &TypeOperator(ref mut op) => op.types[1] = (*body.typ).clone(),
+                    _ => fail!("This should never happen since a TypeOperator can never be turned to a TypeVariable (would be a type error)")
+                }
+            }
+            &Let(ref mut bindings, ref mut body) => {
+                fail!("Typechecking Let are not implemented");
+            }
+        };
+    }
+
+    fn insert(&mut self, name: ~str, t : @mut Type) {
+        self.scope.insert(name, t);
+        self.env.types.push(t);
+    }
+    fn find(&'a self, name: &str) -> Option<&'a @mut Type> {
+        match self.scope.find(name) {
+            Some(x) => Some(x),
+            None => self.env.namedTypes.find_equiv(&name)
+        }
+    }
+
+    fn child(&'a self) -> TypeScope<'a> {
+        TypeScope { env: self.env, scope: self.scope.child(), non_generic: ~[] }
+    }
+}
+
+fn replace(old : &mut Type, subs : &HashMap<TypeVariable, Type>) {
+    match old {
+        &TypeVariable(id) => {
+            match subs.find(&id) {
+                Some(new) => { *old = new.clone() }
+                None => ()
+            }
+        }
+        &TypeOperator(ref mut op) => {
+            for t in op.types.mut_iter() {
+                replace(t, subs); 
+            }
+        }
     }
 }
 
@@ -143,4 +186,20 @@ fn test() {
     env.typecheck(&mut expr);
 
     assert!(*expr.typ == unary_func);
+}
+
+#[test]
+fn typecheck_lambda() {
+    let mut env = TypeEnvironment::new();
+    let n = ~Typed::new(Identifier(~"add"));
+    let num = ~Typed::new(Number(1));
+    let type_int = TypeOperator(TypeOperator { name : ~"Int", types : ~[]});
+    let unary_func = function_type(&type_int, &type_int);
+    let add_type = @mut function_type(&type_int, &unary_func);
+
+    let mut expr = lambda(~"x", apply(apply(identifier(~"add"), identifier(~"x")), number(1)));
+    env.addName(~"add", add_type);
+    env.typecheck(&mut expr);
+
+    assert_eq!(*expr.typ, unary_func);
 }
