@@ -2,8 +2,6 @@ use std::hashmap::HashMap;
 use lexer::{Location};
 use std::fmt;
 
-mod lexer;
-
 #[deriving(Clone, Eq, ToStr)]
 pub struct TypeOperator {
     name : ~str,

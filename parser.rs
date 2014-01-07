@@ -7,8 +7,6 @@ use lexer::{Lexer, Token, TokenEnum,
 };
 use typecheck::{Type, TypeVariable, TypeOperator, Expr, Identifier, Number, Apply, Lambda, Let, Typed, function_type, identifier, apply, number, lambda, let_};
 
-mod lexer;
-
 pub struct Module {
     name : ~str,
     bindings : ~[Binding],
