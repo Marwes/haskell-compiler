@@ -34,30 +34,33 @@ impl SuperCombinator {
     }
 }
 
-struct Scope {
-    variables : HashMap<~str, Var>
+struct Scope<'a, T> {
+    variables: HashMap<~str, T>,
+    parent: Option<&'a Scope<'a, T>>
 }
 
-struct ScopedLookup {
-    scopes : ~[Scope],
-}
-
-impl ScopedLookup {
-    fn new_scope(&mut self, scope : Scope) {
-        self.scopes.push(scope);
-    }
-    fn pop_scope(&mut self) {
-        self.scopes.pop();
+impl <'a, T> Scope<'a, T> {
+    
+    fn new() -> Scope<T> {
+        Scope { variables : HashMap::new(), parent : None }
     }
 
-    fn find(&self, identifier : &str) -> Option<Var> {
-        for scope in self.scopes.rev_iter() {
-           match scope.variables.find_equiv(&identifier) {
-                Some(var) => { return Some(*var); }
-                None => {}
-           }
-        }
-        return None
+    fn insert(&mut self, identifier : ~str, value : T) {
+        self.variables.insert(identifier, value);
+    }
+
+    fn find(&'a self, identifier : &str) -> Option<&'a T> {
+       match self.variables.find_equiv(&identifier) {
+            Some(var) => Some(var),
+            None => match self.parent {
+                Some(parent) => parent.find(identifier),
+                None => None
+            }
+       }
+    }
+
+    fn child(&'a self) -> Scope<'a, T> {
+        Scope { variables : HashMap::new(), parent : Some(self) }
     }
 }
 
@@ -81,13 +84,14 @@ impl Assembly {
 pub struct Compiler {
     stackSize : int,
     globals : HashMap<~str, SuperCombinator>,
-    variables : HashMap<~str, Var>,
+    variables: HashMap<~str, Var>,
     globalIndex : int
 }
 
+
 impl Compiler {
     pub fn new() -> Compiler {
-        Compiler { stackSize : 0, globals : HashMap::new(), variables : HashMap::new(), globalIndex : 0 }
+        Compiler { stackSize : 0, globals : HashMap::new(), globalIndex : 0, variables: HashMap::new() }
     }
 
     pub fn compileModule(&mut self, module : &Module) {
@@ -98,26 +102,65 @@ impl Compiler {
             self.compileBinding(bind.arity, &bind.expression);
         }
     }
-    fn compileBinding(&mut self, arity : int, expr : &Typed<Expr>) -> SuperCombinator {
+    fn compileBinding<'a>(&mut self, arity : int, expr : &Typed<Expr>) -> SuperCombinator {
 
         let mut comb = SuperCombinator::new();
         comb.arity = arity;
+        let mut stack = CompilerNode { compiler: self, stack: Scope::new() };
         match &expr.expr {
             &Lambda(_, _) => {
-                self.compile(expr, &mut comb.instructions);
+                stack.compile(expr, &mut comb.instructions);
                 comb.instructions.push(Update(0));
                 comb.instructions.push(Pop(comb.arity));
                 comb.instructions.push(Unwind);
             }
-            _ => self.compile(expr, &mut comb.instructions)
+            _ => {
+                stack.compile(expr, &mut comb.instructions);
+                comb.instructions.push(Update(0));
+                comb.instructions.push(Unwind);
+            }
        }
        comb
     }
 
-    fn compile(&mut self, expr : &Typed<Expr>, instructions : &mut ~[Instruction]) {
+}
+
+struct CompilerNode<'a> {
+    stack: Scope<'a, Var>,
+    compiler: &'a mut Compiler
+}
+
+//CompilerNode are only used locally and the destructor are just to reduce the stack size
+//so this should be safe(?)
+#[unsafe_destructor]
+impl <'a> Drop for CompilerNode<'a> {
+    fn drop(&mut self) {
+        self.compiler.stackSize -= self.stack.variables.len() as int;
+    }
+}
+
+impl <'a> CompilerNode<'a> {
+    
+    fn find(&'a self, identifier : &str) -> Option<&'a Var> {
+       match self.stack.find(identifier) {
+            Some(var) => Some(var),
+            None => self.compiler.variables.find_equiv(&identifier)
+        }
+    }
+
+    fn newStackVar(&mut self, identifier : ~str) {
+        self.stack.insert(identifier, StackVariable(self.compiler.stackSize));
+        self.compiler.stackSize += 1;
+    }
+
+    fn child(&'a self) -> CompilerNode<'a> {
+        CompilerNode { compiler: self.compiler, stack : self.stack.child() }
+    }
+
+    fn compile<'a>(&mut self, expr : &Typed<Expr>, instructions : &mut ~[Instruction]) {
         match &expr.expr {
             &Identifier(ref name) => {
-                match self.variables.find(name) {
+                match self.find(*name) {
                     None => fail!("Undefined variable " + *name),
                     Some(var) => {
                         match var {
@@ -135,22 +178,21 @@ impl Compiler {
                 instructions.push(Eval);
             }
             &Lambda(ref varname, ref body) => {
-                self.variables.insert(varname.clone(), StackVariable(0));
+                self.newStackVar(varname.clone());
                 self.compile(*body, instructions);
             }
             &Let(ref bindings, ref body) => {
                 for &(ref name, ref expr) in bindings.iter() {
-                    self.variables.insert(name.clone(), StackVariable(self.stackSize));
-                    self.stackSize += 1;
+                    self.newStackVar(name.clone());
                     self.compile(*expr, instructions);
                 }
                 self.compile(*body, instructions);
                 instructions.push(Slide(bindings.len() as int));
-                self.stackSize -= bindings.len() as int;
             }
         }
     }
 }
+
 
 #[test]
 fn test_add() {
