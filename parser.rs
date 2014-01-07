@@ -237,10 +237,10 @@ fn instance(&mut self) -> Instance {
 	Instance { typ : typ, classname : classname, bindings : bindings }
 }
 
-fn expression_(&mut self) -> Typed<Expr> {
+pub fn expression_(&mut self) -> Typed<Expr> {
     match self.expression() {
         Some(expr) => expr,
-        None => fail!("Failed to parse expression at {:?}", "ASD")
+        None => fail!("Failed to parse expression at {:?}", self.lexer.current().location)
     }
 }
 
@@ -800,7 +800,7 @@ fn sepBy1_func<T>(&mut self, f : |&mut Parser<Iter>| -> T, sep : |&Token| -> boo
     let mut result = ~[];
     loop {
         result.push(f(self));
-        if (sep(self.lexer.next_())) {
+        if (!sep(self.lexer.next_())) {
             break;
         }
     }
