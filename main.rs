@@ -6,7 +6,7 @@ use std::rc::Rc;
 use std::path::Path;
 use std::io::File;
 use std::str::{from_utf8};
-use compiler::{Compiler,
+use compiler::{Compiler, Assembly,
     Instruction, Add, Sub, Multiply, Divide, Remainder, Push, PushGlobal, PushInt, Mkap, Eval, Unwind, Update, Pop, Slide,
     SuperCombinator};
 use parser::Parser;    
@@ -18,23 +18,23 @@ mod parser;
 
 
 #[deriving(Clone)]
-enum Node {
-    Application(Rc<Node>, Rc<Node>),
+enum Node<'a> {
+    Application(Rc<Node<'a>>, Rc<Node<'a>>),
     Int(int),
-    Combinator(Rc<SuperCombinator>),
-    Indirection(Rc<Node>)
+    Combinator(&'a SuperCombinator),
+    Indirection(Rc<Node<'a>>)
 }
 
-struct VM {
-    globals : ~[Rc<SuperCombinator>],
-    heap : ~[Node]
+struct VM<'a> {
+    assembly : Assembly,
+    heap : ~[Node<'a>]
 }
 
-impl VM {
+impl <'a> VM<'a> {
     fn new() -> VM {
-        VM { globals : ~[], heap : ~[] }
+        VM { assembly : Assembly { superCombinators : ~[] }, heap : ~[] }
     }
-    fn execute(&self, stack : &mut ~[Rc<Node>], code : &[Instruction]) {
+    fn execute(&'a self, stack : &mut ~[Rc<Node<'a>>], code : &[Instruction]) {
         debug!("Entering frame");
         let mut i = 0;
         while i < code.len() {
@@ -51,7 +51,9 @@ impl VM {
                     stack.push(x);
                 }
                 &PushGlobal(index) => {
-                    stack.push(Rc::new(Combinator(self.globals[index].clone())));
+                    match &self.assembly.superCombinators[index] {
+                        &(_, ref sc) => stack.push(Rc::new(Combinator(sc)))
+                    }
                 }
                 &Mkap => {
                     let func = stack.pop();
@@ -80,7 +82,7 @@ impl VM {
                             i -= 1;//Redo the unwind instruction
                         }
                         Combinator(comb_ptr) => {
-                            let comb = comb_ptr.borrow();
+                            let comb = comb_ptr;
                             for j in range(stack.len() - (comb.arity as uint) - 1, stack.len()) {
                                 stack[j] = match stack[j].borrow() {
                                     &Application(_, ref arg) => arg.clone(),
@@ -115,7 +117,7 @@ fn primitive(stack: &mut ~[Rc<Node>], f: |int, int| -> int) {
     let r = stack.pop();
     match (l.borrow(), r.borrow()) {
         (&Int(lhs), &Int(rhs)) => stack.push(Rc::new(Int(f(lhs, rhs)))),
-        _ => fail!("Expected fully evaluted numbers in Add instruction")
+        (lhs, rhs) => fail!("Expected fully evaluted numbers in primitive instruction\n LHS: {:?}\nRHS: {:?} ", lhs, rhs)
     }
 }
 
@@ -143,7 +145,17 @@ fn main() {
             let module = parser.module();
             
             let mut compiler = Compiler::new();
-            compiler.compileModule(&module);
+            let mut vm = VM::new();
+            vm.assembly = compiler.compileModule(&module);
+            let x = vm.assembly.superCombinators.iter().find(|& &(ref name, _)| *name == ~"main");
+            match x {
+                Some(&(_, ref sc)) => {
+                    assert!(sc.arity == 0);
+                    let mut stack = ~[];
+                    vm.execute(&mut stack, sc.instructions);
+                }
+                None => ()
+            }
         }
         _ => return println!("Expected one argument which is the expression or 2 arguments where the first is -l and the second the file to run (needs a main function)")
     }

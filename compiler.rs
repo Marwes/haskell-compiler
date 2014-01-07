@@ -67,7 +67,7 @@ impl <'a, T> Scope<'a, T> {
     }
 }
 
-struct Assembly {
+pub struct Assembly {
     superCombinators: ~[(~str, SuperCombinator)]
 }
 
@@ -97,13 +97,16 @@ impl Compiler {
         Compiler { stackSize : 0, globals : HashMap::new(), globalIndex : 0, variables: HashMap::new() }
     }
 
-    pub fn compileModule(&mut self, module : &Module) {
+    pub fn compileModule(&mut self, module : &Module) -> Assembly {
         //TODO
+        let mut superCombinators = ~[];
         for bind in module.bindings.iter() {
             self.variables.insert(bind.name.clone(), GlobalVariable(self.globalIndex));
             self.globalIndex += 1;
-            self.compileBinding(bind.arity, &bind.expression);
+            let sc = self.compileBinding(bind.arity, &bind.expression);
+            superCombinators.push((bind.name.clone(), sc));
         }
+        Assembly { superCombinators: superCombinators }
     }
     fn compileBinding<'a>(&mut self, arity : int, expr : &Typed<Expr>) -> SuperCombinator {
 
