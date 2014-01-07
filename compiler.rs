@@ -122,6 +122,12 @@ impl Compiler {
        }
        comb
     }
+    fn compileExpression(&mut self, expr: &Typed<Expr>) -> ~[Instruction] {
+        let mut stack = CompilerNode { compiler: self, stack: Scope::new() };
+        let mut instructions = ~[];
+        stack.compile(expr, &mut instructions);
+        instructions
+    }
 
 }
 
@@ -172,10 +178,12 @@ impl <'a> CompilerNode<'a> {
             }
             &Number(num) => instructions.push(PushInt(num)),
             &Apply(ref func, ref arg) => {
-                self.compile(*arg, instructions);
-                self.compile(*func, instructions);
-                instructions.push(Mkap);
-                instructions.push(Eval);
+                if !self.primitive(*func, *arg, instructions) {
+                    self.compile(*arg, instructions);
+                    self.compile(*func, instructions);
+                    instructions.push(Mkap);
+                    instructions.push(Eval);
+                }
             }
             &Lambda(ref varname, ref body) => {
                 self.newStackVar(varname.clone());
@@ -191,14 +199,42 @@ impl <'a> CompilerNode<'a> {
             }
         }
     }
+
+    fn primitive(&mut self, func: &Typed<Expr>, arg: &Typed<Expr>, instructions: &mut ~[Instruction]) -> bool {
+        match &func.expr {
+            &Apply(ref prim_func, ref arg2) => {
+                match &prim_func.expr {
+                    &Identifier(ref name) => {
+                        let maybeOP = match *name {
+                            ~"primIntAdd" => Some(Add),
+                            ~"primIntSubtract" => Some(Sub),
+                            _ => None
+                        };
+                        match maybeOP {
+                            Some(op) => {
+                                self.compile(*arg2, instructions);
+                                self.compile(arg, instructions);
+                                instructions.push(op);
+                                true
+                            }
+                            None => false
+                        }
+                    }
+                    _ => false
+                }
+            }
+            _ => false
+        }
+    }
 }
+
 
 
 #[test]
 fn test_add() {
-    let e = apply(identifier(~"primIntAdd"), apply(number(1), number(2)));
+    let e = apply(apply(identifier(~"primIntAdd"), number(1)), number(2));
     let mut comp = Compiler::new();
-    let comb = comp.compileBinding(0, &e);
+    let instr = comp.compileExpression(&e);
 
-    assert!(comb.instructions == ~[PushInt(1), PushInt(2), Add]);
+    assert_eq!(instr, ~[PushInt(1), PushInt(2), Add]);
 }
