@@ -585,11 +585,12 @@ fn typeDeclaration_(&mut self, typeVariableMapping : &mut HashMap<~str, TypeVari
 	if (decl != TYPEDECL) {
 		fail!(ParseError(&self.lexer, TYPEDECL));
 	}
-	let typeOrContext = self.parse_type_(typeVariableMapping);
+    let mut variableIndex = 0;
+	let typeOrContext = self.parse_type_(&mut variableIndex, typeVariableMapping);
     {
         let maybeContextArrow = self.lexer.next_().token;
         if (maybeContextArrow == OPERATOR && self.lexer.current().value == ~"=>") {
-            let t = self.parse_type_(typeVariableMapping);
+            let t = self.parse_type_(&mut variableIndex, typeVariableMapping);
             let op = match typeOrContext {
                 TypeOperator(x) => x,
                 _ => fail!("Expected type context since '=>' was parsed")
@@ -658,37 +659,41 @@ fn dataDefinition(&mut self) -> DataDefinition {
 
 fn parse_type(&mut self) -> Type {
 	let mut vars = HashMap::new();
-	return self.parse_type_(&mut vars);
+    let mut variableIndex = 0;
+	return self.parse_type_(&mut variableIndex, &mut vars);
 }
 
-fn parse_type_(&mut self, typeVariableMapping : &mut HashMap<~str, TypeVariable>) -> Type {
+fn parse_type_(&mut self, variableIndex: &mut int, typeVariableMapping : &mut HashMap<~str, TypeVariable>) -> Type {
 	let token = (*self.lexer.next_()).clone();
 	match token.token {
 	    LBRACKET =>
 		{
-			let t = self.parse_type_(typeVariableMapping);
+			let t = self.parse_type_(variableIndex, typeVariableMapping);
 			self.requireNext(RBRACKET);
 			let args = ~[t];
 			let listType = Type::new_op(~"[]", args);
             
-            return self.parse_return_type(listType, typeVariableMapping);
+            self.parse_return_type(listType, variableIndex, typeVariableMapping)
 		}
 	    LPARENS =>
 		{
-			let t = self.parse_type_(typeVariableMapping);
+			let t = self.parse_type_(variableIndex, typeVariableMapping);
 			let maybeComma = self.lexer.next_().token;
 			if (maybeComma == COMMA)
 			{
-				let mut tupleArgs = self.sepBy1(|this| this.parse_type_(typeVariableMapping), COMMA);
+				let mut tupleArgs = self.sepBy1(|this| this.parse_type_(variableIndex, typeVariableMapping), COMMA);
 				tupleArgs.unshift(t);
                 self.requireNext(RPARENS);
 
-                return self.parse_return_type(tupleType(tupleArgs), typeVariableMapping);
+                self.parse_return_type(tupleType(tupleArgs), variableIndex, typeVariableMapping)
 			}
 			else if (maybeComma == RPARENS)
 			{
-                return self.parse_return_type(t, typeVariableMapping);
+                self.parse_return_type(t, variableIndex, typeVariableMapping)
 			}
+            else {
+                fail!(ParseError2(&self.lexer, &[COMMA, RPARENS]))
+            }
 		}
 	    NAME =>
 		{
@@ -699,29 +704,32 @@ fn parse_type_(&mut self, typeVariableMapping : &mut HashMap<~str, TypeVariable>
                     if next.token != NAME {
                         break;
                     }
-                    let var = typeVariableMapping.find_or_insert(next.value.clone(), TypeVariable { id : -1});
+                    let var = typeVariableMapping.find_or_insert(next.value.clone(), TypeVariable { id : *variableIndex});
+                    *variableIndex += 1;
                     typeArguments.push(TypeVariable(*var));
                 }
+                self.lexer.backtrack();
             }
+
 			let thisType = if (token.value.char_at(0).is_uppercase()) {
 				Type::new_op(token.value, typeArguments)
 			}
 			else {
-                let t = typeVariableMapping.find_or_insert(token.value, TypeVariable { id : -1});
+                let t = typeVariableMapping.find_or_insert(token.value, TypeVariable { id : *variableIndex });
+                    *variableIndex += 1;
 				TypeVariable(t.clone())
 			};
-			return self.parse_return_type(thisType, typeVariableMapping);
+			self.parse_return_type(thisType, variableIndex, typeVariableMapping)
 		}
-	    _ => { return Type::new_var(-1); }
-	};
-    return Type::new_var(-1);
+	    _ => fail!("Unexpected token when parsing type {:?}", self.lexer.current())
+	}
 }
 
-fn parse_return_type(&mut self, typ : Type, typeVariableMapping : &mut HashMap<~str, TypeVariable>) -> Type {
+fn parse_return_type(&mut self, typ : Type, variableIndex: &mut int, typeVariableMapping : &mut HashMap<~str, TypeVariable>) -> Type {
 
     let arrow = self.lexer.next_().token;
     if (arrow == ARROW) {
-        return function_type(&typ, &self.parse_type_(typeVariableMapping));
+        return function_type(&typ, &self.parse_type_(variableIndex, typeVariableMapping));
     }
     else {
         self.lexer.backtrack();
@@ -889,8 +897,12 @@ fn tupleType(types : ~[Type]) -> Type {
 	Type::new_op(tuple_name(types.len()), types)
 }
 
+fn ParseError2<Iter : Iterator<char>>(lexer : &Lexer<Iter>, expected : &[TokenEnum]) -> ~str {
+    format!("Expected {:?} but found {:?}\\{{:?}\\}, at {:?}", expected, lexer.current().token, lexer.current().value, lexer.current().location)
+    
+}
 fn ParseError<Iter : Iterator<char>>(lexer : &Lexer<Iter>, expected : TokenEnum) -> ~str {
-    format!("Expected {:?} but found {:?}, at {:?}", expected, lexer.current().token, lexer.current().location)
+    format!("Expected {:?} but found {:?}\\{{:?}\\}, at {:?}", expected, lexer.current().token, lexer.current().value, lexer.current().location)
 }
 fn encodeBindingIdentifier(instancename : &str, bindingname : &str) -> ~str {
     fail!("Unimplemented function encodeBinding " + instancename + " " + bindingname);
@@ -914,6 +926,19 @@ fn binding()
 }
 
 #[test]
+fn parse_let() {
+    let mut parser = Parser::new(
+r"
+let
+    test = add 3 2
+in test - 2".chars());
+    let expr = parser.expression_();
+    let bind = Binding { arity: 0, name: ~"test", typeDecl:Default::default(),
+        expression: apply(apply(identifier(~"add"), number(3)), number(2)) };
+    assert_eq!(expr, let_(~[bind], apply(apply(identifier(~"-"), identifier(~"test")), number(2))));
+}
+
+#[test]
 fn parse_case() {
     let mut parser = Parser::new(
 r"case [] of
@@ -928,4 +953,18 @@ r"case [] of
         pattern: ConstructorPattern(~"[]", ~[]),
         expression: number(2) };
     assert_eq!(expression, case(identifier(~"[]"), ~[alt, alt2]));
+}
+
+#[test]
+fn parse_type() {
+    let mut parser = Parser::new(
+r"(.) :: (b -> c) -> (a -> b) -> (a -> c)".chars());
+    let typeDecl = parser.typeDeclaration();
+    let a = &Type::new_var(0);
+    let b = &Type::new_var(1);
+    let c = &Type::new_var(2);
+    let f = function_type(&function_type(b, c), &function_type(&function_type(a, b), &function_type(a, c)));
+
+    assert_eq!(typeDecl.name, ~".");
+    assert_eq!(typeDecl.typ, f);
 }
