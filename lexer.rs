@@ -234,6 +234,7 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
     fn new_token<'a>(&'a mut self, parseError : |&Token| -> bool) -> &'a Token {
         let mut newline = false;
         let n = self.next_indent_token(&mut newline);
+        println!("{:?}", n);
         self.unprocessedTokens.push(n);
         let newTok = self.unprocessedTokens[self.unprocessedTokens.len() - 1].token;
 
@@ -422,7 +423,7 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
                         self.read_char();
                         result.push_char(ch);
                     }
-                    None => return Token::eof()
+                    None => break
                 }
             }
             return Token {
