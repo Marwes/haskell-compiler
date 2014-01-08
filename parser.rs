@@ -1,15 +1,16 @@
-use std::str::{from_chars};
 use std::util::{swap};
 use std::hashmap::HashMap;
-use lexer::*;
 use lexer::{Lexer, Token, TokenEnum,
     EOF, NAME, OPERATOR, NUMBER, FLOAT, LPARENS, RPARENS, LBRACKET, RBRACKET, LBRACE, RBRACE, INDENTSTART, INDENTLEVEL, COMMA, EQUALSSIGN, SEMICOLON, MODULE, CLASS, INSTANCE, WHERE, LET, IN, CASE, OF, ARROW, TYPEDECL, DATA
 };
-use typecheck::{function_type, identifier, apply, number, lambda, let_, case};
 use module::{Module, Class, Instance, Binding,
     DataDefinition, Constructor, TypeDeclaration,
     Alternative, Pattern, ConstructorPattern, NumberPattern, IdentifierPattern,
     Type, TypeVariable, TypeOperator, Expr, Identifier, Number, Apply, Lambda, Let, Case, Typed};
+use typecheck::function_type;
+
+#[cfg(test)]
+use typecheck::{identifier, apply, number, lambda, let_, case};
 
 pub struct Parser<Iter> {
     lexer : Lexer<Iter>,

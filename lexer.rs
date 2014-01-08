@@ -211,7 +211,7 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
                     self.read_char();
                     result.push_char(x)
                 }
-                None => return result
+                None => break
             }
         }
         result
