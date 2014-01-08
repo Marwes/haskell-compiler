@@ -1,6 +1,4 @@
 use std::hashmap::HashMap;
-use lexer::Location;
-use std::fmt;
 use module::{Type, TypeVariable, TypeOperator, Expr, Identifier, Number, Apply, Lambda, Let, Case, Typed, Alternative, Binding};
 use Scope;
 
@@ -39,15 +37,6 @@ impl TypeEnvironment {
         for t in self.types.iter() {
             replace(*t, subs);
         }
-    }
-
-    fn addName(&mut self, name : ~str, t : @mut Type) {
-        self.namedTypes.insert(name, t);
-        self.addType(t);
-    }
-
-    fn addType(&mut self, t : @mut Type) {
-        self.types.push(t);
     }
 
     fn new_var(&mut self) -> Type {
@@ -202,7 +191,7 @@ fn test() {
     let type_int = TypeOperator(TypeOperator { name : ~"Int", types : ~[]});
     let unary_func = function_type(&type_int, &type_int);
     let add_type = @mut function_type(&type_int, &unary_func);
-    env.addName(~"add", add_type);
+    env.namedTypes.insert(~"add", add_type);
     env.typecheck(&mut expr);
 
     assert!(*expr.typ == unary_func);
@@ -218,7 +207,7 @@ fn typecheck_lambda() {
     let add_type = @mut function_type(&type_int, &unary_func);
 
     let mut expr = lambda(~"x", apply(apply(identifier(~"add"), identifier(~"x")), number(1)));
-    env.addName(~"add", add_type);
+    env.namedTypes.insert(~"add", add_type);
     env.typecheck(&mut expr);
 
     assert_eq!(*expr.typ, unary_func);
@@ -236,7 +225,7 @@ fn typecheck_let() {
     //let test x = add x in test
     let unary_bind = lambda(~"x", apply(apply(identifier(~"add"), identifier(~"x")), number(1)));
     let mut expr = let_(~[Binding { arity: 1, name: ~"test", expression: unary_bind, typeDecl: Default::default() }], identifier(~"test"));
-    env.addName(~"add", add_type);
+    env.namedTypes.insert(~"add", add_type);
     env.typecheck(&mut expr);
 
     assert_eq!(*expr.typ, unary_func);

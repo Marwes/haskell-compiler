@@ -1,9 +1,12 @@
 use std::hashmap::HashMap;
-use typecheck::{identifier, apply, number, lambda, let_};
 use module::{Type, TypeVariable, TypeOperator, Expr, Identifier, Number, Apply, Lambda, Let, Case, Typed, Alternative, Module, Class, Instance, Binding, DataDefinition, Constructor, TypeDeclaration,
     Pattern, ConstructorPattern, NumberPattern, IdentifierPattern};
-use parser::Parser;
 use Scope;
+
+#[cfg(test)]
+use parser::Parser;
+#[cfg(test)]
+use typecheck::{identifier, apply, number, lambda, let_};
 
 #[deriving(Eq)]
 pub enum Instruction {
@@ -45,9 +48,9 @@ pub struct Assembly {
 impl Assembly {
     fn find(&self, name: &str) -> Option<Var> {
         let mut index = 0;
-        for &(ref n, ref comb) in self.superCombinators.iter() {
+        for &(ref n, _) in self.superCombinators.iter() {
             if name == *n {
-                return Some(GlobalVariable(-1));
+                return Some(GlobalVariable(index));
             }
             index += 1;
         }
@@ -74,7 +77,7 @@ impl Compiler {
         for bind in module.bindings.iter() {
             self.variables.insert(bind.name.clone(), GlobalVariable(self.globalIndex));
             self.globalIndex += 1;
-            let mut sc = self.compileBinding(bind.arity, &bind.expression);
+            let sc = self.compileBinding(bind.arity, &bind.expression);
             superCombinators.push((bind.name.clone(), sc));
         }
         Assembly { superCombinators: superCombinators }
