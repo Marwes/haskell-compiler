@@ -49,16 +49,16 @@ pub struct TypeDeclaration {
     name : ~str
 }
 
-#[deriving(Clone, Default, Eq, ToStr)]
+#[deriving(Clone, Default, ToStr)]
 pub struct TypeOperator {
     name : ~str,
     types : ~[Type]
 }
-#[deriving(Clone, Default, Eq, ToStr, IterBytes)]
+#[deriving(Clone, Default, ToStr, IterBytes)]
 pub struct TypeVariable {
     id : int
 }
-#[deriving(Clone, Eq, ToStr)]
+#[deriving(Clone, ToStr)]
 pub enum Type {
     TypeVariable(TypeVariable),
     TypeOperator(TypeOperator)
@@ -67,6 +67,46 @@ pub enum Type {
 impl Default for Type {
     fn default() -> Type {
         Type::new_var(-1)
+    }
+}
+
+impl Eq for TypeVariable {
+    fn eq(&self, _: &TypeVariable) -> bool {
+        true
+    }
+}
+
+fn operator_eq(mapping: &mut HashMap<TypeVariable, TypeVariable>, lhs: &TypeOperator, rhs: &TypeOperator) -> bool {
+    lhs.name == rhs.name && lhs.types.len() == rhs.types.len()
+    && lhs.types.iter().zip(rhs.types.iter()).all(|(l, r)| type_eq(mapping, l, r))
+}
+
+impl Eq for TypeOperator {
+    fn eq(&self, other: &TypeOperator) -> bool {
+        let mut mapping = HashMap::new();
+        operator_eq(&mut mapping, self, other)
+    }
+}
+
+fn type_eq(mapping: &mut HashMap<TypeVariable, TypeVariable>, lhs: &Type, rhs: &Type) -> bool {
+    match (lhs, rhs) {
+        (&TypeOperator(ref l), &TypeOperator(ref r)) => operator_eq(mapping, l, r),
+        (&TypeVariable(ref r), &TypeVariable(ref l)) => {
+            match mapping.find(l) {
+                Some(x) => return x.id == r.id,
+                None => ()
+            }
+            mapping.insert(*l, *r);
+            true
+        }
+        _ => false
+    }
+}
+
+impl Eq for Type {
+    fn eq(&self, other: &Type) -> bool {
+        let mut mapping = HashMap::new();
+        type_eq(&mut mapping, self, other)
     }
 }
 

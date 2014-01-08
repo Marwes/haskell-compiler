@@ -19,7 +19,15 @@ struct TypeScope<'a> {
 
 impl TypeEnvironment {
     pub fn new() -> TypeEnvironment {
-        TypeEnvironment { namedTypes : HashMap::new(), types : ~[] , variableIndex : TypeVariable { id : 0 } }
+        let mut globals = HashMap::new();
+        let int_type = &Type::new_op(~"Int", ~[]);
+        let binop = @mut function_type(int_type, &function_type(int_type, int_type));
+        globals.insert(~"primIntAdd", binop);
+        globals.insert(~"primIntSubtract", binop);
+        globals.insert(~"primIntMultiply", binop);
+        globals.insert(~"primIntDivide", binop);
+        globals.insert(~"primIntRemainder", binop);
+        TypeEnvironment { namedTypes : globals, types : ~[] , variableIndex : TypeVariable { id : 0 } }
     }
 
     pub fn typecheck(&mut self, expr : &mut Typed<Expr>) {

@@ -7,6 +7,7 @@ use std::rc::Rc;
 use std::path::Path;
 use std::io::File;
 use std::str::{from_utf8};
+use typecheck::TypeEnvironment;
 use compiler::{Compiler, Assembly,
     Instruction, Add, Sub, Multiply, Divide, Remainder, Push, PushGlobal, PushInt, Mkap, Eval, Unwind, Update, Pop, Slide,
     SuperCombinator};
@@ -178,7 +179,10 @@ fn main() {
     match arguments {
         [_, expr_str] => {
             let mut parser = Parser::new(expr_str.chars());
-            let expr = parser.expression_();
+            let mut expr = parser.expression_();
+
+            let mut type_env = TypeEnvironment::new();
+            type_env.typecheck(&mut expr);
             
             let mut compiler = Compiler::new();
             let instr = compiler.compileExpression(&expr);
