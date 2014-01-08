@@ -5,12 +5,11 @@ use lexer::*;
 use lexer::{Lexer, Token, TokenEnum,
     EOF, NAME, OPERATOR, NUMBER, FLOAT, LPARENS, RPARENS, LBRACKET, RBRACKET, LBRACE, RBRACE, INDENTSTART, INDENTLEVEL, COMMA, EQUALSSIGN, SEMICOLON, MODULE, CLASS, INSTANCE, WHERE, LET, IN, CASE, OF, ARROW, TYPEDECL, DATA
 };
-use typecheck::{function_type, identifier, apply, number, lambda, let_};
+use typecheck::{function_type, identifier, apply, number, lambda, let_, case};
 use module::{Module, Class, Instance, Binding,
     DataDefinition, Constructor, TypeDeclaration,
     Alternative, Pattern, ConstructorPattern, NumberPattern, IdentifierPattern,
-    Type, TypeVariable, TypeOperator, Expr, Identifier, Number, Apply, Lambda, Let, Typed};
-use Scope;
+    Type, TypeVariable, TypeOperator, Expr, Identifier, Number, Apply, Lambda, Let, Case, Typed};
 
 pub struct Parser<Iter> {
     lexer : Lexer<Iter>,
@@ -203,11 +202,13 @@ fn parseList(&mut self) -> Typed<Expr> {
             Some(expr) => expressions.push(expr),
             None => break
         }
-		let comma = &self.lexer.next_();
-        if (comma.token != COMMA) {
+		let comma = self.lexer.next_().token;
+        if (comma != COMMA) {
+            self.lexer.backtrack();
             break;
         }
 	}
+    self.requireNext(RBRACKET);
 
 	if (expressions.len() == 0)
 	{
@@ -232,16 +233,7 @@ fn parseList(&mut self) -> Typed<Expr> {
 
 		application = makeApplication(Typed::new(Identifier(~":")), arguments);
 	}
-
-	let maybeParens = self.lexer.current().token;
-	if (maybeParens != RBRACKET)
-	{
-		fail!(ParseError(&self.lexer, RBRACKET));
-	}
-	else
-	{
-		return application;
-	}
+    application
 }
 
 fn subExpression(&mut self, parseError : |&Token| -> bool) -> Option<Typed<Expr>> {
@@ -290,22 +282,25 @@ fn subExpression(&mut self, parseError : |&Token| -> bool) -> Option<Typed<Expr>
                 None => None
             }
 		}
-        /*
 	    CASE =>
 		{
+            let location = self.lexer.current().location;
 			let expr = self.expression();
 
 			self.requireNext(OF);
 			self.requireNext(LBRACE);
 
-			let alts = self.sepBy1(&Parser::alternative, SEMICOLON);
+			let alts = self.sepBy1(|this| this.alternative(), SEMICOLON);
 			let rBrace = self.lexer.current();
 			if (rBrace.token != RBRACE)
 			{
 				fail!(ParseError(&self.lexer, RBRACE));
 			}
-			return Typed::with_location(Case(expr, alts), token.location);
-		}*/
+			match expr {
+                Some(e) => Some(Typed::with_location(Case(~e, alts), location)),
+                None => None
+            }
+		}
         NAME => {
             let token = self.lexer.current();
             Some(Typed::with_location(Identifier(token.value.clone()), token.location))
@@ -916,4 +911,21 @@ fn binding()
     let bind = parser.binding();
     assert_eq!(bind.expression, lambda(~"x", apply(apply(identifier(~"+"), identifier(~"x")), number(3))));
     assert_eq!(bind.name, ~"test");
+}
+
+#[test]
+fn parse_case() {
+    let mut parser = Parser::new(
+r"case [] of
+    : x xs -> x
+    [] -> 2
+".chars());
+    let expression = parser.expression_();
+    let alt = Alternative {
+        pattern: ConstructorPattern(~":", ~[IdentifierPattern(~"x"), IdentifierPattern(~"xs")]),
+        expression: identifier(~"x") };
+    let alt2 = Alternative {
+        pattern: ConstructorPattern(~"[]", ~[]),
+        expression: number(2) };
+    assert_eq!(expression, case(identifier(~"[]"), ~[alt, alt2]));
 }

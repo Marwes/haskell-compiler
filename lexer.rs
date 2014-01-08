@@ -319,7 +319,7 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
                     return;
                 }
                 RBRACE => {
-                    if (self.indentLevels.len() > 0 && self.indentLevels[self.indentLevels.len()] == 0) {
+                    if (self.indentLevels.len() > 0 && self.indentLevels[self.indentLevels.len() - 1] == 0) {
                         self.tokens.push_back(self.unprocessedTokens.pop());
                         self.indentLevels.pop();
                         return;

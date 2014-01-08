@@ -180,6 +180,9 @@ pub fn apply(func : Typed<Expr>, arg : Typed<Expr>) -> Typed<Expr> {
 pub fn let_(bindings : ~[Binding], expr : Typed<Expr>) -> Typed<Expr> {
     Typed::new(Let(bindings, ~expr))
 }
+pub fn case(expr : Typed<Expr>, alts: ~[Alternative]) -> Typed<Expr> {
+    Typed::new(Case(~expr, alts))
+}
 
 
 #[test]
