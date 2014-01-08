@@ -413,11 +413,11 @@ fn application(&mut self) -> Option<Typed<Expr>> {
 }
 
 fn constructor(&mut self, dataDef : &DataDefinition) -> Constructor {
-	let nameToken = self.lexer.next_().value.clone();
+	let name = self.requireNext(NAME).value.clone();
 	let mut arity = 0;
 	let typ = self.constructorType(&mut arity, dataDef);
 	self.lexer.backtrack();
-	Constructor { name : nameToken, typ : typ, tag : 0, arity : arity }
+	Constructor { name : name, typ : typ, tag : 0, arity : arity }
 }
 
 fn binding(&mut self) -> Binding {
@@ -606,6 +606,7 @@ fn typeDeclaration_(&mut self, typeVariableMapping : &mut HashMap<~str, TypeVari
 fn constructorType(&mut self, arity : &mut int, dataDef : &DataDefinition) -> Type
 {
 	let token = self.lexer.next(constructorError).token;
+    println!("{:?}", token);
 	if (token == NAME) {
 		*arity += 1;
 		if (self.lexer.current().value.char_at(0).is_lowercase())
@@ -968,4 +969,17 @@ r"(.) :: (b -> c) -> (a -> b) -> (a -> c)".chars());
 
     assert_eq!(typeDecl.name, ~".");
     assert_eq!(typeDecl.typ, f);
+}
+#[test]
+fn parse_data() {
+    let mut parser = Parser::new(
+r"data Bool = True | False".chars());
+    let data = parser.dataDefinition();
+
+    let Bool = TypeOperator { name: ~"Bool", types: ~[]};
+    let True = Constructor { name: ~"True", tag:0, arity:0, typ: TypeOperator(Bool.clone()) };
+    let False = Constructor { name: ~"False", tag:1, arity:0, typ: TypeOperator(Bool.clone()) };
+    assert_eq!(data.typ, Bool);
+    assert_eq!(data.constructors[0], True);
+    assert_eq!(data.constructors[1], False);
 }

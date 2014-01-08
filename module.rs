@@ -29,6 +29,7 @@ pub struct Binding {
     arity : int
 }
 
+#[deriving(Eq)]
 pub struct Constructor {
     name : ~str,
     typ : Type,
@@ -36,6 +37,7 @@ pub struct Constructor {
     arity : int
 }
 
+#[deriving(Eq)]
 pub struct DataDefinition {
     constructors : ~[Constructor],
     typ : TypeOperator,
