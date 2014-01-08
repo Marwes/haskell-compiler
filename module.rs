@@ -54,7 +54,7 @@ pub struct TypeOperator {
     name : ~str,
     types : ~[Type]
 }
-#[deriving(Clone, Default, ToStr, IterBytes)]
+#[deriving(Clone, Eq, Default, ToStr, IterBytes)]
 pub struct TypeVariable {
     id : int
 }
@@ -67,12 +67,6 @@ pub enum Type {
 impl Default for Type {
     fn default() -> Type {
         Type::new_var(-1)
-    }
-}
-
-impl Eq for TypeVariable {
-    fn eq(&self, _: &TypeVariable) -> bool {
-        true
     }
 }
 

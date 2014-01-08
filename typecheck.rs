@@ -1,6 +1,9 @@
 use std::hashmap::HashMap;
-use module::{Type, TypeVariable, TypeOperator, Expr, Identifier, Number, Apply, Lambda, Let, Case, Typed, Alternative, Binding};
+use module::{Type, TypeVariable, TypeOperator, Expr, Identifier, Number, Apply, Lambda, Let, Case, Typed, Alternative, Pattern, IdentifierPattern, NumberPattern, ConstructorPattern, Binding};
 use Scope;
+
+#[cfg(test)]
+use parser::Parser;
 
 
 pub struct TypeEnvironment {
@@ -12,6 +15,7 @@ pub struct TypeEnvironment {
 struct TypeScope<'a> {
     scope: Scope<'a, @mut Type>,
     env: &'a mut TypeEnvironment,
+    parent: Option<&'a TypeScope<'a>>,
     non_generic: ~[@mut Type]
 }
 
@@ -25,11 +29,15 @@ impl TypeEnvironment {
         globals.insert(~"primIntMultiply", binop);
         globals.insert(~"primIntDivide", binop);
         globals.insert(~"primIntRemainder", binop);
+        let list_var = Type::new_var(-10);
+        let list = Type::new_op(~"[]", ~[list_var.clone()]);
+        globals.insert(~"[]", @mut list.clone());
+        globals.insert(~":", @mut function_type(&list_var, &function_type(&list, &list)));
         TypeEnvironment { namedTypes : globals, types : ~[] , variableIndex : TypeVariable { id : 0 } }
     }
 
     pub fn typecheck(&mut self, expr : &mut Typed<Expr>) {
-        let mut scope = TypeScope { env: self, scope: Scope::new(), non_generic: ~[] };
+        let mut scope = TypeScope { env: self, scope: Scope::new(), non_generic: ~[], parent: None };
         scope.typecheck(expr)
     }
 
@@ -56,9 +64,9 @@ impl <'a> TypeScope<'a> {
                 expr.typ = @mut TypeOperator(TypeOperator {name : ~"Int", types : ~[]});
             }
             &Identifier(ref name) => {
-                match self.find(*name) {
-                    Some(t) => { expr.typ = (*t).clone(); }
-                    None => { fail!("Undefined identifier " + *name); }
+                match self.fresh(*name) {
+                    Some(t) => *expr.typ = t,
+                    None => fail!("Undefined identifier " + *name)
                 }
             }
             &Apply(ref mut func, ref mut arg) => {
@@ -94,10 +102,59 @@ impl <'a> TypeScope<'a> {
                 childScope.typecheck(*body);
                 expr.typ = body.typ;
             }
-            &Case(_, _) => {
-                fail!("Typechecking Case are not implemented");
+            &Case(ref mut case_expr, ref mut alts) => {
+                self.typecheck(*case_expr);
+                let match_type = case_expr.typ;
+                self.typecheck_pattern(&alts[0].pattern, &mut (*match_type).clone());
+                self.typecheck(&mut alts[0].expression);
+                for alt in alts.mut_iter().skip(1) {
+                    self.typecheck_pattern(&alt.pattern, &mut (*match_type).clone());
+                    self.typecheck(&mut alt.expression);
+                    let subs = unify(self.env, alt.expression.typ, alts[0].expression.typ);
+                    self.env.substitute(&subs);
+                }
+                expr.typ = alts[0].expression.typ;
             }
         };
+    }
+
+    fn typecheck_pattern(&mut self, pattern: &Pattern, match_type: &mut Type) {
+        match pattern {
+            &IdentifierPattern(ref ident) => {
+                let typ = @mut self.env.new_var();
+                self.insert(ident.clone(), typ);
+                let subs = unify(self.env, typ, match_type);
+                self.env.substitute(&subs);
+                replace(match_type, &subs);
+                self.non_generic.push(typ);
+            }
+            &NumberPattern(_) => {
+                fail!("Number pattern typechecking are not implemented");
+            }
+            &ConstructorPattern(ref ctorname, ref patterns) => {
+                let mut t = self.fresh(*ctorname).unwrap();
+                let data_type = get_returntype(&t);
+                
+                self.pattern_rec(0, *patterns, &mut t);
+
+                let subs = unify(self.env, &data_type, match_type);
+                self.env.substitute(&subs);
+                replace(match_type, &subs);
+            }
+        }
+    }
+
+    fn pattern_rec(&mut self, i : uint, patterns: &[Pattern], func_type: &mut Type) {
+        if i < patterns.len() {
+            let p = &patterns[i];
+            match func_type {
+                &TypeOperator(ref mut op) => {
+                    self.typecheck_pattern(p, &mut op.types[0]);
+                    self.pattern_rec(i + 1, patterns, &mut op.types[1]);
+                }
+                _ => fail!("Any allowed constructor must be a type operator")
+            }
+        }
     }
 
     fn insert(&mut self, name: ~str, t : @mut Type) {
@@ -110,9 +167,68 @@ impl <'a> TypeScope<'a> {
             None => self.env.namedTypes.find_equiv(&name)
         }
     }
+    fn fresh(&'a self, name: &str) -> Option<Type> {
+        match self.find(name) {
+            Some(x) => {
+                let mut mapping = HashMap::new();
+                Some(freshen(self, &mut mapping, *x))
+            }
+            None => None
+        }
+    }
+
+    fn is_generic(&'a self, var: &TypeVariable) -> bool {
+        if self.non_generic.iter().any(|t| occurs(var, *t)) {
+            false
+        }
+        else {
+            match self.parent {
+                Some(p) => p.is_generic(var),
+                None => true
+            }
+        }
+    }
 
     fn child(&'a self) -> TypeScope<'a> {
-        TypeScope { env: self.env, scope: self.scope.child(), non_generic: ~[] }
+        TypeScope { env: self.env, scope: self.scope.child(), non_generic: ~[], parent: Some(self) }
+    }
+}
+
+fn get_returntype(typ: &Type) -> Type {
+    match typ {
+        &TypeOperator(ref op) => {
+            if op.name == ~"->" {
+                get_returntype(&op.types[1])
+            }
+            else {
+                typ.clone()
+            }
+        }
+        _ => typ.clone()
+    }
+}
+
+fn occurs(type_var: &TypeVariable, inType: &Type) -> bool {
+    match inType {
+        &TypeVariable(var) => type_var.id == var.id,
+        &TypeOperator(ref op) => op.types.iter().any(|t| occurs(type_var, t))
+    }
+}
+
+fn freshen(env: &TypeScope, mapping: &mut HashMap<TypeVariable, Type>, typ: &Type) -> Type {
+    match typ {
+        &TypeVariable(ref id) => {
+            if env.is_generic(id) {
+                mapping.find_or_insert(*id, env.env.new_var()).clone()
+            }
+            else {
+                typ.clone()
+            }
+        }
+        &TypeOperator(ref op) => {
+            let types = FromIterator::from_iterator(&mut op.types.iter().map(|t| freshen(env, mapping, t)));
+            Type::new_op(op.name.clone(), types)
+        }
     }
 }
 
@@ -152,7 +268,12 @@ fn unify_(env : &mut TypeEnvironment, subs : &mut HashMap<TypeVariable, Type>, l
                 unify_(env, subs, &l.types[i], &r.types[i]);
             }
         }
-        (&TypeVariable(lid), &TypeOperator(_)) => { subs.insert(lid, (*rhs).clone()); }
+        (&TypeVariable(lid), &TypeOperator(_)) => {
+            if (occurs(&lid, rhs)) {
+                fail!("Recursive unification");
+            }
+            subs.insert(lid, (*rhs).clone());
+        }
         _ => { unify_(env, subs, rhs, lhs); }
     }
 }
@@ -200,8 +321,6 @@ fn test() {
 #[test]
 fn typecheck_lambda() {
     let mut env = TypeEnvironment::new();
-    let n = ~Typed::new(Identifier(~"add"));
-    let num = ~Typed::new(Number(1));
     let type_int = TypeOperator(TypeOperator { name : ~"Int", types : ~[]});
     let unary_func = function_type(&type_int, &type_int);
     let add_type = @mut function_type(&type_int, &unary_func);
@@ -216,8 +335,6 @@ fn typecheck_lambda() {
 #[test]
 fn typecheck_let() {
     let mut env = TypeEnvironment::new();
-    let n = ~Typed::new(Identifier(~"add"));
-    let num = ~Typed::new(Number(1));
     let type_int = TypeOperator(TypeOperator { name : ~"Int", types : ~[]});
     let unary_func = function_type(&type_int, &type_int);
     let add_type = @mut function_type(&type_int, &unary_func);
@@ -229,4 +346,25 @@ fn typecheck_let() {
     env.typecheck(&mut expr);
 
     assert_eq!(*expr.typ, unary_func);
+}
+
+#[test]
+fn typecheck_case() {
+    let mut env = TypeEnvironment::new();
+    let type_int = TypeOperator(TypeOperator { name : ~"Int", types : ~[]});
+    let unary_func = function_type(&type_int, &type_int);
+    let add_type = @mut function_type(&type_int, &unary_func);
+
+    let mut parser = Parser::new("case [] of { : x xs -> add x 2 ; [] -> 3}".chars());
+    let mut expr = parser.expression_();
+    env.namedTypes.insert(~"add", add_type);
+    env.typecheck(&mut expr);
+
+    assert_eq!(*expr.typ, type_int);
+    match &expr.expr {
+        &Case(ref case_expr, _) => {
+            assert_eq!(*case_expr.typ, Type::new_op(~"[]", ~[Type::new_op(~"Int", ~[])]));
+        }
+        _ => fail!("typecheck_case")
+    }
 }
