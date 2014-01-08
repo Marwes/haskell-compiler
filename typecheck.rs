@@ -1,5 +1,5 @@
 use std::hashmap::HashMap;
-use module::{Type, TypeVariable, TypeOperator, Expr, Identifier, Number, Apply, Lambda, Let, Case, Typed, Alternative, Pattern, IdentifierPattern, NumberPattern, ConstructorPattern, Binding};
+use module::{Type, TypeVariable, TypeOperator, Expr, Identifier, Number, Apply, Lambda, Let, Case, Typed, Module, Alternative, Pattern, IdentifierPattern, NumberPattern, ConstructorPattern, Binding};
 use Scope;
 
 #[cfg(test)]
@@ -34,6 +34,22 @@ impl TypeEnvironment {
         globals.insert(~"[]", @mut list.clone());
         globals.insert(~":", @mut function_type(&list_var, &function_type(&list, &list)));
         TypeEnvironment { namedTypes : globals, types : ~[] , variableIndex : TypeVariable { id : 0 } }
+    }
+
+    pub fn typecheck_module(&mut self, module: &mut Module) {
+        for data_def in module.dataDefinitions.iter() {
+            for constructor in data_def.constructors.iter() {
+                self.namedTypes.insert(constructor.name.clone(), @mut constructor.typ.clone());
+            }
+        }
+        self.typecheck_mutually_recursive_bindings(module.bindings);
+    }
+
+    pub fn typecheck_mutually_recursive_bindings(&mut self, bindings: &mut[Binding]) {
+        let mut scope = TypeScope { env: self, scope: Scope::new(), non_generic: ~[], parent: None };
+        for bind in bindings.mut_iter() {
+            scope.typecheck(&mut bind.expression);
+        }
     }
 
     pub fn typecheck(&mut self, expr : &mut Typed<Expr>) {
@@ -367,4 +383,18 @@ fn typecheck_case() {
         }
         _ => fail!("typecheck_case")
     }
+}
+
+#[test]
+fn typecheck_module() {
+    let mut env = TypeEnvironment::new();
+
+    let mut parser = Parser::new(
+r"data Bool = True | False
+test x = True".chars());
+    let mut module = parser.module();
+    env.typecheck_module(&mut module);
+
+    let typ = function_type(&Type::new_var(0), &Type::new_op(~"Bool", ~[]));
+    assert_eq!(*module.bindings[0].expression.typ, typ);
 }

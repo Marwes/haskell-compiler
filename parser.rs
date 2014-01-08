@@ -606,7 +606,6 @@ fn typeDeclaration_(&mut self, typeVariableMapping : &mut HashMap<~str, TypeVari
 fn constructorType(&mut self, arity : &mut int, dataDef : &DataDefinition) -> Type
 {
 	let token = self.lexer.next(constructorError).token;
-    println!("{:?}", token);
 	if (token == NAME) {
 		*arity += 1;
 		if (self.lexer.current().value.char_at(0).is_lowercase())
