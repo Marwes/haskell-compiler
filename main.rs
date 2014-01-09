@@ -18,6 +18,7 @@ mod typecheck;
 mod lexer;
 mod parser;
 mod module;
+mod graph;
 
 struct Scope<'a, T> {
     variables: HashMap<~str, T>,

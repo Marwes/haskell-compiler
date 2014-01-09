@@ -1,6 +1,7 @@
 use std::hashmap::HashMap;
 use module::{Type, TypeVariable, TypeOperator, Expr, Identifier, Number, Apply, Lambda, Let, Case, Typed, Module, Alternative, Pattern, IdentifierPattern, NumberPattern, ConstructorPattern, Binding};
 use Scope;
+use graph::{Graph, VertexIndex, strongly_connected_components};
 
 #[cfg(test)]
 use parser::Parser;
@@ -42,15 +43,10 @@ impl TypeEnvironment {
                 self.namedTypes.insert(constructor.name.clone(), @mut constructor.typ.clone());
             }
         }
-        self.typecheck_mutually_recursive_bindings(module.bindings);
+        let mut scope = TypeScope { env: self, scope: Scope::new(), non_generic: ~[], parent: None };
+        scope.typecheck_mutually_recursive_bindings(module.bindings);
     }
 
-    pub fn typecheck_mutually_recursive_bindings(&mut self, bindings: &mut[Binding]) {
-        let mut scope = TypeScope { env: self, scope: Scope::new(), non_generic: ~[], parent: None };
-        for bind in bindings.mut_iter() {
-            scope.typecheck(&mut bind.expression);
-        }
-    }
 
     pub fn typecheck(&mut self, expr : &mut Typed<Expr>) {
         let mut scope = TypeScope { env: self, scope: Scope::new(), non_generic: ~[], parent: None };
@@ -88,12 +84,11 @@ impl <'a> TypeScope<'a> {
             &Apply(ref mut func, ref mut arg) => {
                 self.typecheck(*func);
                 self.typecheck(*arg);
-                let mut funcType = TypeOperator(TypeOperator { name : ~"->", types : ~[(*arg.typ).clone(), self.env.new_var()]});
-                let subs = unify(self.env, func.typ, &funcType);
+                *expr.typ = TypeOperator(TypeOperator { name : ~"->", types : ~[(*arg.typ).clone(), self.env.new_var()]});
+                let subs = unify(self.env, func.typ, expr.typ);
                 self.env.substitute(&subs);
-                replace(&mut funcType, &subs);
-                *expr.typ = match funcType {
-                    TypeOperator(t) => t.types[1],
+                *expr.typ = match expr.typ {
+                    @TypeOperator(ref t) => t.types[1].clone(),
                     _ => fail!("Can't happen")
                 };
             }
@@ -111,10 +106,7 @@ impl <'a> TypeScope<'a> {
             }
             &Let(ref mut bindings, ref mut body) => {
                 let mut childScope = self.child();
-                for bind in bindings.mut_iter() {
-                    childScope.insert(bind.name.clone(), bind.expression.typ);
-                    childScope.typecheck(&mut bind.expression);
-                }
+                childScope.typecheck_mutually_recursive_bindings(*bindings);
                 childScope.typecheck(*body);
                 expr.typ = body.typ;
             }
@@ -169,6 +161,33 @@ impl <'a> TypeScope<'a> {
                     self.pattern_rec(i + 1, patterns, &mut op.types[1]);
                 }
                 _ => fail!("Any allowed constructor must be a type operator")
+            }
+        }
+    }
+
+    pub fn typecheck_mutually_recursive_bindings(&mut self, bindings: &mut[Binding]) {
+        
+        let graph = build_graph(bindings);
+        let groups = strongly_connected_components(&graph);
+
+        for group in groups.iter() {
+
+            for index in group.iter() {
+                let bindIndex = graph.get_vertex(*index).value;
+                self.insert(bindings[bindIndex].name.clone(), bindings[bindIndex].expression.typ);
+            }
+            
+            for index in group.iter() {
+                let bindIndex = graph.get_vertex(*index).value;
+                let bind = &mut bindings[bindIndex];
+                self.non_generic.push(bind.expression.typ);
+                self.typecheck(&mut bind.expression);
+            }
+            
+            for index in group.iter() {
+                let bindIndex = graph.get_vertex(*index).value;
+                let bind = &mut bindings[bindIndex];
+                self.non_generic.pop();
             }
         }
     }
@@ -273,7 +292,9 @@ fn unify_(env : &mut TypeEnvironment, subs : &mut HashMap<TypeVariable, Type>, l
     match (lhs, rhs) {
         (&TypeVariable(lid), &TypeVariable(rid)) => {
             if lid != rid {
-                subs.insert(lid, TypeVariable(rid));
+                let mut t = TypeVariable(rid);
+                replace(&mut t, subs);
+                subs.insert(lid, t);
             }
         }
         (&TypeOperator(ref l), &TypeOperator(ref r)) => {
@@ -288,11 +309,58 @@ fn unify_(env : &mut TypeEnvironment, subs : &mut HashMap<TypeVariable, Type>, l
             if (occurs(&lid, rhs)) {
                 fail!("Recursive unification");
             }
-            subs.insert(lid, (*rhs).clone());
+            let mut t = (*rhs).clone();
+            replace(&mut t, subs);
+            subs.insert(lid, t);
         }
         _ => { unify_(env, subs, rhs, lhs); }
     }
 }
+
+fn build_graph(bindings: &[Binding]) -> Graph<uint> {
+    let mut graph = Graph::new();
+    let mut map = HashMap::new();
+    for i in range(0, bindings.len()) {
+        let index = graph.new_vertex(i);
+        map.insert(bindings[i].name.clone(), index);
+    }
+    for bind in bindings.iter() {
+        add_edges(&mut graph, &map, *map.get(&bind.name), &bind.expression);
+    }
+    graph
+}
+
+fn add_edges<T>(graph: &mut Graph<T>, map: &HashMap<~str, VertexIndex>, function_index: VertexIndex, expr: &Typed<Expr>) {
+    match &expr.expr {
+        &Identifier(ref n) => {
+            match map.find_equiv(n) {
+                Some(index) => graph.connect(function_index, *index),
+                None => ()
+            }
+        }
+        &Lambda(_, ref body) => {
+            add_edges(graph, map, function_index, *body);
+        }
+        &Apply(ref f, ref a) => {
+            add_edges(graph, map, function_index, *f);
+            add_edges(graph, map, function_index, *a);
+        }
+        &Let(ref binds, ref body) => {
+            add_edges(graph, map, function_index, *body);
+            for bind in binds.iter() {
+                add_edges(graph, map, function_index, &bind.expression);
+            }
+        }
+        &Case(ref b, ref alts) => {
+            add_edges(graph, map, function_index, *b);
+            for alt in alts.iter() {
+                add_edges(graph, map, function_index, &alt.expression);
+            }
+        }
+        _ => ()
+    }
+}
+
 
 pub fn function_type(func : &Type, arg : &Type) -> Type {
     TypeOperator(TypeOperator { name : ~"->", types : ~[func.clone(), arg.clone()]})
@@ -397,4 +465,34 @@ test x = True".chars());
 
     let typ = function_type(&Type::new_var(0), &Type::new_op(~"Bool", ~[]));
     assert_eq!(*module.bindings[0].expression.typ, typ);
+}
+
+
+#[test]
+fn typecheck_let_recursive() {
+    let mut env = TypeEnvironment::new();
+
+    let mut parser = Parser::new(
+r"let
+    a = 0
+    test = 1 : test2
+    test2 = 2 : test
+    b = test
+in b".chars());
+    let mut expr = parser.expression_();
+    env.typecheck(&mut expr);
+
+    
+    let int_type = Type::new_op(~"Int", ~[]);
+    let list_type = Type::new_op(~"[]", ~[int_type.clone()]);
+    match &expr.expr {
+        &Let(ref binds, ref body) => {
+            assert_eq!(binds.len(), 4);
+            assert_eq!(binds[0].name, ~"a");
+            assert_eq!(*binds[0].expression.typ, int_type);
+            assert_eq!(binds[1].name, ~"test");
+            assert_eq!(*binds[1].expression.typ, list_type);
+        }
+        _ => fail!("Error")
+    }
 }

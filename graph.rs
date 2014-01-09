@@ -2,9 +2,9 @@ use std::vec;
 use std::cmp::min;
 
 #[deriving(Eq)]
-struct VertexIndex(uint);
+pub struct VertexIndex(uint);
 #[deriving(Eq)]
-struct EdgeIndex(uint);
+pub struct EdgeIndex(uint);
 
 impl VertexIndex {
     fn get(&self) -> uint { let VertexIndex(v) = *self; v }
