@@ -436,7 +436,7 @@ fn binding(&mut self) -> Binding {
 			fail!("Expected NAME or OPERATOR on left side of binding {:?}", self.lexer.current().token);
 		}
 		name = self.lexer.current().value.clone();
-        self.requireNext(RPARENS);
+
 		let rParens = self.lexer.next(errorIfNotRParens).token;
 		if (rParens != RPARENS)
 		{
