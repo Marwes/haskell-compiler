@@ -343,6 +343,6 @@ r"case [1] of
     assert_eq!(instructions, ~[Pack(0, 0), PushInt(1), Pack(1, 2),
         CaseJump(1), Jump(7),
         CaseJump(0), Jump(11),
-        Split(2), Push(1), Slide(2), Jump(15),
+        Split(2), Push(0), Slide(2), Jump(15),
         Split(0), PushInt(2), Slide(0), Jump(15)]);
 }
