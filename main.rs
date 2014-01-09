@@ -5,7 +5,6 @@ extern mod extra;
 use std::hashmap::HashMap;
 use std::rc::Rc;
 use std::path::Path;
-use std::vec;
 use std::io::File;
 use std::str::{from_utf8};
 use typecheck::TypeEnvironment;
@@ -164,7 +163,7 @@ impl <'a> VM<'a> {
                     }
                     stack.push(top);
                 }
-                &Split(size) => {
+                &Split(_) => {
                     let x = stack.pop();
                     match x.borrow() {
                         &Constructor(_, ref fields) => {
@@ -232,21 +231,10 @@ fn main() {
             let path = &Path::new(filename);
             let s  = File::open(path).read_to_end();
             let contents : &str = from_utf8(s);
-            
-            let mut parser = Parser::new(contents.chars());
-            let module = parser.module();
-            
-            let mut compiler = Compiler::new();
-            let mut vm = VM::new();
-            vm.assembly = compiler.compileModule(&module);
-            let x = vm.assembly.superCombinators.iter().find(|& &(ref name, _)| *name == ~"main");
-            match x {
-                Some(&(_, ref sc)) => {
-                    assert!(sc.arity == 0);
-                    let result = vm.evaluate(sc.instructions);
-                    println!("{:?}", result);
-                }
-                None => ()
+            let result = execute_main(contents.chars());
+            match result {
+                Some(x) => println!("{:?}", x),
+                None => println!("Error running file {:?}", path)
             }
         }
         _ => return println!("Expected one argument which is the expression or 2 arguments where the first is -l and the second the file to run (needs a main function)")
@@ -259,7 +247,6 @@ enum VMResult {
     ConstructorResult(u16, ~[VMResult])
 }
 
-#[cfg(test)]
 fn compile_iter<T : Iterator<char>>(iterator: T) -> Assembly {
     let mut parser = Parser::new(iterator);
     let mut module = parser.module();
@@ -288,7 +275,6 @@ fn extract_result(node: Node) -> Option<VMResult> {
     }
 }
 
-#[cfg(test)]
 fn execute_main<T : Iterator<char>>(iterator: T) -> Option<VMResult> {
     let mut vm = VM::new();
     vm.assembly = compile_iter(iterator);
