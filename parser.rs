@@ -899,11 +899,11 @@ fn tupleType(types : ~[Type]) -> Type {
 }
 
 fn ParseError2<Iter : Iterator<char>>(lexer : &Lexer<Iter>, expected : &[TokenEnum]) -> ~str {
-    format!("Expected {:?} but found {:?}\\{{:?}\\}, at {:?}", expected, lexer.current().token, lexer.current().value, lexer.current().location)
+    format!("Expected {:?} but found {:?}\\{{:?}\\}, at {}", expected, lexer.current().token, lexer.current().value, lexer.current().location)
     
 }
 fn ParseError<Iter : Iterator<char>>(lexer : &Lexer<Iter>, expected : TokenEnum) -> ~str {
-    format!("Expected {:?} but found {:?}\\{{:?}\\}, at {:?}", expected, lexer.current().token, lexer.current().value, lexer.current().location)
+    format!("Expected {:?} but found {:?}\\{{:?}\\}, at {}", expected, lexer.current().token, lexer.current().value, lexer.current().location)
 }
 fn encodeBindingIdentifier(instancename : &str, bindingname : &str) -> ~str {
     fail!("Unimplemented function encodeBinding " + instancename + " " + bindingname);

@@ -366,7 +366,7 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
             else if (self.indentLevels[self.indentLevels.len() - 1] != 0)//Keep pusing righ brackets
             {
                 self.indentLevels.pop();
-                self.tokens.push_back(Token::new_(RBRACE, ~"}"));
+                self.tokens.push_back(Token::new(RBRACE, ~"}", self.location));
                 return;
             }
         }
