@@ -23,12 +23,17 @@ pub enum Instruction {
     Unwind,
     Update(int),
     Pop(int),
-    Slide(int),
+    Slide(uint),
+    Split(uint),
+    Pack(u16, u16),
+    CaseJump(uint),
+    Jump(uint)
 }
 
 enum Var {
     StackVariable(int),
-    GlobalVariable(int)
+    GlobalVariable(int),
+    ConstructorVariable(u16, u16)
 }
 
 pub struct SuperCombinator {
@@ -68,7 +73,10 @@ pub struct Compiler {
 
 impl Compiler {
     pub fn new() -> Compiler {
-        Compiler { stackSize : 0, globals : HashMap::new(), globalIndex : 0, variables: HashMap::new() }
+        let mut variables = HashMap::new();
+        variables.insert(~"[]", ConstructorVariable(0, 0));
+        variables.insert(~":", ConstructorVariable(1, 2));
+        Compiler { stackSize : 0, globals : HashMap::new(), globalIndex : 0, variables: variables }
     }
 
     pub fn compileModule(&mut self, module : &Module) -> Assembly {
@@ -151,7 +159,8 @@ impl <'a> CompilerNode<'a> {
                     Some(var) => {
                         match var {
                             &StackVariable(index) => instructions.push(Push(index)),
-                            &GlobalVariable(index) => instructions.push(PushGlobal(index))
+                            &GlobalVariable(index) => instructions.push(PushGlobal(index)),
+                            &ConstructorVariable(tag, arity) => instructions.push(Pack(tag, arity))
                         }
                     }
                 }
@@ -161,7 +170,10 @@ impl <'a> CompilerNode<'a> {
                 if !self.primitive(*func, *arg, instructions) {
                     self.compile(*arg, instructions, false);
                     self.compile(*func, instructions, strict);
-                    instructions.push(Mkap);
+                    match &instructions[instructions.len() - 1] {
+                        &Pack(_, _) => (),//The function was only the pack instruction so to do Mkap
+                        _ => instructions.push(Mkap)
+                    }
                     if strict {
                         instructions.push(Eval);
                     }
@@ -177,10 +189,36 @@ impl <'a> CompilerNode<'a> {
                     self.compile(&bind.expression, instructions, false);
                 }
                 self.compile(*body, instructions, strict);
-                instructions.push(Slide(bindings.len() as int));
+                instructions.push(Slide(bindings.len()));
             }
-            &Case(_, _) => {
-                fail!("Compiling case are not implemented")
+            &Case(ref body, ref alternatives) => {
+                self.compile(*body, instructions, strict);
+                self.newStackVar(~"");//Dummy variable for the case expression
+                let mut branches = ~[];
+                for alt in alternatives.iter() {
+                    self.compile_pattern(&alt.pattern, &mut branches, instructions);
+                }
+                for i in range(0, alternatives.len()) {
+                    let alt = &alternatives[i];
+                    
+                    //Set the jump instruction to jump to this place
+                    instructions[branches[i]] = Jump(instructions.len());
+                    
+                    let mut childScope = self.child();
+                    let num_vars = childScope.add_pattern_variables(&alt.pattern, instructions);
+                    childScope.compile(&alt.expression, instructions, strict);
+                    instructions.push(Slide(num_vars));
+                    
+                    //Reuse branches for the next Jump
+                    branches[i] = instructions.len();
+                    instructions.push(Jump(0));
+                }
+                for branch in branches.iter() {
+                    instructions[*branch] = Jump(instructions.len());
+                }
+                if strict {
+                    instructions.push(Eval);
+                }
             }
         }
     }
@@ -214,6 +252,44 @@ impl <'a> CompilerNode<'a> {
             _ => false
         }
     }
+
+    fn compile_pattern(&self, pattern: &Pattern, branches: &mut ~[uint], instructions: &mut ~[Instruction]) {
+        //TODO this is unlikely to work with nested patterns currently
+        match pattern {
+            &ConstructorPattern(ref name, ref patterns) => {
+                match self.find(*name) {
+                    Some(&ConstructorVariable(tag, _)) => {
+                        instructions.push(CaseJump(tag as uint));
+                        branches.push(instructions.len());
+                        instructions.push(Jump(0));//To be determined later
+                    }
+                    _ => fail!("Undefined constructor {}", *name)
+                }
+                for p in patterns.iter() {
+                    self.compile_pattern(p, branches, instructions);
+                }
+            }
+            _ => ()
+        }
+    }
+
+    fn add_pattern_variables(&mut self, pattern: &Pattern, instructions: &mut ~[Instruction]) -> uint {
+        match pattern {
+            &ConstructorPattern(_, ref patterns) => {
+                instructions.push(Split(patterns.len()));
+                let mut vars = 0;
+                for p in patterns.iter() {
+                    vars += self.add_pattern_variables(p, instructions);
+                }
+                vars
+            }
+            &IdentifierPattern(ref ident) => {
+                self.newStackVar(ident.clone());
+                1
+            }
+            &NumberPattern(_) => 0
+        }
+    }
 }
 
 
@@ -238,4 +314,34 @@ main = add 2 3";
     let assembly = comp.compileModule(&module);
 
     assert_eq!(assembly.superCombinators[1].n1().instructions, ~[PushInt(3), PushInt(2), PushGlobal(0), Mkap, Mkap, Update(0), Unwind]);
+}
+
+#[test]
+fn test_compile_constructor() {
+    let file =
+r"1 : []";
+    let mut parser = Parser::new(file.chars());
+    let expr = parser.expression_();
+    let mut comp = Compiler::new();
+    let instructions = comp.compileExpression(&expr);
+
+    assert_eq!(instructions, ~[Pack(0, 0), PushInt(1), Pack(1, 2)]);
+}
+
+#[test]
+fn test_compile_case() {
+    let file =
+r"case [1] of
+    : x xs -> x
+    [] -> 2";
+    let mut parser = Parser::new(file.chars());
+    let expr = parser.expression_();
+    let mut comp = Compiler::new();
+    let instructions = comp.compileExpression(&expr);
+
+    assert_eq!(instructions, ~[Pack(0, 0), PushInt(1), Pack(1, 2),
+        CaseJump(1), Jump(7),
+        CaseJump(0), Jump(11),
+        Split(2), Push(1), Slide(2), Jump(15),
+        Split(0), PushInt(2), Slide(0), Jump(15)]);
 }

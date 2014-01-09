@@ -158,6 +158,7 @@ impl <'a> VM<'a> {
                         stack.pop();
                     }
                 }
+                undefined => fail!("Use of undefined instruction {:?}", undefined)
             }
             i += 1;
         }
