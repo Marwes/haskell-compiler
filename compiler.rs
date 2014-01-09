@@ -198,6 +198,7 @@ impl <'a> CompilerNode<'a> {
                 for alt in alternatives.iter() {
                     self.compile_pattern(&alt.pattern, &mut branches, instructions);
                 }
+                self.compiler.stackSize -= 1;
                 for i in range(0, alternatives.len()) {
                     let alt = &alternatives[i];
                     
