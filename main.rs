@@ -202,8 +202,8 @@ impl <'a> VM<'a> {
 }
 
 fn primitive(stack: &mut ~[Rc<Node>], f: |int, int| -> int) {
-    let l = stack.pop();
     let r = stack.pop();
+    let l = stack.pop();
     match (l.borrow(), r.borrow()) {
         (&Int(lhs), &Int(rhs)) => stack.push(Rc::new(Int(f(lhs, rhs)))),
         (lhs, rhs) => fail!("Expected fully evaluted numbers in primitive instruction\n LHS: {:?}\nRHS: {:?} ", lhs, rhs)
