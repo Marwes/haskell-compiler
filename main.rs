@@ -5,11 +5,12 @@ extern mod extra;
 use std::hashmap::HashMap;
 use std::rc::Rc;
 use std::path::Path;
+use std::vec;
 use std::io::File;
 use std::str::{from_utf8};
 use typecheck::TypeEnvironment;
 use compiler::{Compiler, Assembly,
-    Instruction, Add, Sub, Multiply, Divide, Remainder, Push, PushGlobal, PushInt, Mkap, Eval, Unwind, Update, Pop, Slide,
+    Instruction, Add, Sub, Multiply, Divide, Remainder, Push, PushGlobal, PushInt, Mkap, Eval, Unwind, Update, Pop, Slide, Split, Pack, CaseJump, Jump,
     SuperCombinator};
 use parser::Parser;    
 
@@ -55,7 +56,8 @@ enum Node<'a> {
     Application(Rc<Node<'a>>, Rc<Node<'a>>),
     Int(int),
     Combinator(&'a SuperCombinator),
-    Indirection(Rc<Node<'a>>)
+    Indirection(Rc<Node<'a>>),
+    Constructor(u16, ~[Rc<Node<'a>>])
 }
 
 struct VM<'a> {
@@ -95,6 +97,8 @@ impl <'a> VM<'a> {
                 &PushInt(value) => { stack.push(Rc::new(Int(value))); }
                 &Push(index) => {
                     let x = stack[index].clone();
+                    debug!("Pushed {:?}", x.borrow());
+                    debug!("Stack {:?} {:?}", stack[0].borrow(), stack[1].borrow());
                     stack.push(x);
                 }
                 &PushGlobal(index) => {
@@ -150,15 +154,45 @@ impl <'a> VM<'a> {
                             stack.push(newStack.pop());
                         }
                         Indirection(node) => stack[stack.len() - 1] = node,
-                        Int(_) => ()
+                        _ => ()
                     }
                 }
                 &Slide(size) => {
+                    let top = stack.pop();
                     for _ in range(0, size) {
                         stack.pop();
                     }
+                    stack.push(top);
                 }
-                undefined => fail!("Use of undefined instruction {:?}", undefined)
+                &Split(size) => {
+                    let x = stack.pop();
+                    match x.borrow() {
+                        &Constructor(_, ref fields) => {
+                            for field in fields.iter() {
+                                stack.push(field.clone());
+                            }
+                        }
+                        _ => fail!("Expected constructor in Split instruction")
+                    }
+                }
+                &Pack(tag, arity) => {
+                    let args = std::vec::from_fn(arity as uint, |_| stack.pop());
+                    stack.push(Rc::new(Constructor(tag, args)));
+                }
+                &CaseJump(jump_tag) => {
+                    match stack[stack.len() - 1].borrow() {
+                        &Constructor(tag, _) => {
+                            if jump_tag != tag as uint {
+                                i += 1;//Skip the jump instruction
+                            }
+                        }
+                        _ => fail!("Expected constructor when executing CaseJump")
+                    }
+                }
+                &Jump(to) => {
+                    i = to - 1;
+                }
+                //undefined => fail!("Use of undefined instruction {:?}", undefined)
             }
             i += 1;
         }
