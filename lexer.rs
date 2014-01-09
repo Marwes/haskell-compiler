@@ -1,4 +1,5 @@
 extern mod extra;
+use std::fmt;
 use extra::container::Deque;
 use extra::ringbuf::RingBuf;
 use std::iter::Peekable;
@@ -38,6 +39,12 @@ pub struct Location {
     column : int,
     row : int,
     absolute : int
+}
+
+impl fmt::Default for Location {
+    fn fmt(loc: &Location, f: &mut fmt::Formatter) {
+        write!(f.buf, "{}:{}", loc.row, loc.column)
+    }
 }
 
 #[deriving(Clone)]
@@ -186,10 +193,11 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
     fn read_char(&mut self) -> Option<char> {
         match self.input.next() {
             Some(c) => {
+                let previous_was_newline = self.previousLocation.row != self.location.row;
                 self.previousLocation = self.location;
                 self.location.absolute += 1;
                 self.location.column += 1;
-                if (c == '\n' || c == '\r')
+                if (!previous_was_newline && (c == '\n' || c == '\r'))
                 {
                     self.location.column = 0;
                     self.location.row += 1;

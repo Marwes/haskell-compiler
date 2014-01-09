@@ -78,7 +78,9 @@ impl <'a> TypeScope<'a> {
             &Identifier(ref name) => {
                 match self.fresh(*name) {
                     Some(t) => *expr.typ = t,
-                    None => fail!("Undefined identifier " + *name)
+                    None => {
+                        fail!("Undefined identifier '{}' at {}", *name, expr.location);
+                    }
                 }
             }
             &Apply(ref mut func, ref mut arg) => {
