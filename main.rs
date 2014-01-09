@@ -253,8 +253,60 @@ fn main() {
     }
 }
 
+#[deriving(Eq)]
+enum VMResult {
+    IntResult(int),
+    ConstructorResult(u16, ~[VMResult])
+}
+
+#[cfg(test)]
+fn compile_iter<T : Iterator<char>>(iterator: T) -> Assembly {
+    let mut parser = Parser::new(iterator);
+    let mut module = parser.module();
+    
+    let mut typer = TypeEnvironment::new();
+    typer.typecheck_module(&mut module);
+    
+    let mut compiler = Compiler::new();
+    compiler.compileModule(&module)
+}
+
+fn extract_result(node: Node) -> Option<VMResult> {
+    match node {
+        Constructor(tag, fields) => {
+            let mut result = ~[];
+            for field in fields.iter() {
+                match extract_result(field.borrow().clone()) {
+                    Some(x) => result.push(x),
+                    None => return None
+                }
+            }
+            Some(ConstructorResult(tag, result))
+        }
+        Int(i) => Some(IntResult(i)),
+        _ => None
+    }
+}
+
+#[cfg(test)]
+fn execute_main<T : Iterator<char>>(iterator: T) -> Option<VMResult> {
+    let mut vm = VM::new();
+    vm.assembly = compile_iter(iterator);
+    let x = vm.assembly.superCombinators.iter().find(|& &(ref name, _)| *name == ~"main");
+    match x {
+        Some(&(_, ref sc)) => {
+            assert!(sc.arity == 0);
+            let result = vm.evaluate(sc.instructions);
+            extract_result(result)
+        }
+        None => None
+    }
+}
+
 #[test]
-fn test()
+fn test_primitive()
 {
-    format!("{:?}", main);
+    assert_eq!(execute_main("main = primIntAdd 10 5".chars()), Some(IntResult(15)));
+    assert_eq!(execute_main("main = primIntSubtract 7 (primIntMultiply 2 3)".chars()), Some(IntResult(1)));
+    assert_eq!(execute_main("main = primIntDivide 10 (primIntRemainder 6 4)".chars()), Some(IntResult(5)));
 }
