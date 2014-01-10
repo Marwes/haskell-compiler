@@ -345,3 +345,17 @@ main = case [mult2 123, 0] of
     [] -> 10";
     assert_eq!(execute_main(module.chars()), Some(IntResult(246)));
 }
+
+#[test]
+fn test_data_types()
+{
+    let module = 
+r"data Bool = True | False
+
+test = False
+
+main = case test of
+    False -> 0
+    True -> 1";
+    assert_eq!(execute_main(module.chars()), Some(IntResult(0)));
+}
