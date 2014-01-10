@@ -193,14 +193,18 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
     fn read_char(&mut self) -> Option<char> {
         match self.input.next() {
             Some(c) => {
-                let previous_was_newline = self.previousLocation.row != self.location.row;
                 self.previousLocation = self.location;
                 self.location.absolute += 1;
                 self.location.column += 1;
-                if (!previous_was_newline && (c == '\n' || c == '\r'))
+                if (c == '\n' || c == '\r')
                 {
                     self.location.column = 0;
                     self.location.row += 1;
+                    //If this is a \n\r line ending skip the next char without increasing the location
+                    let x = '\r';
+                    if c == '\n' && self.input.peek() == Some(&x) {
+                        self.input.next();
+                    }
                 }
                 Some(c)
             }
