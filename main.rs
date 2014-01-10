@@ -98,7 +98,9 @@ impl <'a> VM<'a> {
                 &Push(index) => {
                     let x = stack[index].clone();
                     debug!("Pushed {:?}", x.borrow());
-                    debug!("Stack {:?} {:?}", stack[0].borrow(), stack[1].borrow());
+                    for j in range(0, stack.len()) {
+                        debug!(" {}  {:?}", j, stack[j].borrow());
+                    }
                     stack.push(x);
                 }
                 &PushGlobal(index) => {
@@ -133,27 +135,41 @@ impl <'a> VM<'a> {
                             stack.push(func);
                             i -= 1;//Redo the unwind instruction
                         }
-                        Combinator(comb_ptr) => {
-                            let comb = comb_ptr;
-                            for j in range(stack.len() - (comb.arity as uint) - 1, stack.len() - 1) {
-                                stack[j] = match stack[j].borrow() {
-                                    &Application(_, ref arg) => arg.clone(),
-                                    _ => fail!("Expected Application")
-                                };
+                        Combinator(comb) => {
+                            if stack.len() - 1 < comb.arity as uint {
+                                while stack.len() > 1 {
+                                    stack.pop();
+                                }
                             }
-                            let mut newStack = ~[];
-                            for i in range(0, comb.arity as uint) {
-                                let index = stack.len() - comb.arity as uint + i - 1;
-                                newStack.push(stack[index].clone());
+                            else {
+                                for j in range(stack.len() - (comb.arity as uint) - 1, stack.len() - 1) {
+                                    stack[j] = match stack[j].borrow() {
+                                        &Application(_, ref arg) => arg.clone(),
+                                        _ => fail!("Expected Application")
+                                    };
+                                }
+                                let mut newStack = ~[];
+                                for i in range(0, comb.arity as uint) {
+                                    let index = stack.len() - i - 2;
+                                    newStack.push(stack[index].clone());
+                                }
+                                
+                                debug!("Call");
+                                for j in range(0, newStack.len()) {
+                                    debug!(" {}  {:?}", j, newStack[j].borrow());
+                                }
+                                self.execute(&mut newStack, comb.instructions);
+                                assert_eq!(newStack.len(), 1);
+                                for _ in range(0, comb.arity + 1) {
+                                    stack.pop();
+                                }
+                                stack.push(newStack.pop());
                             }
-                            self.execute(&mut newStack, comb.instructions);
-                            assert_eq!(newStack.len(), 1);
-                            for _ in range(0, comb.arity + 1) {
-                                stack.pop();
-                            }
-                            stack.push(newStack.pop());
                         }
-                        Indirection(node) => stack[stack.len() - 1] = node,
+                        Indirection(node) => {
+                            stack[stack.len() - 1] = node;
+                            i -= 1;
+                        }
                         _ => ()
                     }
                 }
@@ -272,7 +288,10 @@ fn extract_result(node: Node) -> Option<VMResult> {
             Some(ConstructorResult(tag, result))
         }
         Int(i) => Some(IntResult(i)),
-        _ => None
+        x => {
+            println!("Can't evalute result to {:?}", x);
+            None
+        }
     }
 }
 
