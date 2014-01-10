@@ -182,7 +182,7 @@ impl <'a> CompilerNode<'a> {
             &Apply(ref func, ref arg) => {
                 if !self.primitive(*func, *arg, instructions) {
                     self.compile(*arg, instructions, false);
-                    self.compile(*func, instructions, strict);
+                    self.compile(*func, instructions, false);
                     match &instructions[instructions.len() - 1] {
                         &Pack(_, _) => (),//The function was only the pack instruction so to do Mkap
                         _ => instructions.push(Mkap)
@@ -327,7 +327,7 @@ main = add 2 3";
     let mut comp = Compiler::new();
     let assembly = comp.compileModule(&module);
 
-    assert_eq!(assembly.superCombinators[1].n1().instructions, ~[PushInt(3), PushInt(2), PushGlobal(0), Mkap, Mkap, Update(0), Unwind]);
+    assert_eq!(assembly.superCombinators[1].n1().instructions, ~[PushInt(3), PushInt(2), PushGlobal(0), Mkap, Mkap, Eval, Update(0), Unwind]);
 }
 
 #[test]
