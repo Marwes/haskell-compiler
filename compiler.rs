@@ -80,6 +80,12 @@ impl Compiler {
     }
 
     pub fn compileModule(&mut self, module : &Module) -> Assembly {
+        
+        for dataDef in module.dataDefinitions.iter() {
+            for ctor in dataDef.constructors.iter() {
+                self.variables.insert(ctor.name.clone(), ConstructorVariable(ctor.tag as u16, ctor.arity as u16));
+            }
+        }
         //TODO
         let mut superCombinators = ~[];
         for bind in module.bindings.iter() {
@@ -146,6 +152,10 @@ impl <'a> CompilerNode<'a> {
         self.stack.insert(identifier, StackVariable(self.compiler.stackSize));
         self.compiler.stackSize += 1;
     }
+    fn removeStackVar(&mut self, identifier : &~str) {
+        self.stack.variables.remove(identifier);
+        self.compiler.stackSize -= 1;
+    }
 
     fn child(&'a self) -> CompilerNode<'a> {
         CompilerNode { compiler: self.compiler, stack : self.stack.child() }
@@ -198,7 +208,7 @@ impl <'a> CompilerNode<'a> {
                 for alt in alternatives.iter() {
                     self.compile_pattern(&alt.pattern, &mut branches, instructions);
                 }
-                self.compiler.stackSize -= 1;
+                self.removeStackVar(&~"");
                 for i in range(0, alternatives.len()) {
                     let alt = &alternatives[i];
                     

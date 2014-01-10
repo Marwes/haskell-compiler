@@ -84,6 +84,7 @@ impl <'a> VM<'a> {
         for x in stack.iter() {
             debug!("{:?}", x.borrow());
         }
+        debug!("");
         let mut i = 0;
         while i < code.len() {
             debug!("Executing instruction : {:?}", code[i]);
