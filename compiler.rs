@@ -103,13 +103,13 @@ impl Compiler {
         let mut stack = CompilerNode { compiler: self, stack: Scope::new() };
         match &expr.expr {
             &Lambda(_, _) => {
-                stack.compile(expr, &mut comb.instructions, false);
+                stack.compile(expr, &mut comb.instructions, true);
                 comb.instructions.push(Update(0));
                 comb.instructions.push(Pop(comb.arity));
                 comb.instructions.push(Unwind);
             }
             _ => {
-                stack.compile(expr, &mut comb.instructions, false);
+                stack.compile(expr, &mut comb.instructions, true);
                 comb.instructions.push(Update(0));
                 comb.instructions.push(Unwind);
             }
@@ -173,6 +173,9 @@ impl <'a> CompilerNode<'a> {
                             &ConstructorVariable(tag, arity) => instructions.push(Pack(tag, arity))
                         }
                     }
+                }
+                if strict {
+                    instructions.push(Eval);
                 }
             }
             &Number(num) => instructions.push(PushInt(num)),
