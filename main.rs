@@ -316,3 +316,32 @@ fn test_primitive()
     assert_eq!(execute_main("main = primIntSubtract 7 (primIntMultiply 2 3)".chars()), Some(IntResult(1)));
     assert_eq!(execute_main("main = primIntDivide 10 (primIntRemainder 6 4)".chars()), Some(IntResult(5)));
 }
+
+#[test]
+fn test_function()
+{
+    let module = 
+r"mult2 x = primIntMultiply x 2
+
+main = mult2 10";
+    assert_eq!(execute_main(module.chars()), Some(IntResult(20)));
+
+    let module2 = 
+r"mult2 x = primIntMultiply x 2
+
+add x y = primIntAdd y x
+
+main = add 3 (mult2 10)";
+    assert_eq!(execute_main(module2.chars()), Some(IntResult(23)));
+}
+#[test]
+fn test_case()
+{
+    let module = 
+r"mult2 x = primIntMultiply x 2
+
+main = case [mult2 123, 0] of
+    : x xs -> x
+    [] -> 10";
+    assert_eq!(execute_main(module.chars()), Some(IntResult(246)));
+}
