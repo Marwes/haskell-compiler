@@ -16,6 +16,7 @@ fn new_ptr(t: Type) -> TypePtr {
 pub struct TypeEnvironment {
     namedTypes : HashMap<~str, Rc<RefCell<Type>>>,
     types : ~[Rc<RefCell<Type>>],
+    constraints: HashMap<TypeVariable, ~[TypeOperator]>,
     variableIndex : TypeVariable
 }
 
@@ -24,6 +25,11 @@ struct TypeScope<'a> {
     env: &'a mut TypeEnvironment,
     parent: Option<&'a TypeScope<'a>>,
     non_generic: ~[Rc<RefCell<Type>>]
+}
+
+struct Substitution {
+    subs: HashMap<TypeVariable, Type>,
+    constraints: HashMap<TypeVariable, ~[TypeOperator]>
 }
 
 impl TypeEnvironment {
@@ -40,7 +46,11 @@ impl TypeEnvironment {
         let list = Type::new_op(~"[]", ~[list_var.clone()]);
         globals.insert(~"[]", new_ptr(list.clone()));
         globals.insert(~":", new_ptr(function_type(&list_var, &function_type(&list, &list))));
-        TypeEnvironment { namedTypes : globals, types : ~[] , variableIndex : TypeVariable { id : 0 } }
+        TypeEnvironment {
+            namedTypes : globals,
+            types : ~[] ,
+            constraints: HashMap::new(),
+            variableIndex : TypeVariable { id : 0 } }
     }
 
     pub fn typecheck_module(&mut self, module: &mut Module) {
@@ -59,7 +69,7 @@ impl TypeEnvironment {
         scope.typecheck(expr)
     }
 
-    fn substitute(&mut self, subs : &HashMap<TypeVariable, Type>) {
+    fn substitute(&mut self, subs : &Substitution) {
         for t in self.types.iter() {
             let mut typ = t.borrow().borrow_mut();
             replace(typ.get(), subs);
@@ -181,7 +191,7 @@ impl <'a> TypeScope<'a> {
 
                 let subs = unify(self.env, &data_type, match_type);
                 self.env.substitute(&subs);
-                replace(match_type, &subs);
+                replace(&mut self.env.constraints, match_type, &subs);
             }
         }
     }
@@ -282,6 +292,44 @@ fn get_returntype(typ: &Type) -> Type {
     }
 }
 
+fn update_constraints(constraints: &mut HashMap<TypeVariable, ~[TypeOperator]>, old: &TypeVariable, new: &Type, subs: &Substitution) {
+    match new {
+        &TypeVariable(new_var) => {
+            match subs.constraints.find(old) {
+                Some(subs_constraints) => {
+                    let to_update = constraints.find_or_insert(new_var, ~[]);
+                    for c in subs_constraints.iter() {
+                        if to_update.iter().find(|x| *x == c) == None {
+                            to_update.push(c.clone());
+                        }
+                    }
+                }
+                None => ()
+            }
+        }
+        _ => ()
+    }
+}
+
+fn replace(constraints: &mut HashMap<TypeVariable, ~[TypeOperator]>, old : &mut Type, subs : &Substitution) {
+    match old {
+        &TypeVariable(id) => {
+            match subs.subs.find(&id) {
+                Some(new) => {
+                    *old = new.clone();
+                    update_constraints(constraints, &id, new, subs);
+                }
+                None => ()
+            }
+        }
+        &TypeOperator(ref mut op) => {
+            for t in op.types.mut_iter() {
+                replace(constraints, t, subs); 
+            }
+        }
+    }
+}
+
 fn occurs(type_var: &TypeVariable, inType: &Type) -> bool {
     match inType {
         &TypeVariable(var) => type_var.id == var.id,
@@ -306,34 +354,22 @@ fn freshen(env: &TypeScope, mapping: &mut HashMap<TypeVariable, Type>, typ: &Typ
     }
 }
 
-fn replace(old : &mut Type, subs : &HashMap<TypeVariable, Type>) {
-    match old {
-        &TypeVariable(id) => {
-            match subs.find(&id) {
-                Some(new) => { *old = new.clone() }
-                None => ()
-            }
-        }
-        &TypeOperator(ref mut op) => {
-            for t in op.types.mut_iter() {
-                replace(t, subs); 
-            }
-        }
-    }
-}
-
-fn unify(env : &mut TypeEnvironment, lhs : &Type, rhs : &Type) -> HashMap<TypeVariable, Type> {
-    let mut subs = HashMap::new();
+fn unify(env : &mut TypeEnvironment, lhs : &Type, rhs : &Type) -> Substitution {
+    let mut subs = Substitution { subs: HashMap::new(), constraints: HashMap::new() };
     unify_(env, &mut subs, lhs, rhs);
     subs
 }
-fn unify_(env : &mut TypeEnvironment, subs : &mut HashMap<TypeVariable, Type>, lhs : &Type, rhs : &Type) {
+fn unify_(env : &mut TypeEnvironment, subs : &mut Substitution, lhs : &Type, rhs : &Type) {
     match (lhs, rhs) {
         (&TypeVariable(lid), &TypeVariable(rid)) => {
             if lid != rid {
                 let mut t = TypeVariable(rid);
-                replace(&mut t, subs);
-                subs.insert(lid, t);
+                replace(&mut env.constraints, &mut t, subs);
+                subs.subs.insert(lid, t);
+                match env.constraints.pop(&lid) {
+                    Some(constraints) => { subs.constraints.insert(lid, constraints); }
+                    None => ()
+                }
             }
         }
         (&TypeOperator(ref l), &TypeOperator(ref r)) => {
@@ -349,8 +385,8 @@ fn unify_(env : &mut TypeEnvironment, subs : &mut HashMap<TypeVariable, Type>, l
                 fail!("Recursive unification");
             }
             let mut t = (*rhs).clone();
-            replace(&mut t, subs);
-            subs.insert(lid, t);
+            replace(&mut env.constraints, &mut t, subs);
+            subs.subs.insert(lid, t);
         }
         _ => { unify_(env, subs, rhs, lhs); }
     }
@@ -542,4 +578,21 @@ in b".chars());
         }
         _ => fail!("Error")
     }
+}
+
+#[test]
+fn typecheck_constraints() {
+    let mut parser = Parser::new(
+r"class Test a where
+    test :: a -> Int
+
+instance Test Int where
+    test x = 10
+
+main = test 1".chars());
+
+    let mut module = parser.module();
+
+    let mut env = TypeEnvironment::new();
+    env.typecheck_module(&mut module);
 }
