@@ -1,3 +1,5 @@
+use std::rc::Rc;
+use std::cell::RefCell;
 use std::fmt;
 use std::hashmap::HashMap;
 use lexer::Location;
@@ -24,7 +26,7 @@ pub struct Instance {
 #[deriving(Eq)]
 pub struct Binding {
     name : ~str,
-    expression : Typed<Expr>,
+    expression : TypedExpr,
     typeDecl : TypeDeclaration,
     arity : int
 }
@@ -115,37 +117,37 @@ impl Type {
     }
 }
 
-pub struct Typed<T> {
-    expr : T,
-    typ : @mut Type,
+pub struct TypedExpr {
+    expr : Expr,
+    typ : Rc<RefCell<Type>>,
     location : Location
 }
 
-impl <T : Eq> Eq for Typed<T> {
-    fn eq(&self, other : &Typed<T>) -> bool {
+impl Eq for TypedExpr {
+    fn eq(&self, other : &TypedExpr) -> bool {
         self.expr == other.expr
     }
 }
 
-impl <T : fmt::Default> fmt::Default for ~Typed<T> {
-    fn fmt(expr: &~Typed<T>, f: &mut fmt::Formatter) {
+impl fmt::Default for ~TypedExpr {
+    fn fmt(expr: &~TypedExpr, f: &mut fmt::Formatter) {
         write!(f.buf, "{}", expr.expr)
     }
 }
 
-impl <T> Typed<T> {
-    pub fn new(expr : T) -> Typed<T> {
-        Typed { expr : expr, typ : @mut TypeVariable(TypeVariable { id : 0 }), location : Location { column : -1, row : -1, absolute : -1 } }
+impl TypedExpr {
+    pub fn new(expr : Expr) -> TypedExpr {
+        TypedExpr { expr : expr, typ : Rc::from_mut(RefCell::new(TypeVariable(TypeVariable { id : 0 }))), location : Location { column : -1, row : -1, absolute : -1 } }
     }
-    pub fn with_location(expr : T, loc : Location) -> Typed<T> {
-        Typed { expr : expr, typ : @mut TypeVariable(TypeVariable { id : 0 }), location : loc }
+    pub fn with_location(expr : Expr, loc : Location) -> TypedExpr {
+        TypedExpr { expr : expr, typ : Rc::from_mut(RefCell::new(TypeVariable(TypeVariable { id : 0 }))), location : loc }
     }
 }
 
 #[deriving(Eq)]
 pub struct Alternative {
     pattern : Pattern,
-    expression : Typed<Expr>
+    expression : TypedExpr
 }
 
 #[deriving(Eq)]
@@ -158,11 +160,11 @@ pub enum Pattern {
 #[deriving(Eq)]
 pub enum Expr {
     Identifier(~str),
-    Apply(~Typed<Expr>, ~Typed<Expr>),
+    Apply(~TypedExpr, ~TypedExpr),
     Number(int),
-    Lambda(~str, ~Typed<Expr>),
-    Let(~[Binding], ~Typed<Expr>),
-    Case(~Typed<Expr>, ~[Alternative])
+    Lambda(~str, ~TypedExpr),
+    Let(~[Binding], ~TypedExpr),
+    Case(~TypedExpr, ~[Alternative])
 }
 
 impl fmt::Default for Expr {

@@ -1,5 +1,5 @@
 use std::hashmap::HashMap;
-use module::{Type, TypeVariable, TypeOperator, Expr, Identifier, Number, Apply, Lambda, Let, Case, Typed, Alternative, Module, Class, Instance, Binding, DataDefinition, Constructor, TypeDeclaration,
+use module::{Type, TypeVariable, TypeOperator, Expr, Identifier, Number, Apply, Lambda, Let, Case, TypedExpr, Alternative, Module, Class, Instance, Binding, DataDefinition, Constructor, TypeDeclaration,
     Pattern, ConstructorPattern, NumberPattern, IdentifierPattern};
 use Scope;
 
@@ -96,7 +96,7 @@ impl Compiler {
         }
         Assembly { superCombinators: superCombinators }
     }
-    fn compileBinding<'a>(&mut self, arity : int, expr : &Typed<Expr>) -> SuperCombinator {
+    fn compileBinding<'a>(&mut self, arity : int, expr : &TypedExpr) -> SuperCombinator {
 
         let mut comb = SuperCombinator::new();
         comb.arity = arity;
@@ -116,7 +116,7 @@ impl Compiler {
        }
        comb
     }
-    pub fn compileExpression(&mut self, expr: &Typed<Expr>) -> ~[Instruction] {
+    pub fn compileExpression(&mut self, expr: &TypedExpr) -> ~[Instruction] {
         let mut stack = CompilerNode { compiler: self, stack: Scope::new() };
         let mut instructions = ~[];
         stack.compile(expr, &mut instructions, false);
@@ -161,7 +161,7 @@ impl <'a> CompilerNode<'a> {
         CompilerNode { compiler: self.compiler, stack : self.stack.child() }
     }
 
-    fn compile<'a>(&mut self, expr : &Typed<Expr>, instructions : &mut ~[Instruction], strict: bool) {
+    fn compile<'a>(&mut self, expr : &TypedExpr, instructions : &mut ~[Instruction], strict: bool) {
         match &expr.expr {
             &Identifier(ref name) => {
                 match self.find(*name) {
@@ -237,7 +237,7 @@ impl <'a> CompilerNode<'a> {
         }
     }
 
-    fn primitive(&mut self, func: &Typed<Expr>, arg: &Typed<Expr>, instructions: &mut ~[Instruction]) -> bool {
+    fn primitive(&mut self, func: &TypedExpr, arg: &TypedExpr, instructions: &mut ~[Instruction]) -> bool {
         match &func.expr {
             &Apply(ref prim_func, ref arg2) => {
                 match &prim_func.expr {
