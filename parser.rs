@@ -906,7 +906,7 @@ fn ParseError<Iter : Iterator<char>>(lexer : &Lexer<Iter>, expected : TokenEnum)
     format!("Expected {:?} but found {:?}\\{{:?}\\}, at {}", expected, lexer.current().token, lexer.current().value, lexer.current().location)
 }
 fn encodeBindingIdentifier(instancename : &str, bindingname : &str) -> ~str {
-    fail!("Unimplemented function encodeBinding " + instancename + " " + bindingname);
+    "#" + instancename.clone() + bindingname.clone()
 }
 
 
