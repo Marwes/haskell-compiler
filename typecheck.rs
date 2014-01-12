@@ -651,6 +651,36 @@ main = test 1".chars());
     let typ = &module.bindings[0].expression.typ.borrow().borrow();
     assert_eq!(typ.get(), &Type::new_op(~"Int", ~[]));
 }
+
+//Test that calling a function with constraints will propagate the constraints to
+//the type of the caller
+#[test]
+fn typecheck_constraints2() {
+    let mut parser = Parser::new(
+r"class Test a where
+    test :: a -> Int
+
+instance Test Int where
+    test x = 10
+
+main x y = primIntAdd (test x) (test y)".chars());
+
+    let mut module = parser.module();
+
+    let mut env = TypeEnvironment::new();
+    env.typecheck_module(&mut module);
+
+    let typ = &module.bindings[0].expression.typ.borrow().borrow();
+    let int_type = Type::new_op(~"Int", ~[]);
+    let test = function_type(&Type::new_var(-1),  &function_type(&Type::new_var(-2), &int_type));
+    assert_eq!(typ.get(), &test);
+    let op = typ.get().op();
+    let test_cons = ~[~"Test"];
+    assert_eq!(env.constraints.find(op.types[0].var()), Some(&test_cons));
+    let second_fn = op.types[1].op();
+    assert_eq!(env.constraints.find(second_fn.types[0].var()), Some(&test_cons));
+}
+
 #[test]
 #[should_fail]
 fn typecheck_constraints_no_instance() {

@@ -116,6 +116,19 @@ impl Type {
     pub fn new_op(name : ~str, types : ~[Type]) -> Type {
         TypeOperator(TypeOperator { name : name, types : types })
     }
+
+    pub fn var<'a>(&'a self) -> &'a TypeVariable {
+        match self {
+            &TypeVariable(ref var) => var,
+            _ => fail!("Tried to unwrap TypeOperator as a TypeVariable")
+        }
+    }
+    pub fn op<'a>(&'a self) -> &'a TypeOperator {
+        match self {
+            &TypeOperator(ref op) => op,
+            _ => fail!("Tried to unwrap TypeVariable as a TypeOperator")
+        }
+    }
 }
 
 pub struct TypedExpr {
