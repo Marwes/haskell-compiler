@@ -72,7 +72,7 @@ impl TypeEnvironment {
     fn substitute(&mut self, subs : &Substitution) {
         for t in self.types.iter() {
             let mut typ = t.borrow().borrow_mut();
-            replace(typ.get(), subs);
+            replace(&mut self.constraints, typ.get(), subs);
         }
     }
 
@@ -110,13 +110,15 @@ impl <'a> TypeScope<'a> {
                         name : ~"->", types : ~[arg_type, self.env.new_var()]
                     });
                 });
-
-                let func_type = func.typ.borrow().borrow();
-                let expr_type = expr.typ.borrow().borrow();
-                let subs = unify(self.env, func_type.get(), expr_type.get());
+                
+                let subs = {
+                    let func_type = func.typ.borrow().borrow();
+                    let expr_type = expr.typ.borrow().borrow();
+                    unify(self.env, func_type.get(), expr_type.get())
+                };
                 self.env.substitute(&subs);
                 expr.typ.borrow().with_mut(|typ| {
-                    *typ = match expr_type.get() {
+                    *typ = match typ {
                         &TypeOperator(ref t) => t.types[1].clone(),
                         _ => fail!("Can't happen")
                     };
@@ -150,16 +152,18 @@ impl <'a> TypeScope<'a> {
             }
             &Case(ref mut case_expr, ref mut alts) => {
                 self.typecheck(*case_expr);
-                let match_type = case_expr.typ.borrow().borrow();
-                self.typecheck_pattern(&alts[0].pattern, &mut (*match_type.get()).clone());
+                let mut match_type = case_expr.typ.borrow().with(|t| t.clone());
+                self.typecheck_pattern(&alts[0].pattern, &mut match_type);
                 self.typecheck(&mut alts[0].expression);
                 let alt0_ = alts[0].expression.typ.clone();
-                let alt0_type = alt0_.borrow().borrow();
                 for alt in alts.mut_iter().skip(1) {
-                    self.typecheck_pattern(&alt.pattern, &mut (*match_type.get()).clone());
+                    self.typecheck_pattern(&alt.pattern, &mut match_type);
                     self.typecheck(&mut alt.expression);
-                    let mut alt_type = alt.expression.typ.borrow().borrow();
-                    let subs = unify(self.env, alt_type.get(), alt0_type.get());
+                    let subs = {
+                        let alt0_type = alt0_.borrow().borrow();
+                        let mut alt_type = alt.expression.typ.borrow().borrow();
+                        unify(self.env, alt_type.get(), alt0_type.get())
+                    };
                     self.env.substitute(&subs);
                 }
                 expr.typ = alts[0].expression.typ.clone();
@@ -173,10 +177,12 @@ impl <'a> TypeScope<'a> {
                 let typ = new_ptr(self.env.new_var());
                 self.insert(ident.clone(), &typ);
                 {
-                    let t = typ.borrow().borrow();
-                    let subs = unify(self.env, t.get(), match_type);
+                    let subs = {
+                        let t = typ.borrow().borrow();
+                        unify(self.env, t.get(), match_type)
+                    };
                     self.env.substitute(&subs);
-                    replace(match_type, &subs);
+                    replace(&mut self.env.constraints, match_type, &subs);
                 }
                 self.non_generic.push(typ);
             }
