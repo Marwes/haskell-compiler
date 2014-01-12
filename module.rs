@@ -14,6 +14,7 @@ pub struct Module {
 
 pub struct Class {
     name : ~str,
+    variable: TypeVariable,
     declarations : ~[TypeDeclaration]
 }
 

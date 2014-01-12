@@ -156,7 +156,7 @@ fn class(&mut self) -> Class {
 	self.lexer.backtrack();
 	self.requireNext(RBRACE);
 
-	Class { name : classname, declarations : declarations }
+	Class { name : classname, variable: typeVariable, declarations : declarations }
 }
 
 fn instance(&mut self) -> Instance {
