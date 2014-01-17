@@ -236,7 +236,7 @@ fn main() {
             let mut type_env = TypeEnvironment::new();
             type_env.typecheck(&mut expr);
             
-            let mut compiler = Compiler::new();
+            let mut compiler = Compiler::new(&type_env);
             let instr = compiler.compileExpression(&expr);
 
             let vm = VM::new();
@@ -271,7 +271,7 @@ fn compile_iter<T : Iterator<char>>(iterator: T) -> Assembly {
     let mut typer = TypeEnvironment::new();
     typer.typecheck_module(&mut module);
     
-    let mut compiler = Compiler::new();
+    let mut compiler = Compiler::new(&typer);
     compiler.compileModule(&module)
 }
 

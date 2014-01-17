@@ -54,7 +54,7 @@ pub struct TypeDeclaration {
     name : ~str
 }
 
-#[deriving(Clone, Default, ToStr)]
+#[deriving(Clone, Default, ToStr, IterBytes)]
 pub struct TypeOperator {
     name : ~str,
     types : ~[Type]
@@ -63,7 +63,7 @@ pub struct TypeOperator {
 pub struct TypeVariable {
     id : int
 }
-#[deriving(Clone, ToStr)]
+#[deriving(Clone, ToStr, IterBytes)]
 pub enum Type {
     TypeVariable(TypeVariable),
     TypeOperator(TypeOperator)

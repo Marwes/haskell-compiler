@@ -2,6 +2,7 @@ use std::hashmap::HashMap;
 use module::{Type, TypeVariable, TypeOperator, Expr, Identifier, Number, Apply, Lambda, Let, Case, TypedExpr, Alternative, Module, Class, Instance, Binding, DataDefinition, Constructor, TypeDeclaration,
     Pattern, ConstructorPattern, NumberPattern, IdentifierPattern};
 use Scope;
+use typecheck::{TypeEnvironment};
 
 #[cfg(test)]
 use parser::Parser;
@@ -33,7 +34,8 @@ pub enum Instruction {
 enum Var {
     StackVariable(int),
     GlobalVariable(int),
-    ConstructorVariable(u16, u16)
+    ConstructorVariable(u16, u16),
+    ClassVariable(Type, TypeVariable)
 }
 
 pub struct SuperCombinator {
@@ -63,7 +65,9 @@ impl Assembly {
     }
 }
 
-pub struct Compiler {
+pub struct Compiler<'a> {
+    type_env: &'a TypeEnvironment,
+    class_dictionaries: HashMap<TypeOperator, ~[~str]>,
     stackSize : int,
     globals : HashMap<~str, SuperCombinator>,
     variables: HashMap<~str, Var>,
@@ -71,12 +75,13 @@ pub struct Compiler {
 }
 
 
-impl Compiler {
-    pub fn new() -> Compiler {
+impl <'a> Compiler<'a> {
+    pub fn new(type_env: &'a TypeEnvironment) -> Compiler<'a> {
         let mut variables = HashMap::new();
         variables.insert(~"[]", ConstructorVariable(0, 0));
         variables.insert(~":", ConstructorVariable(1, 2));
-        Compiler { stackSize : 0, globals : HashMap::new(), globalIndex : 0, variables: variables }
+        Compiler { type_env: type_env, class_dictionaries: HashMap::new(),
+            stackSize : 0, globals : HashMap::new(), globalIndex : 0, variables: variables }
     }
 
     pub fn compileModule(&mut self, module : &Module) -> Assembly {
@@ -86,30 +91,44 @@ impl Compiler {
                 self.variables.insert(ctor.name.clone(), ConstructorVariable(ctor.tag as u16, ctor.arity as u16));
             }
         }
-        //TODO
+        
+        for class in module.classes.iter() {
+            for decl in class.declarations.iter() {
+                self.variables.insert(decl.name.clone(), ClassVariable(decl.typ.clone(), class.variable));
+            }
+        }
+
         let mut superCombinators = ~[];
+        for instance in module.instances.iter() {
+            for bind in instance.bindings.iter() {
+                self.variables.insert(bind.name.clone(), GlobalVariable(self.globalIndex));
+                self.globalIndex += 1;
+                let sc = self.compileBinding(bind);
+                superCombinators.push((bind.name.clone(), sc));
+            }
+        }
         for bind in module.bindings.iter() {
             self.variables.insert(bind.name.clone(), GlobalVariable(self.globalIndex));
             self.globalIndex += 1;
-            let sc = self.compileBinding(bind.arity, &bind.expression);
+            let sc = self.compileBinding(bind);
             superCombinators.push((bind.name.clone(), sc));
         }
         Assembly { superCombinators: superCombinators }
     }
-    fn compileBinding<'a>(&mut self, arity : int, expr : &TypedExpr) -> SuperCombinator {
-
+    fn compileBinding<'a>(&mut self, bind : &Binding) -> SuperCombinator {
+        debug!("Compiling binding {}", bind.name);
         let mut comb = SuperCombinator::new();
-        comb.arity = arity;
-        let mut stack = CompilerNode { compiler: self, stack: Scope::new() };
-        match &expr.expr {
+        comb.arity = bind.arity;
+        let mut stack = CompilerNode { compiler: self, stack: Scope::new(), constraints: bind.typeDecl.context };
+        match &bind.expression.expr {
             &Lambda(_, _) => {
-                stack.compile(expr, &mut comb.instructions, true);
+                stack.compile(&bind.expression, &mut comb.instructions, true);
                 comb.instructions.push(Update(0));
-                comb.instructions.push(Pop(comb.arity));
+                comb.instructions.push(Pop(bind.arity));
                 comb.instructions.push(Unwind);
             }
             _ => {
-                stack.compile(expr, &mut comb.instructions, true);
+                stack.compile(&bind.expression, &mut comb.instructions, true);
                 comb.instructions.push(Update(0));
                 comb.instructions.push(Unwind);
             }
@@ -117,7 +136,7 @@ impl Compiler {
        comb
     }
     pub fn compileExpression(&mut self, expr: &TypedExpr) -> ~[Instruction] {
-        let mut stack = CompilerNode { compiler: self, stack: Scope::new() };
+        let mut stack = CompilerNode { compiler: self, stack: Scope::new(), constraints: ~[] };
         let mut instructions = ~[];
         stack.compile(expr, &mut instructions, false);
         instructions
@@ -125,21 +144,22 @@ impl Compiler {
 
 }
 
-struct CompilerNode<'a> {
+struct CompilerNode<'a, 'b> {
     stack: Scope<'a, Var>,
-    compiler: &'a mut Compiler
+    compiler: &'a mut Compiler<'b>,
+    constraints: &'a [TypeOperator]
 }
 
 //CompilerNode are only used locally and the destructor are just to reduce the stack size
 //so this should be safe(?)
 #[unsafe_destructor]
-impl <'a> Drop for CompilerNode<'a> {
+impl <'a, 'b> Drop for CompilerNode<'a, 'b> {
     fn drop(&mut self) {
         self.compiler.stackSize -= self.stack.variables.len() as int;
     }
 }
 
-impl <'a> CompilerNode<'a> {
+impl <'a, 'b> CompilerNode<'a, 'b> {
     
     fn find(&'a self, identifier : &str) -> Option<&'a Var> {
        match self.stack.find(identifier) {
@@ -157,8 +177,8 @@ impl <'a> CompilerNode<'a> {
         self.compiler.stackSize -= 1;
     }
 
-    fn child(&'a self) -> CompilerNode<'a> {
-        CompilerNode { compiler: self.compiler, stack : self.stack.child() }
+    fn child(&'a self) -> CompilerNode<'a, 'b> {
+        CompilerNode { compiler: self.compiler, stack : self.stack.child(), constraints: self.constraints }
     }
 
     fn compile<'a>(&mut self, expr : &TypedExpr, instructions : &mut ~[Instruction], strict: bool) {
@@ -170,7 +190,24 @@ impl <'a> CompilerNode<'a> {
                         match var {
                             &StackVariable(index) => instructions.push(Push(index)),
                             &GlobalVariable(index) => instructions.push(PushGlobal(index)),
-                            &ConstructorVariable(tag, arity) => instructions.push(Pack(tag, arity))
+                            &ConstructorVariable(tag, arity) => instructions.push(Pack(tag, arity)),
+                            &ClassVariable(ref typ, ref var) => {
+                                let actual_type = expr.typ.borrow().borrow();
+                                match try_find_instance_type(var, typ, actual_type.get()) {
+                                    Some(typename) => {
+                                        let instance_fn_name = "#" + typename + *name;
+                                        match self.find(instance_fn_name) {
+                                            Some(&GlobalVariable(index)) => {
+                                                instructions.push(PushGlobal(index));
+                                            }
+                                            _ => fail!("Unregistered instance function {}", instance_fn_name)
+                                        }
+                                    }
+                                    None => {
+                                        fail!("Unspecialized functions are not implemented")
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -179,18 +216,9 @@ impl <'a> CompilerNode<'a> {
                 }
             }
             &Number(num) => instructions.push(PushInt(num)),
-            &Apply(ref func, ref arg) => {
-                if !self.primitive(*func, *arg, instructions) {
-                    self.compile(*arg, instructions, false);
-                    self.compile(*func, instructions, false);
-                    match &instructions[instructions.len() - 1] {
-                        &Pack(_, _) => (),//The function was only the pack instruction so to do Mkap
-                        _ => instructions.push(Mkap)
-                    }
-                    if strict {
-                        instructions.push(Eval);
-                    }
-                }
+            &Apply(ref func, _) => {
+                let is_instance_function = self.try_instance_function(*func, instructions);
+                self.compile_apply(expr, instructions, strict);
             }
             &Lambda(ref varname, ref body) => {
                 self.newStackVar(varname.clone());
@@ -234,6 +262,25 @@ impl <'a> CompilerNode<'a> {
                     instructions.push(Eval);
                 }
             }
+        }
+    }
+
+    fn compile_apply(&mut self, expr: &TypedExpr, instructions: &mut ~[Instruction], strict: bool) {
+        match &expr.expr {
+            &Apply(ref func, ref arg) => {
+                if !self.primitive(*func, *arg, instructions) {
+                    self.compile(*arg, instructions, false);
+                    self.compile_apply(*func, instructions, false);
+                    match &instructions[instructions.len() - 1] {
+                        &Pack(_, _) => (),//The function was only the pack instruction so to do Mkap
+                        _ => instructions.push(Mkap)
+                    }
+                    if strict {
+                        instructions.push(Eval);
+                    }
+                }
+            }
+            _ => self.compile(expr, instructions, strict)
         }
     }
 
@@ -304,14 +351,81 @@ impl <'a> CompilerNode<'a> {
             &NumberPattern(_) => 0
         }
     }
+
+    fn try_instance_function(&mut self, expr: &TypedExpr, instructions: &mut ~[Instruction]) -> bool {
+        match &expr.expr {
+            &Identifier(ref ident) => {
+                self.compiler.type_env.find(*ident).map_or(false,
+                |typ| {
+                    let constraints = self.compiler.type_env.find_constraints(&typ);
+                    if constraints.len() == 0 {
+                        return false;
+                    }
+                    match self.find(&"$dict") {
+                        Some(&StackVariable(index)) => {
+                        }
+                        _ => {
+                            
+                        }
+                    }
+                    true
+                })
+            }
+            _ => false
+        }
+    }
+
+    fn find_instance_member(&self, function_name: &str) -> Option<uint> {
+        for constraint in self.constraints.iter() {
+            let x = self.compiler.class_dictionaries.find(constraint).map_or(None,
+                |functions:&~[~str]| {
+                for i in range(0, functions.len()) {
+                    if functions[i].equiv(&function_name) {
+                        return Some(i);
+                    }
+                }
+                None
+            });
+            if x != None {
+                return x;
+            }
+        }
+        None
+    }
+
 }
 
+fn try_find_instance_type<'a>(class_var: &TypeVariable, class_type: &Type, actual_type: &'a Type) -> Option<&'a str> {
+    match (class_type, actual_type) {
+        (&TypeVariable(ref var), &TypeOperator(ref actual_op)) => {
+            if var == class_var {
+                //Found the class variable so return the name of the type
+                let x : &str = actual_op.name;
+                return Some(x)
+            }
+            None
+        }
+        (&TypeOperator(ref class_op), &TypeOperator(ref actual_op)) => {
+            assert_eq!(class_op.name, actual_op.name);
+            assert_eq!(class_op.types.len(), class_op.types.len());
+            for ii in range(0, class_op.types.len()) {
+                let result = try_find_instance_type(class_var, &class_op.types[ii], &actual_op.types[ii]);
+                if result != None {
+                    return result;
+                }
+            }
+            None
+        }
+        _ => None
+    }
+}
 
 
 #[test]
 fn test_add() {
     let e = apply(apply(identifier(~"primIntAdd"), number(1)), number(2));
-    let mut comp = Compiler::new();
+    let mut type_env = TypeEnvironment::new();
+    let mut comp = Compiler::new(&type_env);
     let instr = comp.compileExpression(&e);
 
     assert_eq!(instr, ~[PushInt(1), PushInt(2), Add]);
@@ -324,7 +438,8 @@ r"add x y = primIntAdd x y
 main = add 2 3";
     let mut parser = Parser::new(file.chars());
     let module = parser.module();
-    let mut comp = Compiler::new();
+    let mut type_env = TypeEnvironment::new();
+    let mut comp = Compiler::new(&type_env);
     let assembly = comp.compileModule(&module);
 
     assert_eq!(assembly.superCombinators[1].n1().instructions, ~[PushInt(3), PushInt(2), PushGlobal(0), Mkap, Mkap, Eval, Update(0), Unwind]);
@@ -336,7 +451,8 @@ fn test_compile_constructor() {
 r"1 : []";
     let mut parser = Parser::new(file.chars());
     let expr = parser.expression_();
-    let mut comp = Compiler::new();
+    let mut type_env = TypeEnvironment::new();
+    let mut comp = Compiler::new(&type_env);
     let instructions = comp.compileExpression(&expr);
 
     assert_eq!(instructions, ~[Pack(0, 0), PushInt(1), Pack(1, 2)]);
@@ -350,7 +466,8 @@ r"case [1] of
     [] -> 2";
     let mut parser = Parser::new(file.chars());
     let expr = parser.expression_();
-    let mut comp = Compiler::new();
+    let mut type_env = TypeEnvironment::new();
+    let mut comp = Compiler::new(&type_env);
     let instructions = comp.compileExpression(&expr);
 
     assert_eq!(instructions, ~[Pack(0, 0), PushInt(1), Pack(1, 2),
@@ -358,4 +475,26 @@ r"case [1] of
         CaseJump(0), Jump(11),
         Split(2), Push(0), Slide(2), Jump(15),
         Split(0), PushInt(2), Slide(0), Jump(15)]);
+}
+
+#[test]
+fn test_compile_class_constraints() {
+    let file =
+r"class Test a where
+    test :: a -> Int
+
+instance Test Int where
+    test x = x
+
+main = test 6";
+    let mut parser = Parser::new(file.chars());
+    let mut module = parser.module();
+    let mut type_env = TypeEnvironment::new();
+    type_env.typecheck_module(&mut module);
+    let mut comp = Compiler::new(&type_env);
+    let assembly = comp.compileModule(&module);
+
+    let (ref name, ref main) = assembly.superCombinators[2];
+    assert_eq!(name, &~"main");
+    assert_eq!(main.instructions, ~[PushInt(6), PushGlobal(0), Mkap, Eval, Update(0), Unwind]);
 }

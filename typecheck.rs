@@ -81,6 +81,34 @@ impl TypeEnvironment {
         scope.typecheck(expr)
     }
 
+    pub fn find(&self, ident: &str) -> Option<Type> {
+        match self.namedTypes.find_equiv(&ident) {
+            Some(typ) => {
+                let t = typ.borrow().borrow();
+                Some(t.get().clone())
+            }
+            None => None
+        }
+    }
+    pub fn find_constraints(&self, typ: &Type) -> ~[~str] {
+        let mut constraints : ~[~str] = ~[];
+        each_type(typ,
+        |var| {
+            match self.constraints.find(var) {
+                Some(cons) => {
+                    for c in cons.iter() {
+                        if constraints.iter().find(|x| *x == c) == None {
+                            constraints.push(c.clone());
+                        }
+                    }
+                }
+                None => ()
+            }
+        },
+        |op| ());
+        constraints
+    }
+
     fn substitute(&mut self, subs : &Substitution) {
         for t in self.types.iter() {
             let mut typ = t.borrow().borrow_mut();
@@ -485,6 +513,21 @@ fn add_edges<T>(graph: &mut Graph<T>, map: &HashMap<~str, VertexIndex>, function
             }
         }
         _ => ()
+    }
+}
+
+fn each_type(typ: &Type, var_fn: |&TypeVariable|, op_fn: |&TypeOperator|) {
+    each_type_(typ, &var_fn, &op_fn);
+}
+fn each_type_(typ: &Type, var_fn: &|&TypeVariable|, op_fn: &|&TypeOperator|) {
+    match typ {
+        &TypeVariable(ref var) => (*var_fn)(var),
+        &TypeOperator(ref op) => {
+            (*op_fn)(op);
+            for t in op.types.iter() {
+                each_type_(t, var_fn, op_fn);
+            }
+        }
     }
 }
 
