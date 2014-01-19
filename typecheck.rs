@@ -90,24 +90,57 @@ impl TypeEnvironment {
             None => None
         }
     }
-    pub fn find_constraints(&self, typ: &Type) -> ~[~str] {
-        let mut constraints : ~[~str] = ~[];
+    pub fn find_constraints(&self, typ: &Type) -> ~[TypeOperator] {
+        let mut constraints : ~[TypeOperator] = ~[];
         each_type(typ,
         |var| {
             match self.constraints.find(var) {
                 Some(cons) => {
                     for c in cons.iter() {
-                        if constraints.iter().find(|x| *x == c) == None {
-                            constraints.push(c.clone());
+                        if constraints.iter().find(|x| x.name == *c) == None {
+                            constraints.push(TypeOperator { name: c.clone(), types: ~[TypeVariable(*var)] });
                         }
                     }
                 }
                 None => ()
             }
         },
-        |op| ());
+        |_| ());
         constraints
     }
+    pub fn find_specialized_instances(&self, name: &str, actual_type: &Type) -> ~[TypeOperator] {
+        match self.find(name) {
+            Some(typ) => {
+                let mut constraints = ~[];
+                self.find_specialized(&mut constraints, &typ, actual_type);
+                constraints
+            }
+            None => fail!("")
+        }
+    }
+    fn find_specialized(&self, constraints: &mut ~[TypeOperator], typ: &Type, actual_type: &Type) {
+        match (actual_type, typ) {
+            (&TypeOperator(ref actual_op), &TypeVariable(ref var)) => {
+                match self.constraints.find(var) {
+                    Some(cons) => {
+                        for c in cons.iter() {
+                            if constraints.iter().find(|x| x.name == *c) == None {
+                                constraints.push(TypeOperator { name: c.clone(), types: ~[actual_type.clone()] });
+                            }
+                        }
+                    }
+                    None => ()
+                }
+            }
+            (&TypeOperator(ref actual_op), &TypeOperator(ref op)) => {
+                for ii in range(0, actual_op.types.len()) {
+                    self.find_specialized(constraints, &actual_op.types[ii], &op.types[ii]);
+                }
+            }
+            _ => ()
+        }
+    }
+
 
     fn substitute(&mut self, subs : &Substitution) {
         for t in self.types.iter() {

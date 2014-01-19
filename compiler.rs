@@ -28,7 +28,9 @@ pub enum Instruction {
     Split(uint),
     Pack(u16, u16),
     CaseJump(uint),
-    Jump(uint)
+    Jump(uint),
+    PushDictionary(uint),
+    PushDictionaryMember(uint),
 }
 
 enum Var {
@@ -48,11 +50,12 @@ impl SuperCombinator {
     }
 }
 
-pub struct Assembly {
-    superCombinators: ~[(~str, SuperCombinator)]
+pub struct Assembly<'a> {
+    superCombinators: ~[(~str, SuperCombinator)],
+    instance_dictionaries: ~[~[uint]]
 }
 
-impl Assembly {
+impl <'a> Assembly<'a> {
     fn find(&self, name: &str) -> Option<Var> {
         let mut index = 0;
         for &(ref n, _) in self.superCombinators.iter() {
@@ -68,10 +71,11 @@ impl Assembly {
 pub struct Compiler<'a> {
     type_env: &'a TypeEnvironment,
     class_dictionaries: HashMap<TypeOperator, ~[~str]>,
+    instance_dictionaries: ~[(~[TypeOperator], ~[uint])],
     stackSize : int,
     globals : HashMap<~str, SuperCombinator>,
     variables: HashMap<~str, Var>,
-    globalIndex : int
+    globalIndex : int,
 }
 
 
@@ -80,7 +84,7 @@ impl <'a> Compiler<'a> {
         let mut variables = HashMap::new();
         variables.insert(~"[]", ConstructorVariable(0, 0));
         variables.insert(~":", ConstructorVariable(1, 2));
-        Compiler { type_env: type_env, class_dictionaries: HashMap::new(),
+        Compiler { type_env: type_env, class_dictionaries: HashMap::new(), instance_dictionaries: ~[],
             stackSize : 0, globals : HashMap::new(), globalIndex : 0, variables: variables }
     }
 
@@ -93,12 +97,17 @@ impl <'a> Compiler<'a> {
         }
         
         for class in module.classes.iter() {
+            let mut function_names = ~[];
             for decl in class.declarations.iter() {
                 self.variables.insert(decl.name.clone(), ClassVariable(decl.typ.clone(), class.variable));
+                function_names.push(decl.name.clone());
             }
+            let op = TypeOperator { name: class.name.clone(), types: ~[TypeVariable(class.variable)] };
+            self.class_dictionaries.insert(op, function_names);
         }
 
         let mut superCombinators = ~[];
+        let mut instance_dictionaries = ~[];
         for instance in module.instances.iter() {
             for bind in instance.bindings.iter() {
                 self.variables.insert(bind.name.clone(), GlobalVariable(self.globalIndex));
@@ -113,7 +122,7 @@ impl <'a> Compiler<'a> {
             let sc = self.compileBinding(bind);
             superCombinators.push((bind.name.clone(), sc));
         }
-        Assembly { superCombinators: superCombinators }
+        Assembly { superCombinators: superCombinators, instance_dictionaries: instance_dictionaries }
     }
     fn compileBinding<'a>(&mut self, bind : &Binding) -> SuperCombinator {
         debug!("Compiling binding {}", bind.name);
@@ -182,42 +191,32 @@ impl <'a, 'b> CompilerNode<'a, 'b> {
     }
 
     fn compile<'a>(&mut self, expr : &TypedExpr, instructions : &mut ~[Instruction], strict: bool) {
+        debug!("Compiling {}", expr.expr);
         match &expr.expr {
             &Identifier(ref name) => {
-                match self.find(*name) {
+                let maybe_new_dict = match self.find(*name) {
                     None => fail!("Undefined variable " + *name),
                     Some(var) => {
                         match var {
-                            &StackVariable(index) => instructions.push(Push(index)),
-                            &GlobalVariable(index) => instructions.push(PushGlobal(index)),
-                            &ConstructorVariable(tag, arity) => instructions.push(Pack(tag, arity)),
+                            &StackVariable(index) => { instructions.push(Push(index)); None }
+                            &GlobalVariable(index) => { instructions.push(PushGlobal(index)); None }
+                            &ConstructorVariable(tag, arity) => { instructions.push(Pack(tag, arity)); None }
                             &ClassVariable(ref typ, ref var) => {
-                                let actual_type = expr.typ.borrow().borrow();
-                                match try_find_instance_type(var, typ, actual_type.get()) {
-                                    Some(typename) => {
-                                        let instance_fn_name = "#" + typename + *name;
-                                        match self.find(instance_fn_name) {
-                                            Some(&GlobalVariable(index)) => {
-                                                instructions.push(PushGlobal(index));
-                                            }
-                                            _ => fail!("Unregistered instance function {}", instance_fn_name)
-                                        }
-                                    }
-                                    None => {
-                                        fail!("Unspecialized functions are not implemented")
-                                    }
-                                }
+                                self.compile_instance_variable(expr, instructions, *name, typ, var)
                             }
                         }
                     }
+                };
+                match maybe_new_dict {
+                    Some(dict) => self.compiler.instance_dictionaries.push(dict),
+                    None => ()
                 }
                 if strict {
                     instructions.push(Eval);
                 }
             }
             &Number(num) => instructions.push(PushInt(num)),
-            &Apply(ref func, _) => {
-                let is_instance_function = self.try_instance_function(*func, instructions);
+            &Apply(_, _) => {
                 self.compile_apply(expr, instructions, strict);
             }
             &Lambda(ref varname, ref body) => {
@@ -265,6 +264,88 @@ impl <'a, 'b> CompilerNode<'a, 'b> {
         }
     }
 
+    fn compile_instance_variable(&self, expr: &TypedExpr, instructions: &mut ~[Instruction], name: &str, typ: &Type, var: &TypeVariable) -> Option<(~[TypeOperator], ~[uint])> {
+        let actual_type = expr.typ.borrow().borrow();
+        match try_find_instance_type(var, typ, actual_type.get()) {
+            Some(typename) => {
+                //We should be able to retrieve the instance directly
+                let instance_fn_name = "#" + typename + name;
+                match self.find(instance_fn_name) {
+                    Some(&GlobalVariable(index)) => {
+                        instructions.push(PushGlobal(index));
+                    }
+                    _ => fail!("Unregistered instance function {}", instance_fn_name)
+                }
+            }
+            None => {
+                match self.find("$dict") {
+                    Some(&StackVariable(_)) => {
+                        let constraints = self.compiler.type_env.find_constraints(typ);
+                        //Push dictionary or member of dictionary
+                        match self.push_dictionary_member(constraints, name) {
+                            Some(index) => instructions.push(PushDictionaryMember(index)),
+                            None => instructions.push(Push(0))
+                        }
+                    }
+                    _ => {
+                        //get dictionary index
+                        //push dictionary
+                        let dictionary_key = self.compiler.type_env.find_specialized_instances(name, typ);
+                        let (index, dict) = self.find_dictionary_index(dictionary_key);
+                        instructions.push(PushDictionary(index));
+                        return dict;
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    fn push_dictionary_member(&self, constraints: &[TypeOperator], name: &str) -> Option<uint> {
+        for c in constraints.iter() {
+            match self.compiler.class_dictionaries.find(c) {
+                Some(functions) => {
+                    for ii in range(0, functions.len()) {
+                        if functions[ii].equiv(&name) {
+                            return Some(ii)
+                        }
+                    }
+                }
+                None => fail!("Undefined instance {:?}", c)
+            }
+        }
+        None
+    }
+
+    fn find_dictionary_index(&self, constraints: &[TypeOperator]) -> (uint, Option<(~[TypeOperator], ~[uint])>) {
+        
+        let dict_len = self.compiler.instance_dictionaries.len();
+        for ii in range(0, dict_len) {
+            if self.compiler.instance_dictionaries[ii].n0_ref().equiv(&constraints) {
+                return (ii, None);
+            }
+        }
+
+        let mut function_indexes = ~[];
+        for c in constraints.iter() {
+            match self.compiler.class_dictionaries.find(c) {
+                Some(functions) => {
+                    for func in functions.iter() {
+                        let f = "#" + c.name + *func;
+                        match self.find(f) {
+                            Some(&GlobalVariable(index)) => {
+                                function_indexes.push(index as uint);
+                            }
+                            _ => fail!("Did not find function {}", f)
+                        }
+                    }
+                }
+                None => fail!("Could not find class dictionary {:?}", c)
+            }
+        }
+        (dict_len, Some((constraints.to_owned(), function_indexes)))
+    }
+
     fn compile_apply(&mut self, expr: &TypedExpr, instructions: &mut ~[Instruction], strict: bool) {
         match &expr.expr {
             &Apply(ref func, ref arg) => {
@@ -299,8 +380,8 @@ impl <'a, 'b> CompilerNode<'a, 'b> {
                         };
                         match maybeOP {
                             Some(op) => {
-                                self.compile(*arg2, instructions, true);
                                 self.compile(arg, instructions, true);
+                                self.compile(*arg2, instructions, true);
                                 instructions.push(op);
                                 true
                             }
@@ -349,29 +430,6 @@ impl <'a, 'b> CompilerNode<'a, 'b> {
                 1
             }
             &NumberPattern(_) => 0
-        }
-    }
-
-    fn try_instance_function(&mut self, expr: &TypedExpr, instructions: &mut ~[Instruction]) -> bool {
-        match &expr.expr {
-            &Identifier(ref ident) => {
-                self.compiler.type_env.find(*ident).map_or(false,
-                |typ| {
-                    let constraints = self.compiler.type_env.find_constraints(&typ);
-                    if constraints.len() == 0 {
-                        return false;
-                    }
-                    match self.find(&"$dict") {
-                        Some(&StackVariable(index)) => {
-                        }
-                        _ => {
-                            
-                        }
-                    }
-                    true
-                })
-            }
-            _ => false
         }
     }
 
@@ -428,7 +486,7 @@ fn test_add() {
     let mut comp = Compiler::new(&type_env);
     let instr = comp.compileExpression(&e);
 
-    assert_eq!(instr, ~[PushInt(1), PushInt(2), Add]);
+    assert_eq!(instr, ~[PushInt(2), PushInt(1), Add]);
 }
 
 #[test]
@@ -494,7 +552,29 @@ main = test 6";
     let mut comp = Compiler::new(&type_env);
     let assembly = comp.compileModule(&module);
 
-    let (ref name, ref main) = assembly.superCombinators[2];
+    let (ref name, ref main) = assembly.superCombinators[1];
     assert_eq!(name, &~"main");
     assert_eq!(main.instructions, ~[PushInt(6), PushGlobal(0), Mkap, Eval, Update(0), Unwind]);
+}
+
+#[test]
+fn test_compile_class_constraints_unknown() {
+    let file =
+r"class Test a where
+    test :: a -> Int
+
+instance Test Int where
+    test x = x
+
+main x = primIntAdd (test x) 6";
+    let mut parser = Parser::new(file.chars());
+    let mut module = parser.module();
+    let mut type_env = TypeEnvironment::new();
+    type_env.typecheck_module(&mut module);
+    let mut comp = Compiler::new(&type_env);
+    let assembly = comp.compileModule(&module);
+
+    let (ref name, ref main) = assembly.superCombinators[1];
+    assert_eq!(name, &~"main");
+    assert_eq!(main.instructions, ~[PushInt(6), Push(0), PushDictionary(0), Mkap, Eval, Add, Update(0), Pop(1), Unwind]);
 }
