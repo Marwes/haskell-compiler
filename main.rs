@@ -10,7 +10,7 @@ use std::io::File;
 use std::str::{from_utf8};
 use typecheck::TypeEnvironment;
 use compiler::{Compiler, Assembly,
-    Instruction, Add, Sub, Multiply, Divide, Remainder, Push, PushGlobal, PushInt, Mkap, Eval, Unwind, Update, Pop, Slide, Split, Pack, CaseJump, Jump, PushDictionary, PushDictionaryMember,
+    Instruction, Add, Sub, Multiply, Divide, Remainder, IntEQ, IntLT, IntLE, IntGT, IntGE, Push, PushGlobal, PushInt, Mkap, Eval, Unwind, Update, Pop, Slide, Split, Pack, CaseJump, Jump, PushDictionary, PushDictionaryMember,
     SuperCombinator};
 use parser::Parser;    
 
@@ -131,6 +131,11 @@ impl <'a> VM<'a> {
                 &Multiply => primitive(stack, |l, r| { l * r }),
                 &Divide => primitive(stack, |l, r| { l / r }),
                 &Remainder => primitive(stack, |l, r| { l % r }),
+                &IntEQ => primitive2(stack, |l, r| { if l == r { Constructor(0, ~[]) } else { Constructor(1, ~[]) } }),
+                &IntLT => primitive2(stack, |l, r| { if l < r { Constructor(0, ~[]) } else { Constructor(1, ~[]) } }),
+                &IntLE => primitive2(stack, |l, r| { if l <= r { Constructor(0, ~[]) } else { Constructor(1, ~[]) } }),
+                &IntGT => primitive2(stack, |l, r| { if l > r { Constructor(0, ~[]) } else { Constructor(1, ~[]) } }),
+                &IntGE => primitive2(stack, |l, r| { if l >= r { Constructor(0, ~[]) } else { Constructor(1, ~[]) } }),
                 &PushInt(value) => { stack.push(Node::new(Int(value))); }
                 &Push(index) => {
                     let x = stack[index].clone();
@@ -270,13 +275,16 @@ impl <'a> VM<'a> {
     }
 }
 
-fn primitive(stack: &mut ~[Node], f: |int, int| -> int) {
+fn primitive2(stack: &mut ~[Node], f: |int, int| -> Node_) {
     let l = stack.pop();
     let r = stack.pop();
     match (l.borrow(), r.borrow()) {
-        (&Int(lhs), &Int(rhs)) => stack.push(Node::new(Int(f(lhs, rhs)))),
+        (&Int(lhs), &Int(rhs)) => stack.push(Node::new(f(lhs, rhs))),
         (lhs, rhs) => fail!("Expected fully evaluted numbers in primitive instruction\n LHS: {:?}\nRHS: {:?} ", lhs, rhs)
     }
+}
+fn primitive(stack: &mut ~[Node], f: |int, int| -> int) {
+    primitive2(stack, |l, r| Int(f(l, r)))
 }
 
 fn main() {
@@ -368,6 +376,10 @@ fn test_primitive()
     assert_eq!(execute_main("main = primIntAdd 10 5".chars()), Some(IntResult(15)));
     assert_eq!(execute_main("main = primIntSubtract 7 (primIntMultiply 2 3)".chars()), Some(IntResult(1)));
     assert_eq!(execute_main("main = primIntDivide 10 (primIntRemainder 6 4)".chars()), Some(IntResult(5)));
+    let s = 
+r"data Bool = True | False
+main = primIntLT 1 2";
+    assert_eq!(execute_main(s.chars()), Some(ConstructorResult(0, ~[])));
 }
 
 #[test]

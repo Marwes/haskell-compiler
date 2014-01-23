@@ -37,12 +37,22 @@ impl TypeEnvironment {
     pub fn new() -> TypeEnvironment {
         let mut globals = HashMap::new();
         let int_type = &Type::new_op(~"Int", ~[]);
-        let binop = new_ptr(function_type(int_type, &function_type(int_type, int_type)));
-        globals.insert(~"primIntAdd", binop.clone());
-        globals.insert(~"primIntSubtract", binop.clone());
-        globals.insert(~"primIntMultiply", binop.clone());
-        globals.insert(~"primIntDivide", binop.clone());
-        globals.insert(~"primIntRemainder", binop.clone());
+        {
+            let binop = new_ptr(function_type(int_type, &function_type(int_type, int_type)));
+            globals.insert(~"primIntAdd", binop.clone());
+            globals.insert(~"primIntSubtract", binop.clone());
+            globals.insert(~"primIntMultiply", binop.clone());
+            globals.insert(~"primIntDivide", binop.clone());
+            globals.insert(~"primIntRemainder", binop.clone());
+        }
+        {
+            let binop = new_ptr(function_type(int_type, &function_type(int_type, &Type::new_op(~"Bool", ~[]))));
+            globals.insert(~"primIntEQ", binop.clone());
+            globals.insert(~"primIntLT", binop.clone());
+            globals.insert(~"primIntLE", binop.clone());
+            globals.insert(~"primIntGT", binop.clone());
+            globals.insert(~"primIntGE", binop.clone());
+        }
         let list_var = Type::new_var(-10);
         let list = Type::new_op(~"[]", ~[list_var.clone()]);
         globals.insert(~"[]", new_ptr(list.clone()));

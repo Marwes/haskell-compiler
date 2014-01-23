@@ -16,6 +16,11 @@ pub enum Instruction {
     Multiply,
     Divide,
     Remainder,
+    IntEQ,
+    IntLT,
+    IntLE,
+    IntGT,
+    IntGE,
     Push(int),
     PushGlobal(int),
     PushInt(int),
@@ -405,6 +410,11 @@ impl <'a, 'b> CompilerNode<'a, 'b> {
                             ~"primIntMultiply" => Some(Multiply),
                             ~"primIntDivide" => Some(Divide),
                             ~"primIntRemainder" => Some(Remainder),
+                            ~"primIntEQ" => Some(IntEQ),
+                            ~"primIntLT" => Some(IntLT),
+                            ~"primIntLE" => Some(IntLE),
+                            ~"primIntGT" => Some(IntGT),
+                            ~"primIntGE" => Some(IntGE),
                             _ => None
                         };
                         match maybeOP {
