@@ -415,7 +415,8 @@ fn application(&mut self) -> Option<TypedExpr> {
 fn constructor(&mut self, dataDef : &DataDefinition) -> Constructor {
 	let name = self.requireNext(NAME).value.clone();
 	let mut arity = 0;
-	let typ = self.constructorType(&mut arity, dataDef);
+    let mut mapping = dataDef.parameters.clone();
+	let typ = self.constructorType(&mut arity, dataDef, &mut mapping);
 	self.lexer.backtrack();
 	Constructor { name : name, typ : typ, tag : 0, arity : arity }
 }
@@ -603,25 +604,31 @@ fn typeDeclaration_(&mut self, typeVariableMapping : &mut HashMap<~str, TypeVari
 	TypeDeclaration { name : name, typ : typeOrContext, context : ~[] }
 }
 
-fn constructorType(&mut self, arity : &mut int, dataDef : &DataDefinition) -> Type
+fn constructorType(&mut self, arity : &mut int, dataDef: &DataDefinition, mapping : &mut HashMap<~str, TypeVariable>) -> Type
 {
 	let token = self.lexer.next(constructorError).token;
 	if (token == NAME) {
 		*arity += 1;
-		if (self.lexer.current().value.char_at(0).is_lowercase())
+		let arg = if (self.lexer.current().value.char_at(0).is_lowercase())
 		{
-			match dataDef.parameters.find(&self.lexer.current().value) {
-                Some(existingVariable) => { 
-                    function_type(existingVariable, &self.constructorType(arity, dataDef))
-                }
+			match mapping.find(&self.lexer.current().value) {
+                Some(existingVariable) => TypeVariable(existingVariable.clone()),
                 None => fail!("Undefined type parameter {:?}", self.lexer.current().value)
             }
 		}
 		else {
-			function_type(&Type::new_op(self.lexer.current().value.clone(), ~[]), &self.constructorType(arity, dataDef))
-        }
+			Type::new_op(self.lexer.current().value.clone(), ~[])
+        };
+        function_type(&arg, &self.constructorType(arity, dataDef, mapping))
 	}
-	else {
+	else if token == LPARENS {
+        *arity += 1;
+        let mut var = 100000;
+        let arg = self.parse_type_(&mut var, mapping);
+        self.requireNext(RPARENS);
+        function_type(&arg, &self.constructorType(arity, dataDef, mapping))
+    }
+    else {
 		TypeOperator(dataDef.typ.clone())
 	}
 }
@@ -638,9 +645,9 @@ fn dataDefinition(&mut self) -> DataDefinition {
     };
 	while (self.lexer.next_().token == NAME)
 	{
+        //TODO use new variables isntead of only  -1
 		definition.typ.types.push(Type::new_var(-1));
-        let typ = definition.typ.types[definition.typ.types.len() - 1].clone();
-		definition.parameters.insert(self.lexer.current().value.clone(), typ);
+		definition.parameters.insert(self.lexer.current().value.clone(), TypeVariable { id: -1 });
 	}
 	let equalToken = self.lexer.current().token;
 	if (equalToken != EQUALSSIGN)
@@ -981,4 +988,18 @@ r"data Bool = True | False".chars());
     assert_eq!(data.typ, Bool);
     assert_eq!(data.constructors[0], True);
     assert_eq!(data.constructors[1], False);
+}
+
+#[test]
+fn parse_data_2() {
+    let mut parser = Parser::new(
+r"data List a = Cons a (List a) | Nil".chars());
+    let data = parser.dataDefinition();
+
+    let List = TypeOperator { name: ~"List", types: ~[Type::new_var(0)]};
+    let Cons = Constructor { name: ~"Cons", tag:0, arity:2, typ: function_type(&Type::new_var(0), &function_type(&TypeOperator(List.clone()), &TypeOperator(List.clone())))};
+    let Nil = Constructor { name: ~"Nil", tag:1, arity:0, typ: TypeOperator(List.clone()) };
+    assert_eq!(data.typ, List);
+    assert_eq!(data.constructors[0], Cons);
+    assert_eq!(data.constructors[1], Nil);
 }

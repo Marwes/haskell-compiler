@@ -44,7 +44,7 @@ pub struct Constructor {
 pub struct DataDefinition {
     constructors : ~[Constructor],
     typ : TypeOperator,
-    parameters : HashMap<~str, Type>
+    parameters : HashMap<~str, TypeVariable>
 }
 
 #[deriving(Clone, Eq, Default)]
