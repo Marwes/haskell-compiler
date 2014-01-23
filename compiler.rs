@@ -37,7 +37,8 @@ enum Var {
     StackVariable(int),
     GlobalVariable(int),
     ConstructorVariable(u16, u16),
-    ClassVariable(Type, TypeVariable)
+    ClassVariable(Type, TypeVariable),
+    ConstraintVariable(int, Type, ~[TypeOperator])
 }
 
 pub struct SuperCombinator {
@@ -70,7 +71,7 @@ impl <'a> Assembly<'a> {
 
 pub struct Compiler<'a> {
     type_env: &'a TypeEnvironment,
-    class_dictionaries: HashMap<TypeOperator, ~[~str]>,
+    class_dictionaries: HashMap<~str, ~[~str]>,
     instance_dictionaries: ~[(~[TypeOperator], ~[uint])],
     stackSize : int,
     globals : HashMap<~str, SuperCombinator>,
@@ -102,12 +103,10 @@ impl <'a> Compiler<'a> {
                 self.variables.insert(decl.name.clone(), ClassVariable(decl.typ.clone(), class.variable));
                 function_names.push(decl.name.clone());
             }
-            let op = TypeOperator { name: class.name.clone(), types: ~[TypeVariable(class.variable)] };
-            self.class_dictionaries.insert(op, function_names);
+            self.class_dictionaries.insert(class.name.clone(), function_names);
         }
 
         let mut superCombinators = ~[];
-        let mut instance_dictionaries = ~[];
         for instance in module.instances.iter() {
             for bind in instance.bindings.iter() {
                 self.variables.insert(bind.name.clone(), GlobalVariable(self.globalIndex));
@@ -117,23 +116,40 @@ impl <'a> Compiler<'a> {
             }
         }
         for bind in module.bindings.iter() {
-            self.variables.insert(bind.name.clone(), GlobalVariable(self.globalIndex));
+            let typ = bind.expression.typ.borrow().borrow();
+            let constraints = self.type_env.find_constraints(typ.get());
+            if constraints.len() > 0 {
+                self.variables.insert(bind.name.clone(), ConstraintVariable(self.globalIndex, typ.get().clone(), constraints));
+            }
+            else {
+                self.variables.insert(bind.name.clone(), GlobalVariable(self.globalIndex));
+            }
             self.globalIndex += 1;
             let sc = self.compileBinding(bind);
             superCombinators.push((bind.name.clone(), sc));
+        }
+
+        let mut instance_dictionaries = ~[];
+        for &(_, ref dict) in self.instance_dictionaries.iter() {
+            instance_dictionaries.push(dict.clone());
         }
         Assembly { superCombinators: superCombinators, instance_dictionaries: instance_dictionaries }
     }
     fn compileBinding<'a>(&mut self, bind : &Binding) -> SuperCombinator {
         debug!("Compiling binding {}", bind.name);
         let mut comb = SuperCombinator::new();
-        comb.arity = bind.arity;
+        let typ = bind.expression.typ.borrow().borrow();
+        let dict_arg = if self.type_env.find_constraints(typ.get()).len() > 0 { 1 } else { 0 };
+        comb.arity = bind.arity + dict_arg;
         let mut stack = CompilerNode { compiler: self, stack: Scope::new(), constraints: bind.typeDecl.context };
+        if dict_arg == 1 {
+            stack.newStackVar(~"$dict");
+        }
         match &bind.expression.expr {
             &Lambda(_, _) => {
                 stack.compile(&bind.expression, &mut comb.instructions, true);
                 comb.instructions.push(Update(0));
-                comb.instructions.push(Pop(bind.arity));
+                comb.instructions.push(Pop(comb.arity));
                 comb.instructions.push(Unwind);
             }
             _ => {
@@ -201,8 +217,13 @@ impl <'a, 'b> CompilerNode<'a, 'b> {
                             &StackVariable(index) => { instructions.push(Push(index)); None }
                             &GlobalVariable(index) => { instructions.push(PushGlobal(index)); None }
                             &ConstructorVariable(tag, arity) => { instructions.push(Pack(tag, arity)); None }
-                            &ClassVariable(ref typ, ref var) => {
-                                self.compile_instance_variable(expr, instructions, *name, typ, var)
+                            &ClassVariable(ref typ, ref var) => self.compile_instance_variable(expr, instructions, *name, typ, var),
+                            &ConstraintVariable(ref index, ref typ, ref constraints) => {
+                                let t = expr.typ.borrow().borrow();
+                                let x = self.compile_with_constraints(*name, t.get(), *constraints, instructions);
+                                instructions.push(PushGlobal(*index));
+                                instructions.push(Mkap);
+                                x
                             }
                         }
                     }
@@ -276,34 +297,39 @@ impl <'a, 'b> CompilerNode<'a, 'b> {
                     }
                     _ => fail!("Unregistered instance function {}", instance_fn_name)
                 }
+                None
             }
             None => {
-                match self.find("$dict") {
-                    Some(&StackVariable(_)) => {
-                        let constraints = self.compiler.type_env.find_constraints(typ);
-                        //Push dictionary or member of dictionary
-                        match self.push_dictionary_member(constraints, name) {
-                            Some(index) => instructions.push(PushDictionaryMember(index)),
-                            None => instructions.push(Push(0))
-                        }
-                    }
-                    _ => {
-                        //get dictionary index
-                        //push dictionary
-                        let dictionary_key = self.compiler.type_env.find_specialized_instances(name, typ);
-                        let (index, dict) = self.find_dictionary_index(dictionary_key);
-                        instructions.push(PushDictionary(index));
-                        return dict;
-                    }
-                }
+                let constraints = self.compiler.type_env.find_constraints(typ);
+                self.compile_with_constraints(name, typ, constraints, instructions)
             }
         }
-        None
+    }
+
+    fn compile_with_constraints(&self, name: &str, typ: &Type, constraints: &[TypeOperator], instructions: &mut ~[Instruction]) -> Option<(~[TypeOperator], ~[uint])> {
+        match self.find("$dict") {
+            Some(&StackVariable(_)) => {
+                //Push dictionary or member of dictionary
+                match self.push_dictionary_member(constraints, name) {
+                    Some(index) => instructions.push(PushDictionaryMember(index)),
+                    None => instructions.push(Push(0))
+                }
+                None
+            }
+            _ => {
+                //get dictionary index
+                //push dictionary
+                let dictionary_key = self.compiler.type_env.find_specialized_instances(name, typ);
+                let (index, dict) = self.find_dictionary_index(dictionary_key);
+                instructions.push(PushDictionary(index));
+                dict
+            }
+        }
     }
 
     fn push_dictionary_member(&self, constraints: &[TypeOperator], name: &str) -> Option<uint> {
         for c in constraints.iter() {
-            match self.compiler.class_dictionaries.find(c) {
+            match self.compiler.class_dictionaries.find_equiv(&c.name) {
                 Some(functions) => {
                     for ii in range(0, functions.len()) {
                         if functions[ii].equiv(&name) {
@@ -318,7 +344,6 @@ impl <'a, 'b> CompilerNode<'a, 'b> {
     }
 
     fn find_dictionary_index(&self, constraints: &[TypeOperator]) -> (uint, Option<(~[TypeOperator], ~[uint])>) {
-        
         let dict_len = self.compiler.instance_dictionaries.len();
         for ii in range(0, dict_len) {
             if self.compiler.instance_dictionaries[ii].n0_ref().equiv(&constraints) {
@@ -328,10 +353,14 @@ impl <'a, 'b> CompilerNode<'a, 'b> {
 
         let mut function_indexes = ~[];
         for c in constraints.iter() {
-            match self.compiler.class_dictionaries.find(c) {
+            match self.compiler.class_dictionaries.find_equiv(&c.name) {
                 Some(functions) => {
+                    assert!(functions.len() > 0);
                     for func in functions.iter() {
-                        let f = "#" + c.name + *func;
+                        let f = match &c.types[0] { 
+                            &TypeOperator(ref op) => "#" + op.name + *func,
+                            _ => fail!("Expected operator")
+                        };
                         match self.find(f) {
                             Some(&GlobalVariable(index)) => {
                                 function_indexes.push(index as uint);
@@ -435,7 +464,7 @@ impl <'a, 'b> CompilerNode<'a, 'b> {
 
     fn find_instance_member(&self, function_name: &str) -> Option<uint> {
         for constraint in self.constraints.iter() {
-            let x = self.compiler.class_dictionaries.find(constraint).map_or(None,
+            let x = self.compiler.class_dictionaries.find_equiv(&constraint.name).map_or(None,
                 |functions:&~[~str]| {
                 for i in range(0, functions.len()) {
                     if functions[i].equiv(&function_name) {
@@ -576,5 +605,5 @@ main x = primIntAdd (test x) 6";
 
     let (ref name, ref main) = assembly.superCombinators[1];
     assert_eq!(name, &~"main");
-    assert_eq!(main.instructions, ~[PushInt(6), Push(0), PushDictionary(0), Mkap, Eval, Add, Update(0), Pop(1), Unwind]);
+    assert_eq!(main.instructions, ~[PushInt(6), Push(1), PushDictionaryMember(0), Mkap, Eval, Add, Update(0), Pop(2), Unwind]);
 }

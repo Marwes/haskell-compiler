@@ -71,8 +71,13 @@ impl TypeEnvironment {
             self.instances.push(TypeOperator { name: instance.classname.clone(),
                 types: ~[TypeOperator(instance.typ.clone())]});
         }
-        let mut scope = TypeScope { env: self, scope: Scope::new(), non_generic: ~[], parent: None };
-        scope.typecheck_mutually_recursive_bindings(module.bindings);
+        {
+            let mut scope = TypeScope { env: self, scope: Scope::new(), non_generic: ~[], parent: None };
+            scope.typecheck_mutually_recursive_bindings(module.bindings);
+        }
+        for bind in module.bindings.iter() {
+            self.namedTypes.insert(bind.name.clone(), bind.expression.typ.clone());
+        }
     }
 
 
@@ -112,13 +117,13 @@ impl TypeEnvironment {
         match self.find(name) {
             Some(typ) => {
                 let mut constraints = ~[];
-                self.find_specialized(&mut constraints, &typ, actual_type);
+                self.find_specialized(&mut constraints, actual_type, &typ);
                 constraints
             }
-            None => fail!("")
+            None => fail!("Could not find '{}' in type environment", name)
         }
     }
-    fn find_specialized(&self, constraints: &mut ~[TypeOperator], typ: &Type, actual_type: &Type) {
+    fn find_specialized(&self, constraints: &mut ~[TypeOperator], actual_type: &Type, typ: &Type) {
         match (actual_type, typ) {
             (&TypeOperator(ref actual_op), &TypeVariable(ref var)) => {
                 match self.constraints.find(var) {

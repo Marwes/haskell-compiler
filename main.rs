@@ -3,13 +3,14 @@
 #[feature(managed_boxes, macro_rules, globs)];
 extern mod extra;
 use std::hashmap::HashMap;
+use std::fmt;
 use std::rc::Rc;
 use std::path::Path;
 use std::io::File;
 use std::str::{from_utf8};
 use typecheck::TypeEnvironment;
 use compiler::{Compiler, Assembly,
-    Instruction, Add, Sub, Multiply, Divide, Remainder, Push, PushGlobal, PushInt, Mkap, Eval, Unwind, Update, Pop, Slide, Split, Pack, CaseJump, Jump,
+    Instruction, Add, Sub, Multiply, Divide, Remainder, Push, PushGlobal, PushInt, Mkap, Eval, Unwind, Update, Pop, Slide, Split, Pack, CaseJump, Jump, PushDictionary, PushDictionaryMember,
     SuperCombinator};
 use parser::Parser;    
 
@@ -51,12 +52,48 @@ impl <'a, T> Scope<'a, T> {
 }
 
 #[deriving(Clone)]
-enum Node<'a> {
-    Application(Rc<Node<'a>>, Rc<Node<'a>>),
+enum Node_<'a> {
+    Application(Node<'a>, Node<'a>),
     Int(int),
     Combinator(&'a SuperCombinator),
-    Indirection(Rc<Node<'a>>),
-    Constructor(u16, ~[Rc<Node<'a>>])
+    Indirection(Node<'a>),
+    Constructor(u16, ~[Node<'a>]),
+    Dictionary(&'a [uint])
+}
+#[deriving(Clone)]
+struct Node<'a> {
+    node: Rc<Node_<'a>>
+}
+
+impl <'a> Node<'a> {
+    fn new(n : Node_<'a>) -> Node<'a> {
+        Node { node: Rc::new(n) }
+    }
+    fn borrow<'b>(&'b self) -> &'b Node_<'a> {
+        self.node.borrow()
+    }
+}
+impl <'a> fmt::Default for Node<'a> {
+    fn fmt(node: &Node<'a>, f: &mut fmt::Formatter) {
+        write!(f.buf, "{}", *node.borrow())
+    }
+}
+impl <'a, 'b> fmt::Default for &'b Node_<'a> {
+    fn fmt(node: & &Node_<'a>, f: &mut fmt::Formatter) {
+        write!(f.buf, "{}", **node)
+    }
+}
+impl <'a> fmt::Default for Node_<'a> {
+    fn fmt(node: &Node_<'a>, f: &mut fmt::Formatter) {
+        match node {
+            &Application(ref func, ref arg) => write!(f.buf, "({} {})", *func, *arg),
+            &Int(i) => write!(f.buf, "{}", i),
+            &Combinator(ref sc) => write!(f.buf, "{:?}", sc),
+            &Indirection(ref n) => write!(f.buf, "(~> {})", *n),
+            &Constructor(ref tag, ref args) => write!(f.buf, "({} {:?})", *tag, *args),
+            &Dictionary(ref dict) => write!(f.buf, "{:?}", dict)
+        }
+    }
 }
 
 struct VM<'a> {
@@ -69,7 +106,7 @@ impl <'a> VM<'a> {
         VM { assembly : Assembly { superCombinators : ~[], instance_dictionaries: ~[] }, heap : ~[] }
     }
 
-    fn evaluate(&'a self, code: &[Instruction]) -> Node<'a> {
+    fn evaluate(&'a self, code: &[Instruction]) -> Node_<'a> {
         let mut stack = ~[];
         self.execute(&mut stack, code);
         static evalCode : &'static [Instruction] = &[Eval];
@@ -78,11 +115,11 @@ impl <'a> VM<'a> {
         stack[0].borrow().clone()
     }
 
-    fn execute(&'a self, stack : &mut ~[Rc<Node<'a>>], code : &[Instruction]) {
+    fn execute(&'a self, stack : &mut ~[Node<'a>], code : &[Instruction]) {
         debug!("----------------------------");
         debug!("Entering frame with stack");
         for x in stack.iter() {
-            debug!("{:?}", x.borrow());
+            debug!("{}", x.borrow());
         }
         debug!("");
         let mut i = 0;
@@ -94,31 +131,31 @@ impl <'a> VM<'a> {
                 &Multiply => primitive(stack, |l, r| { l * r }),
                 &Divide => primitive(stack, |l, r| { l / r }),
                 &Remainder => primitive(stack, |l, r| { l % r }),
-                &PushInt(value) => { stack.push(Rc::new(Int(value))); }
+                &PushInt(value) => { stack.push(Node::new(Int(value))); }
                 &Push(index) => {
                     let x = stack[index].clone();
-                    debug!("Pushed {:?}", x.borrow());
+                    debug!("Pushed {}", x.borrow());
                     for j in range(0, stack.len()) {
-                        debug!(" {}  {:?}", j, stack[j].borrow());
+                        debug!(" {}  {}", j, stack[j].borrow());
                     }
                     stack.push(x);
                 }
                 &PushGlobal(index) => {
                     match &self.assembly.superCombinators[index] {
-                        &(_, ref sc) => stack.push(Rc::new(Combinator(sc)))
+                        &(_, ref sc) => stack.push(Node::new(Combinator(sc)))
                     }
                 }
                 &Mkap => {
+                    assert!(stack.len() >= 2);
                     let func = stack.pop();
                     let arg = stack.pop();
-                    debug!("Mkap {:?} {:?}", func.borrow(), arg.borrow());
-                    stack.push(Rc::new(Application(func, arg)));
+                    debug!("Mkap {} {}", func.borrow(), arg.borrow());
+                    stack.push(Node::new(Application(func, arg)));
                 }
                 &Eval => {
                     static unwindCode : &'static [Instruction] = &[Unwind];
                     let mut newStack = ~[stack.pop()];
                     self.execute(&mut newStack, unwindCode);
-                    assert_eq!(newStack.len(), 1);
                     stack.push(newStack.pop());
                 }
                 &Pop(num) => {
@@ -127,10 +164,12 @@ impl <'a> VM<'a> {
                     }
                 }
                 &Update(index) => {
-                    stack[index] = Rc::new(Indirection(stack[stack.len() - 1].clone()));
+                    stack[index] = Node::new(Indirection(stack[stack.len() - 1].clone()));
                 }
                 &Unwind => {
-                    match (*stack[stack.len() - 1].borrow()).clone() {
+                    let x = (*stack[stack.len() - 1].borrow()).clone();
+                    debug!("Unwinding {}", x);
+                    match x {
                         Application(func, _) => {
                             stack.push(func);
                             i -= 1;//Redo the unwind instruction
@@ -156,7 +195,7 @@ impl <'a> VM<'a> {
                                 
                                 debug!("Call");
                                 for j in range(0, newStack.len()) {
-                                    debug!(" {}  {:?}", j, newStack[j].borrow());
+                                    debug!(" {}  {}", j, newStack[j].borrow());
                                 }
                                 self.execute(&mut newStack, comb.instructions);
                                 assert_eq!(newStack.len(), 1);
@@ -193,7 +232,7 @@ impl <'a> VM<'a> {
                 }
                 &Pack(tag, arity) => {
                     let args = std::vec::from_fn(arity as uint, |_| stack.pop());
-                    stack.push(Rc::new(Constructor(tag, args)));
+                    stack.push(Node::new(Constructor(tag, args)));
                 }
                 &CaseJump(jump_tag) => {
                     match stack[stack.len() - 1].borrow() {
@@ -208,7 +247,21 @@ impl <'a> VM<'a> {
                 &Jump(to) => {
                     i = to - 1;
                 }
-                undefined => fail!("Use of undefined instruction {:?}", undefined)
+                &PushDictionary(index) => {
+                    stack.push(Node::new(Dictionary(self.assembly.instance_dictionaries[index])));
+                }
+                &PushDictionaryMember(index) => {
+                    let sc = {
+                        let dict = match stack[0].borrow() {
+                            &Dictionary(ref x) => x,
+                            x => fail!("Attempted to retrieve {} as dictionary", x)
+                        };
+                        let gi = dict[index];
+                        self.assembly.superCombinators[gi].n1_ref()
+                    };
+                    stack.push(Node::new(Combinator(sc)));
+                }
+                //undefined => fail!("Use of undefined instruction {:?}", undefined)
             }
             i += 1;
         }
@@ -217,11 +270,11 @@ impl <'a> VM<'a> {
     }
 }
 
-fn primitive(stack: &mut ~[Rc<Node>], f: |int, int| -> int) {
+fn primitive(stack: &mut ~[Node], f: |int, int| -> int) {
     let l = stack.pop();
     let r = stack.pop();
     match (l.borrow(), r.borrow()) {
-        (&Int(lhs), &Int(rhs)) => stack.push(Rc::new(Int(f(lhs, rhs)))),
+        (&Int(lhs), &Int(rhs)) => stack.push(Node::new(Int(f(lhs, rhs)))),
         (lhs, rhs) => fail!("Expected fully evaluted numbers in primitive instruction\n LHS: {:?}\nRHS: {:?} ", lhs, rhs)
     }
 }
@@ -275,7 +328,7 @@ fn compile_iter<T : Iterator<char>>(iterator: T) -> Assembly {
     compiler.compileModule(&module)
 }
 
-fn extract_result(node: Node) -> Option<VMResult> {
+fn extract_result(node: Node_) -> Option<VMResult> {
     match node {
         Constructor(tag, fields) => {
             let mut result = ~[];
@@ -289,7 +342,7 @@ fn extract_result(node: Node) -> Option<VMResult> {
         }
         Int(i) => Some(IntResult(i)),
         x => {
-            println!("Can't evalute result to {:?}", x);
+            println!("Can't extract result {:?}", x);
             None
         }
     }
@@ -358,4 +411,49 @@ main = case test of
     False -> 0
     True -> 1";
     assert_eq!(execute_main(module.chars()), Some(IntResult(0)));
+}
+
+#[test]
+fn test_typeclasses_known_types()
+{
+    let module = 
+r"data Bool = True | False
+
+class Test a where
+    test :: a -> Int
+
+instance Test Int where
+    test x = x
+
+instance Test Bool where
+    test x = case x of
+        True -> 1
+        False -> 0
+
+
+main = primIntSubtract (test 5) (test True)";
+    assert_eq!(execute_main(module.chars()), Some(IntResult(4)));
+}
+
+#[test]
+fn test_typeclasses_unknown()
+{
+    let module = 
+r"data Bool = True | False
+
+class Test a where
+    test :: a -> Int
+
+instance Test Int where
+    test x = x
+
+instance Test Bool where
+    test x = case x of
+        True -> 1
+        False -> 0
+
+testAdd y = primIntAdd (test 5) (test y)
+
+main = testAdd True";
+    assert_eq!(execute_main(module.chars()), Some(IntResult(6)));
 }
