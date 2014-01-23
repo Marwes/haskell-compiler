@@ -7,6 +7,10 @@ use graph::{Graph, VertexIndex, strongly_connected_components};
 
 #[cfg(test)]
 use parser::Parser;
+#[cfg(test)]
+use std::io::File;
+#[cfg(test)]
+use std::str::{from_utf8};
 
 type TypePtr = Rc<RefCell<Type>>;
 fn new_ptr(t: Type) -> TypePtr {
@@ -786,6 +790,17 @@ main = test [1]".chars());
 
     let mut module = parser.module();
 
+    let mut env = TypeEnvironment::new();
+    env.typecheck_module(&mut module);
+}
+
+#[test]
+fn typecheck_prelude() {
+    let path = &Path::new("Prelude.hs");
+    let s  = File::open(path).read_to_end();
+    let contents : &str = from_utf8(s);
+    let mut parser = Parser::new(contents.chars());
+    let mut module = parser.module();
     let mut env = TypeEnvironment::new();
     env.typecheck_module(&mut module);
 }

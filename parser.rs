@@ -11,6 +11,10 @@ use typecheck::function_type;
 
 #[cfg(test)]
 use typecheck::{identifier, apply, number, lambda, let_, case};
+#[cfg(test)]
+use std::io::File;
+#[cfg(test)]
+use std::str::{from_utf8};
 
 pub struct Parser<Iter> {
     lexer : Lexer<Iter>,
@@ -981,4 +985,17 @@ r"data Bool = True | False".chars());
     assert_eq!(data.typ, Bool);
     assert_eq!(data.constructors[0], True);
     assert_eq!(data.constructors[1], False);
+}
+
+#[test]
+fn parse_prelude() {
+    let path = &Path::new("Prelude.hs");
+    let s  = File::open(path).read_to_end();
+    let contents : &str = from_utf8(s);
+    let mut parser = Parser::new(contents.chars());
+    let module = parser.module();
+
+    assert!(module.bindings.iter().any(|bind| bind.name == ~"foldl"));
+    assert!(module.bindings.iter().any(|bind| bind.name == ~"id"));
+    assert!(module.classes.iter().any(|class| class.name == ~"Eq"));
 }
