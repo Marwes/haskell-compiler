@@ -44,7 +44,7 @@ pub struct Constructor {
 pub struct DataDefinition {
     constructors : ~[Constructor],
     typ : TypeOperator,
-    parameters : HashMap<~str, Type>
+    parameters : HashMap<~str, TypeVariable>
 }
 
 #[deriving(Clone, Eq, Default)]
@@ -72,6 +72,33 @@ pub enum Type {
 impl Default for Type {
     fn default() -> Type {
         Type::new_var(-1)
+    }
+}
+impl fmt::Default for TypeVariable {
+    fn fmt(var : &TypeVariable, f: &mut fmt::Formatter) {
+        write!(f.buf, "{}", var.id)
+    }
+}
+impl fmt::Default for TypeOperator {
+    fn fmt(op: &TypeOperator, f: &mut fmt::Formatter) {
+        if op.types.len() == 0 {
+            write!(f.buf, "{}", op.name)
+        }
+        else {
+            write!(f.buf, "({}", op.name);
+            for t in op.types.iter() {
+                write!(f.buf, " {}", *t);
+            }
+            write!(f.buf, ")")
+        }
+    }
+}
+impl fmt::Default for Type {
+    fn fmt(typ : &Type, f: &mut fmt::Formatter) {
+        match typ {
+            &TypeVariable(ref var) => write!(f.buf, "{}", *var),
+            &TypeOperator(ref op) => write!(f.buf, "{}", *op)
+        }
     }
 }
 

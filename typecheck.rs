@@ -1,9 +1,12 @@
 use std::hashmap::HashMap;
 use std::rc::Rc;
 use std::cell::RefCell;
-use module::{Type, TypeVariable, TypeOperator, Expr, Identifier, Number, Apply, Lambda, Let, Case, TypedExpr, Module, Alternative, Pattern, IdentifierPattern, NumberPattern, ConstructorPattern, Binding};
+use module::{TypeVariable, TypeOperator, Expr, Identifier, Number, Apply, Lambda, Let, Case, TypedExpr, Module, Alternative, Pattern, IdentifierPattern, NumberPattern, ConstructorPattern, Binding};
 use Scope;
 use graph::{Graph, VertexIndex, strongly_connected_components};
+
+pub use lexer::Location;
+pub use module::Type;
 
 #[cfg(test)]
 use parser::Parser;
@@ -36,6 +39,11 @@ struct Substitution {
     subs: HashMap<TypeVariable, Type>,
     constraints: HashMap<TypeVariable, ~[~str]>
 }
+
+condition! {
+    type_error: () -> (Location, Type, Type);
+}
+
 
 impl TypeEnvironment {
     pub fn new() -> TypeEnvironment {
@@ -220,7 +228,7 @@ impl <'a> TypeScope<'a> {
                 let subs = {
                     let func_type = func.typ.borrow().borrow();
                     let expr_type = expr.typ.borrow().borrow();
-                    unify(self.env, func_type.get(), expr_type.get())
+                    unify_location(self.env, &expr.location, func_type.get(), expr_type.get())
                 };
                 self.env.substitute(&subs);
                 expr.typ.borrow().with_mut(|typ| {
@@ -268,7 +276,7 @@ impl <'a> TypeScope<'a> {
                     let subs = {
                         let alt0_type = alt0_.borrow().borrow();
                         let mut alt_type = alt.expression.typ.borrow().borrow();
-                        unify(self.env, alt_type.get(), alt0_type.get())
+                        unify_location(self.env, &alt.expression.location, alt_type.get(), alt0_type.get())
                     };
                     self.env.substitute(&subs);
                 }
@@ -475,10 +483,16 @@ fn freshen(env: &TypeScope, mapping: &mut HashMap<TypeVariable, Type>, typ: &Typ
     }
 }
 
+fn unify_location(env: &mut TypeEnvironment, location: &Location, lhs: &Type, rhs: &Type) -> Substitution {
+    type_error::cond.trap(|_| (location.clone(), lhs.clone(), rhs.clone())).inside(|| {
+        let mut subs = Substitution { subs: HashMap::new(), constraints: HashMap::new() };
+        unify_(env, &mut subs, lhs, rhs);
+        subs
+    })
+}
+
 fn unify(env : &mut TypeEnvironment, lhs : &Type, rhs : &Type) -> Substitution {
-    let mut subs = Substitution { subs: HashMap::new(), constraints: HashMap::new() };
-    unify_(env, &mut subs, lhs, rhs);
-    subs
+    unify_location(env, &Location { column: -1, row:-1, absolute:-1 }, lhs, rhs)
 }
 fn unify_(env : &mut TypeEnvironment, subs : &mut Substitution, lhs : &Type, rhs : &Type) {
     match (lhs, rhs) {
@@ -495,7 +509,8 @@ fn unify_(env : &mut TypeEnvironment, subs : &mut Substitution, lhs : &Type, rhs
         }
         (&TypeOperator(ref l), &TypeOperator(ref r)) => {
             if l.name != r.name || l.types.len() != r.types.len() {
-                fail!("Could not unify TypeOperators " + l.name + " and " + r.name);
+                let (location, l, r) = type_error::cond.raise(());
+                fail!("{} Error: Could not unify types {}\nand\n{}", location, l, r)
             }
             for i in range(0, l.types.len()) {
                 unify_(env, subs, &l.types[i], &r.types[i]);
@@ -503,7 +518,8 @@ fn unify_(env : &mut TypeEnvironment, subs : &mut Substitution, lhs : &Type, rhs
         }
         (&TypeVariable(lid), &TypeOperator(ref op)) => {
             if (occurs(&lid, rhs)) {
-                fail!("Recursive unification");
+                let (location, l, r) = type_error::cond.raise(());
+                fail!("{} Error: Recursive unification between {}\nand\n{}", location, l, r);
             }
             let mut t = (*rhs).clone();
             replace(&mut env.constraints, &mut t, subs);
@@ -512,7 +528,8 @@ fn unify_(env : &mut TypeEnvironment, subs : &mut Substitution, lhs : &Type, rhs
                 Some(constraints) => {
                     for c in constraints.iter() {
                         if !env.has_instance(*c, op) {
-                            fail!("{:?} has no instance for class '{}'", op, *c);
+                            let (location, l, r) = type_error::cond.raise(());
+                            fail!("{} Error: No instance of class {} was found for {}", location, *c, *op);
                         }
                     }
                 }
@@ -582,7 +599,6 @@ fn each_type_(typ: &Type, var_fn: &|&TypeVariable|, op_fn: &|&TypeOperator|) {
         }
     }
 }
-
 
 pub fn function_type(func : &Type, arg : &Type) -> Type {
     TypeOperator(TypeOperator { name : ~"->", types : ~[func.clone(), arg.clone()]})
