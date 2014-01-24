@@ -20,7 +20,12 @@ fn new_ptr(t: Type) -> TypePtr {
     Rc::from_mut(RefCell::new(t))
 }
 
-pub struct TypeEnvironment {
+pub trait Types {
+    fn find_type<'a>(&'a self, name: &str) -> Option<&'a Type>;
+}
+
+pub struct TypeEnvironment<'a> {
+    assemblies: ~[&'a Types],
     namedTypes : HashMap<~str, Rc<RefCell<Type>>>,
     types : ~[Rc<RefCell<Type>>],
     constraints: HashMap<TypeVariable, ~[~str]>,
@@ -28,10 +33,10 @@ pub struct TypeEnvironment {
     variableIndex : TypeVariable
 }
 
-struct TypeScope<'a> {
+struct TypeScope<'a, 'b> {
     scope: Scope<'a, Rc<RefCell<Type>>>,
-    env: &'a mut TypeEnvironment,
-    parent: Option<&'a TypeScope<'a>>,
+    env: &'a mut TypeEnvironment<'b>,
+    parent: Option<&'a TypeScope<'a, 'b>>,
     non_generic: ~[Rc<RefCell<Type>>]
 }
 
@@ -45,7 +50,7 @@ condition! {
 }
 
 
-impl TypeEnvironment {
+impl <'a> TypeEnvironment<'a> {
     pub fn new() -> TypeEnvironment {
         let mut globals = HashMap::new();
         let int_type = &Type::new_op(~"Int", ~[]);
@@ -70,6 +75,7 @@ impl TypeEnvironment {
         globals.insert(~"[]", new_ptr(list.clone()));
         globals.insert(~":", new_ptr(function_type(&list_var, &function_type(&list, &list))));
         TypeEnvironment {
+            assemblies: ~[],
             namedTypes : globals,
             types : ~[] ,
             constraints: HashMap::new(),
@@ -196,7 +202,7 @@ impl TypeEnvironment {
     }
 }
 
-impl <'a> TypeScope<'a> {
+impl <'a, 'b> TypeScope<'a, 'b> {
 
     fn typecheck(&mut self, expr : &mut TypedExpr) {
         expr.typ.borrow().with_mut(|typ| *typ = self.env.new_var());
@@ -393,7 +399,7 @@ impl <'a> TypeScope<'a> {
         }
     }
 
-    fn child(&'a self) -> TypeScope<'a> {
+    fn child(&'a self) -> TypeScope<'a, 'b> {
         TypeScope { env: self.env, scope: self.scope.child(), non_generic: ~[], parent: Some(self) }
     }
 }

@@ -2,7 +2,7 @@ use std::hashmap::HashMap;
 use module::{Type, TypeVariable, TypeOperator, Expr, Identifier, Number, Apply, Lambda, Let, Case, TypedExpr, Alternative, Module, Class, Instance, Binding, DataDefinition, Constructor, TypeDeclaration,
     Pattern, ConstructorPattern, NumberPattern, IdentifierPattern};
 use Scope;
-use typecheck::{TypeEnvironment};
+use typecheck::{Types, TypeEnvironment};
 
 #[cfg(test)]
 use parser::Parser;
@@ -48,11 +48,12 @@ enum Var {
 
 pub struct SuperCombinator {
     arity : int,
-    instructions : ~[Instruction]
+    instructions : ~[Instruction],
+    typ: Type
 }
 impl SuperCombinator {
     fn new() -> SuperCombinator {
-        SuperCombinator { arity : 0, instructions : ~[] }
+        SuperCombinator { arity : 0, instructions : ~[], typ: Type::new_var(-1) }
     }
 }
 
@@ -74,8 +75,19 @@ impl <'a> Assembly<'a> {
     }
 }
 
+impl <'a> Types for Assembly<'a> {
+    fn find_type<'b>(&'b self, name: &str) -> Option<&'b Type> {
+        for &(ref name, ref sc) in self.superCombinators.iter() {
+            if name.equiv(name) {
+                return Some(&sc.typ);
+            }
+        }
+        return None;
+    }
+}
+
 pub struct Compiler<'a> {
-    type_env: &'a TypeEnvironment,
+    type_env: &'a TypeEnvironment<'a>,
     class_dictionaries: HashMap<~str, ~[~str]>,
     instance_dictionaries: ~[(~[TypeOperator], ~[uint])],
     stackSize : int,
@@ -143,8 +155,8 @@ impl <'a> Compiler<'a> {
     fn compileBinding<'a>(&mut self, bind : &Binding) -> SuperCombinator {
         debug!("Compiling binding {}", bind.name);
         let mut comb = SuperCombinator::new();
-        let typ = bind.expression.typ.borrow().borrow();
-        let dict_arg = if self.type_env.find_constraints(typ.get()).len() > 0 { 1 } else { 0 };
+        comb.typ = bind.expression.typ.borrow().with(|t| t.clone());
+        let dict_arg = if self.type_env.find_constraints(&comb.typ).len() > 0 { 1 } else { 0 };
         comb.arity = bind.arity + dict_arg;
         let mut stack = CompilerNode { compiler: self, stack: Scope::new(), constraints: bind.typeDecl.context };
         if dict_arg == 1 {
