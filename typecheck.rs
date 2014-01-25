@@ -1,6 +1,6 @@
 use std::hashmap::HashMap;
-use std::rc::Rc;
-use std::cell::RefCell;
+use std::io::File;
+use std::str::{from_utf8};
 use module::{TypeVariable, TypeOperator, Expr, Identifier, Number, Apply, Lambda, Let, Case, TypedExpr, Module, Alternative, Pattern, IdentifierPattern, NumberPattern, ConstructorPattern, Binding};
 use Scope;
 use graph::{Graph, VertexIndex, strongly_connected_components};
@@ -14,11 +14,6 @@ use parser::Parser;
 use std::io::File;
 #[cfg(test)]
 use std::str::{from_utf8};
-
-type TypePtr = Rc<RefCell<Type>>;
-fn new_ptr(t: Type) -> TypePtr {
-    Rc::from_mut(RefCell::new(t))
-}
 
 pub trait Types {
     fn find_type<'a>(&'a self, name: &str) -> Option<&'a Type>;
@@ -36,6 +31,13 @@ impl Types for Module {
             for decl in class.declarations.iter() {
                 if decl.name.equiv(&name) {
                     return Some(&decl.typ);
+                }
+            }
+        }
+        for data in self.dataDefinitions.iter() {
+            for ctor in data.constructors.iter() {
+                if ctor.name.equiv(&name) {
+                    return Some(&ctor.typ);
                 }
             }
         }
@@ -291,7 +293,7 @@ impl <'a, 'b> TypeScope<'a, 'b> {
                 expr.typ = TypeOperator(TypeOperator {
                         name : ~"->", types : ~[arg.typ.clone(), self.env.new_var()]
                     });
-                unify_location(self.env, subs, &expr.location, &func.typ, &expr.typ);
+                unify_location(self.env, subs, &expr.location, &mut func.typ, &mut expr.typ);
                 replace(&mut self.env.constraints, &mut expr.typ, subs);
                 expr.typ = match &expr.typ {
                     &TypeOperator(ref t) => t.types[1].clone(),
@@ -330,11 +332,11 @@ impl <'a, 'b> TypeScope<'a, 'b> {
                 let mut match_type = case_expr.typ.clone();
                 self.typecheck_pattern(subs, &alts[0].pattern, &mut match_type);
                 self.typecheck(&mut alts[0].expression, subs);
-                let alt0_ = alts[0].expression.typ.clone();
+                let mut alt0_ = alts[0].expression.typ.clone();
                 for alt in alts.mut_iter().skip(1) {
                     self.typecheck_pattern(subs, &alt.pattern, &mut match_type);
                     self.typecheck(&mut alt.expression, subs);
-                    unify_location(self.env, subs, &alt.expression.location, &alt0_, &alt.expression.typ);
+                    unify_location(self.env, subs, &alt.expression.location, &mut alt0_, &mut alt.expression.typ);
                     replace(&mut self.env.constraints, &mut alt.expression.typ, subs);
                 }
                 replace(&mut self.env.constraints, &mut alts[0].expression.typ, subs);
@@ -347,10 +349,10 @@ impl <'a, 'b> TypeScope<'a, 'b> {
     fn typecheck_pattern(&mut self, subs: &mut Substitution, pattern: &Pattern, match_type: &mut Type) {
         match pattern {
             &IdentifierPattern(ref ident) => {
-                let typ = self.env.new_var();
+                let mut typ = self.env.new_var();
                 self.insert(ident.clone(), &typ);
                 {
-                    unify(self.env, subs, &typ, match_type);
+                    unify(self.env, subs, &mut typ, match_type);
                     replace(&mut self.env.constraints, match_type, subs);
                 }
                 self.non_generic.push(typ.clone());
@@ -360,11 +362,11 @@ impl <'a, 'b> TypeScope<'a, 'b> {
             }
             &ConstructorPattern(ref ctorname, ref patterns) => {
                 let mut t = self.fresh(*ctorname).unwrap();
-                let data_type = get_returntype(&t);
+                let mut data_type = get_returntype(&t);
                 
                 self.pattern_rec(0, subs, *patterns, &mut t);
 
-                unify(self.env, subs, &data_type, match_type);
+                unify(self.env, subs, &mut data_type, match_type);
                 replace(&mut self.env.constraints, match_type, subs);
             }
         }
@@ -426,7 +428,7 @@ impl <'a, 'b> TypeScope<'a, 'b> {
         self.env.namedTypes.insert(name, t.clone());
     }
     fn find(&'a self, name: &str) -> Option<&'a Type> {
-        self.env.namedTypes.find_equiv(&name)
+        self.env.find(name)
     }
     fn fresh(&'a self, name: &str) -> Option<Type> {
         match self.find(name) {
@@ -545,7 +547,7 @@ fn freshen(env: &TypeScope, mapping: &mut HashMap<TypeVariable, Type>, typ: &Typ
     }
 }
 
-fn unify_location(env: &mut TypeEnvironment, subs: &mut Substitution, location: &Location, lhs: &Type, rhs: &Type) {
+fn unify_location(env: &mut TypeEnvironment, subs: &mut Substitution, location: &Location, lhs: &mut Type, rhs: &mut Type) {
     type_error::cond.trap(|_| (location.clone(), lhs.clone(), rhs.clone())).inside(|| {
         unify_(env, subs, lhs, rhs);
         
@@ -556,40 +558,46 @@ fn unify_location(env: &mut TypeEnvironment, subs: &mut Substitution, location: 
     })
 }
 
-fn unify(env : &mut TypeEnvironment, subs: &mut Substitution, lhs : &Type, rhs : &Type) {
+fn unify(env : &mut TypeEnvironment, subs: &mut Substitution, lhs : &mut Type, rhs : &mut Type) {
     unify_location(env, subs, &Location { column: -1, row:-1, absolute:-1 }, lhs, rhs)
 }
-fn unify_(env : &mut TypeEnvironment, subs : &mut Substitution, lhs : &Type, rhs : &Type) {
-    match (lhs, rhs) {
-        (&TypeVariable(lid), &TypeVariable(rid)) => {
+fn unify_(env : &mut TypeEnvironment, subs : &mut Substitution, lhs : &mut Type, rhs : &mut Type) {
+    let l = &lhs;
+    let r = &rhs;
+    match (l, r) {
+        (& &TypeVariable(ref lid), & &TypeVariable(ref rid)) => {
             if lid != rid {
-                let mut t = TypeVariable(rid);
+                let mut t = TypeVariable(rid.clone());
                 replace(&mut env.constraints, &mut t, subs);
-                subs.subs.insert(lid, t);
-                match env.constraints.pop(&lid) {
-                    Some(constraints) => { subs.constraints.insert(lid, constraints); }
+                subs.subs.insert(lid.clone(), t);
+                match env.constraints.pop(lid) {
+                    Some(constraints) => { subs.constraints.insert(lid.clone(), constraints); }
                     None => ()
                 }
             }
         }
-        (&TypeOperator(ref l), &TypeOperator(ref r)) => {
+        (& &TypeOperator(ref mut l), & &TypeOperator(ref mut r)) => {
             if l.name != r.name || l.types.len() != r.types.len() {
                 let (location, l, r) = type_error::cond.raise(());
                 fail!("{} Error: Could not unify types {}\nand\n{}", location, l, r)
             }
             for i in range(0, l.types.len()) {
-                unify_(env, subs, &l.types[i], &r.types[i]);
+                unify_(env, subs, &mut l.types[i], &mut r.types[i]);
+                if i < l.types.len() - 1 {
+                    replace(&mut env.constraints, &mut l.types[i+1], subs);
+                    replace(&mut env.constraints, &mut r.types[i+1], subs);
+                }
             }
         }
-        (&TypeVariable(lid), &TypeOperator(ref op)) => {
-            if (occurs(&lid, rhs)) {
+        (& &TypeVariable(ref lid), & &TypeOperator(ref op)) => {
+            if (occurs(lid, rhs)) {
                 let (location, l, r) = type_error::cond.raise(());
                 fail!("{} Error: Recursive unification between {}\nand\n{}", location, l, r);
             }
             let mut t = (*rhs).clone();
             replace(&mut env.constraints, &mut t, subs);
             //Check that the type operator has an instance for all the constraints of the variable
-            match env.constraints.find(&lid) {
+            match env.constraints.find(lid) {
                 Some(constraints) => {
                     for c in constraints.iter() {
                         if !env.has_instance(*c, op) {
@@ -600,9 +608,9 @@ fn unify_(env : &mut TypeEnvironment, subs : &mut Substitution, lhs : &Type, rhs
                 }
                 None => ()
             }
-            subs.subs.insert(lid, t);
+            subs.subs.insert(lid.clone(), t);
         }
-        _ => { unify_(env, subs, rhs, lhs); }
+        (lhs, rhs) => { unify_(env, subs, *rhs, *lhs); }
     }
 }
 
@@ -878,4 +886,38 @@ fn typecheck_prelude() {
     let mut module = parser.module();
     let mut env = TypeEnvironment::new();
     env.typecheck_module(&mut module);
+
+    let id = module.bindings.iter().find(|bind| bind.name == ~"id");
+    assert!(id != None);
+    let id_bind = id.unwrap();
+    assert_eq!(id_bind.expression.typ, function_type(&Type::new_var(0), &Type::new_var(0)));
+}
+#[test]
+fn typecheck_import() {
+   
+    let prelude = {
+        let path = &Path::new("Prelude.hs");
+        let s  = File::open(path).read_to_end();
+        let contents : &str = from_utf8(s);
+        let mut parser = Parser::new(contents.chars()); 
+        let mut module = parser.module();
+        let mut env = TypeEnvironment::new();
+        env.typecheck_module(&mut module);
+        module
+    };
+
+    let mut parser = Parser::new(
+r"
+test1 = map not [True, False]
+test2 = id (primIntAdd 2 0)".chars());
+    let mut module = parser.module();
+
+    let mut env = TypeEnvironment::new();
+    env.assemblies.push(&prelude as &Types);
+    env.typecheck_module(&mut module);
+
+    assert_eq!(module.bindings[0].name, ~"test1");
+    assert_eq!(module.bindings[0].expression.typ, Type::new_op(~"[]", ~[Type::new_op(~"Bool", ~[])]));
+    assert_eq!(module.bindings[1].name, ~"test2");
+    assert_eq!(module.bindings[1].expression.typ, Type::new_op(~"Int", ~[]));
 }
