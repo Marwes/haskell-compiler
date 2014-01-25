@@ -160,7 +160,7 @@ impl Type {
 
 pub struct TypedExpr {
     expr : Expr,
-    typ : Rc<RefCell<Type>>,
+    typ : Type,
     location : Location
 }
 
@@ -178,10 +178,10 @@ impl fmt::Default for ~TypedExpr {
 
 impl TypedExpr {
     pub fn new(expr : Expr) -> TypedExpr {
-        TypedExpr { expr : expr, typ : Rc::from_mut(RefCell::new(TypeVariable(TypeVariable { id : 0 }))), location : Location { column : -1, row : -1, absolute : -1 } }
+        TypedExpr { expr : expr, typ : TypeVariable(TypeVariable { id : 0 }), location : Location { column : -1, row : -1, absolute : -1 } }
     }
     pub fn with_location(expr : Expr, loc : Location) -> TypedExpr {
-        TypedExpr { expr : expr, typ : Rc::from_mut(RefCell::new(TypeVariable(TypeVariable { id : 0 }))), location : loc }
+        TypedExpr { expr : expr, typ : TypeVariable(TypeVariable { id : 0 }), location : loc }
     }
 }
 

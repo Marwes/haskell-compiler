@@ -133,10 +133,10 @@ impl <'a> Compiler<'a> {
             }
         }
         for bind in module.bindings.iter() {
-            let typ = bind.expression.typ.borrow().borrow();
-            let constraints = self.type_env.find_constraints(typ.get());
+            let typ = &bind.expression.typ;
+            let constraints = self.type_env.find_constraints(typ);
             if constraints.len() > 0 {
-                self.variables.insert(bind.name.clone(), ConstraintVariable(self.globalIndex, typ.get().clone(), constraints));
+                self.variables.insert(bind.name.clone(), ConstraintVariable(self.globalIndex, typ.clone(), constraints));
             }
             else {
                 self.variables.insert(bind.name.clone(), GlobalVariable(self.globalIndex));
@@ -155,7 +155,7 @@ impl <'a> Compiler<'a> {
     fn compileBinding<'a>(&mut self, bind : &Binding) -> SuperCombinator {
         debug!("Compiling binding {}", bind.name);
         let mut comb = SuperCombinator::new();
-        comb.typ = bind.expression.typ.borrow().with(|t| t.clone());
+        comb.typ = bind.expression.typ.clone();
         let dict_arg = if self.type_env.find_constraints(&comb.typ).len() > 0 { 1 } else { 0 };
         comb.arity = bind.arity + dict_arg;
         let mut stack = CompilerNode { compiler: self, stack: Scope::new(), constraints: bind.typeDecl.context };
@@ -236,8 +236,7 @@ impl <'a, 'b> CompilerNode<'a, 'b> {
                             &ConstructorVariable(tag, arity) => { instructions.push(Pack(tag, arity)); None }
                             &ClassVariable(ref typ, ref var) => self.compile_instance_variable(expr, instructions, *name, typ, var),
                             &ConstraintVariable(ref index, ref typ, ref constraints) => {
-                                let t = expr.typ.borrow().borrow();
-                                let x = self.compile_with_constraints(*name, t.get(), *constraints, instructions);
+                                let x = self.compile_with_constraints(*name, &expr.typ, *constraints, instructions);
                                 instructions.push(PushGlobal(*index));
                                 instructions.push(Mkap);
                                 x
@@ -303,8 +302,7 @@ impl <'a, 'b> CompilerNode<'a, 'b> {
     }
 
     fn compile_instance_variable(&self, expr: &TypedExpr, instructions: &mut ~[Instruction], name: &str, typ: &Type, var: &TypeVariable) -> Option<(~[TypeOperator], ~[uint])> {
-        let actual_type = expr.typ.borrow().borrow();
-        match try_find_instance_type(var, typ, actual_type.get()) {
+        match try_find_instance_type(var, typ, &expr.typ) {
             Some(typename) => {
                 //We should be able to retrieve the instance directly
                 let instance_fn_name = "#" + typename + name;
