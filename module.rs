@@ -11,7 +11,7 @@ pub struct Module {
     instances : ~[Instance],
     dataDefinitions : ~[DataDefinition]
 }
-
+#[deriving(Clone)]
 pub struct Class {
     name : ~str,
     variable: TypeVariable,

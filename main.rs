@@ -97,13 +97,13 @@ impl <'a> fmt::Default for Node_<'a> {
 }
 
 struct VM<'a> {
-    assembly : Assembly<'a>,
+    assembly : Assembly,
     heap : ~[Node<'a>]
 }
 
 impl <'a> VM<'a> {
     fn new() -> VM {
-        VM { assembly : Assembly { superCombinators : ~[], instance_dictionaries: ~[] }, heap : ~[] }
+        VM { assembly : Assembly::new(), heap : ~[] }
     }
 
     fn evaluate(&'a self, code: &[Instruction]) -> Node_<'a> {

@@ -8,6 +8,10 @@ use typecheck::{Types, TypeEnvironment};
 use parser::Parser;
 #[cfg(test)]
 use typecheck::{identifier, apply, number, lambda, let_};
+#[cfg(test)]
+use std::io::File;
+#[cfg(test)]
+use std::str::{from_utf8};
 
 #[deriving(Eq)]
 pub enum Instruction {
@@ -22,7 +26,7 @@ pub enum Instruction {
     IntGT,
     IntGE,
     Push(int),
-    PushGlobal(int),
+    PushGlobal(uint),
     PushInt(int),
     Mkap,
     Eval,
@@ -38,45 +42,78 @@ pub enum Instruction {
     PushDictionaryMember(uint),
 }
 
+#[deriving(Clone)]
 enum Var {
     StackVariable(int),
-    GlobalVariable(int),
+    GlobalVariable(uint),
     ConstructorVariable(u16, u16),
     ClassVariable(Type, TypeVariable),
-    ConstraintVariable(int, Type, ~[TypeOperator])
+    ConstraintVariable(uint, Type, ~[TypeOperator])
 }
 
 pub struct SuperCombinator {
     arity : int,
     instructions : ~[Instruction],
-    typ: Type
+    typ: Type,
+    constraints: ~[TypeOperator]
 }
 impl SuperCombinator {
     fn new() -> SuperCombinator {
-        SuperCombinator { arity : 0, instructions : ~[], typ: Type::new_var(-1) }
+        SuperCombinator { arity : 0, instructions : ~[], typ: Type::new_var(-1), constraints: ~[] }
     }
 }
 
-pub struct Assembly<'a> {
+pub struct Assembly {
     superCombinators: ~[(~str, SuperCombinator)],
-    instance_dictionaries: ~[~[uint]]
+    instance_dictionaries: ~[~[uint]],
+    classes: ~[Class],
+    instances: ~[TypeOperator],
+    offset: uint
 }
 
-impl <'a> Assembly<'a> {
-    fn find(&self, name: &str) -> Option<Var> {
+impl Assembly {
+    pub fn new() -> Assembly {
+        Assembly {
+            superCombinators: ~[],
+            instance_dictionaries: ~[],
+            offset: 0,
+            classes: ~[],
+            instances: ~[]
+        }
+    }
+}
+
+trait Globals {
+    fn find_global(&self, name: &str) -> Option<Var>;
+}
+
+impl Globals for Assembly {
+    fn find_global(&self, name: &str) -> Option<Var> {
         let mut index = 0;
-        for &(ref n, _) in self.superCombinators.iter() {
+        for &(ref n, ref sc) in self.superCombinators.iter() {
             if name == *n {
-                return Some(GlobalVariable(index));
+                if sc.constraints.len() > 0 {
+                    return Some(ConstraintVariable(self.offset + index, sc.typ.clone(), sc.constraints.clone()));
+                }
+                else {
+                    return Some(GlobalVariable(self.offset + index));
+                }
             }
             index += 1;
+        }
+        for class in self.classes.iter() {
+            for decl in class.declarations.iter() {
+                if decl.name.equiv(&name) {
+                    return Some(ClassVariable(decl.typ.clone(), class.variable));
+                }
+            }
         }
         return None;
     }
 }
 
-impl <'a> Types for Assembly<'a> {
-    fn find_type<'b>(&'b self, name: &str) -> Option<&'b Type> {
+impl Types for Assembly {
+    fn find_type<'a>(&'a self, name: &str) -> Option<&'a Type> {
         for &(ref name, ref sc) in self.superCombinators.iter() {
             if name.equiv(name) {
                 return Some(&sc.typ);
@@ -91,9 +128,9 @@ pub struct Compiler<'a> {
     class_dictionaries: HashMap<~str, ~[~str]>,
     instance_dictionaries: ~[(~[TypeOperator], ~[uint])],
     stackSize : int,
-    globals : HashMap<~str, SuperCombinator>,
+    assemblies: ~[&'a Assembly],
     variables: HashMap<~str, Var>,
-    globalIndex : int,
+    globalIndex : uint,
 }
 
 
@@ -103,11 +140,12 @@ impl <'a> Compiler<'a> {
         variables.insert(~"[]", ConstructorVariable(0, 0));
         variables.insert(~":", ConstructorVariable(1, 2));
         Compiler { type_env: type_env, class_dictionaries: HashMap::new(), instance_dictionaries: ~[],
-            stackSize : 0, globals : HashMap::new(), globalIndex : 0, variables: variables }
+            stackSize : 0, globalIndex : 0, variables: variables, assemblies: ~[] }
     }
 
     pub fn compileModule(&mut self, module : &Module) -> Assembly {
         
+        //First add all the variables so they can be found
         for dataDef in module.dataDefinitions.iter() {
             for ctor in dataDef.constructors.iter() {
                 self.variables.insert(ctor.name.clone(), ConstructorVariable(ctor.tag as u16, ctor.arity as u16));
@@ -123,13 +161,10 @@ impl <'a> Compiler<'a> {
             self.class_dictionaries.insert(class.name.clone(), function_names);
         }
 
-        let mut superCombinators = ~[];
         for instance in module.instances.iter() {
             for bind in instance.bindings.iter() {
                 self.variables.insert(bind.name.clone(), GlobalVariable(self.globalIndex));
                 self.globalIndex += 1;
-                let sc = self.compileBinding(bind);
-                superCombinators.push((bind.name.clone(), sc));
             }
         }
         for bind in module.bindings.iter() {
@@ -142,7 +177,20 @@ impl <'a> Compiler<'a> {
                 self.variables.insert(bind.name.clone(), GlobalVariable(self.globalIndex));
             }
             self.globalIndex += 1;
-            let sc = self.compileBinding(bind);
+        }
+        
+        //Compile all bindings
+        let mut superCombinators = ~[];
+        for instance in module.instances.iter() {
+            for bind in instance.bindings.iter() {
+                let sc = self.compileBinding(bind);
+                superCombinators.push((bind.name.clone(), sc));
+            }
+        }
+        for bind in module.bindings.iter() {
+            let mut sc = self.compileBinding(bind);
+            let constraints = self.type_env.find_constraints(&bind.expression.typ);
+            sc.constraints = constraints;
             superCombinators.push((bind.name.clone(), sc));
         }
 
@@ -150,7 +198,14 @@ impl <'a> Compiler<'a> {
         for &(_, ref dict) in self.instance_dictionaries.iter() {
             instance_dictionaries.push(dict.clone());
         }
-        Assembly { superCombinators: superCombinators, instance_dictionaries: instance_dictionaries }
+        let len = superCombinators.len();
+        Assembly {
+            superCombinators: superCombinators,
+            instance_dictionaries: instance_dictionaries,
+            offset: self.globalIndex - len,
+            classes: module.classes.clone(),
+            instances: FromIterator::from_iterator(&mut module.instances.iter().map(|inst| inst.typ.clone()))
+        }
     }
     fn compileBinding<'a>(&mut self, bind : &Binding) -> SuperCombinator {
         debug!("Compiling binding {}", bind.name);
@@ -203,11 +258,18 @@ impl <'a, 'b> Drop for CompilerNode<'a, 'b> {
 
 impl <'a, 'b> CompilerNode<'a, 'b> {
     
-    fn find(&'a self, identifier : &str) -> Option<&'a Var> {
-       match self.stack.find(identifier) {
-            Some(var) => Some(var),
-            None => self.compiler.variables.find_equiv(&identifier)
-        }
+    fn find(&'a self, identifier : &str) -> Option<Var> {
+        self.stack.find(identifier).map(|x| x.clone())
+        .or_else(|| self.compiler.variables.find_equiv(&identifier).map(|x| x.clone()))
+        .or_else(|| {
+            for assembly in self.compiler.assemblies.iter() {
+                match assembly.find_global(identifier) {
+                    Some(var) => return Some(var),
+                    None => ()
+                }
+            }
+            None
+        })
     }
 
     fn newStackVar(&mut self, identifier : ~str) {
@@ -231,11 +293,11 @@ impl <'a, 'b> CompilerNode<'a, 'b> {
                     None => fail!("Undefined variable " + *name),
                     Some(var) => {
                         match var {
-                            &StackVariable(index) => { instructions.push(Push(index)); None }
-                            &GlobalVariable(index) => { instructions.push(PushGlobal(index)); None }
-                            &ConstructorVariable(tag, arity) => { instructions.push(Pack(tag, arity)); None }
-                            &ClassVariable(ref typ, ref var) => self.compile_instance_variable(expr, instructions, *name, typ, var),
-                            &ConstraintVariable(ref index, ref typ, ref constraints) => {
+                            StackVariable(index) => { instructions.push(Push(index)); None }
+                            GlobalVariable(index) => { instructions.push(PushGlobal(index)); None }
+                            ConstructorVariable(tag, arity) => { instructions.push(Pack(tag, arity)); None }
+                            ClassVariable(ref typ, ref var) => self.compile_instance_variable(expr, instructions, *name, typ, var),
+                            ConstraintVariable(ref index, ref typ, ref constraints) => {
                                 let x = self.compile_with_constraints(*name, &expr.typ, *constraints, instructions);
                                 instructions.push(PushGlobal(*index));
                                 instructions.push(Mkap);
@@ -307,7 +369,7 @@ impl <'a, 'b> CompilerNode<'a, 'b> {
                 //We should be able to retrieve the instance directly
                 let instance_fn_name = "#" + typename + name;
                 match self.find(instance_fn_name) {
-                    Some(&GlobalVariable(index)) => {
+                    Some(GlobalVariable(index)) => {
                         instructions.push(PushGlobal(index));
                     }
                     _ => fail!("Unregistered instance function {}", instance_fn_name)
@@ -323,7 +385,7 @@ impl <'a, 'b> CompilerNode<'a, 'b> {
 
     fn compile_with_constraints(&self, name: &str, typ: &Type, constraints: &[TypeOperator], instructions: &mut ~[Instruction]) -> Option<(~[TypeOperator], ~[uint])> {
         match self.find("$dict") {
-            Some(&StackVariable(_)) => {
+            Some(StackVariable(_)) => {
                 //Push dictionary or member of dictionary
                 match self.push_dictionary_member(constraints, name) {
                     Some(index) => instructions.push(PushDictionaryMember(index)),
@@ -377,7 +439,7 @@ impl <'a, 'b> CompilerNode<'a, 'b> {
                             _ => fail!("Expected operator")
                         };
                         match self.find(f) {
-                            Some(&GlobalVariable(index)) => {
+                            Some(GlobalVariable(index)) => {
                                 function_indexes.push(index as uint);
                             }
                             _ => fail!("Did not find function {}", f)
@@ -449,7 +511,7 @@ impl <'a, 'b> CompilerNode<'a, 'b> {
         match pattern {
             &ConstructorPattern(ref name, ref patterns) => {
                 match self.find(*name) {
-                    Some(&ConstructorVariable(tag, _)) => {
+                    Some(ConstructorVariable(tag, _)) => {
                         instructions.push(CaseJump(tag as uint));
                         branches.push(instructions.len());
                         instructions.push(Jump(0));//To be determined later
@@ -626,4 +688,32 @@ main x = primIntAdd (test x) 6";
     let (ref name, ref main) = assembly.superCombinators[1];
     assert_eq!(name, &~"main");
     assert_eq!(main.instructions, ~[PushInt(6), Push(1), PushDictionaryMember(0), Mkap, Eval, Add, Update(0), Pop(2), Unwind]);
+}
+
+#[test]
+fn test_compile_prelude() {
+    let mut type_env = TypeEnvironment::new();
+    let prelude = {
+        let path = &Path::new("Prelude.hs");
+        let s  = File::open(path).read_to_end();
+        let contents : &str = from_utf8(s);
+        let mut parser = Parser::new(contents.chars()); 
+        let mut module = parser.module();
+        type_env.typecheck_module(&mut module);
+        let mut compiler = Compiler::new(&type_env);
+        compiler.compileModule(&mut module)
+    };
+
+    let file =
+r"main = id 2";
+    let mut parser = Parser::new(file.chars());
+    let mut module = parser.module();
+    type_env.typecheck_module(&mut module);
+    let mut compiler = Compiler::new(&type_env);
+    compiler.assemblies.push(&prelude);
+    let assembly = compiler.compileModule(&module);
+
+    let sc = assembly.superCombinators[0].n1_ref();
+    let id_index = prelude.superCombinators.iter().position(|&(ref name, _)| name.equiv(& &"id")).unwrap();
+    assert_eq!(sc.instructions, ~[PushInt(2), PushGlobal(id_index), Mkap, Eval, Update(0), Unwind]);
 }
