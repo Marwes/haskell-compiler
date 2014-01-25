@@ -24,6 +24,25 @@ pub trait Types {
     fn find_type<'a>(&'a self, name: &str) -> Option<&'a Type>;
 }
 
+impl Types for Module {
+    fn find_type<'a>(&'a self, name: &str) -> Option<&'a Type> {
+        for bind in self.bindings.iter() {
+            if bind.name.equiv(&name) {
+                return Some(&bind.expression.typ);
+            }
+        }
+
+        for class in self.classes.iter() {
+            for decl in class.declarations.iter() {
+                if decl.name.equiv(&name) {
+                    return Some(&decl.typ);
+                }
+            }
+        }
+        return None;
+    }
+}
+
 pub struct TypeEnvironment<'a> {
     assemblies: ~[&'a Types],
     namedTypes : HashMap<~str, Type>,
@@ -120,14 +139,16 @@ impl <'a> TypeEnvironment<'a> {
         self.substitute(&mut subs, expr);
     }
 
-    pub fn find(&self, ident: &str) -> Option<Type> {
-        match self.namedTypes.find_equiv(&ident) {
-            Some(typ) => {
-                let t = typ;
-                Some(t.clone())
+    pub fn find(&'a self, ident: &str) -> Option<&'a Type> {
+        self.namedTypes.find_equiv(&ident).or_else(|| {
+            for types in self.assemblies.iter() {
+                let v = types.find_type(ident);
+                if v != None {
+                    return v;
+                }
             }
-            None => None
-        }
+            None
+        })
     }
     pub fn find_constraints(&self, typ: &Type) -> ~[TypeOperator] {
         let mut constraints : ~[TypeOperator] = ~[];
@@ -151,7 +172,7 @@ impl <'a> TypeEnvironment<'a> {
         match self.find(name) {
             Some(typ) => {
                 let mut constraints = ~[];
-                self.find_specialized(&mut constraints, actual_type, &typ);
+                self.find_specialized(&mut constraints, actual_type, typ);
                 constraints
             }
             None => fail!("Could not find '{}' in type environment", name)
