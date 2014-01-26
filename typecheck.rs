@@ -416,6 +416,8 @@ impl <'a, 'b> TypeScope<'a, 'b> {
                 let bind = &mut bindings[bindIndex];
                 self.non_generic.pop();
                 self.env.substitute(subs, &mut bind.expression);
+                bind.typeDecl.typ = bind.expression.typ.clone();
+                bind.typeDecl.context = self.env.find_constraints(&bind.typeDecl.typ);
             }
         }
     }
