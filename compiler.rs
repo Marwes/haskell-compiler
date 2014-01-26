@@ -53,18 +53,19 @@ enum Var {
 
 pub struct SuperCombinator {
     arity : int,
+    name: ~str,
     instructions : ~[Instruction],
     typ: Type,
     constraints: ~[TypeOperator]
 }
 impl SuperCombinator {
     fn new() -> SuperCombinator {
-        SuperCombinator { arity : 0, instructions : ~[], typ: Type::new_var(-1), constraints: ~[] }
+        SuperCombinator { arity : 0, name: ~"", instructions : ~[], typ: Type::new_var(-1), constraints: ~[] }
     }
 }
 
 pub struct Assembly {
-    superCombinators: ~[(~str, SuperCombinator)],
+    superCombinators: ~[SuperCombinator],
     instance_dictionaries: ~[~[uint]],
     classes: ~[Class],
     instances: ~[TypeOperator],
@@ -90,8 +91,8 @@ trait Globals {
 impl Globals for Assembly {
     fn find_global(&self, name: &str) -> Option<Var> {
         let mut index = 0;
-        for &(ref n, ref sc) in self.superCombinators.iter() {
-            if name == *n {
+        for sc in self.superCombinators.iter() {
+            if name == sc.name {
                 if sc.constraints.len() > 0 {
                     return Some(ConstraintVariable(self.offset + index, sc.typ.clone(), sc.constraints.clone()));
                 }
@@ -114,8 +115,8 @@ impl Globals for Assembly {
 
 impl Types for Assembly {
     fn find_type<'a>(&'a self, name: &str) -> Option<&'a Type> {
-        for &(ref name, ref sc) in self.superCombinators.iter() {
-            if name.equiv(name) {
+        for sc in self.superCombinators.iter() {
+            if sc.name.equiv(&name) {
                 return Some(&sc.typ);
             }
         }
@@ -144,6 +145,7 @@ impl <'a> Compiler<'a> {
     }
 
     pub fn compileModule(&mut self, module : &Module) -> Assembly {
+        self.globalIndex = self.assemblies.iter().flat_map(|assembly| assembly.superCombinators.iter()).len();
         
         //First add all the variables so they can be found
         for dataDef in module.dataDefinitions.iter() {
@@ -183,15 +185,17 @@ impl <'a> Compiler<'a> {
         let mut superCombinators = ~[];
         for instance in module.instances.iter() {
             for bind in instance.bindings.iter() {
-                let sc = self.compileBinding(bind);
-                superCombinators.push((bind.name.clone(), sc));
+                let mut sc = self.compileBinding(bind);
+                sc.name = bind.name.clone();
+                superCombinators.push(sc);
             }
         }
         for bind in module.bindings.iter() {
             let mut sc = self.compileBinding(bind);
             let constraints = self.type_env.find_constraints(&bind.expression.typ);
             sc.constraints = constraints;
-            superCombinators.push((bind.name.clone(), sc));
+            sc.name = bind.name.clone();
+            superCombinators.push(sc);
         }
 
         let mut instance_dictionaries = ~[];
@@ -202,9 +206,9 @@ impl <'a> Compiler<'a> {
         Assembly {
             superCombinators: superCombinators,
             instance_dictionaries: instance_dictionaries,
-            offset: self.globalIndex - len,
+            offset: self.assemblies.iter().flat_map(|assembly| assembly.superCombinators.iter()).len(),
             classes: module.classes.clone(),
-            instances: FromIterator::from_iterator(&mut module.instances.iter().map(|inst| inst.typ.clone()))
+            instances: module.instances.iter().map(|inst| inst.typ.clone()).collect()
         }
     }
     fn compileBinding<'a>(&mut self, bind : &Binding) -> SuperCombinator {
@@ -331,7 +335,7 @@ impl <'a, 'b> CompilerNode<'a, 'b> {
                 instructions.push(Slide(bindings.len()));
             }
             &Case(ref body, ref alternatives) => {
-                self.compile(*body, instructions, strict);
+                self.compile(*body, instructions, true);
                 self.newStackVar(~"");//Dummy variable for the case expression
                 let mut branches = ~[];
                 for alt in alternatives.iter() {
@@ -459,11 +463,13 @@ impl <'a, 'b> CompilerNode<'a, 'b> {
                     self.compile(*arg, instructions, false);
                     self.compile_apply(*func, instructions, false);
                     match &instructions[instructions.len() - 1] {
-                        &Pack(_, _) => (),//The function was only the pack instruction so to do Mkap
-                        _ => instructions.push(Mkap)
-                    }
-                    if strict {
-                        instructions.push(Eval);
+                        &Pack(_, _) => (),//The application was a constructor so dont do Mkap and the Pack instruction is strict already
+                        _ => {
+                            instructions.push(Mkap);
+                            if strict {
+                                instructions.push(Eval);
+                            }
+                        }
                     }
                 }
             }
@@ -611,7 +617,7 @@ main = add 2 3";
     let mut comp = Compiler::new(&type_env);
     let assembly = comp.compileModule(&module);
 
-    assert_eq!(assembly.superCombinators[1].n1().instructions, ~[PushInt(3), PushInt(2), PushGlobal(0), Mkap, Mkap, Eval, Update(0), Unwind]);
+    assert_eq!(assembly.superCombinators[1].instructions, ~[PushInt(3), PushInt(2), PushGlobal(0), Mkap, Mkap, Eval, Update(0), Unwind]);
 }
 
 #[test]
@@ -663,8 +669,8 @@ main = test 6";
     let mut comp = Compiler::new(&type_env);
     let assembly = comp.compileModule(&module);
 
-    let (ref name, ref main) = assembly.superCombinators[1];
-    assert_eq!(name, &~"main");
+    let main = &assembly.superCombinators[1];
+    assert_eq!(main.name, ~"main");
     assert_eq!(main.instructions, ~[PushInt(6), PushGlobal(0), Mkap, Eval, Update(0), Unwind]);
 }
 
@@ -685,8 +691,8 @@ main x = primIntAdd (test x) 6";
     let mut comp = Compiler::new(&type_env);
     let assembly = comp.compileModule(&module);
 
-    let (ref name, ref main) = assembly.superCombinators[1];
-    assert_eq!(name, &~"main");
+    let main = assembly.superCombinators[1];
+    assert_eq!(main.name, ~"main");
     assert_eq!(main.instructions, ~[PushInt(6), Push(1), PushDictionaryMember(0), Mkap, Eval, Add, Update(0), Pop(2), Unwind]);
 }
 
@@ -713,7 +719,7 @@ r"main = id 2";
     compiler.assemblies.push(&prelude);
     let assembly = compiler.compileModule(&module);
 
-    let sc = assembly.superCombinators[0].n1_ref();
-    let id_index = prelude.superCombinators.iter().position(|&(ref name, _)| name.equiv(& &"id")).unwrap();
+    let sc = &assembly.superCombinators[0];
+    let id_index = prelude.superCombinators.iter().position(|sc| sc.name.equiv(& &"id")).unwrap();
     assert_eq!(sc.instructions, ~[PushInt(2), PushGlobal(id_index), Mkap, Eval, Update(0), Unwind]);
 }

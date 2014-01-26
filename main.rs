@@ -88,22 +88,39 @@ impl <'a> fmt::Default for Node_<'a> {
         match node {
             &Application(ref func, ref arg) => write!(f.buf, "({} {})", *func, *arg),
             &Int(i) => write!(f.buf, "{}", i),
-            &Combinator(ref sc) => write!(f.buf, "{:?}", sc),
+            &Combinator(ref sc) => write!(f.buf, "{}", sc.name),
             &Indirection(ref n) => write!(f.buf, "(~> {})", *n),
-            &Constructor(ref tag, ref args) => write!(f.buf, "({} {:?})", *tag, *args),
+            &Constructor(ref tag, ref args) => {
+                write!(f.buf, "({}", *tag);
+                for arg in args.iter() {
+                    write!(f.buf, "{}",arg.borrow());
+                }
+                write!(f.buf, ")");
+            }
             &Dictionary(ref dict) => write!(f.buf, "{:?}", dict)
         }
     }
 }
 
 struct VM<'a> {
-    assembly : Assembly,
+    assembly : ~[Assembly],
+    globals: ~[(uint, uint)],
     heap : ~[Node<'a>]
 }
 
 impl <'a> VM<'a> {
     fn new() -> VM {
-        VM { assembly : Assembly::new(), heap : ~[] }
+        VM { assembly : ~[], heap : ~[], globals: ~[] }
+    }
+
+    fn add_assembly(&mut self, assembly: Assembly) {
+        self.assembly.push(assembly);
+        let assembly_index = self.assembly.len() - 1;
+        let mut index = 0;
+        for _ in self.assembly[self.assembly.len() - 1].superCombinators.iter() {
+            self.globals.push((assembly_index, index));
+            index += 1;
+        }
     }
 
     fn evaluate(&'a self, code: &[Instruction]) -> Node_<'a> {
@@ -146,9 +163,9 @@ impl <'a> VM<'a> {
                     stack.push(x);
                 }
                 &PushGlobal(index) => {
-                    match &self.assembly.superCombinators[index] {
-                        &(_, ref sc) => stack.push(Node::new(Combinator(sc)))
-                    }
+                    let (assembly_index, index) = self.globals[index];
+                    let sc = &self.assembly[assembly_index].superCombinators[index];
+                    stack.push(Node::new(Combinator(sc)));
                 }
                 &Mkap => {
                     assert!(stack.len() >= 2);
@@ -198,7 +215,7 @@ impl <'a> VM<'a> {
                                     newStack.push(stack[index].clone());
                                 }
                                 
-                                debug!("Call");
+                                debug!("Called {}", comb.name);
                                 for j in range(0, newStack.len()) {
                                     debug!(" {}  {}", j, newStack[j].borrow());
                                 }
@@ -246,14 +263,14 @@ impl <'a> VM<'a> {
                                 i += 1;//Skip the jump instruction
                             }
                         }
-                        _ => fail!("Expected constructor when executing CaseJump")
+                        x => fail!("Expected constructor when executing CaseJump, got {}", x),
                     }
                 }
                 &Jump(to) => {
                     i = to - 1;
                 }
                 &PushDictionary(index) => {
-                    stack.push(Node::new(Dictionary(self.assembly.instance_dictionaries[index])));
+                    stack.push(Node::new(Dictionary(self.assembly[0].instance_dictionaries[index])));
                 }
                 &PushDictionaryMember(index) => {
                     let sc = {
@@ -262,7 +279,8 @@ impl <'a> VM<'a> {
                             x => fail!("Attempted to retrieve {} as dictionary", x)
                         };
                         let gi = dict[index];
-                        self.assembly.superCombinators[gi].n1_ref()
+                        let (assembly_index, i) = self.globals[gi];
+                        &self.assembly[assembly_index].superCombinators[i]
                     };
                     stack.push(Node::new(Combinator(sc)));
                 }
@@ -280,7 +298,7 @@ fn primitive2(stack: &mut ~[Node], f: |int, int| -> Node_) {
     let r = stack.pop();
     match (l.borrow(), r.borrow()) {
         (&Int(lhs), &Int(rhs)) => stack.push(Node::new(f(lhs, rhs))),
-        (lhs, rhs) => fail!("Expected fully evaluted numbers in primitive instruction\n LHS: {:?}\nRHS: {:?} ", lhs, rhs)
+        (lhs, rhs) => fail!("Expected fully evaluted numbers in primitive instruction\n LHS: {}\nRHS: {} ", lhs, rhs)
     }
 }
 fn primitive(stack: &mut ~[Node], f: |int, int| -> int) {
@@ -303,7 +321,7 @@ fn main() {
             let vm = VM::new();
             let mut stack = ~[];
             vm.execute(&mut stack, instr);
-            println!("{:?}", stack[0].borrow());
+            println!("{}", stack[0].borrow());
         }
         [_, ~"-l", filename] => {
             let path = &Path::new(filename);
@@ -357,7 +375,7 @@ fn extract_result(node: Node_) -> Option<VMResult> {
         }
         Int(i) => Some(IntResult(i)),
         x => {
-            println!("Can't extract result {:?}", x);
+            println!("Can't extract result {}", x);
             None
         }
     }
@@ -365,10 +383,10 @@ fn extract_result(node: Node_) -> Option<VMResult> {
 
 fn execute_main<T : Iterator<char>>(iterator: T) -> Option<VMResult> {
     let mut vm = VM::new();
-    vm.assembly = compile_iter(iterator);
-    let x = vm.assembly.superCombinators.iter().find(|& &(ref name, _)| *name == ~"main");
+    vm.add_assembly(compile_iter(iterator));
+    let x = vm.assembly.iter().flat_map(|a| a.superCombinators.iter()).find(|sc| sc.name == ~"main");
     match x {
-        Some(&(_, ref sc)) => {
+        Some(sc) => {
             assert!(sc.arity == 0);
             let result = vm.evaluate(sc.instructions);
             extract_result(result)
@@ -475,4 +493,45 @@ testAdd y = primIntAdd (test 5) (test y)
 
 main = testAdd True";
     assert_eq!(execute_main(module.chars()), Some(IntResult(6)));
+}
+
+#[test]
+fn test_run_prelude() {
+    let mut type_env = TypeEnvironment::new();
+    let prelude = {
+        let path = &Path::new("Prelude.hs");
+        let s  = File::open(path).read_to_end();
+        let contents : &str = from_utf8(s);
+        let mut parser = Parser::new(contents.chars()); 
+        let mut module = parser.module();
+        type_env.typecheck_module(&mut module);
+        let mut compiler = Compiler::new(&type_env);
+        compiler.compileModule(&mut module)
+    };
+
+    let assembly = {
+        let file =
+r"add x y = primIntAdd x y
+main = foldl add 0 [1,2,3,4]";
+        let mut parser = Parser::new(file.chars());
+        let mut module = parser.module();
+        type_env.typecheck_module(&mut module);
+        let mut compiler = Compiler::new(&type_env);
+        compiler.assemblies.push(&prelude);
+        compiler.compileModule(&module)
+    };
+
+    let mut vm = VM::new();
+    vm.add_assembly(prelude);
+    vm.add_assembly(assembly);
+    let x = vm.assembly.iter().flat_map(|a| a.superCombinators.iter()).find(|sc| sc.name == ~"main");
+    let result = match x {
+        Some(sc) => {
+            assert!(sc.arity == 0);
+            let result = vm.evaluate(sc.instructions);
+            extract_result(result)
+        }
+        None => None
+    };
+    assert_eq!(result, Some(IntResult(10)));
 }
