@@ -339,15 +339,15 @@ fn parseOperatorExpression(&mut self, inL : Option<TypedExpr>, minPrecedence : i
 	{
 		let op = (*self.lexer.current()).clone();
 		let mut rhs = self.application();
-		let nextOP = self.lexer.next_().token;
-        debug!("Parsing operator? {:?}", nextOP);
-		while (self.lexer.valid() && nextOP == OPERATOR
-			&& precedence(self.lexer.current().value) > precedence(op.value))
+		self.lexer.next_();
+        debug!("Parsing operator? {:?}", self.lexer.current());
+		while (self.lexer.valid() && self.lexer.current().token == OPERATOR
+			&& precedence(self.lexer.current().value) >= precedence(op.value))
 		{
 			let lookaheadPrecedence = precedence(self.lexer.current().value);
 			self.lexer.backtrack();
 			rhs = self.parseOperatorExpression(rhs, lookaheadPrecedence);
-			self.lexer.next_();
+            self.lexer.next_();
 		}
 		let mut name = TypedExpr::with_location(Identifier(op.value.clone()), op.location);
 		let loc = match &lhs {
@@ -1006,6 +1006,13 @@ r"data List a = Cons a (List a) | Nil".chars());
     assert_eq!(data.typ, List);
     assert_eq!(data.constructors[0], Cons);
     assert_eq!(data.constructors[1], Nil);
+}
+
+#[test]
+fn test_operators() {
+    let mut parser = Parser::new("1 : 2 : []".chars());
+    let expr = parser.expression_();
+    assert_eq!(expr, apply(apply(identifier(~":"), number(1)), apply(apply(identifier(~":"), number(2)), identifier(~"[]"))));
 }
 
 #[test]
