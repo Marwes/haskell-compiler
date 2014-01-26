@@ -113,6 +113,49 @@ impl Globals for Assembly {
     }
 }
 
+fn find_global(module: &Module, offset: uint, name: &str) -> Option<Var> {
+    
+    for dataDef in module.dataDefinitions.iter() {
+        for ctor in dataDef.constructors.iter() {
+            if ctor.name.equiv(&name) {
+                return Some(ConstructorVariable(ctor.tag as u16, ctor.arity as u16));
+            }
+        }
+    }
+    
+    for class in module.classes.iter() {
+        for decl in class.declarations.iter() {
+            if decl.name.equiv(&name) {
+                return Some(ClassVariable(decl.typ.clone(), class.variable));
+            }
+        }
+    }
+
+    let mut global_index = 0;
+    for instance in module.instances.iter() {
+        for bind in instance.bindings.iter() {
+            if bind.name.equiv(&name) {
+                return Some(GlobalVariable(offset + global_index));
+            }
+            global_index += 1;
+        }
+    }
+    for bind in module.bindings.iter() {
+        if bind.name.equiv(&name) {
+            let typ = &bind.expression.typ;
+            let constraints = &bind.typeDecl.context;
+            if constraints.len() > 0 {
+                return Some(ConstraintVariable(offset + global_index, typ.clone(), constraints.clone()));
+            }
+            else {
+                return Some(GlobalVariable(offset + global_index));
+            }
+        }
+        global_index += 1;
+    }
+    None
+}
+
 impl Types for Assembly {
     fn find_type<'a>(&'a self, name: &str) -> Option<&'a Type> {
         for sc in self.superCombinators.iter() {
@@ -130,94 +173,63 @@ pub struct Compiler<'a> {
     instance_dictionaries: ~[(~[TypeOperator], ~[uint])],
     stackSize : int,
     assemblies: ~[&'a Assembly],
-    variables: HashMap<~str, Var>,
     globalIndex : uint,
 }
 
 
 impl <'a> Compiler<'a> {
     pub fn new(type_env: &'a TypeEnvironment) -> Compiler<'a> {
-        let mut variables = HashMap::new();
-        variables.insert(~"[]", ConstructorVariable(0, 0));
-        variables.insert(~":", ConstructorVariable(1, 2));
         Compiler { type_env: type_env, class_dictionaries: HashMap::new(), instance_dictionaries: ~[],
-            stackSize : 0, globalIndex : 0, variables: variables, assemblies: ~[] }
+            stackSize : 0, globalIndex : 0, assemblies: ~[] }
     }
 
     pub fn compileModule(&mut self, module : &Module) -> Assembly {
         self.globalIndex = self.assemblies.iter().flat_map(|assembly| assembly.superCombinators.iter()).len();
-        
-        //First add all the variables so they can be found
-        for dataDef in module.dataDefinitions.iter() {
-            for ctor in dataDef.constructors.iter() {
-                self.variables.insert(ctor.name.clone(), ConstructorVariable(ctor.tag as u16, ctor.arity as u16));
-            }
-        }
+
+        let mut assembly = Assembly {
+            superCombinators: ~[],
+            instance_dictionaries: ~[],
+            offset: self.assemblies.iter().flat_map(|assembly| assembly.superCombinators.iter()).len(),
+            classes: module.classes.clone(),
+            instances: module.instances.iter().map(|inst| inst.typ.clone()).collect()
+        };
         
         for class in module.classes.iter() {
             let mut function_names = ~[];
             for decl in class.declarations.iter() {
-                self.variables.insert(decl.name.clone(), ClassVariable(decl.typ.clone(), class.variable));
                 function_names.push(decl.name.clone());
             }
             self.class_dictionaries.insert(class.name.clone(), function_names);
         }
-
-        for instance in module.instances.iter() {
-            for bind in instance.bindings.iter() {
-                self.variables.insert(bind.name.clone(), GlobalVariable(self.globalIndex));
-                self.globalIndex += 1;
-            }
-        }
-        for bind in module.bindings.iter() {
-            let typ = &bind.expression.typ;
-            let constraints = self.type_env.find_constraints(typ);
-            if constraints.len() > 0 {
-                self.variables.insert(bind.name.clone(), ConstraintVariable(self.globalIndex, typ.clone(), constraints));
-            }
-            else {
-                self.variables.insert(bind.name.clone(), GlobalVariable(self.globalIndex));
-            }
-            self.globalIndex += 1;
-        }
         
         //Compile all bindings
-        let mut superCombinators = ~[];
         for instance in module.instances.iter() {
             for bind in instance.bindings.iter() {
-                let mut sc = self.compileBinding(bind);
+                let mut sc = self.compileBinding(bind, Some(module));
                 sc.name = bind.name.clone();
-                superCombinators.push(sc);
+                assembly.superCombinators.push(sc);
             }
         }
         for bind in module.bindings.iter() {
-            let mut sc = self.compileBinding(bind);
+            let mut sc = self.compileBinding(bind, Some(module));
             let constraints = self.type_env.find_constraints(&bind.expression.typ);
             sc.constraints = constraints;
             sc.name = bind.name.clone();
-            superCombinators.push(sc);
+            assembly.superCombinators.push(sc);
         }
 
-        let mut instance_dictionaries = ~[];
         for &(_, ref dict) in self.instance_dictionaries.iter() {
-            instance_dictionaries.push(dict.clone());
+            assembly.instance_dictionaries.push(dict.clone());
         }
-        let len = superCombinators.len();
-        Assembly {
-            superCombinators: superCombinators,
-            instance_dictionaries: instance_dictionaries,
-            offset: self.assemblies.iter().flat_map(|assembly| assembly.superCombinators.iter()).len(),
-            classes: module.classes.clone(),
-            instances: module.instances.iter().map(|inst| inst.typ.clone()).collect()
-        }
+        assembly
     }
-    fn compileBinding<'a>(&mut self, bind : &Binding) -> SuperCombinator {
+    fn compileBinding(&mut self, bind : &Binding, module: Option<&Module>) -> SuperCombinator {
         debug!("Compiling binding {}", bind.name);
         let mut comb = SuperCombinator::new();
         comb.typ = bind.expression.typ.clone();
         let dict_arg = if self.type_env.find_constraints(&comb.typ).len() > 0 { 1 } else { 0 };
         comb.arity = bind.arity + dict_arg;
-        let mut stack = CompilerNode { compiler: self, stack: Scope::new(), constraints: bind.typeDecl.context };
+        let mut stack = CompilerNode { compiler: self, stack: Scope::new(), constraints: bind.typeDecl.context, module: module };
         if dict_arg == 1 {
             stack.newStackVar(~"$dict");
         }
@@ -237,7 +249,7 @@ impl <'a> Compiler<'a> {
        comb
     }
     pub fn compileExpression(&mut self, expr: &TypedExpr) -> ~[Instruction] {
-        let mut stack = CompilerNode { compiler: self, stack: Scope::new(), constraints: ~[] };
+        let mut stack = CompilerNode { compiler: self, stack: Scope::new(), constraints: ~[], module: None };
         let mut instructions = ~[];
         stack.compile(expr, &mut instructions, false);
         instructions
@@ -245,26 +257,42 @@ impl <'a> Compiler<'a> {
 
 }
 
-struct CompilerNode<'a, 'b> {
+struct CompilerNode<'a, 'b, 'c> {
     stack: Scope<'a, Var>,
     compiler: &'a mut Compiler<'b>,
-    constraints: &'a [TypeOperator]
+    constraints: &'a [TypeOperator],
+    module: Option<&'c Module>
 }
 
 //CompilerNode are only used locally and the destructor are just to reduce the stack size
 //so this should be safe(?)
 #[unsafe_destructor]
-impl <'a, 'b> Drop for CompilerNode<'a, 'b> {
+impl <'a, 'b, 'c> Drop for CompilerNode<'a, 'b, 'c> {
     fn drop(&mut self) {
         self.compiler.stackSize -= self.stack.variables.len() as int;
     }
 }
 
-impl <'a, 'b> CompilerNode<'a, 'b> {
+impl <'a, 'b, 'c> CompilerNode<'a, 'b, 'c> {
     
     fn find(&'a self, identifier : &str) -> Option<Var> {
         self.stack.find(identifier).map(|x| x.clone())
-        .or_else(|| self.compiler.variables.find_equiv(&identifier).map(|x| x.clone()))
+        .or_else(|| {
+            match self.module {
+                Some(ref module) => {
+                    let n = self.compiler.assemblies.len();
+                    let offset = if n > 0 {
+                        let assembly = self.compiler.assemblies[n-1];
+                        assembly.offset + assembly.superCombinators.len()
+                    }
+                    else {
+                        0
+                    };
+                    find_global(*module, offset, identifier)
+                }
+                None => None
+            }
+        })
         .or_else(|| {
             for assembly in self.compiler.assemblies.iter() {
                 match assembly.find_global(identifier) {
@@ -273,6 +301,12 @@ impl <'a, 'b> CompilerNode<'a, 'b> {
                 }
             }
             None
+        }).or_else(|| {
+            match identifier {
+                &"[]" => Some(ConstructorVariable(0, 0)),
+                &":" => Some(ConstructorVariable(1, 2)),
+                _ => None
+            }
         })
     }
 
@@ -285,11 +319,11 @@ impl <'a, 'b> CompilerNode<'a, 'b> {
         self.compiler.stackSize -= 1;
     }
 
-    fn child(&'a self) -> CompilerNode<'a, 'b> {
-        CompilerNode { compiler: self.compiler, stack : self.stack.child(), constraints: self.constraints }
+    fn child(&'a self) -> CompilerNode<'a, 'b, 'c> {
+        CompilerNode { compiler: self.compiler, stack : self.stack.child(), constraints: self.constraints, module: self.module }
     }
 
-    fn compile<'a>(&mut self, expr : &TypedExpr, instructions : &mut ~[Instruction], strict: bool) {
+    fn compile(&mut self, expr : &TypedExpr, instructions : &mut ~[Instruction], strict: bool) {
         debug!("Compiling {}", expr.expr);
         match &expr.expr {
             &Identifier(ref name) => {
