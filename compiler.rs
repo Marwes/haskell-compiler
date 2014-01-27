@@ -43,12 +43,12 @@ pub enum Instruction {
 }
 
 #[deriving(Clone)]
-enum Var {
+enum Var<'a> {
     StackVariable(int),
     GlobalVariable(uint),
     ConstructorVariable(u16, u16),
-    ClassVariable(Type, TypeVariable),
-    ConstraintVariable(uint, Type, ~[TypeOperator])
+    ClassVariable(&'a Type, TypeVariable),
+    ConstraintVariable(uint, &'a Type, &'a[TypeOperator])
 }
 
 pub struct SuperCombinator {
@@ -85,16 +85,16 @@ impl Assembly {
 }
 
 trait Globals {
-    fn find_global(&self, name: &str) -> Option<Var>;
+    fn find_global<'a>(&'a self, name: &str) -> Option<Var<'a>>;
 }
 
 impl Globals for Assembly {
-    fn find_global(&self, name: &str) -> Option<Var> {
+    fn find_global<'a>(&'a self, name: &str) -> Option<Var<'a>> {
         let mut index = 0;
         for sc in self.superCombinators.iter() {
             if name == sc.name {
                 if sc.constraints.len() > 0 {
-                    return Some(ConstraintVariable(self.offset + index, sc.typ.clone(), sc.constraints.clone()));
+                    return Some(ConstraintVariable(self.offset + index, &sc.typ, sc.constraints));
                 }
                 else {
                     return Some(GlobalVariable(self.offset + index));
@@ -105,7 +105,7 @@ impl Globals for Assembly {
         for class in self.classes.iter() {
             for decl in class.declarations.iter() {
                 if decl.name.equiv(&name) {
-                    return Some(ClassVariable(decl.typ.clone(), class.variable));
+                    return Some(ClassVariable(&decl.typ, class.variable));
                 }
             }
         }
@@ -113,7 +113,7 @@ impl Globals for Assembly {
     }
 }
 
-fn find_global(module: &Module, offset: uint, name: &str) -> Option<Var> {
+fn find_global<'a>(module: &'a Module, offset: uint, name: &str) -> Option<Var<'a>> {
     
     for dataDef in module.dataDefinitions.iter() {
         for ctor in dataDef.constructors.iter() {
@@ -126,7 +126,7 @@ fn find_global(module: &Module, offset: uint, name: &str) -> Option<Var> {
     for class in module.classes.iter() {
         for decl in class.declarations.iter() {
             if decl.name.equiv(&name) {
-                return Some(ClassVariable(decl.typ.clone(), class.variable));
+                return Some(ClassVariable(&decl.typ, class.variable));
             }
         }
     }
@@ -145,7 +145,7 @@ fn find_global(module: &Module, offset: uint, name: &str) -> Option<Var> {
             let typ = &bind.expression.typ;
             let constraints = &bind.typeDecl.context;
             if constraints.len() > 0 {
-                return Some(ConstraintVariable(offset + global_index, typ.clone(), constraints.clone()));
+                return Some(ConstraintVariable(offset + global_index, typ, *constraints));
             }
             else {
                 return Some(GlobalVariable(offset + global_index));
@@ -258,7 +258,7 @@ impl <'a> Compiler<'a> {
 }
 
 struct CompilerNode<'a, 'b, 'c> {
-    stack: Scope<'a, Var>,
+    stack: Scope<'a, Var<'a>>,
     compiler: &'a mut Compiler<'b>,
     constraints: &'a [TypeOperator],
     module: Option<&'c Module>
@@ -275,7 +275,7 @@ impl <'a, 'b, 'c> Drop for CompilerNode<'a, 'b, 'c> {
 
 impl <'a, 'b, 'c> CompilerNode<'a, 'b, 'c> {
     
-    fn find(&'a self, identifier : &str) -> Option<Var> {
+    fn find(&'a self, identifier : &str) -> Option<Var<'a>> {
         self.stack.find(identifier).map(|x| x.clone())
         .or_else(|| {
             match self.module {
@@ -334,10 +334,10 @@ impl <'a, 'b, 'c> CompilerNode<'a, 'b, 'c> {
                             StackVariable(index) => { instructions.push(Push(index)); None }
                             GlobalVariable(index) => { instructions.push(PushGlobal(index)); None }
                             ConstructorVariable(tag, arity) => { instructions.push(Pack(tag, arity)); None }
-                            ClassVariable(ref typ, ref var) => self.compile_instance_variable(expr, instructions, *name, typ, var),
-                            ConstraintVariable(ref index, ref typ, ref constraints) => {
-                                let x = self.compile_with_constraints(*name, &expr.typ, *constraints, instructions);
-                                instructions.push(PushGlobal(*index));
+                            ClassVariable(typ, var) => self.compile_instance_variable(expr, instructions, *name, typ, &var),
+                            ConstraintVariable(index, typ, constraints) => {
+                                let x = self.compile_with_constraints(*name, &expr.typ, constraints, instructions);
+                                instructions.push(PushGlobal(index));
                                 instructions.push(Mkap);
                                 x
                             }
