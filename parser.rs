@@ -1,12 +1,12 @@
 use std::util::{swap};
 use std::hashmap::HashMap;
 use lexer::{Lexer, Token, TokenEnum,
-    EOF, NAME, OPERATOR, NUMBER, FLOAT, LPARENS, RPARENS, LBRACKET, RBRACKET, LBRACE, RBRACE, INDENTSTART, INDENTLEVEL, COMMA, EQUALSSIGN, SEMICOLON, MODULE, CLASS, INSTANCE, WHERE, LET, IN, CASE, OF, ARROW, TYPEDECL, DATA
+    EOF, NAME, OPERATOR, NUMBER, FLOAT, LPARENS, RPARENS, LBRACKET, RBRACKET, LBRACE, RBRACE, COMMA, EQUALSSIGN, SEMICOLON, MODULE, CLASS, INSTANCE, WHERE, LET, IN, CASE, OF, ARROW, TYPEDECL, DATA
 };
 use module::{Module, Class, Instance, Binding,
     DataDefinition, Constructor, TypeDeclaration,
     Alternative, Pattern, ConstructorPattern, NumberPattern, IdentifierPattern,
-    Type, TypeVariable, TypeOperator, Expr, Identifier, Number, Apply, Lambda, Let, Case, TypedExpr};
+    Type, TypeVariable, TypeOperator, Identifier, Number, Apply, Lambda, Let, Case, TypedExpr};
 use typecheck::function_type;
 
 #[cfg(test)]

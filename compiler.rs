@@ -1,5 +1,5 @@
 use std::hashmap::HashMap;
-use module::{Type, TypeVariable, TypeOperator, Expr, Identifier, Number, Apply, Lambda, Let, Case, TypedExpr, Alternative, Module, Class, Instance, Binding, DataDefinition, Constructor, TypeDeclaration,
+use module::{Type, TypeVariable, TypeOperator, Identifier, Number, Apply, Lambda, Let, Case, TypedExpr, Module, Class, Binding,
     Pattern, ConstructorPattern, NumberPattern, IdentifierPattern};
 use Scope;
 use typecheck::{Types, TypeEnvironment};
@@ -70,18 +70,6 @@ pub struct Assembly {
     classes: ~[Class],
     instances: ~[TypeOperator],
     offset: uint
-}
-
-impl Assembly {
-    pub fn new() -> Assembly {
-        Assembly {
-            superCombinators: ~[],
-            instance_dictionaries: ~[],
-            offset: 0,
-            classes: ~[],
-            instances: ~[]
-        }
-    }
 }
 
 trait Globals {
@@ -249,7 +237,7 @@ impl <'a> Compiler<'a> {
        comb
     }
     pub fn compileExpression(&mut self, expr: &TypedExpr) -> ~[Instruction] {
-        let mut stack = CompilerNode { compiler: self, stack: Scope::new(), constraints: ~[], module: None };
+        let mut stack = CompilerNode { compiler: self, stack: Scope::new(), constraints: [], module: None };
         let mut instructions = ~[];
         stack.compile(expr, &mut instructions, false);
         instructions
@@ -335,7 +323,7 @@ impl <'a, 'b, 'c> CompilerNode<'a, 'b, 'c> {
                             GlobalVariable(index) => { instructions.push(PushGlobal(index)); None }
                             ConstructorVariable(tag, arity) => { instructions.push(Pack(tag, arity)); None }
                             ClassVariable(typ, var) => self.compile_instance_variable(expr, instructions, *name, typ, &var),
-                            ConstraintVariable(index, typ, constraints) => {
+                            ConstraintVariable(index, _, constraints) => {
                                 let x = self.compile_with_constraints(*name, &expr.typ, constraints, instructions);
                                 instructions.push(PushGlobal(index));
                                 instructions.push(Mkap);
@@ -583,25 +571,6 @@ impl <'a, 'b, 'c> CompilerNode<'a, 'b, 'c> {
             &NumberPattern(_) => 0
         }
     }
-
-    fn find_instance_member(&self, function_name: &str) -> Option<uint> {
-        for constraint in self.constraints.iter() {
-            let x = self.compiler.class_dictionaries.find_equiv(&constraint.name).map_or(None,
-                |functions:&~[~str]| {
-                for i in range(0, functions.len()) {
-                    if functions[i].equiv(&function_name) {
-                        return Some(i);
-                    }
-                }
-                None
-            });
-            if x != None {
-                return x;
-            }
-        }
-        None
-    }
-
 }
 
 fn try_find_instance_type<'a>(class_var: &TypeVariable, class_type: &Type, actual_type: &'a Type) -> Option<&'a str> {
@@ -633,7 +602,7 @@ fn try_find_instance_type<'a>(class_var: &TypeVariable, class_type: &Type, actua
 #[test]
 fn test_add() {
     let e = apply(apply(identifier(~"primIntAdd"), number(1)), number(2));
-    let mut type_env = TypeEnvironment::new();
+    let type_env = TypeEnvironment::new();
     let mut comp = Compiler::new(&type_env);
     let instr = comp.compileExpression(&e);
 
@@ -647,7 +616,7 @@ r"add x y = primIntAdd x y
 main = add 2 3";
     let mut parser = Parser::new(file.chars());
     let module = parser.module();
-    let mut type_env = TypeEnvironment::new();
+    let type_env = TypeEnvironment::new();
     let mut comp = Compiler::new(&type_env);
     let assembly = comp.compileModule(&module);
 
@@ -660,7 +629,7 @@ fn test_compile_constructor() {
 r"1 : []";
     let mut parser = Parser::new(file.chars());
     let expr = parser.expression_();
-    let mut type_env = TypeEnvironment::new();
+    let type_env = TypeEnvironment::new();
     let mut comp = Compiler::new(&type_env);
     let instructions = comp.compileExpression(&expr);
 
@@ -675,7 +644,7 @@ r"case [1] of
     [] -> 2";
     let mut parser = Parser::new(file.chars());
     let expr = parser.expression_();
-    let mut type_env = TypeEnvironment::new();
+    let type_env = TypeEnvironment::new();
     let mut comp = Compiler::new(&type_env);
     let instructions = comp.compileExpression(&expr);
 

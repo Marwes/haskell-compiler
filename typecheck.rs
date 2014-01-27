@@ -1,13 +1,12 @@
 use std::hashmap::HashMap;
-use std::io::File;
-use std::str::{from_utf8};
-use module::{TypeVariable, TypeOperator, Expr, Identifier, Number, Apply, Lambda, Let, Case, TypedExpr, Module, Alternative, Pattern, IdentifierPattern, NumberPattern, ConstructorPattern, Binding};
-use Scope;
+use module::{TypeVariable, TypeOperator, Identifier, Number, Apply, Lambda, Let, Case, TypedExpr, Module, Pattern, IdentifierPattern, NumberPattern, ConstructorPattern, Binding};
 use graph::{Graph, VertexIndex, strongly_connected_components};
 
 pub use lexer::Location;
 pub use module::Type;
 
+#[cfg(test)]
+use module::Alternative;
 #[cfg(test)]
 use parser::Parser;
 #[cfg(test)]
@@ -182,7 +181,7 @@ impl <'a> TypeEnvironment<'a> {
     }
     fn find_specialized(&self, constraints: &mut ~[TypeOperator], actual_type: &Type, typ: &Type) {
         match (actual_type, typ) {
-            (&TypeOperator(ref actual_op), &TypeVariable(ref var)) => {
+            (&TypeOperator(_), &TypeVariable(ref var)) => {
                 match self.constraints.find(var) {
                     Some(cons) => {
                         for c in cons.iter() {
@@ -604,7 +603,7 @@ fn unify_(env : &mut TypeEnvironment, subs : &mut Substitution, lhs : &mut Type,
                     for c in constraints.iter() {
                         if !env.has_instance(*c, op) {
                             let (location, l, r) = type_error::cond.raise(());
-                            fail!("{} Error: No instance of class {} was found for {}", location, *c, *op);
+                            fail!("{} Error: No instance of class {} was found for {} when unifying {}\nand\n{}", location, *c, *op, l, r);
                         }
                     }
                 }
@@ -679,22 +678,27 @@ pub fn function_type(func : &Type, arg : &Type) -> Type {
     TypeOperator(TypeOperator { name : ~"->", types : ~[func.clone(), arg.clone()]})
 }
 
+#[cfg(test)]
 pub fn identifier(i : ~str) -> TypedExpr {
     TypedExpr::new(Identifier(i))
 }
-
+#[cfg(test)]
 pub fn lambda(arg : ~str, body : TypedExpr) -> TypedExpr {
     TypedExpr::new(Lambda(arg, ~body))
 }
+#[cfg(test)]
 pub fn number(i : int) -> TypedExpr {
     TypedExpr::new(Number(i))
 }
+#[cfg(test)]
 pub fn apply(func : TypedExpr, arg : TypedExpr) -> TypedExpr {
     TypedExpr::new(Apply(~func, ~arg))
 }
+#[cfg(test)]
 pub fn let_(bindings : ~[Binding], expr : TypedExpr) -> TypedExpr {
     TypedExpr::new(Let(bindings, ~expr))
 }
+#[cfg(test)]
 pub fn case(expr : TypedExpr, alts: ~[Alternative]) -> TypedExpr {
     TypedExpr::new(Case(~expr, alts))
 }
@@ -801,7 +805,7 @@ in b".chars());
     let int_type = Type::new_op(~"Int", ~[]);
     let list_type = Type::new_op(~"[]", ~[int_type.clone()]);
     match &expr.expr {
-        &Let(ref binds, ref body) => {
+        &Let(ref binds, _) => {
             assert_eq!(binds.len(), 4);
             assert_eq!(binds[0].name, ~"a");
             assert_eq!(binds[0].expression.typ, int_type);

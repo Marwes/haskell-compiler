@@ -27,22 +27,6 @@ pub struct Graph<T> {
     priv vertices: ~[Vertex<T>]
 }
 
-struct VertexIterator<'a, T> {
-    graph: &'a Graph<T>,
-    index: uint
-}
-
-impl <'a, T> Iterator<&'a Vertex<T>> for VertexIterator<'a, T> {
-    fn next(&mut self) -> Option<&'a Vertex<T>> {
-        if self.index < self.graph.vertices.len() {
-            Some(&self.graph.vertices[self.index])
-        }
-        else {
-            None
-        }
-    }
-}
-
 impl <T> Graph<T> {
 
     pub fn new() -> Graph<T> {
@@ -61,10 +45,6 @@ impl <T> Graph<T> {
 
     pub fn get_vertex<'a>(&'a self, v: VertexIndex) -> &'a Vertex<T> {
         &self.vertices[v.get()]
-    }
-
-    pub fn vertices<'a>(&'a self) -> VertexIterator<'a, T> {
-        VertexIterator { graph: self, index: 0 }
     }
 
     pub fn get_edge<'a>(&'a self, edge: EdgeIndex) -> &'a Edge<T> {

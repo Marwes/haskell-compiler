@@ -1,5 +1,3 @@
-use std::rc::Rc;
-use std::cell::RefCell;
 use std::fmt;
 use std::hashmap::HashMap;
 use lexer::Location;
@@ -150,6 +148,7 @@ impl Type {
             _ => fail!("Tried to unwrap TypeOperator as a TypeVariable")
         }
     }
+    #[allow(dead_code)]
     pub fn op<'a>(&'a self) -> &'a TypeOperator {
         match self {
             &TypeOperator(ref op) => op,

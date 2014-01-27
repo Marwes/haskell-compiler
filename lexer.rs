@@ -61,6 +61,7 @@ impl Token {
     fn new(token : TokenEnum, value : ~str, loc : Location) -> Token {
         Token { token : token, value : value, location : loc }
     }
+    #[cfg(test)]
     fn new_(token : TokenEnum, value : ~str) -> Token {
         Token::new(token, value, Location { column : -1, row : -1, absolute : -1 })
     }
