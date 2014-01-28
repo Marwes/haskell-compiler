@@ -113,6 +113,7 @@ impl <'a> VM<'a> {
         VM { assembly : ~[], heap : ~[], globals: ~[] }
     }
 
+    ///Adds an assembly to the VM, adding entries to the global table as necessary
     fn add_assembly(&mut self, assembly: Assembly) {
         self.assembly.push(assembly);
         let assembly_index = self.assembly.len() - 1;

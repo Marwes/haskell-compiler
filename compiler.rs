@@ -7,7 +7,7 @@ use typecheck::{Types, TypeEnvironment};
 #[cfg(test)]
 use parser::Parser;
 #[cfg(test)]
-use typecheck::{identifier, apply, number, lambda, let_};
+use typecheck::{identifier, apply, number};
 #[cfg(test)]
 use std::io::File;
 #[cfg(test)]
@@ -73,6 +73,7 @@ pub struct Assembly {
 }
 
 trait Globals {
+    ///Lookup a global variable
     fn find_global<'a>(&'a self, name: &str) -> Option<Var<'a>>;
 }
 
@@ -145,6 +146,7 @@ fn find_global<'a>(module: &'a Module, offset: uint, name: &str) -> Option<Var<'
 }
 
 impl Types for Assembly {
+    ///Lookup a type
     fn find_type<'a>(&'a self, name: &str) -> Option<&'a Type> {
         for sc in self.superCombinators.iter() {
             if sc.name.equiv(&name) {
@@ -157,22 +159,22 @@ impl Types for Assembly {
 
 pub struct Compiler<'a> {
     type_env: &'a TypeEnvironment<'a>,
+    ///Hashmap containging class names mapped to the functions it contains
     class_dictionaries: HashMap<~str, ~[~str]>,
     instance_dictionaries: ~[(~[TypeOperator], ~[uint])],
     stackSize : int,
+    ///Array of all the assemblies which can be used to lookup functions in
     assemblies: ~[&'a Assembly],
-    globalIndex : uint,
 }
 
 
 impl <'a> Compiler<'a> {
     pub fn new(type_env: &'a TypeEnvironment) -> Compiler<'a> {
         Compiler { type_env: type_env, class_dictionaries: HashMap::new(), instance_dictionaries: ~[],
-            stackSize : 0, globalIndex : 0, assemblies: ~[] }
+            stackSize : 0, assemblies: ~[] }
     }
-
+    
     pub fn compileModule(&mut self, module : &Module) -> Assembly {
-        self.globalIndex = self.assemblies.iter().flat_map(|assembly| assembly.superCombinators.iter()).len();
 
         let mut assembly = Assembly {
             superCombinators: ~[],
@@ -263,6 +265,7 @@ impl <'a, 'b, 'c> Drop for CompilerNode<'a, 'b, 'c> {
 
 impl <'a, 'b, 'c> CompilerNode<'a, 'b, 'c> {
     
+    ///Find a variable by walking through the stack followed by all globals
     fn find(&'a self, identifier : &str) -> Option<Var<'a>> {
         self.stack.find(identifier).map(|x| x.clone())
         .or_else(|| {
@@ -307,14 +310,18 @@ impl <'a, 'b, 'c> CompilerNode<'a, 'b, 'c> {
         self.compiler.stackSize -= 1;
     }
 
+    ///Create a new scope for variables, such as a lambda or let bindings
     fn child(&'a self) -> CompilerNode<'a, 'b, 'c> {
         CompilerNode { compiler: self.compiler, stack : self.stack.child(), constraints: self.constraints, module: self.module }
     }
 
+    ///Compile an expression by appending instructions to the instructions array
     fn compile(&mut self, expr : &TypedExpr, instructions : &mut ~[Instruction], strict: bool) {
         debug!("Compiling {}", expr.expr);
         match &expr.expr {
             &Identifier(ref name) => {
+                //When compiling a variable which has constraints a new instance dictionary
+                //might be created which is returned here and added to the assembly
                 let maybe_new_dict = match self.find(*name) {
                     None => fail!("Undefined variable " + *name),
                     Some(var) => {
@@ -322,7 +329,7 @@ impl <'a, 'b, 'c> CompilerNode<'a, 'b, 'c> {
                             StackVariable(index) => { instructions.push(Push(index)); None }
                             GlobalVariable(index) => { instructions.push(PushGlobal(index)); None }
                             ConstructorVariable(tag, arity) => { instructions.push(Pack(tag, arity)); None }
-                            ClassVariable(typ, var) => self.compile_instance_variable(expr, instructions, *name, typ, &var),
+                            ClassVariable(typ, var) => self.compile_instance_variable(&expr.typ, instructions, *name, typ, &var),
                             ConstraintVariable(index, _, constraints) => {
                                 let x = self.compile_with_constraints(*name, &expr.typ, constraints, instructions);
                                 instructions.push(PushGlobal(index));
@@ -341,8 +348,20 @@ impl <'a, 'b, 'c> CompilerNode<'a, 'b, 'c> {
                 }
             }
             &Number(num) => instructions.push(PushInt(num)),
-            &Apply(_, _) => {
-                self.compile_apply(expr, instructions, strict);
+            &Apply(ref func, ref arg) => {
+                if !self.primitive(*func, *arg, instructions) {
+                    self.compile(*arg, instructions, false);
+                    self.compile(*func, instructions, false);
+                    match &instructions[instructions.len() - 1] {
+                        &Pack(_, _) => (),//The application was a constructor so dont do Mkap and the Pack instruction is strict already
+                        _ => {
+                            instructions.push(Mkap);
+                            if strict {
+                                instructions.push(Eval);
+                            }
+                        }
+                    }
+                }
             }
             &Lambda(ref varname, ref body) => {
                 self.newStackVar(varname.clone());
@@ -389,8 +408,9 @@ impl <'a, 'b, 'c> CompilerNode<'a, 'b, 'c> {
         }
     }
 
-    fn compile_instance_variable(&self, expr: &TypedExpr, instructions: &mut ~[Instruction], name: &str, typ: &Type, var: &TypeVariable) -> Option<(~[TypeOperator], ~[uint])> {
-        match try_find_instance_type(var, typ, &expr.typ) {
+    ///Compile a function which is defined in a class
+    fn compile_instance_variable(&self, actual_type: &Type, instructions: &mut ~[Instruction], name: &str, typ: &Type, var: &TypeVariable) -> Option<(~[TypeOperator], ~[uint])> {
+        match try_find_instance_type(var, typ, actual_type) {
             Some(typename) => {
                 //We should be able to retrieve the instance directly
                 let instance_fn_name = "#" + typename + name;
@@ -409,6 +429,7 @@ impl <'a, 'b, 'c> CompilerNode<'a, 'b, 'c> {
         }
     }
 
+    ///Compile the loading of a variable which has constraints and will thus need to load a dictionary with functions as well
     fn compile_with_constraints(&self, name: &str, typ: &Type, constraints: &[TypeOperator], instructions: &mut ~[Instruction]) -> Option<(~[TypeOperator], ~[uint])> {
         match self.find("$dict") {
             Some(StackVariable(_)) => {
@@ -430,6 +451,7 @@ impl <'a, 'b, 'c> CompilerNode<'a, 'b, 'c> {
         }
     }
 
+    ///Lookup which index in the instance dictionary that holds the function called 'name'
     fn push_dictionary_member(&self, constraints: &[TypeOperator], name: &str) -> Option<uint> {
         for c in constraints.iter() {
             match self.compiler.class_dictionaries.find_equiv(&c.name) {
@@ -446,6 +468,8 @@ impl <'a, 'b, 'c> CompilerNode<'a, 'b, 'c> {
         None
     }
 
+    ///Find the index of the instance dictionary for the constraints and types in 'constraints'
+    ///Returns the index and possibly a new dictionary which needs to be added to the assemblies dictionaries
     fn find_dictionary_index(&self, constraints: &[TypeOperator]) -> (uint, Option<(~[TypeOperator], ~[uint])>) {
         let dict_len = self.compiler.instance_dictionaries.len();
         for ii in range(0, dict_len) {
@@ -478,27 +502,7 @@ impl <'a, 'b, 'c> CompilerNode<'a, 'b, 'c> {
         (dict_len, Some((constraints.to_owned(), function_indexes)))
     }
 
-    fn compile_apply(&mut self, expr: &TypedExpr, instructions: &mut ~[Instruction], strict: bool) {
-        match &expr.expr {
-            &Apply(ref func, ref arg) => {
-                if !self.primitive(*func, *arg, instructions) {
-                    self.compile(*arg, instructions, false);
-                    self.compile_apply(*func, instructions, false);
-                    match &instructions[instructions.len() - 1] {
-                        &Pack(_, _) => (),//The application was a constructor so dont do Mkap and the Pack instruction is strict already
-                        _ => {
-                            instructions.push(Mkap);
-                            if strict {
-                                instructions.push(Eval);
-                            }
-                        }
-                    }
-                }
-            }
-            _ => self.compile(expr, instructions, strict)
-        }
-    }
-
+    ///Attempt to compile a binary primitive, returning true if it succeded
     fn primitive(&mut self, func: &TypedExpr, arg: &TypedExpr, instructions: &mut ~[Instruction]) -> bool {
         match &func.expr {
             &Apply(ref prim_func, ref arg2) => {
@@ -554,6 +558,7 @@ impl <'a, 'b, 'c> CompilerNode<'a, 'b, 'c> {
         }
     }
 
+    ///Add the variables of a pattern, returning how many variables that were added in total
     fn add_pattern_variables(&mut self, pattern: &Pattern, instructions: &mut ~[Instruction]) -> uint {
         match pattern {
             &ConstructorPattern(_, ref patterns) => {
@@ -573,6 +578,7 @@ impl <'a, 'b, 'c> CompilerNode<'a, 'b, 'c> {
     }
 }
 
+///Attempts to find the actual type of the for the variable which has a constraint
 fn try_find_instance_type<'a>(class_var: &TypeVariable, class_type: &Type, actual_type: &'a Type) -> Option<&'a str> {
     match (class_type, actual_type) {
         (&TypeVariable(ref var), &TypeOperator(ref actual_op)) => {
