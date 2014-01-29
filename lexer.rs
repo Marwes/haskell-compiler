@@ -448,6 +448,10 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
     }
 }
 
+#[cfg(test)]
+mod tests {
+
+use lexer::*;
 
 #[test]
 fn simple() {
@@ -472,4 +476,6 @@ in test".chars());
     assert_eq!(*lexer.next_(), Token::new_(NUMBER, ~"2"));
     assert_eq!(*lexer.next_(), Token::new_(OPERATOR, ~"+"));
     assert_eq!(*lexer.next_(), Token::new_(NUMBER, ~"3"));
+}
+
 }

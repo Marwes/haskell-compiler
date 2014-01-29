@@ -9,13 +9,6 @@ use module::{Module, Class, Instance, Binding,
     Type, TypeVariable, TypeOperator, Identifier, Number, Apply, Lambda, Let, Case, TypedExpr};
 use typecheck::function_type;
 
-#[cfg(test)]
-use typecheck::{identifier, apply, number, lambda, let_, case};
-#[cfg(test)]
-use std::io::File;
-#[cfg(test)]
-use std::str::{from_utf8};
-
 pub struct Parser<Iter> {
     lexer : Lexer<Iter>,
 }
@@ -920,6 +913,15 @@ fn encodeBindingIdentifier(instancename : &str, bindingname : &str) -> ~str {
     "#" + instancename.clone() + bindingname.clone()
 }
 
+#[cfg(test)]
+mod tests {
+
+use parser::*;
+use module::*;
+use typecheck::{function_type, identifier, apply, number, lambda, let_, case};
+use std::io::File;
+use std::str::from_utf8;
+
 
 #[test]
 fn simple()
@@ -1026,4 +1028,6 @@ fn parse_prelude() {
     assert!(module.bindings.iter().any(|bind| bind.name == ~"foldl"));
     assert!(module.bindings.iter().any(|bind| bind.name == ~"id"));
     assert!(module.classes.iter().any(|class| class.name == ~"Eq"));
+}
+
 }

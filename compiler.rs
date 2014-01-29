@@ -4,15 +4,6 @@ use module::{Type, TypeVariable, TypeOperator, Identifier, Number, Apply, Lambda
 use Scope;
 use typecheck::{Types, TypeEnvironment};
 
-#[cfg(test)]
-use parser::Parser;
-#[cfg(test)]
-use typecheck::{identifier, apply, number};
-#[cfg(test)]
-use std::io::File;
-#[cfg(test)]
-use std::str::{from_utf8};
-
 #[deriving(Eq)]
 pub enum Instruction {
     Add,
@@ -604,9 +595,18 @@ fn try_find_instance_type<'a>(class_var: &TypeVariable, class_type: &Type, actua
     }
 }
 
+#[cfg(test)]
+mod tests {
+
+use compiler::*;
+use typecheck::TypeEnvironment;
+use parser::Parser;
+use typecheck::{identifier, apply, number};
+use std::io::File;
+use std::str::from_utf8;
 
 #[test]
-fn test_add() {
+fn add() {
     let e = apply(apply(identifier(~"primIntAdd"), number(1)), number(2));
     let type_env = TypeEnvironment::new();
     let mut comp = Compiler::new(&type_env);
@@ -616,7 +616,7 @@ fn test_add() {
 }
 
 #[test]
-fn test_apply() {
+fn application() {
     let file =
 r"add x y = primIntAdd x y
 main = add 2 3";
@@ -630,7 +630,7 @@ main = add 2 3";
 }
 
 #[test]
-fn test_compile_constructor() {
+fn compile_constructor() {
     let file =
 r"1 : []";
     let mut parser = Parser::new(file.chars());
@@ -643,7 +643,7 @@ r"1 : []";
 }
 
 #[test]
-fn test_compile_case() {
+fn compile_case() {
     let file =
 r"case [1] of
     : x xs -> x
@@ -662,7 +662,7 @@ r"case [1] of
 }
 
 #[test]
-fn test_compile_class_constraints() {
+fn compile_class_constraints() {
     let file =
 r"class Test a where
     test :: a -> Int
@@ -684,7 +684,7 @@ main = test 6";
 }
 
 #[test]
-fn test_compile_class_constraints_unknown() {
+fn compile_class_constraints_unknown() {
     let file =
 r"class Test a where
     test :: a -> Int
@@ -706,7 +706,7 @@ main x = primIntAdd (test x) 6";
 }
 
 #[test]
-fn test_compile_prelude() {
+fn compile_prelude() {
     let mut type_env = TypeEnvironment::new();
     let prelude = {
         let path = &Path::new("Prelude.hs");
@@ -731,4 +731,6 @@ r"main = id 2";
     let sc = &assembly.superCombinators[0];
     let id_index = prelude.superCombinators.iter().position(|sc| sc.name.equiv(& &"id")).unwrap();
     assert_eq!(sc.instructions, ~[PushInt(2), PushGlobal(id_index), Mkap, Eval, Update(0), Unwind]);
+}
+
 }

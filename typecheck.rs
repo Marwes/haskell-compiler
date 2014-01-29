@@ -7,12 +7,6 @@ pub use module::Type;
 
 #[cfg(test)]
 use module::Alternative;
-#[cfg(test)]
-use parser::Parser;
-#[cfg(test)]
-use std::io::File;
-#[cfg(test)]
-use std::str::{from_utf8};
 
 ///Trait which can be implemented by types where types can be looked up by name
 pub trait Types {
@@ -720,9 +714,17 @@ pub fn case(expr : TypedExpr, alts: ~[Alternative]) -> TypedExpr {
     TypedExpr::new(Case(~expr, alts))
 }
 
+#[cfg(test)]
+mod test {
+use module::*;
+use typecheck::*;
+
+use parser::Parser;
+use std::io::File;
+use std::str::from_utf8;
 
 #[test]
-fn test() {
+fn application() {
     let mut env = TypeEnvironment::new();
     let n = ~TypedExpr::new(Identifier(~"add"));
     let num = ~TypedExpr::new(Number(1));
@@ -943,4 +945,6 @@ test2 = id (primIntAdd 2 0)".chars());
     assert_eq!(module.bindings[0].expression.typ, Type::new_op(~"[]", ~[Type::new_op(~"Bool", ~[])]));
     assert_eq!(module.bindings[1].name, ~"test2");
     assert_eq!(module.bindings[1].expression.typ, Type::new_op(~"Int", ~[]));
+}
+
 }
