@@ -27,7 +27,7 @@ pub struct Binding {
     name : ~str,
     expression : TypedExpr,
     typeDecl : TypeDeclaration,
-    arity : int
+    arity : uint
 }
 
 #[deriving(Eq)]

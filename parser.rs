@@ -473,7 +473,7 @@ fn binding(&mut self) -> Binding {
 	}
 	if (arguments.len() > 0)
     {
-        let arity = arguments.len() as int;
+        let arity = arguments.len();
 		let lambda = makeLambda(arguments, self.expression_());
 		Binding { name : name, typeDecl : TypeDeclaration { context : ~[], typ : Type::new_var(-1), name : ~"" }, expression : lambda, arity : arity }
 	}

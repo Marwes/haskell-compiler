@@ -25,14 +25,14 @@ pub enum Instruction {
     IntLE,
     IntGT,
     IntGE,
-    Push(int),
+    Push(uint),
     PushGlobal(uint),
     PushInt(int),
     Mkap,
     Eval,
     Unwind,
-    Update(int),
-    Pop(int),
+    Update(uint),
+    Pop(uint),
     Slide(uint),
     Split(uint),
     Pack(u16, u16),
@@ -44,7 +44,7 @@ pub enum Instruction {
 
 #[deriving(Clone)]
 enum Var<'a> {
-    StackVariable(int),
+    StackVariable(uint),
     GlobalVariable(uint),
     ConstructorVariable(u16, u16),
     ClassVariable(&'a Type, TypeVariable),
@@ -52,7 +52,7 @@ enum Var<'a> {
 }
 
 pub struct SuperCombinator {
-    arity : int,
+    arity : uint,
     name: ~str,
     instructions : ~[Instruction],
     typ: Type,
@@ -162,7 +162,7 @@ pub struct Compiler<'a> {
     ///Hashmap containging class names mapped to the functions it contains
     class_dictionaries: HashMap<~str, ~[~str]>,
     instance_dictionaries: ~[(~[TypeOperator], ~[uint])],
-    stackSize : int,
+    stackSize : uint,
     ///Array of all the assemblies which can be used to lookup functions in
     assemblies: ~[&'a Assembly],
 }
@@ -259,7 +259,7 @@ struct CompilerNode<'a, 'b, 'c> {
 #[unsafe_destructor]
 impl <'a, 'b, 'c> Drop for CompilerNode<'a, 'b, 'c> {
     fn drop(&mut self) {
-        self.compiler.stackSize -= self.stack.variables.len() as int;
+        self.compiler.stackSize -= self.stack.variables.len();
     }
 }
 

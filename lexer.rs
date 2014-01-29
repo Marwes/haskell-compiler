@@ -91,18 +91,8 @@ fn name_or_keyword(tok : &str) -> TokenEnum {
 
 fn is_operator(first_char : char) -> bool {
     match first_char {
-        '+' => true,
-        '-' => true,
-        '*' => true,
-        '/' => true,
-        '.' => true,
-        '$' => true,
-        ':' => true,
-        '=' => true,
-        '<' => true,
-        '>' => true,
-        '|' => true,
-        '&' => true,
+        '+' | '-' | '*' | '/' | '.' | '$' |
+        ':' | '=' | '<' | '>' | '|' | '&' => true,
         _ => false
     }
 }
