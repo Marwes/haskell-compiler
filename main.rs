@@ -48,10 +48,8 @@ impl <'a, T> Scope<'a, T> {
     }
 }
 
-
 fn main() {
-    let arguments = std::os::args();
-    match arguments {
+    match std::os::args() {
         [_, expr_str] => {
             let mut parser = Parser::new(expr_str.chars());
             let mut expr = parser.expression_();
