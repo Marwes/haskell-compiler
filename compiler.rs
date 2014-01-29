@@ -1,6 +1,6 @@
 use std::hashmap::HashMap;
 use module::{Type, TypeVariable, TypeOperator, Identifier, Number, Apply, Lambda, Let, Case, TypedExpr, Module, Class, Binding,
-    Pattern, ConstructorPattern, NumberPattern, IdentifierPattern};
+    Pattern, ConstructorPattern, NumberPattern, IdentifierPattern, DataDefinition};
 use Scope;
 use typecheck::{Types, TypeEnvironment};
 
@@ -60,6 +60,7 @@ pub struct Assembly {
     instance_dictionaries: ~[~[uint]],
     classes: ~[Class],
     instances: ~[TypeOperator],
+    data_definitions: ~[DataDefinition],
     offset: uint
 }
 
@@ -86,6 +87,14 @@ impl Globals for Assembly {
             for decl in class.declarations.iter() {
                 if decl.name.equiv(&name) {
                     return Some(ClassVariable(&decl.typ, class.variable));
+                }
+            }
+        }
+        
+        for data_def in self.data_definitions.iter() {
+            for ctor in data_def.constructors.iter() {
+                if name == ctor.name {
+                    return Some(ConstructorVariable(ctor.tag as u16, ctor.arity as u16));
                 }
             }
         }
@@ -144,6 +153,22 @@ impl Types for Assembly {
                 return Some(&sc.typ);
             }
         }
+        
+        for class in self.classes.iter() {
+            for decl in class.declarations.iter() {
+                if name == decl.name {
+                    return Some(&decl.typ);
+                }
+            }
+        }
+
+        for data_def in self.data_definitions.iter() {
+            for ctor in data_def.constructors.iter() {
+                if name == ctor.name {
+                    return Some(&ctor.typ);
+                }
+            }
+        }
         return None;
     }
 }
@@ -172,9 +197,18 @@ impl <'a> Compiler<'a> {
             instance_dictionaries: ~[],
             offset: self.assemblies.iter().flat_map(|assembly| assembly.superCombinators.iter()).len(),
             classes: module.classes.clone(),
-            instances: module.instances.iter().map(|inst| inst.typ.clone()).collect()
+            instances: module.instances.iter().map(|inst| inst.typ.clone()).collect(),
+            data_definitions: ~[]
         };
         
+        for def in module.dataDefinitions.iter() {
+            let mut constructors = ~[];
+            for ctor in def.constructors.iter() {
+                constructors.push(ctor.clone());
+            }
+            assembly.data_definitions.push(def.clone());
+        }
+
         for class in module.classes.iter() {
             let mut function_names = ~[];
             for decl in class.declarations.iter() {

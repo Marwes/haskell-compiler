@@ -1,5 +1,8 @@
 use std::fmt;
 use std::rc::Rc;
+use std::path::Path;
+use std::io::File;
+use std::str::from_utf8;
 use std::vec::from_fn;
 use typecheck::TypeEnvironment;
 use compiler::{Compiler, Assembly,
@@ -277,6 +280,13 @@ fn compile_iter<T : Iterator<char>>(iterator: T) -> Assembly {
     
     let mut compiler = Compiler::new(&typer);
     compiler.compileModule(&module)
+}
+
+pub fn compile_file(filename: &str) -> Assembly {
+    let path = &Path::new(filename);
+    let s  = File::open(path).read_to_end();
+    let contents : &str = from_utf8(s);
+    compile_iter(contents.chars())
 }
 
 fn extract_result(node: Node_) -> Option<VMResult> {

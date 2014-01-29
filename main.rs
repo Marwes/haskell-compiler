@@ -7,8 +7,8 @@ use std::io::File;
 use std::str::from_utf8;
 use parser::Parser;
 use compiler::Compiler;
-use typecheck::TypeEnvironment;
-use vm::{VM, execute_main};
+use typecheck::{Types, TypeEnvironment};
+use vm::{VM, execute_main, compile_file};
 
 mod compiler;
 mod typecheck;
@@ -51,16 +51,21 @@ impl <'a, T> Scope<'a, T> {
 fn main() {
     match std::os::args() {
         [_, expr_str] => {
-            let mut parser = Parser::new(expr_str.chars());
-            let mut expr = parser.expression_();
+            let prelude = compile_file(&"Prelude.hs");
+            let instr = {
+                let mut parser = Parser::new(expr_str.chars());
+                let mut expr = parser.expression_();
 
-            let mut type_env = TypeEnvironment::new();
-            type_env.typecheck(&mut expr);
-            
-            let mut compiler = Compiler::new(&type_env);
-            let instr = compiler.compileExpression(&expr);
-
-            let vm = VM::new();
+                let mut type_env = TypeEnvironment::new();
+                type_env.assemblies.push(&prelude as &Types);
+                type_env.typecheck(&mut expr);
+                
+                let mut compiler = Compiler::new(&type_env);
+                compiler.assemblies.push(&prelude);
+                compiler.compileExpression(&expr)
+            };
+            let mut vm = VM::new();
+            vm.add_assembly(prelude);
             let result = vm.evaluate(instr);
             println!("{}", result);
         }
