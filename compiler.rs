@@ -521,7 +521,7 @@ impl <'a, 'b, 'c> CompilerNode<'a, 'b, 'c> {
                         }
                     }
                 }
-                None => fail!("Could not find class dictionary {:?}", c)
+                None => fail!("Could not find instance for {}", *c)
             }
         }
         (dict_len, Some((constraints.to_owned(), function_indexes)))

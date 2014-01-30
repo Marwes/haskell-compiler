@@ -825,7 +825,8 @@ fn makeApplication(f : TypedExpr, args : ~[TypedExpr]) -> TypedExpr {
 	assert!(args.len() >= 1);
     let mut func = f;
 	for a in args.move_iter() {
-		func = TypedExpr::new(Apply(~func, ~a));
+        let loc = func.location.clone();
+		func = TypedExpr::with_location(Apply(~func, ~a), loc);
 	}
     func
 }
@@ -835,7 +836,8 @@ fn makeLambda(a : ~[~str], body : TypedExpr) -> TypedExpr {
 	let mut body = body;
     let mut ii = args.len() as int - 1;
 	while ii >= 0 {
-		body = TypedExpr::new(Lambda(args.pop(), ~body));
+        let loc = body.location.clone();
+		body = TypedExpr::with_location(Lambda(args.pop(), ~body), loc);
         ii -= 1;
 	}
     body
@@ -990,9 +992,9 @@ fn parse_data() {
 r"data Bool = True | False".chars());
     let data = parser.dataDefinition();
 
-    let Bool = TypeOperator { name: ~"Bool", types: ~[]};
-    let True = Constructor { name: ~"True", tag:0, arity:0, typ: TypeOperator(Bool.clone()) };
-    let False = Constructor { name: ~"False", tag:1, arity:0, typ: TypeOperator(Bool.clone()) };
+    let Bool = TypeOperator(TypeOperator { name: ~"Bool", types: ~[]});
+    let True = Constructor { name: ~"True", tag:0, arity:0, typ: Bool.clone() };
+    let False = Constructor { name: ~"False", tag:1, arity:0, typ: Bool.clone() };
     assert_eq!(data.typ, Bool);
     assert_eq!(data.constructors[0], True);
     assert_eq!(data.constructors[1], False);
@@ -1004,9 +1006,9 @@ fn parse_data_2() {
 r"data List a = Cons a (List a) | Nil".chars());
     let data = parser.dataDefinition();
 
-    let List = TypeOperator { name: ~"List", types: ~[Type::new_var(0)]};
-    let Cons = Constructor { name: ~"Cons", tag:0, arity:2, typ: function_type(&Type::new_var(0), &function_type(&TypeOperator(List.clone()), &TypeOperator(List.clone())))};
-    let Nil = Constructor { name: ~"Nil", tag:1, arity:0, typ: TypeOperator(List.clone()) };
+    let List = TypeOperator(TypeOperator { name: ~"List", types: ~[Type::new_var(0)]});
+    let Cons = Constructor { name: ~"Cons", tag:0, arity:2, typ: function_type(&Type::new_var(0), &function_type(&List, &List))};
+    let Nil = Constructor { name: ~"Nil", tag:1, arity:0, typ: List.clone() };
     assert_eq!(data.typ, List);
     assert_eq!(data.constructors[0], Cons);
     assert_eq!(data.constructors[1], Nil);
