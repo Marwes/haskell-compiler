@@ -192,8 +192,8 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
                     self.location.column = 0;
                     self.location.row += 1;
                     //If this is a \n\r line ending skip the next char without increasing the location
-                    let x = '\r';
-                    if c == '\n' && self.input.peek() == Some(&x) {
+                    let x = '\n';
+                    if c == '\r' && self.input.peek() == Some(&x) {
                         self.input.next();
                     }
                 }
