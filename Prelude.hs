@@ -1,10 +1,6 @@
 
 data Bool = True | False
 
-data Maybe a = Just a | Nothing
-
-id x = x
-
 not b = case b of
     True -> False
     False -> True
@@ -18,6 +14,15 @@ not b = case b of
 (&&) x y = case x of
     True -> y
     False -> False
+
+data Maybe a = Just a | Nothing
+
+maybe :: b -> (a -> b) -> Maybe a -> b
+maybe def f m = case m of
+    Just x -> f x
+    Nothing -> def
+
+id x = x
 
 class Eq a where
     (==) :: a -> a -> Bool
@@ -36,9 +41,23 @@ instance Eq Bool where
 
     (/=) x y = not (x == y)
 
+instance Eq Int where
+    (==) x y = primIntEQ x y
+    (/=) x y = not (x == y)
+
+class Num a where
+    (+) :: a -> a -> a
+    (-) :: a -> a -> a
+    (*) :: a -> a -> a
+
+instance Num Int where
+    (+) x y = primIntAdd x y
+    (-) x y = primIntSubtract x y
+    (*) x y = primIntMultiply x y
 
 otherwise :: Bool
 otherwise = True
+
 
 (.) :: (b -> c) -> (a -> b) -> (a -> c)
 (.) f g x = f (g x)
@@ -55,3 +74,15 @@ foldl :: (b -> a -> b) -> b -> [a] -> b
 foldl f x xs = case xs of
     : y ys -> foldl f (f x y) ys
     [] -> x
+
+undefined = undefined
+
+head :: [a] -> a
+head xs = case xs of
+    : y ys -> y
+    [] -> undefined
+
+tail :: [a] -> [a]
+tail xs = case xs of
+    : y ys -> ys
+    [] -> undefined

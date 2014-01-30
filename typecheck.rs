@@ -1,5 +1,5 @@
 use std::hashmap::HashMap;
-use module::{TypeVariable, TypeOperator, Identifier, Number, Apply, Lambda, Let, Case, TypedExpr, Module, Pattern, IdentifierPattern, NumberPattern, ConstructorPattern, Binding};
+use module::{TypeVariable, TypeOperator, Identifier, Number, Apply, Lambda, Let, Case, TypedExpr, Module, Pattern, IdentifierPattern, NumberPattern, ConstructorPattern, Binding, TypeDeclaration};
 use graph::{Graph, VertexIndex, strongly_connected_components};
 
 pub use lexer::Location;
@@ -104,21 +104,46 @@ impl <'a> TypeEnvironment<'a> {
 
     ///Typechecks a module by updating all the types in place
     pub fn typecheck_module(&mut self, module: &mut Module) {
-        for data_def in module.dataDefinitions.iter() {
-            for constructor in data_def.constructors.iter() {
+        for data_def in module.dataDefinitions.mut_iter() {
+            let mut subs = Substitution { subs: HashMap::new(), constraints: HashMap::new() };
+            {
+                let scope = TypeScope { env: self, vars: ~[], non_generic: ~[], parent: None };
+                freshen(&scope, &mut subs.subs, &mut data_def.typ);
+            }
+            for constructor in data_def.constructors.mut_iter() {
+                replace(&mut self.constraints, &mut constructor.typ, &subs);
                 self.namedTypes.insert(constructor.name.clone(), constructor.typ.clone());
             }
         }
-        for class in module.classes.iter() {
-            self.constraints.insert(class.variable, ~[class.name.clone()]);
-            for type_decl in class.declarations.iter() {
+        for class in module.classes.mut_iter() {
+            //Instantiate a new variable and replace all occurances of the class variable with this
+            let replaced = class.variable;
+            let new = self.new_var();
+            class.variable = new.var().clone();
+
+            for type_decl in class.declarations.mut_iter() {
+                replace_var(&mut type_decl.typ, &replaced, &new);
+                self.freshen_declaration(type_decl);
                 self.namedTypes.insert(type_decl.name.clone(), type_decl.typ.clone());
             }
+            self.constraints.insert(class.variable, ~[class.name.clone()]);
         }
         for instance in module.instances.iter() {
             self.instances.push(TypeOperator { name: instance.classname.clone(),
                 types: ~[TypeOperator(instance.typ.clone())]});
         }
+        
+        for type_decl in module.typeDeclarations.mut_iter() {
+            self.freshen_declaration(type_decl);
+
+            match module.bindings.mut_iter().find(|bind| bind.name == type_decl.name) {
+                Some(bind) => {
+                    bind.typeDecl = type_decl.clone();
+                }
+                None => fail!("Error: Type declaration for '{}' has no binding", type_decl.name)
+            }
+        }
+
         {
             let mut scope = TypeScope { env: self, vars: ~[], non_generic: ~[], parent: None };
             let mut subs = Substitution { subs: HashMap::new(), constraints: HashMap::new() }; 
@@ -202,6 +227,17 @@ impl <'a> TypeEnvironment<'a> {
             }
             _ => ()
         }
+    }
+
+    fn freshen_declaration(&mut self, decl: &mut TypeDeclaration) {
+        let mut subs = Substitution { subs: HashMap::new(), constraints: HashMap::new() }; 
+        for constraint in decl.context.mut_iter() {
+            let new = self.new_var();
+            constraint.types[0] = new.clone();
+            let old = constraint.types[0].var();
+            subs.subs.insert(old.clone(), new);
+        }
+        replace(&mut self.constraints, &mut decl.typ, &subs);
     }
 
     ///Applies a substitution on all global types
@@ -401,6 +437,9 @@ impl <'a, 'b> TypeScope<'a, 'b> {
                 let bind = &mut bindings[bindIndex];
                 bind.expression.typ = self.env.new_var();
                 self.insert(bind.name.clone(), &bind.expression.typ);
+                if bind.typeDecl.typ == Type::new_var(0) {
+                    bind.typeDecl.typ = self.env.new_var();
+                }
             }
             
             for index in group.iter() {
@@ -410,6 +449,7 @@ impl <'a, 'b> TypeScope<'a, 'b> {
                     self.non_generic.push(bind.expression.typ.clone());
                     let type_var = bind.expression.typ.var().clone();
                     self.typecheck(&mut bind.expression, subs);
+                    unify_location(self.env, subs, &bind.expression.location, &mut bind.typeDecl.typ, &mut bind.expression.typ);
                     subs.subs.insert(type_var, bind.expression.typ.clone());
                     self.apply(subs);
                 }
@@ -467,6 +507,29 @@ impl <'a, 'b> TypeScope<'a, 'b> {
 
     fn child(&'a self) -> TypeScope<'a, 'b> {
         TypeScope { env: self.env, vars: ~[], non_generic: ~[], parent: Some(self) }
+    }
+}
+
+fn replace_var(typ: &mut Type, var: &TypeVariable, replacement: &Type) {
+    let new = match typ {
+        &TypeVariable(ref v) => {
+            if v == var {
+                Some(replacement)
+            }
+            else {
+                None
+            }
+        }
+        &TypeOperator(ref mut op) => {
+            for t in op.types.mut_iter(){
+                replace_var(t, var, replacement);
+            }
+            None
+        }
+    };
+    match new {
+        Some(x) => *typ = x.clone(),
+        None => ()
     }
 }
 
@@ -945,6 +1008,41 @@ test2 = id (primIntAdd 2 0)".chars());
     assert_eq!(module.bindings[0].expression.typ, Type::new_op(~"[]", ~[Type::new_op(~"Bool", ~[])]));
     assert_eq!(module.bindings[1].name, ~"test2");
     assert_eq!(module.bindings[1].expression.typ, Type::new_op(~"Int", ~[]));
+}
+
+#[test]
+fn type_declaration() {
+    
+    let mut parser = Parser::new(
+r"
+class Test a where
+    test :: a -> Int
+
+instance Test Int where
+    test x = x
+
+test :: Test a => a -> Int -> Int
+test x y = primIntAdd (test x) y".chars());
+    let mut module = parser.module();
+
+    let mut env = TypeEnvironment::new();
+    env.typecheck_module(&mut module);
+
+    assert_eq!(module.bindings[0].typeDecl.typ, module.typeDeclarations[0].typ);
+}
+
+#[test]
+#[should_fail]
+fn type_declaration_error() {
+    
+    let mut parser = Parser::new(
+r"
+test :: [Int] -> Int -> Int
+test x y = primIntAdd x y".chars());
+    let mut module = parser.module();
+
+    let mut env = TypeEnvironment::new();
+    env.typecheck_module(&mut module);
 }
 
 }
