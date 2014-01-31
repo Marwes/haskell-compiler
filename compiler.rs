@@ -1,6 +1,5 @@
 use std::hashmap::HashMap;
-use module::{Type, TypeVariable, TypeOperator, Identifier, Number, Apply, Lambda, Let, Case, TypedExpr, Module, Class, Binding,
-    Pattern, ConstructorPattern, NumberPattern, IdentifierPattern, DataDefinition};
+use module::*;
 use Scope;
 use typecheck::{Types, TypeEnvironment};
 
@@ -19,6 +18,7 @@ pub enum Instruction {
     Push(uint),
     PushGlobal(uint),
     PushInt(int),
+    PushFloat(f64),
     Mkap,
     Eval,
     Unwind,
@@ -373,6 +373,7 @@ impl <'a, 'b, 'c> CompilerNode<'a, 'b, 'c> {
                 }
             }
             &Number(num) => instructions.push(PushInt(num)),
+            &Rational(num) => instructions.push(PushFloat(num)),
             &Apply(ref func, ref arg) => {
                 if !self.primitive(*func, *arg, instructions) {
                     self.compile(*arg, instructions, false);

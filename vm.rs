@@ -6,7 +6,7 @@ use std::str::from_utf8;
 use std::vec::from_fn;
 use typecheck::TypeEnvironment;
 use compiler::{Compiler, Assembly,
-    Instruction, Add, Sub, Multiply, Divide, Remainder, IntEQ, IntLT, IntLE, IntGT, IntGE, Push, PushGlobal, PushInt, Mkap, Eval, Unwind, Update, Pop, Slide, Split, Pack, CaseJump, Jump, PushDictionary, PushDictionaryMember,
+    Instruction, Add, Sub, Multiply, Divide, Remainder, IntEQ, IntLT, IntLE, IntGT, IntGE, Push, PushGlobal, PushInt, PushFloat, Mkap, Eval, Unwind, Update, Pop, Slide, Split, Pack, CaseJump, Jump, PushDictionary, PushDictionaryMember,
     SuperCombinator};
 use parser::Parser;    
 
@@ -14,6 +14,7 @@ use parser::Parser;
 enum Node_<'a> {
     Application(Node<'a>, Node<'a>),
     Int(int),
+    Float(f64),
     Combinator(&'a SuperCombinator),
     Indirection(Node<'a>),
     Constructor(u16, ~[Node<'a>]),
@@ -47,6 +48,7 @@ impl <'a> fmt::Default for Node_<'a> {
         match node {
             &Application(ref func, ref arg) => write!(f.buf, "({} {})", *func, *arg),
             &Int(i) => write!(f.buf, "{}", i),
+            &Float(i) => write!(f.buf, "{}", i),
             &Combinator(ref sc) => write!(f.buf, "{}", sc.name),
             &Indirection(ref n) => write!(f.buf, "(~> {})", *n),
             &Constructor(ref tag, ref args) => {
@@ -114,6 +116,7 @@ impl <'a> VM<'a> {
                 &IntGT => primitive2(stack, |l, r| { if l > r { Constructor(0, ~[]) } else { Constructor(1, ~[]) } }),
                 &IntGE => primitive2(stack, |l, r| { if l >= r { Constructor(0, ~[]) } else { Constructor(1, ~[]) } }),
                 &PushInt(value) => { stack.push(Node::new(Int(value))); }
+                &PushFloat(value) => { stack.push(Node::new(Float(value))); }
                 &Push(index) => {
                     let x = stack[index].clone();
                     debug!("Pushed {}", x.borrow());

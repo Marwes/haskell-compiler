@@ -225,6 +225,7 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
         let mut token = NUMBER;
         match self.peek() {
             Some('.') => {
+                self.input.next();
                 token = FLOAT;
                 number.push_char('.');
                 number = number.append(self.scan_digits());

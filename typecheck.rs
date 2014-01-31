@@ -1,5 +1,5 @@
 use std::hashmap::HashMap;
-use module::{TypeVariable, TypeOperator, Identifier, Number, Apply, Lambda, Let, Case, TypedExpr, Module, Pattern, IdentifierPattern, NumberPattern, ConstructorPattern, Binding, TypeDeclaration};
+use module::{TypeVariable, TypeOperator, Identifier, Number, Rational, Apply, Lambda, Let, Case, TypedExpr, Module, Pattern, IdentifierPattern, NumberPattern, ConstructorPattern, Binding, TypeDeclaration};
 use graph::{Graph, VertexIndex, strongly_connected_components};
 
 pub use lexer::Location;
@@ -316,6 +316,9 @@ impl <'a, 'b> TypeScope<'a, 'b> {
         match &mut expr.expr {
             &Number(_) => {
                 expr.typ = TypeOperator(TypeOperator {name : ~"Int", types : ~[]});
+            }
+            &Rational(_) => {
+                expr.typ = TypeOperator(TypeOperator {name : ~"Double", types : ~[]});
             }
             &Identifier(ref name) => {
                 match self.fresh(*name) {
@@ -763,6 +766,10 @@ pub fn lambda(arg : ~str, body : TypedExpr) -> TypedExpr {
 #[cfg(test)]
 pub fn number(i : int) -> TypedExpr {
     TypedExpr::new(Number(i))
+}
+#[cfg(test)]
+pub fn rational(i : f64) -> TypedExpr {
+    TypedExpr::new(Rational(i))
 }
 #[cfg(test)]
 pub fn apply(func : TypedExpr, arg : TypedExpr) -> TypedExpr {

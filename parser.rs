@@ -6,7 +6,7 @@ use lexer::{Lexer, Token, TokenEnum,
 use module::{Module, Class, Instance, Binding,
     DataDefinition, Constructor, TypeDeclaration,
     Alternative, Pattern, ConstructorPattern, NumberPattern, IdentifierPattern,
-    Type, TypeVariable, TypeOperator, Identifier, Number, Apply, Lambda, Let, Case, TypedExpr};
+    Type, TypeVariable, TypeOperator, Identifier, Number, Rational, Apply, Lambda, Let, Case, TypedExpr};
 use typecheck::function_type;
 
 pub struct Parser<Iter> {
@@ -307,7 +307,10 @@ fn subExpression(&mut self, parseError : |&Token| -> bool) -> Option<TypedExpr> 
             let token = self.lexer.current();
             Some(TypedExpr::with_location(Number(from_str(token.value).unwrap()), token.location))
         }
-	    //FLOAT => TypedExpr::with_location(Rational(token.value.from_str()), token.location),
+	    FLOAT => {
+            let token = self.lexer.current();
+            Some(TypedExpr::with_location(Rational(from_str(token.value).unwrap()), token.location))
+        }
 	    _ => {
 		self.lexer.backtrack();
         None
@@ -922,7 +925,7 @@ mod tests {
 
 use parser::*;
 use module::*;
-use typecheck::{function_type, identifier, apply, number, lambda, let_, case};
+use typecheck::{function_type, identifier, apply, number, rational, lambda, let_, case};
 use std::io::File;
 use std::str::from_utf8;
 
@@ -940,6 +943,15 @@ fn binding()
     let mut parser = Parser::new("test x = x + 3".chars());
     let bind = parser.binding();
     assert_eq!(bind.expression, lambda(~"x", apply(apply(identifier(~"+"), identifier(~"x")), number(3))));
+    assert_eq!(bind.name, ~"test");
+}
+
+#[test]
+fn double()
+{
+    let mut parser = Parser::new("test = 3.14".chars());
+    let bind = parser.binding();
+    assert_eq!(bind.expression, rational(3.14));
     assert_eq!(bind.name, ~"test");
 }
 
