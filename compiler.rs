@@ -382,8 +382,27 @@ impl <'a, 'b, 'c> CompilerNode<'a, 'b, 'c> {
                     instructions.push(Eval);
                 }
             }
-            &Number(num) => instructions.push(PushInt(num)),
-            &Rational(num) => instructions.push(PushFloat(num)),
+            &Number(num) => {
+                if expr.typ == Type::new_op(~"Int", ~[]) {
+                    instructions.push(PushInt(num));
+                }
+                else if expr.typ == Type::new_op(~"Double", ~[]) {
+                    instructions.push(PushFloat(num as f64));
+                }
+                else {
+                    instructions.push(PushInt(num));
+                }
+
+            }
+            &Rational(num) => {
+                if expr.typ == Type::new_op(~"Double", ~[]) {
+                    instructions.push(PushFloat(num));
+                }
+                else {
+                    fail!("Number literal has unknown type")
+                }
+
+            }
             &Apply(ref func, ref arg) => {
                 if !self.primitive(*func, *arg, instructions) {
                     self.compile(*arg, instructions, false);
@@ -687,6 +706,19 @@ main = add 2. 3.";
 
     assert_eq!(assembly.superCombinators[0].instructions, ~[Push(1), Eval, Push(0), Eval, DoubleAdd, Update(0), Pop(2), Unwind]);
     assert_eq!(assembly.superCombinators[1].instructions, ~[PushFloat(3.), PushFloat(2.), PushGlobal(0), Mkap, Mkap, Eval, Update(0), Unwind]);
+}
+#[test]
+fn push_num_double() {
+    let file =
+r"main = primDoubleAdd 2 3";
+    let mut parser = Parser::new(file.chars());
+    let mut module = parser.module();
+    let mut type_env = TypeEnvironment::new();
+    type_env.typecheck_module(&mut module);
+    let mut comp = Compiler::new(&type_env);
+    let assembly = comp.compileModule(&module);
+
+    assert_eq!(assembly.superCombinators[0].instructions, ~[PushFloat(3.), PushFloat(2.), DoubleAdd, Update(0), Unwind]);
 }
 
 #[test]

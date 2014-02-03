@@ -737,7 +737,7 @@ fn unify_(env : &mut TypeEnvironment, subs : &mut Substitution, lhs : &mut Type,
                 Some(constraints) => {
                     for c in constraints.iter() {
                         if !env.has_instance(*c, op) {
-                            if c.equiv(& &"Num") && op.name.equiv(& &"Int") && op.types.len() == 0 {
+                            if c.equiv(& &"Num") && (op.name.equiv(& &"Int") || op.name.equiv(& &"Double")) && op.types.len() == 0 {
                                 continue;
                             }
                             else {
@@ -1051,6 +1051,20 @@ main = test [1]".chars());
 
     let mut env = TypeEnvironment::new();
     env.typecheck_module(&mut module);
+}
+
+#[test]
+fn typecheck_num_double() {
+    let mut env = TypeEnvironment::new();
+
+    let mut parser = Parser::new(
+r"test x = primDoubleAdd 0 x".chars());
+    let mut module = parser.module();
+    env.typecheck_module(&mut module);
+
+    let typ = function_type(&Type::new_op(~"Double", ~[]), &Type::new_op(~"Double", ~[]));
+    let bind_type0 = module.bindings[0].expression.typ;
+    assert_eq!(bind_type0, typ);
 }
 
 #[test]
