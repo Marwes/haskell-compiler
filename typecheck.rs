@@ -315,7 +315,7 @@ impl <'a, 'b> TypeScope<'a, 'b> {
 
         match &mut expr.expr {
             &Number(_) => {
-                expr.typ = TypeOperator(TypeOperator {name : ~"Int", types : ~[]});
+                self.env.constraints.insert(expr.typ.var().clone(), ~[~"Num"]);
             }
             &Rational(_) => {
                 expr.typ = TypeOperator(TypeOperator {name : ~"Double", types : ~[]});
@@ -372,19 +372,18 @@ impl <'a, 'b> TypeScope<'a, 'b> {
             }
             &Case(ref mut case_expr, ref mut alts) => {
                 self.typecheck(*case_expr, subs);
-                let mut match_type = case_expr.typ.clone();
-                self.typecheck_pattern(subs, &alts[0].pattern, &mut match_type);
+                self.typecheck_pattern(subs, &alts[0].pattern, &mut case_expr.typ);
                 self.typecheck(&mut alts[0].expression, subs);
                 let mut alt0_ = alts[0].expression.typ.clone();
                 for alt in alts.mut_iter().skip(1) {
-                    self.typecheck_pattern(subs, &alt.pattern, &mut match_type);
+                    self.typecheck_pattern(subs, &alt.pattern, &mut case_expr.typ);
                     self.typecheck(&mut alt.expression, subs);
                     unify_location(self.env, subs, &alt.expression.location, &mut alt0_, &mut alt.expression.typ);
                     replace(&mut self.env.constraints, &mut alt.expression.typ, subs);
                 }
                 replace(&mut self.env.constraints, &mut alts[0].expression.typ, subs);
                 replace(&mut self.env.constraints, &mut case_expr.typ, subs);
-                expr.typ = alts[0].expression.typ.clone();
+                expr.typ = alt0_;
             }
         };
     }
@@ -393,12 +392,13 @@ impl <'a, 'b> TypeScope<'a, 'b> {
         match pattern {
             &IdentifierPattern(ref ident) => {
                 let mut typ = self.env.new_var();
-                self.insert(ident.clone(), &typ);
                 {
                     unify(self.env, subs, &mut typ, match_type);
                     replace(&mut self.env.constraints, match_type, subs);
+                    replace(&mut self.env.constraints, &mut typ, subs);
                 }
-                self.non_generic.push(typ.clone());
+                self.insert(ident.clone(), &typ);
+                self.non_generic.push(typ);
             }
             &NumberPattern(_) => {
                 fail!("Number pattern typechecking are not implemented");
@@ -407,10 +407,11 @@ impl <'a, 'b> TypeScope<'a, 'b> {
                 let mut t = self.fresh(*ctorname).unwrap();
                 let mut data_type = get_returntype(&t);
                 
-                self.pattern_rec(0, subs, *patterns, &mut t);
-
                 unify(self.env, subs, &mut data_type, match_type);
                 replace(&mut self.env.constraints, match_type, subs);
+                replace(&mut self.env.constraints, &mut t, subs);
+                self.env.apply(subs);
+                self.pattern_rec(0, subs, *patterns, &mut t);
             }
         }
     }
@@ -678,8 +679,13 @@ fn unify_(env : &mut TypeEnvironment, subs : &mut Substitution, lhs : &mut Type,
                 Some(constraints) => {
                     for c in constraints.iter() {
                         if !env.has_instance(*c, op) {
-                            let (location, l, r) = type_error::cond.raise(());
-                            fail!("{} Error: No instance of class {} was found for {} when unifying {}\nand\n{}", location, *c, *op, l, r);
+                            if c.equiv(& &"Num") && op.name.equiv(& &"Int") && op.types.len() == 0 {
+                                continue;
+                            }
+                            else {
+                                let (location, l, r) = type_error::cond.raise(());
+                                fail!("{} Error: No instance of class {} was found for {} when unifying {}\nand\n{}", location, *c, *op, l, r);
+                            }
                         }
                     }
                 }
@@ -861,6 +867,23 @@ fn typecheck_case() {
 }
 
 #[test]
+fn typecheck_list() {
+    let mut env = TypeEnvironment::new();
+
+    let mut parser = Parser::new(
+r"mult2 x = primIntMultiply x 2
+
+main = case [mult2 123, 0] of
+    : x xs -> x
+    [] -> 10".chars());
+    let mut module = parser.module();
+    env.typecheck_module(&mut module);
+
+    assert_eq!(module.bindings[1].expression.typ, Type::new_op(~"Int", ~[]));
+}
+
+
+#[test]
 fn typecheck_module() {
     let mut env = TypeEnvironment::new();
 
@@ -882,8 +905,8 @@ fn typecheck_recursive_let() {
 
     let mut parser = Parser::new(
 r"let
-    a = 0
-    test = 1 : test2
+    a = primIntAdd 0 1
+    test = primIntAdd 1 2 : test2
     test2 = 2 : test
     b = test
 in b".chars());

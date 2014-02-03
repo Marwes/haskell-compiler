@@ -387,8 +387,8 @@ r"data Bool = True | False
 test = False
 
 main = case test of
-    False -> 0
-    True -> 1";
+    False -> primIntAdd 0 0
+    True -> primIntAdd 1 0";
     assert_eq!(execute_main(module.chars()), Some(IntResult(0)));
 }
 

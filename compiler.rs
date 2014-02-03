@@ -705,7 +705,7 @@ r"class Test a where
 instance Test Int where
     test x = x
 
-main = test 6";
+main = test (primIntAdd 6 0)";
     let mut parser = Parser::new(file.chars());
     let mut module = parser.module();
     let mut type_env = TypeEnvironment::new();
@@ -715,7 +715,7 @@ main = test 6";
 
     let main = &assembly.superCombinators[1];
     assert_eq!(main.name, ~"main");
-    assert_eq!(main.instructions, ~[PushInt(6), PushGlobal(0), Mkap, Eval, Update(0), Unwind]);
+    assert_eq!(main.instructions, ~[PushInt(0), PushInt(6), Add, PushGlobal(0), Mkap, Eval, Update(0), Unwind]);
 }
 
 #[test]
