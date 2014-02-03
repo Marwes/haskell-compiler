@@ -15,6 +15,16 @@ pub enum Instruction {
     IntLE,
     IntGT,
     IntGE,
+    DoubleAdd,
+    DoubleSub,
+    DoubleMultiply,
+    DoubleDivide,
+    DoubleRemainder,
+    DoubleEQ,
+    DoubleLT,
+    DoubleLE,
+    DoubleGT,
+    DoubleGE,
     Push(uint),
     PushGlobal(uint),
     PushInt(int),
@@ -548,6 +558,16 @@ impl <'a, 'b, 'c> CompilerNode<'a, 'b, 'c> {
                             ~"primIntLE" => Some(IntLE),
                             ~"primIntGT" => Some(IntGT),
                             ~"primIntGE" => Some(IntGE),
+                            ~"primDoubleAdd" => Some(DoubleAdd),
+                            ~"primDoubleSubtract" => Some(DoubleSub),
+                            ~"primDoubleMultiply" => Some(DoubleMultiply),
+                            ~"primDoubleDivide" => Some(DoubleDivide),
+                            ~"primDoubleRemainder" => Some(DoubleRemainder),
+                            ~"primDoubleEQ" => Some(DoubleEQ),
+                            ~"primDoubleLT" => Some(DoubleLT),
+                            ~"primDoubleLE" => Some(DoubleLE),
+                            ~"primDoubleGT" => Some(DoubleGT),
+                            ~"primDoubleGE" => Some(DoubleGE),
                             _ => None
                         };
                         match maybeOP {
@@ -651,6 +671,22 @@ fn add() {
     let instr = comp.compileExpression(&e);
 
     assert_eq!(instr, ~[PushInt(2), PushInt(1), Add]);
+}
+
+#[test]
+fn add_double() {
+    let file =
+r"add x y = primDoubleAdd x y
+main = add 2. 3.";
+    let mut parser = Parser::new(file.chars());
+    let mut module = parser.module();
+    let mut type_env = TypeEnvironment::new();
+    type_env.typecheck_module(&mut module);
+    let mut comp = Compiler::new(&type_env);
+    let assembly = comp.compileModule(&module);
+
+    assert_eq!(assembly.superCombinators[0].instructions, ~[Push(1), Eval, Push(0), Eval, DoubleAdd, Update(0), Pop(2), Unwind]);
+    assert_eq!(assembly.superCombinators[1].instructions, ~[PushFloat(3.), PushFloat(2.), PushGlobal(0), Mkap, Mkap, Eval, Update(0), Unwind]);
 }
 
 #[test]

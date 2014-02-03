@@ -5,9 +5,7 @@ use std::io::File;
 use std::str::from_utf8;
 use std::vec::from_fn;
 use typecheck::TypeEnvironment;
-use compiler::{Compiler, Assembly,
-    Instruction, Add, Sub, Multiply, Divide, Remainder, IntEQ, IntLT, IntLE, IntGT, IntGE, Push, PushGlobal, PushInt, PushFloat, Mkap, Eval, Unwind, Update, Pop, Slide, Split, Pack, CaseJump, Jump, PushDictionary, PushDictionaryMember,
-    SuperCombinator};
+use compiler::*;
 use parser::Parser;    
 
 #[deriving(Clone)]
@@ -110,11 +108,21 @@ impl <'a> VM<'a> {
                 &Multiply => primitive(stack, |l, r| { l * r }),
                 &Divide => primitive(stack, |l, r| { l / r }),
                 &Remainder => primitive(stack, |l, r| { l % r }),
-                &IntEQ => primitive2(stack, |l, r| { if l == r { Constructor(0, ~[]) } else { Constructor(1, ~[]) } }),
-                &IntLT => primitive2(stack, |l, r| { if l < r { Constructor(0, ~[]) } else { Constructor(1, ~[]) } }),
-                &IntLE => primitive2(stack, |l, r| { if l <= r { Constructor(0, ~[]) } else { Constructor(1, ~[]) } }),
-                &IntGT => primitive2(stack, |l, r| { if l > r { Constructor(0, ~[]) } else { Constructor(1, ~[]) } }),
-                &IntGE => primitive2(stack, |l, r| { if l >= r { Constructor(0, ~[]) } else { Constructor(1, ~[]) } }),
+                &IntEQ => primitive_int(stack, |l, r| { if l == r { Constructor(0, ~[]) } else { Constructor(1, ~[]) } }),
+                &IntLT => primitive_int(stack, |l, r| { if l < r { Constructor(0, ~[]) } else { Constructor(1, ~[]) } }),
+                &IntLE => primitive_int(stack, |l, r| { if l <= r { Constructor(0, ~[]) } else { Constructor(1, ~[]) } }),
+                &IntGT => primitive_int(stack, |l, r| { if l > r { Constructor(0, ~[]) } else { Constructor(1, ~[]) } }),
+                &IntGE => primitive_int(stack, |l, r| { if l >= r { Constructor(0, ~[]) } else { Constructor(1, ~[]) } }),
+                &DoubleAdd => primitive_float(stack, |l, r| { Float(l + r) }),
+                &DoubleSub => primitive_float(stack, |l, r| { Float(l - r) }),
+                &DoubleMultiply => primitive_float(stack, |l, r| { Float(l * r) }),
+                &DoubleDivide => primitive_float(stack, |l, r| { Float(l / r) }),
+                &DoubleRemainder => primitive_float(stack, |l, r| { Float(l % r) }),
+                &DoubleEQ => primitive_float(stack, |l, r| { if l == r { Constructor(0, ~[]) } else { Constructor(1, ~[]) } }),
+                &DoubleLT => primitive_float(stack, |l, r| { if l < r { Constructor(0, ~[]) } else { Constructor(1, ~[]) } }),
+                &DoubleLE => primitive_float(stack, |l, r| { if l <= r { Constructor(0, ~[]) } else { Constructor(1, ~[]) } }),
+                &DoubleGT => primitive_float(stack, |l, r| { if l > r { Constructor(0, ~[]) } else { Constructor(1, ~[]) } }),
+                &DoubleGE => primitive_float(stack, |l, r| { if l >= r { Constructor(0, ~[]) } else { Constructor(1, ~[]) } }),
                 &PushInt(value) => { stack.push(Node::new(Int(value))); }
                 &PushFloat(value) => { stack.push(Node::new(Float(value))); }
                 &Push(index) => {
@@ -256,7 +264,7 @@ impl <'a> VM<'a> {
     }
 }
 
-fn primitive2(stack: &mut ~[Node], f: |int, int| -> Node_) {
+fn primitive_int(stack: &mut ~[Node], f: |int, int| -> Node_) {
     let l = stack.pop();
     let r = stack.pop();
     match (l.borrow(), r.borrow()) {
@@ -264,13 +272,22 @@ fn primitive2(stack: &mut ~[Node], f: |int, int| -> Node_) {
         (lhs, rhs) => fail!("Expected fully evaluted numbers in primitive instruction\n LHS: {}\nRHS: {} ", lhs, rhs)
     }
 }
+fn primitive_float(stack: &mut ~[Node], f: |f64, f64| -> Node_) {
+    let l = stack.pop();
+    let r = stack.pop();
+    match (l.borrow(), r.borrow()) {
+        (&Float(lhs), &Float(rhs)) => stack.push(Node::new(f(lhs, rhs))),
+        (lhs, rhs) => fail!("Expected fully evaluted numbers in primitive instruction\n LHS: {}\nRHS: {} ", lhs, rhs)
+    }
+}
 fn primitive(stack: &mut ~[Node], f: |int, int| -> int) {
-    primitive2(stack, |l, r| Int(f(l, r)))
+    primitive_int(stack, |l, r| Int(f(l, r)))
 }
 
 #[deriving(Eq)]
 enum VMResult {
     IntResult(int),
+    DoubleResult(f64),
     ConstructorResult(u16, ~[VMResult])
 }
 
@@ -305,6 +322,7 @@ fn extract_result(node: Node_) -> Option<VMResult> {
             Some(ConstructorResult(tag, result))
         }
         Int(i) => Some(IntResult(i)),
+        Float(i) => Some(DoubleResult(i)),
         x => {
             println!("Can't extract result {}", x);
             None
@@ -335,7 +353,7 @@ use std::str::from_utf8;
 use typecheck::TypeEnvironment;
 use compiler::Compiler;
 use parser::Parser;
-use vm::{VM, execute_main, extract_result, IntResult, ConstructorResult};
+use vm::{VM, execute_main, extract_result, IntResult, DoubleResult, ConstructorResult};
 
 #[test]
 fn test_primitive()
@@ -343,6 +361,7 @@ fn test_primitive()
     assert_eq!(execute_main("main = primIntAdd 10 5".chars()), Some(IntResult(15)));
     assert_eq!(execute_main("main = primIntSubtract 7 (primIntMultiply 2 3)".chars()), Some(IntResult(1)));
     assert_eq!(execute_main("main = primIntDivide 10 (primIntRemainder 6 4)".chars()), Some(IntResult(5)));
+    assert_eq!(execute_main("main = primDoubleDivide 3. 2.".chars()), Some(DoubleResult(1.5)));
     let s = 
 r"data Bool = True | False
 main = primIntLT 1 2";

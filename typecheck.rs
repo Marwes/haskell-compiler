@@ -112,28 +112,33 @@ impl <'a> Bindings for BindingsWrapper<'a> {
     }
 }
 
+fn add_primitives(globals: &mut HashMap<~str, Type>, typename: &str) {
+    let typ = Type::new_op(typename.to_owned(), ~[]);
+    {
+        let binop = function_type(&typ, &function_type(&typ, &typ));
+        globals.insert("prim" + typename + "Add", binop.clone());
+        globals.insert("prim" + typename + "Subtract", binop.clone());
+        globals.insert("prim" + typename + "Multiply", binop.clone());
+        globals.insert("prim" + typename + "Divide", binop.clone());
+        globals.insert("prim" + typename + "Remainder", binop.clone());
+    }
+    {
+        let binop = function_type(&typ, &function_type(&typ, &Type::new_op(~"Bool", ~[])));
+        globals.insert("prim" + typename + "EQ", binop.clone());
+        globals.insert("prim" + typename + "LT", binop.clone());
+        globals.insert("prim" + typename + "LE", binop.clone());
+        globals.insert("prim" + typename + "GT", binop.clone());
+        globals.insert("prim" + typename + "GE", binop.clone());
+    }
+}
+
 impl <'a> TypeEnvironment<'a> {
 
     ///Creates a new TypeEnvironment and adds all the primitive types
     pub fn new() -> TypeEnvironment {
         let mut globals = HashMap::new();
-        let int_type = &Type::new_op(~"Int", ~[]);
-        {
-            let binop = function_type(int_type, &function_type(int_type, int_type));
-            globals.insert(~"primIntAdd", binop.clone());
-            globals.insert(~"primIntSubtract", binop.clone());
-            globals.insert(~"primIntMultiply", binop.clone());
-            globals.insert(~"primIntDivide", binop.clone());
-            globals.insert(~"primIntRemainder", binop.clone());
-        }
-        {
-            let binop = function_type(int_type, &function_type(int_type, &Type::new_op(~"Bool", ~[])));
-            globals.insert(~"primIntEQ", binop.clone());
-            globals.insert(~"primIntLT", binop.clone());
-            globals.insert(~"primIntLE", binop.clone());
-            globals.insert(~"primIntGT", binop.clone());
-            globals.insert(~"primIntGE", binop.clone());
-        }
+        add_primitives(&mut globals, &"Int");
+        add_primitives(&mut globals, &"Double");
         let list_var = Type::new_var(-10);
         let list = Type::new_op(~"[]", ~[list_var.clone()]);
         globals.insert(~"[]", list.clone());
