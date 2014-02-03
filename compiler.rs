@@ -449,7 +449,7 @@ impl <'a, 'b, 'c> CompilerNode<'a, 'b, 'c> {
                 None
             }
             None => {
-                let constraints = self.compiler.type_env.find_constraints(typ);
+                let constraints = self.compiler.type_env.find_constraints(actual_type);
                 self.compile_with_constraints(name, typ, constraints, instructions)
             }
         }
@@ -491,7 +491,7 @@ impl <'a, 'b, 'c> CompilerNode<'a, 'b, 'c> {
                 None => fail!("Undefined instance {:?}", c)
             }
         }
-        None
+        fail!("Attempted to push dictionary member with no constraints")
     }
 
     ///Find the index of the instance dictionary for the constraints and types in 'constraints'
@@ -504,6 +504,9 @@ impl <'a, 'b, 'c> CompilerNode<'a, 'b, 'c> {
             }
         }
 
+        if constraints.len() == 0 {
+            fail!("Attempted to compile dictionary with no constraints");
+        }
         let mut function_indexes = ~[];
         for c in constraints.iter() {
             match self.compiler.class_dictionaries.find_equiv(&c.name) {

@@ -410,7 +410,7 @@ instance Test Bool where
         False -> 0
 
 
-main = primIntSubtract (test 5) (test True)";
+main = primIntSubtract (test (primIntAdd 5 0)) (test True)";
     assert_eq!(execute_main(module.chars()), Some(IntResult(4)));
 }
 
@@ -431,7 +431,7 @@ instance Test Bool where
         True -> 1
         False -> 0
 
-testAdd y = primIntAdd (test 5) (test y)
+testAdd y = primIntAdd (test (primIntAdd 5 0)) (test y)
 
 main = testAdd True";
     assert_eq!(execute_main(module.chars()), Some(IntResult(6)));

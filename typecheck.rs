@@ -67,6 +67,51 @@ condition! {
 }
 
 
+trait Bindings {
+    fn get_mut<'a>(&'a mut self, idx: (uint, uint)) -> &'a mut Binding;
+
+    fn each_binding(&self, |&Binding, (uint, uint)|);
+}
+
+impl Bindings for Module {
+    fn get_mut<'a>(&'a mut self, (instance_idx, idx): (uint, uint)) -> &'a mut Binding {
+        if instance_idx == 0 {
+            &mut self.bindings[idx]
+        }
+        else {
+            &mut self.instances[instance_idx - 1].bindings[idx]
+        }
+    }
+
+    fn each_binding(&self, func: |&Binding, (uint, uint)|) {
+        for (index, bind) in self.bindings.iter().enumerate() {
+            func(bind, (0, index));
+        }
+        for (instance_index, instance) in self.instances.iter().enumerate() {
+            for (index, bind) in instance.bindings.iter().enumerate() {
+                func(bind, (instance_index + 1, index));
+            }
+        }
+    }
+}
+
+//Woraround since traits around a vector seems problematic
+struct BindingsWrapper<'a> {
+    value: &'a mut [Binding]
+}
+
+impl <'a> Bindings for BindingsWrapper<'a> {
+    fn get_mut<'a>(&'a mut self, (_, idx): (uint, uint)) -> &'a mut Binding {
+        &mut self.value[idx]
+    }
+
+    fn each_binding(&self, func: |&Binding, (uint, uint)|) {
+        for (index, bind) in self.value.iter().enumerate() {
+            func(bind, (0, index));
+        }
+    }
+}
+
 impl <'a> TypeEnvironment<'a> {
 
     ///Creates a new TypeEnvironment and adds all the primitive types
@@ -128,7 +173,14 @@ impl <'a> TypeEnvironment<'a> {
             }
             self.constraints.insert(class.variable, ~[class.name.clone()]);
         }
-        for instance in module.instances.iter() {
+        for instance in module.instances.mut_iter() {
+            let class = module.classes.iter().find(|class| class.name == instance.classname)
+                .expect(format!("Could not find class {}", instance.classname));
+            for binding in instance.bindings.mut_iter() {
+                let decl = class.declarations.iter().find(|decl| binding.name.ends_with(decl.name))
+                    .expect(format!("Could not find {} in class {}", binding.name, class.name));
+                binding.typeDecl = decl.clone();
+            }
             self.instances.push(TypeOperator { name: instance.classname.clone(),
                 types: ~[TypeOperator(instance.typ.clone())]});
         }
@@ -147,7 +199,7 @@ impl <'a> TypeEnvironment<'a> {
         {
             let mut scope = TypeScope { env: self, vars: ~[], non_generic: ~[], parent: None };
             let mut subs = Substitution { subs: HashMap::new(), constraints: HashMap::new() }; 
-            scope.typecheck_mutually_recursive_bindings(&mut subs, module.bindings);
+            scope.typecheck_mutually_recursive_bindings(&mut subs, module);
         }
         for bind in module.bindings.iter() {
             self.namedTypes.insert(bind.name.clone(), bind.expression.typ.clone());
@@ -363,7 +415,7 @@ impl <'a, 'b> TypeScope<'a, 'b> {
             &Let(ref mut bindings, ref mut body) => {
                 {
                     let mut childScope = self.child();
-                    childScope.typecheck_mutually_recursive_bindings(subs, *bindings);
+                    childScope.typecheck_mutually_recursive_bindings(subs, &mut BindingsWrapper { value: *bindings });
                     childScope.apply(subs);
                     childScope.typecheck(*body, subs);
                 }
@@ -429,7 +481,7 @@ impl <'a, 'b> TypeScope<'a, 'b> {
         }
     }
 
-    pub fn typecheck_mutually_recursive_bindings(&mut self, subs: &mut Substitution, bindings: &mut[Binding]) {
+    pub fn typecheck_mutually_recursive_bindings(&mut self, subs: &mut Substitution, bindings: &mut Bindings) {
         
         let graph = build_graph(bindings);
         let groups = strongly_connected_components(&graph);
@@ -438,7 +490,7 @@ impl <'a, 'b> TypeScope<'a, 'b> {
             let group = &groups[i];
             for index in group.iter() {
                 let bindIndex = graph.get_vertex(*index).value;
-                let bind = &mut bindings[bindIndex];
+                let bind = bindings.get_mut(bindIndex);
                 bind.expression.typ = self.env.new_var();
                 self.insert(bind.name.clone(), &bind.expression.typ);
                 if bind.typeDecl.typ == Type::new_var(0) {
@@ -449,19 +501,20 @@ impl <'a, 'b> TypeScope<'a, 'b> {
             for index in group.iter() {
                 {
                     let bindIndex = graph.get_vertex(*index).value;
-                    let bind = &mut bindings[bindIndex];
+                    let bind = bindings.get_mut(bindIndex);
                     self.non_generic.push(bind.expression.typ.clone());
                     let type_var = bind.expression.typ.var().clone();
                     self.typecheck(&mut bind.expression, subs);
                     unify_location(self.env, subs, &bind.expression.location, &mut bind.typeDecl.typ, &mut bind.expression.typ);
                     subs.subs.insert(type_var, bind.expression.typ.clone());
+                    self.env.substitute(subs, &mut bind.expression);
                     self.apply(subs);
                 }
             }
             
             for index in group.iter() {
                 let bindIndex = graph.get_vertex(*index).value;
-                let bind = &mut bindings[bindIndex];
+                let bind = bindings.get_mut(bindIndex);
                 self.non_generic.pop();
                 self.env.substitute(subs, &mut bind.expression);
                 bind.typeDecl.typ = bind.expression.typ.clone();
@@ -698,16 +751,16 @@ fn unify_(env : &mut TypeEnvironment, subs : &mut Substitution, lhs : &mut Type,
 }
 
 ///Creates a graph containing a vertex for each binding and edges for each 
-fn build_graph(bindings: &[Binding]) -> Graph<uint> {
+fn build_graph(bindings: &Bindings) -> Graph<(uint, uint)> {
     let mut graph = Graph::new();
     let mut map = HashMap::new();
-    for i in range(0, bindings.len()) {
+    bindings.each_binding(|bind, i| {
         let index = graph.new_vertex(i);
-        map.insert(bindings[i].name.clone(), index);
-    }
-    for bind in bindings.iter() {
+        map.insert(bind.name.clone(), index);
+    });
+    bindings.each_binding(|bind, _| {
         add_edges(&mut graph, &map, *map.get(&bind.name), &bind.expression);
-    }
+    });
     graph
 }
 
