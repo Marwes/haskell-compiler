@@ -1,4 +1,3 @@
-use std::hashmap::HashMap;
 use module::*;
 use Scope;
 use typecheck::{Types, TypeEnvironment};
@@ -55,13 +54,14 @@ enum Var<'a> {
 pub struct SuperCombinator {
     arity : uint,
     name: ~str,
+    assembly_id: uint,
     instructions : ~[Instruction],
-    typ: Type,
+    type_declaration: TypeDeclaration,
     constraints: ~[TypeOperator]
 }
 impl SuperCombinator {
     fn new() -> SuperCombinator {
-        SuperCombinator { arity : 0, name: ~"", instructions : ~[], typ: Type::new_var(-1), constraints: ~[] }
+        SuperCombinator { arity : 0, name: ~"", instructions : ~[], type_declaration: Default::default(), constraints: ~[], assembly_id: 0 }
     }
 }
 
@@ -85,7 +85,7 @@ impl Globals for Assembly {
         for sc in self.superCombinators.iter() {
             if name == sc.name {
                 if sc.constraints.len() > 0 {
-                    return Some(ConstraintVariable(self.offset + index, &sc.typ, sc.constraints));
+                    return Some(ConstraintVariable(self.offset + index, &sc.type_declaration.typ, sc.constraints));
                 }
                 else {
                     return Some(GlobalVariable(self.offset + index));
@@ -160,7 +160,7 @@ impl Types for Assembly {
     fn find_type<'a>(&'a self, name: &str) -> Option<&'a Type> {
         for sc in self.superCombinators.iter() {
             if sc.name.equiv(&name) {
-                return Some(&sc.typ);
+                return Some(&sc.type_declaration.typ);
             }
         }
         
@@ -181,12 +181,26 @@ impl Types for Assembly {
         }
         return None;
     }
+
+    fn find_class<'a>(&'a self, name: &str) -> Option<&'a Class> {
+        self.classes.iter().find(|class| name == class.name)
+    }
+    fn each_typedeclaration(&self, func: |&TypeDeclaration|) {
+        for sc in self.superCombinators.iter() {
+            func(&sc.type_declaration);
+        }
+        
+        for class in self.classes.iter() {
+            for decl in class.declarations.iter() {
+                func(decl);
+            }
+        }
+    }
 }
 
 pub struct Compiler<'a> {
     type_env: &'a TypeEnvironment<'a>,
     ///Hashmap containging class names mapped to the functions it contains
-    class_dictionaries: HashMap<~str, ~[~str]>,
     instance_dictionaries: ~[(~[TypeOperator], ~[uint])],
     stackSize : uint,
     ///Array of all the assemblies which can be used to lookup functions in
@@ -196,7 +210,7 @@ pub struct Compiler<'a> {
 
 impl <'a> Compiler<'a> {
     pub fn new(type_env: &'a TypeEnvironment) -> Compiler<'a> {
-        Compiler { type_env: type_env, class_dictionaries: HashMap::new(), instance_dictionaries: ~[],
+        Compiler { type_env: type_env, instance_dictionaries: ~[],
             stackSize : 0, assemblies: ~[] }
     }
     
@@ -224,7 +238,6 @@ impl <'a> Compiler<'a> {
             for decl in class.declarations.iter() {
                 function_names.push(decl.name.clone());
             }
-            self.class_dictionaries.insert(class.name.clone(), function_names);
         }
         
         //Compile all bindings
@@ -232,6 +245,7 @@ impl <'a> Compiler<'a> {
             for bind in instance.bindings.iter() {
                 let mut sc = self.compileBinding(bind, Some(module));
                 sc.name = bind.name.clone();
+                sc.assembly_id = self.assemblies.len();
                 assembly.superCombinators.push(sc);
             }
         }
@@ -251,8 +265,8 @@ impl <'a> Compiler<'a> {
     fn compileBinding(&mut self, bind : &Binding, module: Option<&Module>) -> SuperCombinator {
         debug!("Compiling binding {}", bind.name);
         let mut comb = SuperCombinator::new();
-        comb.typ = bind.expression.typ.clone();
-        let dict_arg = if self.type_env.find_constraints(&comb.typ).len() > 0 { 1 } else { 0 };
+        comb.type_declaration = bind.typeDecl.clone();
+        let dict_arg = if self.type_env.find_constraints(&comb.type_declaration.typ).len() > 0 { 1 } else { 0 };
         comb.arity = bind.arity + dict_arg;
         let mut stack = CompilerNode { compiler: self, stack: Scope::new(), constraints: bind.typeDecl.context, module: module };
         if dict_arg == 1 {
@@ -333,6 +347,19 @@ impl <'a, 'b, 'c> CompilerNode<'a, 'b, 'c> {
                 &":" => Some(ConstructorVariable(1, 2)),
                 _ => None
             }
+        })
+    }
+
+    fn find_class<'r>(&'r self, name: &str) -> Option<&'r Class> {
+        self.module.and_then(|m| m.find_class(name))
+            .or_else(|| {
+            for types in self.compiler.assemblies.iter() {
+                match types.find_class(name) {
+                    Some(result) => return Some(result),
+                    None => ()
+                }
+            }
+            None
         })
     }
 
@@ -499,6 +526,7 @@ impl <'a, 'b, 'c> CompilerNode<'a, 'b, 'c> {
                 //get dictionary index
                 //push dictionary
                 let dictionary_key = self.compiler.type_env.find_specialized_instances(name, typ);
+                println!("{} {:?}", name, dictionary_key);
                 let (index, dict) = self.find_dictionary_index(dictionary_key);
                 instructions.push(PushDictionary(index));
                 dict
@@ -508,11 +536,14 @@ impl <'a, 'b, 'c> CompilerNode<'a, 'b, 'c> {
 
     ///Lookup which index in the instance dictionary that holds the function called 'name'
     fn push_dictionary_member(&self, constraints: &[TypeOperator], name: &str) -> Option<uint> {
+        if constraints.len() == 0 {
+            fail!("Attempted to push dictionary member '{}' with no constraints", name)
+        }
         for c in constraints.iter() {
-            match self.compiler.class_dictionaries.find_equiv(&c.name) {
-                Some(functions) => {
-                    for ii in range(0, functions.len()) {
-                        if functions[ii].equiv(&name) {
+            match self.find_class(c.name) {
+                Some(class) => {
+                    for ii in range(0, class.declarations.len()) {
+                        if class.declarations[ii].name.equiv(&name) {
                             return Some(ii)
                         }
                     }
@@ -520,7 +551,7 @@ impl <'a, 'b, 'c> CompilerNode<'a, 'b, 'c> {
                 None => fail!("Undefined instance {:?}", c)
             }
         }
-        fail!("Attempted to push dictionary member with no constraints")
+        None
     }
 
     ///Find the index of the instance dictionary for the constraints and types in 'constraints'
@@ -538,12 +569,12 @@ impl <'a, 'b, 'c> CompilerNode<'a, 'b, 'c> {
         }
         let mut function_indexes = ~[];
         for c in constraints.iter() {
-            match self.compiler.class_dictionaries.find_equiv(&c.name) {
-                Some(functions) => {
-                    assert!(functions.len() > 0);
-                    for func in functions.iter() {
+            match self.find_class(c.name) {
+                Some(class) => {
+                    assert!(class.declarations.len() > 0);
+                    for decl in class.declarations.iter() {
                         let f = match &c.types[0] { 
-                            &TypeOperator(ref op) => "#" + op.name + *func,
+                            &TypeOperator(ref op) => "#" + op.name + decl.name,
                             _ => fail!("Expected operator")
                         };
                         match self.find(f) {

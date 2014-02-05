@@ -55,6 +55,11 @@ instance Num Int where
     (-) x y = primIntSubtract x y
     (*) x y = primIntMultiply x y
 
+instance Num Double where
+    (+) x y = primDoubleAdd x y
+    (-) x y = primDoubleSubtract x y
+    (*) x y = primDoubleMultiply x y
+
 otherwise :: Bool
 otherwise = True
 
@@ -86,3 +91,8 @@ tail :: [a] -> [a]
 tail xs = case xs of
     : y ys -> ys
     [] -> undefined
+
+sum :: Num a => [a] -> a
+sum xs = case xs of
+    : y ys -> y + sum ys
+    [] -> 0
