@@ -490,7 +490,7 @@ main = foldl add 0 [1,2,3,4]";
     let result = match x {
         Some(sc) => {
             assert!(sc.arity == 0);
-            let result = vm.evaluate(sc.instructions);
+            let result = vm.evaluate(sc.instructions, sc.assembly_id);
             extract_result(result)
         }
         None => None
