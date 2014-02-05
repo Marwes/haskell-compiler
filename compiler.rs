@@ -187,6 +187,14 @@ impl Types for Assembly {
     fn find_class<'a>(&'a self, name: &str) -> Option<&'a Class> {
         self.classes.iter().find(|class| name == class.name)
     }
+    fn has_instance(&self, classname: &str, typ: &TypeOperator) -> bool {
+        for op in self.instances.iter() {
+            if classname == op.name && op.types[0].op() == typ {
+                return true;
+            }
+        }
+        false
+    }
     fn each_typedeclaration(&self, func: |&TypeDeclaration|) {
         for sc in self.superCombinators.iter() {
             func(&sc.type_declaration);
@@ -223,7 +231,8 @@ impl <'a> Compiler<'a> {
             instance_dictionaries: ~[],
             offset: self.assemblies.iter().flat_map(|assembly| assembly.superCombinators.iter()).len(),
             classes: module.classes.clone(),
-            instances: module.instances.iter().map(|inst| inst.typ.clone()).collect(),
+            instances: module.instances.iter().map(
+                |inst| TypeOperator { name: inst.classname.clone(), types: ~[TypeOperator(inst.typ.clone())] }).collect(),
             data_definitions: ~[]
         };
         

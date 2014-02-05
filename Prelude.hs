@@ -63,6 +63,14 @@ instance Num Double where
     (*) x y = primDoubleMultiply x y
     fromInteger x = primIntToDouble x
 
+class Fractional a where
+    (/) :: a -> a -> a
+    fromRational :: Double -> a
+
+instance Fractional Double where
+    (/) x y = primDoubleDivide x y
+    fromRational x = x
+
 otherwise :: Bool
 otherwise = True
 

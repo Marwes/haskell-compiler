@@ -12,6 +12,7 @@ use module::Alternative;
 pub trait Types {
     fn find_type<'a>(&'a self, name: &str) -> Option<&'a Type>;
     fn find_class<'a>(&'a self, name: &str) -> Option<&'a Class>;
+    fn has_instance(&self, classname: &str, typ: &TypeOperator) -> bool;
     fn each_typedeclaration(&self, |&TypeDeclaration|);
 }
 
@@ -43,6 +44,16 @@ impl Types for Module {
     fn find_class<'a>(&'a self, name: &str) -> Option<&'a Class> {
         self.classes.iter().find(|class| name == class.name)
     }
+
+    fn has_instance(&self, classname: &str, typ: &TypeOperator) -> bool {
+        for instance in self.instances.iter() {
+            if classname == instance.classname && instance.typ == *typ {
+                return true;
+            }
+        }
+        false
+    }
+
     fn each_typedeclaration(&self, func: |&TypeDeclaration|) {
         for bind in self.bindings.iter() {
             func(&bind.typeDecl);
@@ -373,6 +384,12 @@ impl <'a> TypeEnvironment<'a> {
                     }
                 }
                 _ => ()
+            }
+        }
+        
+        for types in self.assemblies.iter() {
+            if types.has_instance(class, op) {
+                return true;
             }
         }
         false
