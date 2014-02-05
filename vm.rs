@@ -123,6 +123,20 @@ impl <'a> VM<'a> {
                 &DoubleLE => primitive_float(stack, |l, r| { if l <= r { Constructor(0, ~[]) } else { Constructor(1, ~[]) } }),
                 &DoubleGT => primitive_float(stack, |l, r| { if l > r { Constructor(0, ~[]) } else { Constructor(1, ~[]) } }),
                 &DoubleGE => primitive_float(stack, |l, r| { if l >= r { Constructor(0, ~[]) } else { Constructor(1, ~[]) } }),
+                &IntToDouble => {
+                    let top = stack.pop();
+                    stack.push(match top.borrow() {
+                        &Int(i) => Node::new(Float(i as f64)),
+                        _ => fail!("Excpected Int in Int -> Double cast")
+                    });
+                }
+                &DoubleToInt => {
+                    let top = stack.pop();
+                    stack.push(match top.borrow() {
+                        &Float(f) => Node::new(Int(f as int)),
+                        _ => fail!("Excpected Double in Double -> Int cast")
+                    });
+                }
                 &PushInt(value) => { stack.push(Node::new(Int(value))); }
                 &PushFloat(value) => { stack.push(Node::new(Float(value))); }
                 &Push(index) => {

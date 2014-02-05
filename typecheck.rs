@@ -156,6 +156,8 @@ impl <'a> TypeEnvironment<'a> {
         let mut globals = HashMap::new();
         add_primitives(&mut globals, &"Int");
         add_primitives(&mut globals, &"Double");
+        globals.insert(~"primIntToDouble", function_type(&Type::new_op(~"Int", ~[]), &Type::new_op(~"Double", ~[])));
+        globals.insert(~"primDoubleToInt", function_type(&Type::new_op(~"Double", ~[]), &Type::new_op(~"Int", ~[])));
         let list_var = Type::new_var(-10);
         let list = Type::new_op(~"[]", ~[list_var.clone()]);
         globals.insert(~"[]", list.clone());
@@ -170,12 +172,15 @@ impl <'a> TypeEnvironment<'a> {
     }
 
     pub fn add_types(&'a mut self, types: &'a Types) {
+        let mut max_id = 0;
         types.each_typedeclaration(|decl| {
             for constraint in decl.context.iter() {
                 let var = constraint.types[0].var().clone();
+                max_id = ::std::cmp::max(var.id, max_id);
                 self.constraints.find_or_insert(var, ~[]).push(constraint.name.clone());
             }
         });
+        self.variableIndex.id = max_id;
         self.assemblies.push(types);
     }
 

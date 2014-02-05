@@ -24,6 +24,8 @@ pub enum Instruction {
     DoubleLE,
     DoubleGT,
     DoubleGE,
+    IntToDouble,
+    DoubleToInt,
     Push(uint),
     PushGlobal(uint),
     PushInt(int),
@@ -526,7 +528,6 @@ impl <'a, 'b, 'c> CompilerNode<'a, 'b, 'c> {
                 //get dictionary index
                 //push dictionary
                 let dictionary_key = self.compiler.type_env.find_specialized_instances(name, typ);
-                println!("{} {:?}", name, dictionary_key);
                 let (index, dict) = self.find_dictionary_index(dictionary_key);
                 instructions.push(PushDictionary(index));
                 dict
@@ -597,6 +598,7 @@ impl <'a, 'b, 'c> CompilerNode<'a, 'b, 'c> {
             &Apply(ref prim_func, ref arg2) => {
                 match &prim_func.expr {
                     &Identifier(ref name) => {
+                        //Binary functions
                         let maybeOP = match *name {
                             ~"primIntAdd" => Some(Add),
                             ~"primIntSubtract" => Some(Sub),
@@ -631,6 +633,22 @@ impl <'a, 'b, 'c> CompilerNode<'a, 'b, 'c> {
                         }
                     }
                     _ => false
+                }
+            }
+            &Identifier(ref name) => {
+                let n: &str = *name;
+                let maybeOP = match n {
+                    "primIntToDouble" => Some(IntToDouble),
+                    "primDoubleToInt" => Some(DoubleToInt),
+                    _ => None
+                };
+                match maybeOP {
+                    Some(op) => {
+                        self.compile(arg, instructions, true);
+                        instructions.push(op);
+                        true
+                    }
+                    None => false
                 }
             }
             _ => false

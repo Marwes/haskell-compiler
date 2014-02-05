@@ -49,16 +49,19 @@ class Num a where
     (+) :: a -> a -> a
     (-) :: a -> a -> a
     (*) :: a -> a -> a
+    fromInteger :: Int -> a
 
 instance Num Int where
     (+) x y = primIntAdd x y
     (-) x y = primIntSubtract x y
     (*) x y = primIntMultiply x y
+    fromInteger x = x
 
 instance Num Double where
     (+) x y = primDoubleAdd x y
     (-) x y = primDoubleSubtract x y
     (*) x y = primDoubleMultiply x y
+    fromInteger x = primIntToDouble x
 
 otherwise :: Bool
 otherwise = True
