@@ -51,22 +51,28 @@ impl <'a, T> Scope<'a, T> {
 fn main() {
     match std::os::args() {
         [_, expr_str] => {
-            let prelude = compile_file(&"Prelude.hs");
-            let instr = {
+            let mut prelude = compile_file(&"Prelude.hs");
+            let (instr, dict) = {
                 let mut parser = Parser::new(expr_str.chars());
                 let mut expr = parser.expression_();
 
                 let mut type_env = TypeEnvironment::new();
-                type_env.assemblies.push(&prelude as &Types);
+                type_env.add_types(&prelude as &Types);
                 type_env.typecheck(&mut expr);
                 
                 let mut compiler = Compiler::new(&type_env);
                 compiler.assemblies.push(&prelude);
-                compiler.compileExpression(&expr)
+                let i = compiler.compileExpression(&expr);
+                (i, compiler.instance_dictionaries.get_opt(0).map(|&(_, ref x)| x.clone()))
+            };
+            //Add the dictionary if one is needed
+            match dict {
+                Some(dict) => prelude.instance_dictionaries.push(dict),
+                None => ()
             };
             let mut vm = VM::new();
             vm.add_assembly(prelude);
-            let result = vm.evaluate(instr);
+            let result = vm.evaluate(instr, 0);//TODO 0 is not necessarily correct
             println!("{}", result);
         }
         [_, ~"-l", filename] => {
