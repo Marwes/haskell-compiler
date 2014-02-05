@@ -1,5 +1,5 @@
 use std::hashmap::HashMap;
-use module::{TypeVariable, TypeOperator, Identifier, Number, Rational, Apply, Lambda, Let, Case, TypedExpr, Module, Pattern, IdentifierPattern, NumberPattern, ConstructorPattern, Binding, TypeDeclaration};
+use module::{TypeVariable, TypeOperator, Identifier, Number, Rational, Apply, Lambda, Let, Case, TypedExpr, Module, Pattern, IdentifierPattern, NumberPattern, ConstructorPattern, Binding, Class, TypeDeclaration};
 use graph::{Graph, VertexIndex, strongly_connected_components};
 
 pub use lexer::Location;
@@ -11,6 +11,8 @@ use module::Alternative;
 ///Trait which can be implemented by types where types can be looked up by name
 pub trait Types {
     fn find_type<'a>(&'a self, name: &str) -> Option<&'a Type>;
+    fn find_class<'a>(&'a self, name: &str) -> Option<&'a Class>;
+    fn each_typedeclaration(&self, |&TypeDeclaration|);
 }
 
 impl Types for Module {
@@ -36,6 +38,21 @@ impl Types for Module {
             }
         }
         return None;
+    }
+
+    fn find_class<'a>(&'a self, name: &str) -> Option<&'a Class> {
+        self.classes.iter().find(|class| name == class.name)
+    }
+    fn each_typedeclaration(&self, func: |&TypeDeclaration|) {
+        for bind in self.bindings.iter() {
+            func(&bind.typeDecl);
+        }
+
+        for class in self.classes.iter() {
+            for decl in class.declarations.iter() {
+                func(decl);
+            }
+        }
     }
 }
 
@@ -152,6 +169,16 @@ impl <'a> TypeEnvironment<'a> {
             variableIndex : TypeVariable { id : 0 } }
     }
 
+    pub fn add_types(&'a mut self, types: &'a Types) {
+        types.each_typedeclaration(|decl| {
+            for constraint in decl.context.iter() {
+                let var = constraint.types[0].var().clone();
+                self.constraints.find_or_insert(var, ~[]).push(constraint.name.clone());
+            }
+        });
+        self.assemblies.push(types);
+    }
+
     ///Typechecks a module by updating all the types in place
     pub fn typecheck_module(&mut self, module: &mut Module) {
         for data_def in module.dataDefinitions.mut_iter() {
@@ -174,6 +201,8 @@ impl <'a> TypeEnvironment<'a> {
             for type_decl in class.declarations.mut_iter() {
                 replace_var(&mut type_decl.typ, &replaced, &new);
                 self.freshen_declaration(type_decl);
+                let c = TypeOperator { name: class.name.clone(), types: ~[TypeVariable(class.variable.clone())] };
+                type_decl.context.push(c);
                 self.namedTypes.insert(type_decl.name.clone(), type_decl.typ.clone());
             }
             self.constraints.insert(class.variable, ~[class.name.clone()]);
@@ -1103,7 +1132,7 @@ test2 = id (primIntAdd 2 0)".chars());
     let mut module = parser.module();
 
     let mut env = TypeEnvironment::new();
-    env.assemblies.push(&prelude as &Types);
+    env.add_types(&prelude as &Types);
     env.typecheck_module(&mut module);
 
     assert_eq!(module.bindings[0].name, ~"test1");

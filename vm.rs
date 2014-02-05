@@ -64,7 +64,7 @@ impl <'a> fmt::Default for Node_<'a> {
 pub struct VM<'a> {
     assembly : ~[Assembly],
     globals: ~[(uint, uint)],
-    heap : ~[Node<'a>]
+    heap : ~[Node<'a>],
 }
 
 impl <'a> VM<'a> {
@@ -83,16 +83,16 @@ impl <'a> VM<'a> {
         }
     }
 
-    pub fn evaluate(&'a self, code: &[Instruction]) -> Node_<'a> {
+    pub fn evaluate(&'a self, code: &[Instruction], assembly_id: uint) -> Node_<'a> {
         let mut stack = ~[];
-        self.execute(&mut stack, code);
+        self.execute(&mut stack, code, assembly_id);
         static evalCode : &'static [Instruction] = &[Eval];
-        self.execute(&mut stack, evalCode);
+        self.execute(&mut stack, evalCode, assembly_id);
         assert_eq!(stack.len(), 1);
         stack[0].borrow().clone()
     }
 
-    pub fn execute(&'a self, stack : &mut ~[Node<'a>], code : &[Instruction]) {
+    pub fn execute(&'a self, stack : &mut ~[Node<'a>], code : &[Instruction], assembly_id: uint) {
         debug!("----------------------------");
         debug!("Entering frame with stack");
         for x in stack.iter() {
@@ -148,7 +148,7 @@ impl <'a> VM<'a> {
                 &Eval => {
                     static unwindCode : &'static [Instruction] = &[Unwind];
                     let mut newStack = ~[stack.pop()];
-                    self.execute(&mut newStack, unwindCode);
+                    self.execute(&mut newStack, unwindCode, assembly_id);
                     stack.push(newStack.pop());
                 }
                 &Pop(num) => {
@@ -190,7 +190,7 @@ impl <'a> VM<'a> {
                                 for j in range(0, newStack.len()) {
                                     debug!(" {}  {}", j, newStack[j].borrow());
                                 }
-                                self.execute(&mut newStack, comb.instructions);
+                                self.execute(&mut newStack, comb.instructions, comb.assembly_id);
                                 assert_eq!(newStack.len(), 1);
                                 for _ in range(0, comb.arity + 1) {
                                     stack.pop();
@@ -241,7 +241,8 @@ impl <'a> VM<'a> {
                     i = to - 1;
                 }
                 &PushDictionary(index) => {
-                    stack.push(Node::new(Dictionary(self.assembly[0].instance_dictionaries[index])));
+                    let dict : &[uint] = self.assembly[assembly_id].instance_dictionaries[index];
+                    stack.push(Node::new(Dictionary(dict)));
                 }
                 &PushDictionaryMember(index) => {
                     let sc = {
@@ -337,7 +338,7 @@ pub fn execute_main<T : Iterator<char>>(iterator: T) -> Option<VMResult> {
     match x {
         Some(sc) => {
             assert!(sc.arity == 0);
-            let result = vm.evaluate(sc.instructions);
+            let result = vm.evaluate(sc.instructions, sc.assembly_id);
             extract_result(result)
         }
         None => None
@@ -489,7 +490,7 @@ main = foldl add 0 [1,2,3,4]";
     let result = match x {
         Some(sc) => {
             assert!(sc.arity == 0);
-            let result = vm.evaluate(sc.instructions);
+            let result = vm.evaluate(sc.instructions, sc.assembly_id);
             extract_result(result)
         }
         None => None
