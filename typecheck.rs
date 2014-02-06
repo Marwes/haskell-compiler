@@ -230,6 +230,7 @@ impl <'a> TypeEnvironment<'a> {
                 let decl = class.declarations.iter().find(|decl| binding.name.ends_with(decl.name))
                     .expect(format!("Could not find {} in class {}", binding.name, class.name));
                 binding.typeDecl = decl.clone();
+                replace_var(&mut binding.typeDecl.typ, &class.variable, &TypeOperator(instance.typ.clone()));
             }
             self.instances.push(TypeOperator { name: instance.classname.clone(),
                 types: ~[TypeOperator(instance.typ.clone())]});
