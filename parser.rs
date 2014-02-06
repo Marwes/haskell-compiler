@@ -356,11 +356,7 @@ fn parseOperatorExpression(&mut self, inL : Option<TypedExpr>, minPrecedence : i
                 Some(makeApplication(name, args))
             }
             (Some(lhs), None) => {
-                let args = ~[lhs, TypedExpr::with_location(Identifier(~"#"), loc)];
-                let mut apply = makeApplication(name, args);
-                apply.location = loc;
-                let params = ~[~"#"];
-                Some(makeLambda(params, apply))
+                Some(TypedExpr::with_location(Apply(~name, ~lhs), loc))
             }
             (None, Some(rhs)) => {
                 if (op.value == ~"-")
