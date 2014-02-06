@@ -129,6 +129,34 @@ instance Ord Int where
         True -> x
         False -> y
 
+instance Ord Double where
+    compare x y = case primDoubleLT x y of
+        True -> LT
+        False -> case primDoubleEQ x y of
+            True -> EQ
+            False -> GT
+    (<) x y = case compare x y of
+        LT -> True
+        EQ -> False
+        GT -> False
+    (>) x y = case compare x y of
+        LT -> False
+        EQ -> False
+        GT -> True
+    (<=) x y = case compare x y of
+        LT -> True
+        EQ -> True
+        GT -> False
+    (>=) x y = case compare x y of
+        LT -> False
+        EQ -> True
+        GT -> True
+    min x y = case x < y of
+        True -> x
+        False -> y
+    max x y = case x > y of
+        True -> x
+        False -> y
 
 otherwise :: Bool
 otherwise = True
