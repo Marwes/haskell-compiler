@@ -443,7 +443,13 @@ impl <'a, 'b, 'c> CompilerNode<'a, 'b, 'c> {
                     instructions.push(PushFloat(num));
                 }
                 else {
-                    fail!("Number literal has unknown type")
+                    let mut fromRational = TypedExpr::new(Identifier(~"fromRational"));
+                    fromRational.typ = function_type(&Type::new_op(~"Double", ~[]), &expr.typ);
+                    let mut number = TypedExpr::new(Rational(num));
+                    number.typ = Type::new_op(~"Double", ~[]);
+                    let mut apply = TypedExpr::new(Apply(~fromRational, ~number));
+                    apply.typ = expr.typ.clone();
+                    self.compile(&apply, instructions, strict);
                 }
 
             }
@@ -748,8 +754,9 @@ use std::str::from_utf8;
 
 #[test]
 fn add() {
-    let e = apply(apply(identifier(~"primIntAdd"), number(1)), number(2));
-    let type_env = TypeEnvironment::new();
+    let mut e = apply(apply(identifier(~"primIntAdd"), number(1)), number(2));
+    let mut type_env = TypeEnvironment::new();
+    type_env.typecheck(&mut e);
     let mut comp = Compiler::new(&type_env);
     let instr = comp.compileExpression(&e);
 
@@ -791,8 +798,9 @@ fn application() {
 r"add x y = primIntAdd x y
 main = add 2 3";
     let mut parser = Parser::new(file.chars());
-    let module = parser.module();
-    let type_env = TypeEnvironment::new();
+    let mut module = parser.module();
+    let mut type_env = TypeEnvironment::new();
+    type_env.typecheck_module(&mut module);
     let mut comp = Compiler::new(&type_env);
     let assembly = comp.compileModule(&module);
 
@@ -802,33 +810,35 @@ main = add 2 3";
 #[test]
 fn compile_constructor() {
     let file =
-r"1 : []";
+r"primIntAdd 1 0 : []";
     let mut parser = Parser::new(file.chars());
-    let expr = parser.expression_();
-    let type_env = TypeEnvironment::new();
+    let mut expr = parser.expression_();
+    let mut type_env = TypeEnvironment::new();
+    type_env.typecheck(&mut expr);
     let mut comp = Compiler::new(&type_env);
     let instructions = comp.compileExpression(&expr);
 
-    assert_eq!(instructions, ~[Pack(0, 0), PushInt(1), Pack(1, 2)]);
+    assert_eq!(instructions, ~[Pack(0, 0), PushInt(0), PushInt(1), Add, Pack(1, 2)]);
 }
 
 #[test]
 fn compile_case() {
     let file =
-r"case [1] of
+r"case [primIntAdd 1 0] of
     : x xs -> x
     [] -> 2";
     let mut parser = Parser::new(file.chars());
-    let expr = parser.expression_();
-    let type_env = TypeEnvironment::new();
+    let mut expr = parser.expression_();
+    let mut type_env = TypeEnvironment::new();
+    type_env.typecheck(&mut expr);
     let mut comp = Compiler::new(&type_env);
     let instructions = comp.compileExpression(&expr);
 
-    assert_eq!(instructions, ~[Pack(0, 0), PushInt(1), Pack(1, 2),
-        CaseJump(1), Jump(7),
-        CaseJump(0), Jump(11),
-        Split(2), Push(0), Slide(2), Jump(15),
-        Split(0), PushInt(2), Slide(0), Jump(15)]);
+    assert_eq!(instructions, ~[Pack(0, 0), PushInt(0), PushInt(1), Add, Pack(1, 2),
+        CaseJump(1), Jump(9),
+        CaseJump(0), Jump(13),
+        Split(2), Push(0), Slide(2), Jump(17),
+        Split(0), PushInt(2), Slide(0), Jump(17)]);
 }
 
 #[test]
@@ -890,7 +900,7 @@ fn compile_prelude() {
     };
 
     let file =
-r"main = id 2";
+r"main = id (primIntAdd 2 0)";
     let mut parser = Parser::new(file.chars());
     let mut module = parser.module();
     type_env.typecheck_module(&mut module);
@@ -900,7 +910,7 @@ r"main = id 2";
 
     let sc = &assembly.superCombinators[0];
     let id_index = prelude.superCombinators.iter().position(|sc| sc.name.equiv(& &"id")).unwrap();
-    assert_eq!(sc.instructions, ~[PushInt(2), PushGlobal(id_index), Mkap, Eval, Update(0), Unwind]);
+    assert_eq!(sc.instructions, ~[PushInt(0), PushInt(2), Add, PushGlobal(id_index), Mkap, Eval, Update(0), Unwind]);
 }
 
 }

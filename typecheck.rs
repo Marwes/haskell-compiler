@@ -427,7 +427,7 @@ impl <'a, 'b> TypeScope<'a, 'b> {
                 self.env.constraints.insert(expr.typ.var().clone(), ~[~"Num"]);
             }
             &Rational(_) => {
-                expr.typ = TypeOperator(TypeOperator {name : ~"Double", types : ~[]});
+                self.env.constraints.insert(expr.typ.var().clone(), ~[~"Fractional"]);
             }
             &Identifier(ref name) => {
                 match self.fresh(*name) {
@@ -790,6 +790,9 @@ fn unify_(env : &mut TypeEnvironment, subs : &mut Substitution, lhs : &mut Type,
                     for c in constraints.iter() {
                         if !env.has_instance(*c, op) {
                             if c.equiv(& &"Num") && (op.name.equiv(& &"Int") || op.name.equiv(& &"Double")) && op.types.len() == 0 {
+                                continue;
+                            }
+                            else if c.equiv(& &"Fractional") && "Double" == op.name && op.types.len() == 0 {
                                 continue;
                             }
                             else {
