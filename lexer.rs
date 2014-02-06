@@ -10,6 +10,7 @@ pub enum TokenEnum {
 	OPERATOR,
 	NUMBER,
 	FLOAT,
+    STRING,
 	LPARENS,
 	RPARENS,
 	LBRACKET,
@@ -433,6 +434,16 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
                 token : name_or_keyword(result),
                 location : startLocation,
                 value : result};
+        }
+        else if c == '"' {
+            let mut string = ~"";
+            loop {
+                match self.read_char() {
+                    Some('"') => return Token { token: STRING, location: startLocation, value: string },
+                    Some(x) => string.push_char(x),
+                    None => fail!("Unexpected EOF")
+                }
+            }
         }
         let tok = match c {
             ';' => SEMICOLON,

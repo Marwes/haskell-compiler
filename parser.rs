@@ -1,12 +1,9 @@
 use std::util::{swap};
 use std::hashmap::HashMap;
 use lexer::{Lexer, Token, TokenEnum,
-    EOF, NAME, OPERATOR, NUMBER, FLOAT, LPARENS, RPARENS, LBRACKET, RBRACKET, LBRACE, RBRACE, COMMA, EQUALSSIGN, SEMICOLON, MODULE, CLASS, INSTANCE, WHERE, LET, IN, CASE, OF, ARROW, TYPEDECL, DATA
+    EOF, NAME, OPERATOR, NUMBER, FLOAT, STRING, LPARENS, RPARENS, LBRACKET, RBRACKET, LBRACE, RBRACE, COMMA, EQUALSSIGN, SEMICOLON, MODULE, CLASS, INSTANCE, WHERE, LET, IN, CASE, OF, ARROW, TYPEDECL, DATA
 };
-use module::{Module, Class, Instance, Binding,
-    DataDefinition, Constructor, TypeDeclaration,
-    Alternative, Pattern, ConstructorPattern, NumberPattern, IdentifierPattern,
-    Type, TypeVariable, TypeOperator, Identifier, Number, Rational, Apply, Lambda, Let, Case, TypedExpr};
+use module::*;
 use typecheck::function_type;
 
 pub struct Parser<Iter> {
@@ -311,9 +308,13 @@ fn subExpression(&mut self, parseError : |&Token| -> bool) -> Option<TypedExpr> 
             let token = self.lexer.current();
             Some(TypedExpr::with_location(Rational(from_str(token.value).unwrap()), token.location))
         }
+        STRING => {
+            let token = self.lexer.current();
+            Some(TypedExpr::with_location(String(token.value.clone()), token.location))
+        }
 	    _ => {
-		self.lexer.backtrack();
-        None
+            self.lexer.backtrack();
+            None
         }
     }
 }

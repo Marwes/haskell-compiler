@@ -203,6 +203,7 @@ pub enum Expr {
     Apply(~TypedExpr, ~TypedExpr),
     Number(int),
     Rational(f64),
+    String(~str),
     Lambda(~str, ~TypedExpr),
     Let(~[Binding], ~TypedExpr),
     Case(~TypedExpr, ~[Alternative])
@@ -215,6 +216,7 @@ impl fmt::Default for Expr {
             &Apply(ref func, ref arg) => write!(f.buf, "({} {})", *func, *arg),
             &Number(num) => write!(f.buf, "{}", num),
             &Rational(num) => write!(f.buf, "{}", num),
+            &String(ref s) => write!(f.buf, "\"{}\"", *s),
             &Lambda(ref arg, ref body) => write!(f.buf, "({} -> {})", *arg, *body),
             &Let(_,_) => write!(f.buf, "Let ... "),
             &Case(_,_) => write!(f.buf, "Case ...")

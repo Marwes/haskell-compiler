@@ -1,5 +1,5 @@
 use std::hashmap::HashMap;
-use module::{TypeVariable, TypeOperator, Identifier, Number, Rational, Apply, Lambda, Let, Case, TypedExpr, Module, Pattern, IdentifierPattern, NumberPattern, ConstructorPattern, Binding, Class, TypeDeclaration};
+use module::{TypeVariable, TypeOperator, Identifier, Number, Rational, String, Apply, Lambda, Let, Case, TypedExpr, Module, Pattern, IdentifierPattern, NumberPattern, ConstructorPattern, Binding, Class, TypeDeclaration};
 use graph::{Graph, VertexIndex, strongly_connected_components};
 
 pub use lexer::Location;
@@ -428,6 +428,9 @@ impl <'a, 'b> TypeScope<'a, 'b> {
             }
             &Rational(_) => {
                 self.env.constraints.insert(expr.typ.var().clone(), ~[~"Fractional"]);
+            }
+            &String(_) => {
+                expr.typ = Type::new_op(~"[]", ~[Type::new_op(~"Char", ~[])]);
             }
             &Identifier(ref name) => {
                 match self.fresh(*name) {
@@ -995,6 +998,16 @@ main = case [mult2 123, 0] of
     assert_eq!(module.bindings[1].expression.typ, Type::new_op(~"Int", ~[]));
 }
 
+#[test]
+fn typecheck_string() {
+    let mut env = TypeEnvironment::new();
+
+    let mut parser = Parser::new("\"hello\"".chars());
+    let mut expr = parser.expression_();
+    env.typecheck(&mut expr);
+
+    assert_eq!(expr.typ, Type::new_op(~"[]", ~[Type::new_op(~"Char", ~[])]));
+}
 
 #[test]
 fn typecheck_module() {
@@ -1137,6 +1150,7 @@ fn typecheck_prelude() {
     let id_bind = id.unwrap();
     assert_eq!(id_bind.expression.typ, function_type(&Type::new_var(0), &Type::new_var(0)));
 }
+
 #[test]
 fn typecheck_import() {
    

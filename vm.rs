@@ -13,6 +13,7 @@ enum Node_<'a> {
     Application(Node<'a>, Node<'a>),
     Int(int),
     Float(f64),
+    Char(char),
     Combinator(&'a SuperCombinator),
     Indirection(Node<'a>),
     Constructor(u16, ~[Node<'a>]),
@@ -41,20 +42,46 @@ impl <'a, 'b> fmt::Default for &'b Node_<'a> {
         write!(f.buf, "{}", **node)
     }
 }
+
 impl <'a> fmt::Default for Node_<'a> {
     fn fmt(node: &Node_<'a>, f: &mut fmt::Formatter) {
         match node {
             &Application(ref func, ref arg) => write!(f.buf, "({} {})", *func, *arg),
             &Int(i) => write!(f.buf, "{}", i),
             &Float(i) => write!(f.buf, "{}", i),
+            &Char(c) => write!(f.buf, "{}", c),
             &Combinator(ref sc) => write!(f.buf, "{}", sc.name),
             &Indirection(ref n) => write!(f.buf, "(~> {})", *n),
             &Constructor(ref tag, ref args) => {
-                write!(f.buf, "\\{{}", *tag);
-                for arg in args.iter() {
-                    write!(f.buf, " {}",arg.borrow());
+                let mut cons = args;
+                match cons[0].borrow() {
+                    &Char(_) => {
+                        write!(f.buf, "\"");
+                        //Print a string
+                        loop {
+                            if cons.len() < 2 {
+                                break;
+                            }
+                            match cons[0].borrow() {
+                                &Char(c) => write!(f.buf, "{}", c),
+                                _ => break
+                            }
+                            match cons[1].borrow() {
+                                &Constructor(_, ref args2) => cons = args2,
+                                _ => break
+                            }
+                        }
+                        write!(f.buf, "\"");
+                    }
+                    _ => {
+                        //Print a normal constructor
+                        write!(f.buf, "\\{{}", *tag);
+                        for arg in args.iter() {
+                            write!(f.buf, " {}",arg.borrow());
+                        }
+                        write!(f.buf, "\\}");
+                    }
                 }
-                write!(f.buf, "\\}");
             }
             &Dictionary(ref dict) => write!(f.buf, "{:?}", dict)
         }
@@ -139,6 +166,7 @@ impl <'a> VM<'a> {
                 }
                 &PushInt(value) => { stack.push(Node::new(Int(value))); }
                 &PushFloat(value) => { stack.push(Node::new(Float(value))); }
+                &PushChar(value) => { stack.push(Node::new(Char(value))); }
                 &Push(index) => {
                     let x = stack[index].clone();
                     debug!("Pushed {}", x.borrow());

@@ -30,6 +30,7 @@ pub enum Instruction {
     PushGlobal(uint),
     PushInt(int),
     PushFloat(f64),
+    PushChar(char),
     Mkap,
     Eval,
     Unwind,
@@ -451,7 +452,13 @@ impl <'a, 'b, 'c> CompilerNode<'a, 'b, 'c> {
                     apply.typ = expr.typ.clone();
                     self.compile(&apply, instructions, strict);
                 }
-
+            }
+            &String(ref s) => {
+                instructions.push(Pack(0, 0));
+                for c in s.chars_rev() {
+                    instructions.push(PushChar(c));
+                    instructions.push(Pack(1, 2));
+                }
             }
             &Apply(ref func, ref arg) => {
                 if !self.primitive(*func, *arg, instructions) {
