@@ -1,6 +1,6 @@
 use module::*;
 use Scope;
-use typecheck::{Types, TypeEnvironment};
+use typecheck::{Types, TypeEnvironment, function_type};
 
 #[deriving(Eq)]
 pub enum Instruction {
@@ -428,7 +428,13 @@ impl <'a, 'b, 'c> CompilerNode<'a, 'b, 'c> {
                     instructions.push(PushFloat(num as f64));
                 }
                 else {
-                    instructions.push(PushInt(num));
+                    let mut fromInteger = TypedExpr::new(Identifier(~"fromInteger"));
+                    fromInteger.typ = function_type(&Type::new_op(~"Int", ~[]), &expr.typ);
+                    let mut number = TypedExpr::new(Number(num));
+                    number.typ = Type::new_op(~"Int", ~[]);
+                    let mut apply = TypedExpr::new(Apply(~fromInteger, ~number));
+                    apply.typ = expr.typ.clone();
+                    self.compile(&apply, instructions, strict);
                 }
 
             }
