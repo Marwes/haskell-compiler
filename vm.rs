@@ -50,11 +50,11 @@ impl <'a> fmt::Default for Node_<'a> {
             &Combinator(ref sc) => write!(f.buf, "{}", sc.name),
             &Indirection(ref n) => write!(f.buf, "(~> {})", *n),
             &Constructor(ref tag, ref args) => {
-                write!(f.buf, "({}", *tag);
+                write!(f.buf, "\\{{}", *tag);
                 for arg in args.iter() {
-                    write!(f.buf, "{}",arg.borrow());
+                    write!(f.buf, " {}",arg.borrow());
                 }
-                write!(f.buf, ")");
+                write!(f.buf, "\\}");
             }
             &Dictionary(ref dict) => write!(f.buf, "{:?}", dict)
         }
