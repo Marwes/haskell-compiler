@@ -22,6 +22,14 @@ maybe def f m = case m of
     Just x -> f x
     Nothing -> def
 
+
+data Either a b = Left a | Right b
+
+either :: (a -> c) -> (b -> c) -> Either a b -> c
+either l r e = case e of
+    Left x -> l x
+    Right x -> r x
+
 id x = x
 
 class Eq a where
@@ -70,6 +78,57 @@ class Fractional a where
 instance Fractional Double where
     (/) x y = primDoubleDivide x y
     fromRational x = x
+
+class Integral a where
+    div :: a -> a -> a
+    rem :: a -> a -> a
+    toInteger :: a -> Int
+
+instance Integral Int where
+    div x y = primIntDivide x y
+    rem x y = primIntRemainder x y
+    toInteger x = x
+
+data Ordering = LT | EQ | GT
+
+class Ord a where
+    compare :: a -> a -> Ordering
+    (<) :: a -> a -> Bool
+    (>) :: a -> a -> Bool
+    (<=) :: a -> a -> Bool
+    (>=) :: a -> a -> Bool
+    min :: a -> a -> a
+    max :: a -> a -> a
+
+instance Ord Int where
+    compare x y = case primIntLT x y of
+        True -> LT
+        False -> case primIntEQ x y of
+            True -> EQ
+            False -> GT
+    (<) x y = case compare x y of
+        LT -> True
+        EQ -> False
+        GT -> False
+    (>) x y = case compare x y of
+        LT -> False
+        EQ -> False
+        GT -> True
+    (<=) x y = case compare x y of
+        LT -> True
+        EQ -> True
+        GT -> False
+    (>=) x y = case compare x y of
+        LT -> False
+        EQ -> True
+        GT -> True
+    min x y = case x < y of
+        True -> x
+        False -> y
+    max x y = case x > y of
+        True -> x
+        False -> y
+
 
 otherwise :: Bool
 otherwise = True
