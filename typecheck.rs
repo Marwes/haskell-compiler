@@ -1,5 +1,5 @@
 use std::hashmap::HashMap;
-use module::{TypeVariable, TypeOperator, Identifier, Number, Rational, String, Apply, Lambda, Let, Case, TypedExpr, Module, Pattern, IdentifierPattern, NumberPattern, ConstructorPattern, Binding, Class, TypeDeclaration};
+use module::{TypeVariable, TypeOperator, Identifier, Number, Rational, String, Char, Apply, Lambda, Let, Case, TypedExpr, Module, Pattern, IdentifierPattern, NumberPattern, ConstructorPattern, Binding, Class, TypeDeclaration};
 use graph::{Graph, VertexIndex, strongly_connected_components};
 
 pub use lexer::Location;
@@ -431,6 +431,9 @@ impl <'a, 'b> TypeScope<'a, 'b> {
             }
             &String(_) => {
                 expr.typ = Type::new_op(~"[]", ~[Type::new_op(~"Char", ~[])]);
+            }
+            &Char(_) => {
+                expr.typ = Type::new_op(~"Char", ~[]);
             }
             &Identifier(ref name) => {
                 match self.fresh(*name) {

@@ -1,7 +1,7 @@
 use std::util::{swap};
 use std::hashmap::HashMap;
 use lexer::{Lexer, Token, TokenEnum,
-    EOF, NAME, OPERATOR, NUMBER, FLOAT, STRING, LPARENS, RPARENS, LBRACKET, RBRACKET, LBRACE, RBRACE, COMMA, EQUALSSIGN, SEMICOLON, MODULE, CLASS, INSTANCE, WHERE, LET, IN, CASE, OF, ARROW, TYPEDECL, DATA
+    EOF, NAME, OPERATOR, NUMBER, FLOAT, STRING, CHAR, LPARENS, RPARENS, LBRACKET, RBRACKET, LBRACE, RBRACE, COMMA, EQUALSSIGN, SEMICOLON, MODULE, CLASS, INSTANCE, WHERE, LET, IN, CASE, OF, ARROW, TYPEDECL, DATA
 };
 use module::*;
 use typecheck::function_type;
@@ -311,6 +311,10 @@ fn subExpression(&mut self, parseError : |&Token| -> bool) -> Option<TypedExpr> 
         STRING => {
             let token = self.lexer.current();
             Some(TypedExpr::with_location(String(token.value.clone()), token.location))
+        }
+        CHAR => {
+            let token = self.lexer.current();
+            Some(TypedExpr::with_location(Char(token.value.char_at(0)), token.location))
         }
 	    _ => {
             self.lexer.backtrack();

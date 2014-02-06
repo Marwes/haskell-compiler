@@ -49,7 +49,7 @@ impl <'a> fmt::Default for Node_<'a> {
             &Application(ref func, ref arg) => write!(f.buf, "({} {})", *func, *arg),
             &Int(i) => write!(f.buf, "{}", i),
             &Float(i) => write!(f.buf, "{}", i),
-            &Char(c) => write!(f.buf, "{}", c),
+            &Char(c) => write!(f.buf, "'{}'", c),
             &Combinator(ref sc) => write!(f.buf, "{}", sc.name),
             &Indirection(ref n) => write!(f.buf, "(~> {})", *n),
             &Constructor(ref tag, ref args) => {

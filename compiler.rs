@@ -460,6 +460,9 @@ impl <'a, 'b, 'c> CompilerNode<'a, 'b, 'c> {
                     instructions.push(Pack(1, 2));
                 }
             }
+            &Char(c) => {
+                instructions.push(PushChar(c));
+            }
             &Apply(ref func, ref arg) => {
                 if !self.primitive(*func, *arg, instructions) {
                     self.compile(*arg, instructions, false);

@@ -11,6 +11,7 @@ pub enum TokenEnum {
 	NUMBER,
 	FLOAT,
     STRING,
+    CHAR,
 	LPARENS,
 	RPARENS,
 	LBRACKET,
@@ -443,6 +444,19 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
                     Some(x) => string.push_char(x),
                     None => fail!("Unexpected EOF")
                 }
+            }
+        }
+        else if c == '\'' {
+            match self.read_char() {
+                Some(x) => {
+                    if self.read_char() == Some('\'') {
+                        return Token { token:CHAR, location: startLocation, value: ::std::str::from_char(x) };
+                    }
+                    else {
+                        fail!("Multi char character")
+                    }
+                }
+                None => fail!("Unexpected EOF")
             }
         }
         let tok = match c {
