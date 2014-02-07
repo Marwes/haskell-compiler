@@ -156,25 +156,29 @@ fn class(&mut self) -> Class {
 fn instance(&mut self) -> Instance {
 	self.requireNext(INSTANCE);
 
-	let classname = self.requireNext(NAME).value.clone();
-	
-	let typ = match self.parse_type() {
-        TypeOperator(op) => op,
-        _ => fail!("Expected type operator")
-    };
+    let mut mapping = HashMap::new();
+    let (constraints, instance_type) = self.constrained_type(&mut mapping);
+    match instance_type {
+        TypeOperator(TypeOperator { name: classname, types: types }) => {
+            let typ = match types[0] {
+                TypeOperator(op) => op,
+                _ => fail!("Expected type operator")
+            };
+            self.requireNext(WHERE);
+            self.requireNext(LBRACE);
 
-	self.requireNext(WHERE);
-	self.requireNext(LBRACE);
+            let mut bindings = self.sepBy1(|this| this.binding(), SEMICOLON);
+            for bind in bindings.mut_iter()
+            {
+                bind.name = encodeBindingIdentifier(typ.name, bind.name);
+            }
 
-	let mut bindings = self.sepBy1(|this| this.binding(), SEMICOLON);
-	for bind in bindings.mut_iter()
-	{
-		bind.name = encodeBindingIdentifier(typ.name, bind.name);
-	}
-
-	self.lexer.backtrack();
-	self.requireNext(RBRACE);
-	Instance { typ : typ, classname : classname, bindings : bindings }
+            self.lexer.backtrack();
+            self.requireNext(RBRACE);
+            Instance { typ : typ, classname : classname, bindings : bindings, constraints: constraints }
+        }
+        _ => fail!("TypeVariable in instance")
+    }
 }
 
 pub fn expression_(&mut self) -> TypedExpr {
@@ -588,6 +592,11 @@ fn typeDeclaration_(&mut self, typeVariableMapping : &mut HashMap<~str, TypeVari
 	if (decl != TYPEDECL) {
 		fail!(ParseError(&self.lexer, TYPEDECL));
 	}
+    let (context, typ) = self.constrained_type(typeVariableMapping);
+	TypeDeclaration { name : name, typ : typ, context : context }
+}
+
+fn constrained_type(&mut self, typeVariableMapping : &mut HashMap<~str, TypeVariable>) -> (~[TypeOperator], Type) {
     let mut variableIndex = 0;
 	let typeOrContext = self.parse_type_(&mut variableIndex, typeVariableMapping);
     {
@@ -598,11 +607,11 @@ fn typeDeclaration_(&mut self, typeVariableMapping : &mut HashMap<~str, TypeVari
                 TypeOperator(x) => x,
                 _ => fail!("Expected type context since '=>' was parsed")
             };
-            return TypeDeclaration { name : name, typ : t, context : createTypeConstraints(op) };
+            return (createTypeConstraints(op), t);
         }
     }
 	self.lexer.backtrack();
-	TypeDeclaration { name : name, typ : typeOrContext, context : ~[] }
+	(~[], typeOrContext)
 }
 
 fn constructorType(&mut self, arity : &mut int, dataDef: &DataDefinition, mapping : &mut HashMap<~str, TypeVariable>) -> Type
@@ -667,11 +676,32 @@ fn dataDefinition(&mut self) -> DataDefinition {
 	definition
 }
 
-
-fn parse_type(&mut self) -> Type {
-	let mut vars = HashMap::new();
-    let mut variableIndex = 0;
-	return self.parse_type_(&mut variableIndex, &mut vars);
+fn sub_type(&mut self, variableIndex: &mut int, typeVariableMapping: &mut HashMap<~str, TypeVariable>) -> Option<Type> {
+	let token = (*self.lexer.next_()).clone();
+	match token.token {
+	    LBRACKET =>
+		{
+            self.lexer.backtrack();
+            Some(self.parse_type_(variableIndex, typeVariableMapping))
+		}
+	    LPARENS =>
+		{
+            self.lexer.backtrack();
+			Some(self.parse_type_(variableIndex, typeVariableMapping))
+		}
+	    NAME =>
+		{
+			if (token.value.char_at(0).is_uppercase()) {
+				Some(Type::new_op(token.value, ~[]))
+			}
+			else {
+                let t = typeVariableMapping.find_or_insert(token.value, TypeVariable { id : *variableIndex });
+                *variableIndex += 1;
+				Some(TypeVariable(t.clone()))
+			}
+		}
+        _ => { self.lexer.backtrack(); None }
+	}
 }
 
 fn parse_type_(&mut self, variableIndex: &mut int, typeVariableMapping : &mut HashMap<~str, TypeVariable>) -> Type {
@@ -681,8 +711,7 @@ fn parse_type_(&mut self, variableIndex: &mut int, typeVariableMapping : &mut Ha
 		{
 			let t = self.parse_type_(variableIndex, typeVariableMapping);
 			self.requireNext(RBRACKET);
-			let args = ~[t];
-			let listType = Type::new_op(~"[]", args);
+			let listType = Type::new_op(~"[]", ~[t]);
             
             self.parse_return_type(listType, variableIndex, typeVariableMapping)
 		}
@@ -709,17 +738,11 @@ fn parse_type_(&mut self, variableIndex: &mut int, typeVariableMapping : &mut Ha
 	    NAME =>
 		{
 			let mut typeArguments = ~[];
-            {
-                loop {
-                    let next = &self.lexer.next_();
-                    if next.token != NAME {
-                        break;
-                    }
-                    let var = typeVariableMapping.find_or_insert(next.value.clone(), TypeVariable { id : *variableIndex});
-                    *variableIndex += 1;
-                    typeArguments.push(TypeVariable(*var));
+            loop {
+                match self.sub_type(variableIndex, typeVariableMapping) {
+                    Some(typ) => typeArguments.push(typ),
+                    None => break
                 }
-                self.lexer.backtrack();
             }
 
 			let thisType = if (token.value.char_at(0).is_uppercase()) {
@@ -1032,6 +1055,22 @@ fn test_operators() {
     let mut parser = Parser::new("1 : 2 : []".chars());
     let expr = parser.expression_();
     assert_eq!(expr, apply(apply(identifier(~":"), number(1)), apply(apply(identifier(~":"), number(2)), identifier(~"[]"))));
+}
+
+#[test]
+fn parse_instance_class() {
+    let mut parser = Parser::new(
+r"class Eq a where
+    (==) :: a -> a -> Bool
+
+instance Eq a => Eq [a] where
+    (==) xs ys = undefined".chars());
+    let module = parser.module();
+
+    assert_eq!(module.classes[0].name, ~"Eq");
+    assert_eq!(module.instances[0].classname, ~"Eq");
+    assert_eq!(module.instances[0].constraints, ~[TypeOperator { name:~"Eq", types: ~[Type::new_var(0)] }]);
+    assert_eq!(module.instances[0].typ, TypeOperator { name: ~"[]", types: ~[Type::new_var(0)] });
 }
 
 #[test]

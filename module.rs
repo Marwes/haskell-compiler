@@ -18,6 +18,7 @@ pub struct Class {
 
 pub struct Instance {
     bindings : ~[Binding],
+    constraints: ~[TypeOperator],
     typ : TypeOperator,
     classname : ~str
 }
