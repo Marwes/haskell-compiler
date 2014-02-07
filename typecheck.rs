@@ -519,7 +519,7 @@ impl <'a, 'b> TypeScope<'a, 'b> {
                 fail!("Number pattern typechecking are not implemented");
             }
             &ConstructorPattern(ref ctorname, ref patterns) => {
-                let mut t = self.fresh(*ctorname).unwrap();
+                let mut t = self.fresh(*ctorname).expect(format!("Undefined constructer '{}' when matching pattern", *ctorname));
                 let mut data_type = get_returntype(&t);
                 
                 unify(self.env, subs, &mut data_type, match_type);
@@ -1122,6 +1122,42 @@ main = test [1]".chars());
 
     let mut env = TypeEnvironment::new();
     env.typecheck_module(&mut module);
+}
+
+#[test]
+fn typecheck_instance_super_class() {
+    let mut parser = Parser::new(
+r"data Bool = True | False
+
+class Eq a where
+    (==) :: a -> a -> Bool
+
+instance Eq a => Eq [a] where
+    (==) xs ys = case xs of
+        : x2 xs2 -> case ys of
+            : y2 ys2 -> (x2 == y2) && (xs2 == ys2)
+            [] -> False
+        [] -> case ys of
+            : y2 ys2 -> False
+            [] -> True
+
+(&&) :: Bool -> Bool -> Bool
+(&&) x y = case x of
+    True -> y
+    False -> False
+".chars());
+
+    let mut module = parser.module();
+
+    let mut env = TypeEnvironment::new();
+    env.typecheck_module(&mut module);
+
+    let typ = &module.instances[0].bindings[0].expression.typ;
+    let list_type = Type::new_op(~"[]", ~[Type::new_var(100)]);
+    assert_eq!(*typ, function_type(&list_type, &function_type(&list_type, &Type::new_op(~"Bool", ~[]))));
+    let var = typ.op().types[0].op().types[0].var();
+    let eq = ~[~"Eq"];
+    assert_eq!(env.constraints.find(var), Some(&eq));
 }
 
 #[test]
