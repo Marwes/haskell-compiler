@@ -12,7 +12,13 @@ use module::Alternative;
 pub trait Types {
     fn find_type<'a>(&'a self, name: &str) -> Option<&'a Type>;
     fn find_class<'a>(&'a self, name: &str) -> Option<&'a Class>;
-    fn has_instance(&self, classname: &str, typ: &TypeOperator) -> bool;
+    fn has_instance(&self, classname: &str, typ: &TypeOperator) -> bool {
+        match self.find_instance(classname, typ) {
+            Some(_) => true,
+            None => false
+        }
+    }
+    fn find_instance<'a>(&'a self, classname: &str, typ: &TypeOperator) -> Option<(&'a [TypeOperator], &'a TypeOperator)>;
     fn each_typedeclaration(&self, |&TypeDeclaration|);
 }
 
@@ -45,13 +51,14 @@ impl Types for Module {
         self.classes.iter().find(|class| name == class.name)
     }
 
-    fn has_instance(&self, classname: &str, typ: &TypeOperator) -> bool {
+    fn find_instance<'a>(&'a self, classname: &str, typ: &TypeOperator) -> Option<(&'a [TypeOperator], &'a TypeOperator)> {
         for instance in self.instances.iter() {
-            if classname == instance.classname && instance.typ == *typ {
-                return true;
+            if classname == instance.classname && instance.typ.name == typ.name {
+                let c : &[TypeOperator] = instance.constraints;
+                return Some((c, &instance.typ));
             }
         }
-        false
+        None
     }
 
     fn each_typedeclaration(&self, func: |&TypeDeclaration|) {
@@ -389,11 +396,37 @@ impl <'a> TypeEnvironment<'a> {
         }
         
         for types in self.assemblies.iter() {
-            if types.has_instance(class, op) {
-                return true;
+            match types.find_instance(class, op) {
+                Some((constraints, unspecialized_type)) => {
+                    return self.check_instance_constraints(constraints, unspecialized_type.types, op.types);
+                }
+                None => ()
             }
         }
         false
+    }
+
+    fn check_instance_constraints(&self, constraints: &[TypeOperator], vars: &[Type], types: &[Type]) -> bool {
+        for constraint in constraints.iter() {
+            //Constraint is such as (Eq a, Eq b) => Eq (Either a b)
+            //Find the position in the types vector
+            let variable = constraint.types[0].var();
+            let maybe_pos = vars.iter().position(|typ| {
+                match typ {
+                    &TypeVariable(ref var) => var == variable,
+                    _ => false
+                }
+            });
+            match maybe_pos {
+                Some(pos) => {
+                    if !self.has_instance(constraint.name, types[pos].op()) {
+                        return false;
+                    }
+                }
+                None => ()
+            }
+        }
+        return true;
     }
 
     fn new_var(&mut self) -> Type {
@@ -569,8 +602,8 @@ impl <'a, 'b> TypeScope<'a, 'b> {
                     let type_var = bind.expression.typ.var().clone();
                     self.typecheck(&mut bind.expression, subs);
                     unify_location(self.env, subs, &bind.expression.location, &mut bind.typeDecl.typ, &mut bind.expression.typ);
-                    subs.subs.insert(type_var, bind.expression.typ.clone());
                     self.env.substitute(subs, &mut bind.expression);
+                    subs.subs.insert(type_var, bind.expression.typ.clone());
                     self.apply(subs);
                 }
             }

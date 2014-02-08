@@ -53,6 +53,16 @@ instance Eq Int where
     (==) x y = primIntEQ x y
     (/=) x y = not (x == y)
 
+instance Eq a => Eq [a] where
+    (==) xs ys = case xs of
+        : x2 xs2 -> case ys of
+            : y2 ys2 -> (x2 == y2) && (xs2 == ys2)
+            [] -> False
+        [] -> case ys of
+            : y2 ys2 -> False
+            [] -> True
+    (/=) xs ys = not (xs == ys)
+
 class Num a where
     (+) :: a -> a -> a
     (-) :: a -> a -> a

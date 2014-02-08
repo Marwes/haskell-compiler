@@ -72,7 +72,7 @@ pub struct Assembly {
     superCombinators: ~[SuperCombinator],
     instance_dictionaries: ~[~[uint]],
     classes: ~[Class],
-    instances: ~[TypeOperator],
+    instances: ~[(~[TypeOperator], TypeOperator)],
     data_definitions: ~[DataDefinition],
     offset: uint
 }
@@ -188,13 +188,14 @@ impl Types for Assembly {
     fn find_class<'a>(&'a self, name: &str) -> Option<&'a Class> {
         self.classes.iter().find(|class| name == class.name)
     }
-    fn has_instance(&self, classname: &str, typ: &TypeOperator) -> bool {
-        for op in self.instances.iter() {
-            if classname == op.name && op.types[0].op() == typ {
-                return true;
+    fn find_instance<'a>(&'a self, classname: &str, typ: &TypeOperator) -> Option<(&'a [TypeOperator], &'a TypeOperator)> {
+        for &(ref constraints, ref op) in self.instances.iter() {
+            if classname == op.name && op.types[0].op().name == typ.name {
+                let c : &[TypeOperator] = *constraints;
+                return Some((c, op));
             }
         }
-        false
+        None
     }
     fn each_typedeclaration(&self, func: |&TypeDeclaration|) {
         for sc in self.superCombinators.iter() {
@@ -233,7 +234,7 @@ impl <'a> Compiler<'a> {
             offset: self.assemblies.iter().flat_map(|assembly| assembly.superCombinators.iter()).len(),
             classes: module.classes.clone(),
             instances: module.instances.iter().map(
-                |inst| TypeOperator { name: inst.classname.clone(), types: ~[TypeOperator(inst.typ.clone())] }).collect(),
+                |inst| (inst.constraints.clone(), TypeOperator { name: inst.classname.clone(), types: ~[TypeOperator(inst.typ.clone())] })).collect(),
             data_definitions: ~[]
         };
         
@@ -257,7 +258,6 @@ impl <'a> Compiler<'a> {
             for bind in instance.bindings.iter() {
                 let mut sc = self.compileBinding(bind, Some(module));
                 sc.name = bind.name.clone();
-                sc.assembly_id = self.assemblies.len();
                 assembly.superCombinators.push(sc);
             }
         }
@@ -277,6 +277,7 @@ impl <'a> Compiler<'a> {
     fn compileBinding(&mut self, bind : &Binding, module: Option<&Module>) -> SuperCombinator {
         debug!("Compiling binding {}", bind.name);
         let mut comb = SuperCombinator::new();
+        comb.assembly_id = self.assemblies.len();
         comb.type_declaration = bind.typeDecl.clone();
         let dict_arg = if self.type_env.find_constraints(&comb.type_declaration.typ).len() > 0 { 1 } else { 0 };
         comb.arity = bind.arity + dict_arg;
@@ -531,7 +532,18 @@ impl <'a, 'b, 'c> CompilerNode<'a, 'b, 'c> {
                 let instance_fn_name = "#" + typename + name;
                 match self.find(instance_fn_name) {
                     Some(GlobalVariable(index)) => {
-                        instructions.push(PushGlobal(index));
+                        let function_type = self.compiler.type_env.find(instance_fn_name)
+                            .expect(format!("Error {} does not exist in the type environment", instance_fn_name));
+                        let constraints = self.compiler.type_env.find_constraints(function_type);
+                        if constraints.len() > 0 {
+                            let dict = self.compile_with_constraints(instance_fn_name, actual_type, constraints, instructions);
+                            instructions.push(PushGlobal(index));
+                            instructions.push(Mkap);
+                            return dict;
+                        }
+                        else {
+                            instructions.push(PushGlobal(index));
+                        }
                     }
                     _ => fail!("Unregistered instance function {}", instance_fn_name)
                 }
@@ -617,7 +629,7 @@ impl <'a, 'b, 'c> CompilerNode<'a, 'b, 'c> {
                         }
                     }
                 }
-                None => fail!("Could not find instance for {}", *c)
+                None => fail!("Could not find class '{}'", c.name)
             }
         }
         (dict_len, Some((constraints.to_owned(), function_indexes)))

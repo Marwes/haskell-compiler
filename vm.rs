@@ -54,33 +54,43 @@ impl <'a> fmt::Default for Node_<'a> {
             &Indirection(ref n) => write!(f.buf, "(~> {})", *n),
             &Constructor(ref tag, ref args) => {
                 let mut cons = args;
-                match cons[0].borrow() {
-                    &Char(_) => {
-                        write!(f.buf, "\"");
-                        //Print a string
-                        loop {
-                            if cons.len() < 2 {
-                                break;
+                if cons.len() > 0 {
+                    match cons[0].borrow() {
+                        &Char(_) => {
+                            write!(f.buf, "\"");
+                            //Print a string
+                            loop {
+                                if cons.len() < 2 {
+                                    break;
+                                }
+                                match cons[0].borrow() {
+                                    &Char(c) => write!(f.buf, "{}", c),
+                                    _ => break
+                                }
+                                match cons[1].borrow() {
+                                    &Constructor(_, ref args2) => cons = args2,
+                                    _ => break
+                                }
                             }
-                            match cons[0].borrow() {
-                                &Char(c) => write!(f.buf, "{}", c),
-                                _ => break
-                            }
-                            match cons[1].borrow() {
-                                &Constructor(_, ref args2) => cons = args2,
-                                _ => break
-                            }
+                            write!(f.buf, "\"");
                         }
-                        write!(f.buf, "\"");
-                    }
-                    _ => {
-                        //Print a normal constructor
-                        write!(f.buf, "\\{{}", *tag);
-                        for arg in args.iter() {
-                            write!(f.buf, " {}",arg.borrow());
+                        _ => {
+                            //Print a normal constructor
+                            write!(f.buf, "\\{{}", *tag);
+                            for arg in args.iter() {
+                                write!(f.buf, " {}",arg.borrow());
+                            }
+                            write!(f.buf, "\\}");
                         }
-                        write!(f.buf, "\\}");
                     }
+                }
+                else {
+                    //Print a normal constructor
+                    write!(f.buf, "\\{{}", *tag);
+                    for arg in args.iter() {
+                        write!(f.buf, " {}",arg.borrow());
+                    }
+                    write!(f.buf, "\\}");
                 }
             }
             &Dictionary(ref dict) => write!(f.buf, "{:?}", dict)
@@ -119,7 +129,7 @@ impl <'a> VM<'a> {
         stack[0].borrow().clone()
     }
 
-    pub fn execute(&'a self, stack : &mut ~[Node<'a>], code : &[Instruction], assembly_id: uint) {
+    pub fn execute(&'a self, stack: &mut ~[Node<'a>], code: &[Instruction], assembly_id: uint) {
         debug!("----------------------------");
         debug!("Entering frame with stack");
         for x in stack.iter() {
@@ -283,7 +293,8 @@ impl <'a> VM<'a> {
                     i = to - 1;
                 }
                 &PushDictionary(index) => {
-                    let dict : &[uint] = self.assembly[assembly_id].instance_dictionaries[index];
+                    let assembly = &self.assembly[assembly_id];
+                    let dict : &[uint] = assembly.instance_dictionaries[index];
                     stack.push(Node::new(Dictionary(dict)));
                 }
                 &PushDictionaryMember(index) => {
@@ -538,6 +549,47 @@ main = foldl add 0 [1,2,3,4]";
         None => None
     };
     assert_eq!(result, Some(IntResult(10)));
+}
+
+#[test]
+fn instance_super_class() {
+    let prelude = {
+        let path = &Path::new("Prelude.hs");
+        let s  = File::open(path).read_to_end();
+        let contents : &str = from_utf8(s);
+        let mut parser = Parser::new(contents.chars()); 
+        let mut module = parser.module();
+        let mut type_env = TypeEnvironment::new();
+        type_env.typecheck_module(&mut module);
+        let mut compiler = Compiler::new(&type_env);
+        compiler.compileModule(&mut module)
+    };
+
+    let assembly = {
+        let file = r"main = [primIntAdd 0 1,2,3,4] == [1,2,3]";
+        let mut parser = Parser::new(file.chars());
+        let mut module = parser.module();
+        let mut type_env = TypeEnvironment::new();
+        type_env.add_types(&prelude);
+        type_env.typecheck_module(&mut module);
+        let mut compiler = Compiler::new(&type_env);
+        compiler.assemblies.push(&prelude);
+        compiler.compileModule(&module)
+    };
+
+    let mut vm = VM::new();
+    vm.add_assembly(prelude);
+    vm.add_assembly(assembly);
+    let x = vm.assembly.iter().flat_map(|a| a.superCombinators.iter()).find(|sc| sc.name == ~"main");
+    let result = match x {
+        Some(sc) => {
+            assert!(sc.arity == 0);
+            let result = vm.evaluate(sc.instructions, sc.assembly_id);
+            extract_result(result)
+        }
+        None => None
+    };
+    assert_eq!(result, Some(ConstructorResult(1, ~[])));
 }
 
 }
