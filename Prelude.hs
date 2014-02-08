@@ -63,6 +63,17 @@ instance Eq a => Eq [a] where
             [] -> True
     (/=) xs ys = not (xs == ys)
 
+instance Eq a => Eq (Maybe a) where
+    (==) x y = case x of
+        Just l -> case y of
+            Just r -> l == r
+            Nothing -> False
+        Nothing -> case y of
+            Just r -> False
+            Nothing -> True
+
+    (/=) x y = not (x == y)
+
 class Num a where
     (+) :: a -> a -> a
     (-) :: a -> a -> a
