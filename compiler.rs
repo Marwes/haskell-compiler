@@ -1,6 +1,7 @@
 use module::*;
 use Scope;
 use typecheck::{Types, TypeEnvironment, function_type};
+use std::iter::range_step;
 
 #[deriving(Eq)]
 pub enum Instruction {
@@ -41,6 +42,7 @@ pub enum Instruction {
     Pack(u16, u16),
     CaseJump(uint),
     Jump(uint),
+    JumpFalse(uint),
     PushDictionary(uint),
     PushDictionaryMember(uint),
 }
@@ -494,29 +496,41 @@ impl <'a, 'b, 'c> CompilerNode<'a, 'b, 'c> {
             &Case(ref body, ref alternatives) => {
                 self.compile(*body, instructions, true);
                 self.newStackVar(~"");//Dummy variable for the case expression
-                let mut branches = ~[];
-                for alt in alternatives.iter() {
-                    self.compile_pattern(&alt.pattern, &mut branches, instructions);
-                }
-                self.removeStackVar(&~"");
+                //Storage for all the jumps that should go to the end of the case expression
+                let mut end_branches = ~[];
                 for i in range(0, alternatives.len()) {
                     let alt = &alternatives[i];
-                    
-                    //Set the jump instruction to jump to this place
-                    instructions[branches[i]] = Jump(instructions.len());
-                    
                     let mut childScope = self.child();
-                    let num_vars = childScope.add_pattern_variables(&alt.pattern, instructions);
+                    let pattern_start = instructions.len() as int;
+                    let mut branches = ~[];
+                    let stack_increase = childScope.compile_pattern(&alt.pattern.node, &mut branches, instructions, self.compiler.stackSize - 1, 0);
+                    let pattern_end = instructions.len() as int;
+
                     childScope.compile(&alt.expression, instructions, strict);
-                    instructions.push(Slide(num_vars));
-                    
-                    //Reuse branches for the next Jump
-                    branches[i] = instructions.len();
-                    instructions.push(Jump(0));
+                    instructions.push(Slide(stack_increase));
+                    instructions.push(Jump(0));//Should jump to the end
+                    end_branches.push(instructions.len() - 1);
+
+                    //Here the current branch ends and the next one starts
+                    //We need to set all the jump instructions to their actual location
+                    //and append Slide instructions to bring the stack back to normal if the match fails
+                    for j in range_step(pattern_end, pattern_start, -1) {
+                        match instructions[j] {
+                            Jump(_) => {
+                                instructions[j] = Jump(instructions.len());
+                            }
+                            JumpFalse(_) => instructions[j] = JumpFalse(instructions.len()),
+                            Split(size) => instructions.push(Pop(size)),
+                            _ => ()
+                        }
+                    }
                 }
-                for branch in branches.iter() {
+                self.removeStackVar(&~"");
+                for branch in end_branches.iter() {
                     instructions[*branch] = Jump(instructions.len());
                 }
+                //Remove the matched expr
+                instructions.push(Slide(1));
                 if strict {
                     instructions.push(Eval);
                 }
@@ -698,42 +712,40 @@ impl <'a, 'b, 'c> CompilerNode<'a, 'b, 'c> {
         }
     }
 
-    fn compile_pattern(&self, pattern: &Pattern, branches: &mut ~[uint], instructions: &mut ~[Instruction]) {
+    fn compile_pattern(&mut self, pattern: &Pattern, branches: &mut ~[uint], instructions: &mut ~[Instruction], stack_index: uint, pattern_index: uint) -> uint {
         //TODO this is unlikely to work with nested patterns currently
         match pattern {
             &ConstructorPattern(ref name, ref patterns) => {
+                instructions.push(Push(stack_index - pattern_index));
                 match self.find(*name) {
                     Some(ConstructorVariable(tag, _)) => {
                         instructions.push(CaseJump(tag as uint));
                         branches.push(instructions.len());
-                        instructions.push(Jump(0));//To be determined later
+                        instructions.push(Jump(0));
                     }
                     _ => fail!("Undefined constructor {}", *name)
                 }
-                for p in patterns.iter() {
-                    self.compile_pattern(p, branches, instructions);
-                }
-            }
-            _ => ()
-        }
-    }
-
-    ///Add the variables of a pattern, returning how many variables that were added in total
-    fn add_pattern_variables(&mut self, pattern: &Pattern, instructions: &mut ~[Instruction]) -> uint {
-        match pattern {
-            &ConstructorPattern(_, ref patterns) => {
                 instructions.push(Split(patterns.len()));
-                let mut vars = 0;
-                for p in patterns.iter() {
-                    vars += self.add_pattern_variables(p, instructions);
+                let mut size = 0;
+                for (i, p) in patterns.iter().enumerate() {
+                    let stack_size = stack_index + patterns.len();
+                    size += self.compile_pattern(p, branches, instructions, stack_size, patterns.len() - i - 1);
                 }
-                vars
+                size + patterns.len()
+            }
+            &NumberPattern(number) => {
+                self.newStackVar(pattern_index.to_str());
+                instructions.push(Push(stack_index - pattern_index));
+                instructions.push(Eval);
+                instructions.push(PushInt(number));
+                instructions.push(IntEQ);
+                instructions.push(JumpFalse(0));
+                0
             }
             &IdentifierPattern(ref ident) => {
                 self.newStackVar(ident.clone());
-                1
+                0
             }
-            &NumberPattern(_) => 0
         }
     }
 }
@@ -857,10 +869,26 @@ r"case [primIntAdd 1 0] of
     let instructions = comp.compileExpression(&expr);
 
     assert_eq!(instructions, ~[Pack(0, 0), PushInt(0), PushInt(1), Add, Pack(1, 2),
-        CaseJump(1), Jump(9),
-        CaseJump(0), Jump(13),
-        Split(2), Push(0), Slide(2), Jump(17),
-        Split(0), PushInt(2), Slide(0), Jump(17)]);
+        Push(0), CaseJump(1), Jump(13), Split(2), Push(1), Slide(2), Jump(21), Pop(2),
+        Push(0), CaseJump(0), Jump(21), Split(0), PushInt(2), Slide(0), Jump(21), Pop(0), Slide(1)]);
+}
+
+#[test]
+fn compile_nested_case() {
+    let file =
+r"case [primIntAdd 1 0] of
+    : 1 xs -> primIntAdd 1 1
+    [] -> 2";
+    let mut parser = Parser::new(file.chars());
+    let mut expr = parser.expression_();
+    let mut type_env = TypeEnvironment::new();
+    type_env.typecheck(&mut expr);
+    let mut comp = Compiler::new(&type_env);
+    let instructions = comp.compileExpression(&expr);
+
+    assert_eq!(instructions, ~[Pack(0, 0), PushInt(0), PushInt(1), Add, Pack(1, 2),
+        Push(0), CaseJump(1), Jump(20), Split(2), Push(1), Eval, PushInt(1), IntEQ, JumpFalse(19), PushInt(1), PushInt(1), Add, Slide(2), Jump(28), Pop(2),
+        Push(0), CaseJump(0), Jump(28), Split(0), PushInt(2), Slide(0), Jump(28), Pop(0), Slide(1)]);
 }
 
 #[test]

@@ -43,6 +43,24 @@ pub struct Location {
     absolute : int
 }
 
+impl Location {
+    pub fn eof() -> Location {
+        Location { column: -1, row: -1, absolute: -1 }
+    }
+}
+
+pub struct Located<T> {
+    location: Location,
+    node: T
+}
+
+impl <T: Eq> Eq for Located<T> {
+    fn eq(&self, o: &Located<T>) -> bool {
+        self.node == o.node
+    }
+}
+    
+
 impl fmt::Default for Location {
     fn fmt(loc: &Location, f: &mut fmt::Formatter) {
         write!(f.buf, "{}:{}", loc.row, loc.column)

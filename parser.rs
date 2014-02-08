@@ -328,7 +328,7 @@ fn subExpression(&mut self, parseError : |&Token| -> bool) -> Option<TypedExpr> 
 }
 
 fn alternative(&mut self) -> Alternative {
-	let pat = self.pattern();
+	let pat = self.located_pattern();
 
 	self.requireNext(ARROW);
 
@@ -514,11 +514,24 @@ fn patternParameter(&mut self) -> ~[Pattern] {
                     //TODO?
 				}
 			}
+            LBRACKET => {
+                if (self.lexer.next_().token != RBRACKET)
+                {
+                    fail!(ParseError(&self.lexer, RBRACKET));
+                }
+                parameters.push(ConstructorPattern(~"[]", ~[]));
+            }
 		    _ => { break; }
 		}
 	}
 	self.lexer.backtrack();
 	return parameters;
+}
+
+fn located_pattern(&mut self) -> Located<Pattern> {
+    let location = self.lexer.next_().location;
+    self.lexer.backtrack();
+    Located { location: location, node: self.pattern() }
 }
 
 fn pattern(&mut self) -> Pattern {
@@ -1001,10 +1014,13 @@ r"case [] of
 ".chars());
     let expression = parser.expression_();
     let alt = Alternative {
-        pattern: ConstructorPattern(~":", ~[IdentifierPattern(~"x"), IdentifierPattern(~"xs")]),
+        pattern: Located {
+            location: Location::eof(),
+            node: ConstructorPattern(~":", ~[IdentifierPattern(~"x"), IdentifierPattern(~"xs")])
+        },
         expression: identifier(~"x") };
     let alt2 = Alternative {
-        pattern: ConstructorPattern(~"[]", ~[]),
+        pattern: Located { location: Location::eof(), node: ConstructorPattern(~"[]", ~[]) },
         expression: number(2) };
     assert_eq!(expression, case(identifier(~"[]"), ~[alt, alt2]));
 }

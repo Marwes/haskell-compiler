@@ -1,6 +1,7 @@
 use std::fmt;
 use std::hashmap::HashMap;
-use lexer::Location;
+pub use lexer::{Location, Located};
+
 pub struct Module {
     name : ~str,
     bindings : ~[Binding],
@@ -187,7 +188,7 @@ impl TypedExpr {
 
 #[deriving(Eq)]
 pub struct Alternative {
-    pattern : Pattern,
+    pattern : Located<Pattern>,
     expression : TypedExpr
 }
 

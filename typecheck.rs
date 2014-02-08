@@ -520,11 +520,11 @@ impl <'a, 'b> TypeScope<'a, 'b> {
             }
             &Case(ref mut case_expr, ref mut alts) => {
                 self.typecheck(*case_expr, subs);
-                self.typecheck_pattern(subs, &alts[0].pattern, &mut case_expr.typ);
+                self.typecheck_pattern(&alts[0].pattern.location, subs, &alts[0].pattern.node, &mut case_expr.typ);
                 self.typecheck(&mut alts[0].expression, subs);
                 let mut alt0_ = alts[0].expression.typ.clone();
                 for alt in alts.mut_iter().skip(1) {
-                    self.typecheck_pattern(subs, &alt.pattern, &mut case_expr.typ);
+                    self.typecheck_pattern(&alt.pattern.location, subs, &alt.pattern.node, &mut case_expr.typ);
                     self.typecheck(&mut alt.expression, subs);
                     unify_location(self.env, subs, &alt.expression.location, &mut alt0_, &mut alt.expression.typ);
                     replace(&mut self.env.constraints, &mut alt.expression.typ, subs);
@@ -536,12 +536,12 @@ impl <'a, 'b> TypeScope<'a, 'b> {
         };
     }
 
-    fn typecheck_pattern(&mut self, subs: &mut Substitution, pattern: &Pattern, match_type: &mut Type) {
+    fn typecheck_pattern(&mut self, location: &Location, subs: &mut Substitution, pattern: &Pattern, match_type: &mut Type) {
         match pattern {
             &IdentifierPattern(ref ident) => {
                 let mut typ = self.env.new_var();
                 {
-                    unify(self.env, subs, &mut typ, match_type);
+                    unify_location(self.env, subs, location, &mut typ, match_type);
                     replace(&mut self.env.constraints, match_type, subs);
                     replace(&mut self.env.constraints, &mut typ, subs);
                 }
@@ -549,28 +549,33 @@ impl <'a, 'b> TypeScope<'a, 'b> {
                 self.non_generic.push(typ);
             }
             &NumberPattern(_) => {
-                fail!("Number pattern typechecking are not implemented");
+                let mut typ = Type::new_op(~"Int", ~[]);
+                {
+                    unify_location(self.env, subs, location, &mut typ, match_type);
+                    replace(&mut self.env.constraints, match_type, subs);
+                    replace(&mut self.env.constraints, &mut typ, subs);
+                }
             }
             &ConstructorPattern(ref ctorname, ref patterns) => {
                 let mut t = self.fresh(*ctorname).expect(format!("Undefined constructer '{}' when matching pattern", *ctorname));
                 let mut data_type = get_returntype(&t);
                 
-                unify(self.env, subs, &mut data_type, match_type);
+                unify_location(self.env, subs, location, &mut data_type, match_type);
                 replace(&mut self.env.constraints, match_type, subs);
                 replace(&mut self.env.constraints, &mut t, subs);
                 self.env.apply(subs);
-                self.pattern_rec(0, subs, *patterns, &mut t);
+                self.pattern_rec(0, location, subs, *patterns, &mut t);
             }
         }
     }
 
-    fn pattern_rec(&mut self, i : uint, subs: &mut Substitution, patterns: &[Pattern], func_type: &mut Type) {
+    fn pattern_rec(&mut self, i: uint, location: &Location, subs: &mut Substitution, patterns: &[Pattern], func_type: &mut Type) {
         if i < patterns.len() {
             let p = &patterns[i];
             match func_type {
                 &TypeOperator(ref mut op) => {
-                    self.typecheck_pattern(subs, p, &mut op.types[0]);
-                    self.pattern_rec(i + 1, subs, patterns, &mut op.types[1]);
+                    self.typecheck_pattern(location, subs, p, &mut op.types[0]);
+                    self.pattern_rec(i + 1, location, subs, patterns, &mut op.types[1]);
                 }
                 _ => fail!("Any allowed constructor must be a type operator")
             }
@@ -784,10 +789,6 @@ fn unify_location(env: &mut TypeEnvironment, subs: &mut Substitution, location: 
             replace(&mut env.constraints, *typ, &subs2);
         }
     })
-}
-
-fn unify(env : &mut TypeEnvironment, subs: &mut Substitution, lhs : &mut Type, rhs : &mut Type) {
-    unify_location(env, subs, &Location { column: -1, row:-1, absolute:-1 }, lhs, rhs)
 }
 
 fn unify_(env : &mut TypeEnvironment, subs : &mut Substitution, lhs : &mut Type, rhs : &mut Type) {

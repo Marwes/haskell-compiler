@@ -243,6 +243,10 @@ impl <'a> VM<'a> {
                                     debug!(" {}  {}", j, newStack[j].borrow());
                                 }
                                 self.execute(&mut newStack, comb.instructions, comb.assembly_id);
+                                debug!("Returned {}", comb.name);
+                                for j in range(0, newStack.len()) {
+                                    debug!(" {}  {}", j, newStack[j].borrow());
+                                }
                                 assert_eq!(newStack.len(), 1);
                                 for _ in range(0, comb.arity + 1) {
                                     stack.pop();
@@ -279,14 +283,29 @@ impl <'a> VM<'a> {
                     let args = from_fn(arity as uint, |_| stack.pop());
                     stack.push(Node::new(Constructor(tag, args)));
                 }
-                &CaseJump(jump_tag) => {
+                &JumpFalse(address) => {
                     match stack[stack.len() - 1].borrow() {
+                        &Constructor(0, _) => (),
+                        &Constructor(1, _) => i = address - 1,
+                        _ => ()
+                    }
+                    stack.pop();
+                }
+                &CaseJump(jump_tag) => {
+                    let jumped = match stack[stack.len() - 1].borrow() {
                         &Constructor(tag, _) => {
-                            if jump_tag != tag as uint {
-                                i += 1;//Skip the jump instruction
+                            if jump_tag == tag as uint {
+                                i += 1;//Skip the jump instruction ie continue to the next test
+                                true
+                            }
+                            else {
+                                false
                             }
                         }
                         x => fail!("Expected constructor when executing CaseJump, got {}", x),
+                    };
+                    if !jumped {
+                        stack.pop();
                     }
                 }
                 &Jump(to) => {
@@ -449,6 +468,29 @@ main = case [mult2 123, 0] of
     : x xs -> x
     [] -> 10";
     assert_eq!(execute_main(module.chars()), Some(IntResult(246)));
+}
+
+#[test]
+fn test_nested_case() {
+    let module = 
+r"mult2 x = primIntMultiply x 2
+
+main = case [mult2 123, 0] of
+    : 246 xs -> primIntAdd 0 246
+    [] -> 10";
+    assert_eq!(execute_main(module.chars()), Some(IntResult(246)));
+}
+
+#[test]
+fn test_nested_case2() {
+    let module = 
+r"mult2 x = primIntMultiply x 2
+
+main = case [mult2 123, 0] of
+    : 246 [] -> primIntAdd 0 246
+    : x xs -> 20
+    [] -> 10";
+    assert_eq!(execute_main(module.chars()), Some(IntResult(20)));
 }
 
 #[test]
