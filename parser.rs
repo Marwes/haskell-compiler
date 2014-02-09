@@ -139,7 +139,7 @@ fn class(&mut self) -> Class {
 
 	let classname = self.requireNext(NAME).value.clone();
 	let typeVariableName = self.requireNext(NAME).value.clone();
-    let typeVariable = TypeVariable { id : 100 };
+    let typeVariable = 100;
 
 	self.requireNext(WHERE);
 	self.requireNext(LBRACE);
@@ -150,7 +150,7 @@ fn class(&mut self) -> Class {
 	self.lexer.backtrack();
 	self.requireNext(RBRACE);
 
-	Class { name : classname, variable: typeVariable, declarations : declarations }
+	Class { name : classname, variable: TypeVariable { id: typeVariable }, declarations : declarations }
 }
 
 fn instance(&mut self) -> Instance {
@@ -159,23 +159,19 @@ fn instance(&mut self) -> Instance {
     let mut mapping = HashMap::new();
     let (constraints, instance_type) = self.constrained_type(&mut mapping);
     match instance_type {
-        TypeOperator(TypeOperator { name: classname, types: types }) => {
-            let typ = match types[0] {
-                TypeOperator(op) => op,
-                _ => fail!("Expected type operator")
-            };
+        Type { typ: TypeOperator(TypeOperator { name: classname}), types: types } => {
             self.requireNext(WHERE);
             self.requireNext(LBRACE);
 
             let mut bindings = self.sepBy1(|this| this.binding(), SEMICOLON);
             for bind in bindings.mut_iter()
             {
-                bind.name = encodeBindingIdentifier(typ.name, bind.name);
+                bind.name = encodeBindingIdentifier(types[0].op().name, bind.name);
             }
 
             self.lexer.backtrack();
             self.requireNext(RBRACE);
-            Instance { typ : typ, classname : classname, bindings : bindings, constraints: constraints }
+            Instance { typ : types[0], classname : classname, bindings : bindings, constraints: constraints }
         }
         _ => fail!("TypeVariable in instance")
     }
@@ -578,7 +574,7 @@ fn typeDeclaration(&mut self) -> TypeDeclaration {
 	self.typeDeclaration_(&mut typeVariableMapping)
 }
 
-fn typeDeclaration_(&mut self, typeVariableMapping : &mut HashMap<~str, TypeVariable>) -> TypeDeclaration {
+fn typeDeclaration_(&mut self, typeVariableMapping : &mut HashMap<~str, int>) -> TypeDeclaration {
     let mut name;
 	{
         let nameToken = self.lexer.next(errorIfNotNameOrLParens).token;
@@ -609,25 +605,21 @@ fn typeDeclaration_(&mut self, typeVariableMapping : &mut HashMap<~str, TypeVari
 	TypeDeclaration { name : name, typ : typ, context : context }
 }
 
-fn constrained_type(&mut self, typeVariableMapping : &mut HashMap<~str, TypeVariable>) -> (~[TypeOperator], Type) {
+fn constrained_type(&mut self, typeVariableMapping : &mut HashMap<~str, int>) -> (~[Constraint], Type) {
     let mut variableIndex = 0;
 	let typeOrContext = self.parse_type_(&mut variableIndex, typeVariableMapping);
     {
         let maybeContextArrow = self.lexer.next_().token;
         if (maybeContextArrow == OPERATOR && self.lexer.current().value == ~"=>") {
             let t = self.parse_type_(&mut variableIndex, typeVariableMapping);
-            let op = match typeOrContext {
-                TypeOperator(x) => x,
-                _ => fail!("Expected type context since '=>' was parsed")
-            };
-            return (createTypeConstraints(op), t);
+            return (createTypeConstraints(typeOrContext), t);
         }
     }
 	self.lexer.backtrack();
 	(~[], typeOrContext)
 }
 
-fn constructorType(&mut self, arity : &mut int, dataDef: &DataDefinition, mapping : &mut HashMap<~str, TypeVariable>) -> Type
+fn constructorType(&mut self, arity : &mut int, dataDef: &DataDefinition, mapping : &mut HashMap<~str, int>) -> Type
 {
 	let token = self.lexer.next(constructorError).token;
 	if (token == NAME) {
@@ -635,7 +627,7 @@ fn constructorType(&mut self, arity : &mut int, dataDef: &DataDefinition, mappin
 		let arg = if (self.lexer.current().value.char_at(0).is_lowercase())
 		{
 			match mapping.find(&self.lexer.current().value) {
-                Some(existingVariable) => TypeVariable(existingVariable.clone()),
+                Some(existingVariable) => Type::new_var(*existingVariable),
                 None => fail!("Undefined type parameter {:?}", self.lexer.current().value)
             }
 		}
@@ -666,14 +658,14 @@ fn dataDefinition(&mut self) -> DataDefinition {
         typ : Type::new_var(0),
         parameters : HashMap::new()
     };
-    let mut data_type = TypeOperator { name : dataName, types : ~[]};
+    definition.typ.typ = TypeOperator(TypeOperator { name: dataName });
 	while (self.lexer.next_().token == NAME)
 	{
         //TODO use new variables isntead of only  -1
-		data_type.types.push(Type::new_var(-1));
-		definition.parameters.insert(self.lexer.current().value.clone(), TypeVariable { id: -1 });
+		definition.typ.types.push(Type::new_var(-1));
+		definition.parameters.insert(self.lexer.current().value.clone(), -1);
 	}
-    definition.typ = TypeOperator(data_type);
+
 	let equalToken = self.lexer.current().token;
 	if (equalToken != EQUALSSIGN)
 	{
@@ -689,7 +681,7 @@ fn dataDefinition(&mut self) -> DataDefinition {
 	definition
 }
 
-fn sub_type(&mut self, variableIndex: &mut int, typeVariableMapping: &mut HashMap<~str, TypeVariable>) -> Option<Type> {
+fn sub_type(&mut self, variableIndex: &mut int, typeVariableMapping: &mut HashMap<~str, int>) -> Option<Type> {
 	let token = (*self.lexer.next_()).clone();
 	match token.token {
 	    LBRACKET =>
@@ -708,16 +700,16 @@ fn sub_type(&mut self, variableIndex: &mut int, typeVariableMapping: &mut HashMa
 				Some(Type::new_op(token.value, ~[]))
 			}
 			else {
-                let t = typeVariableMapping.find_or_insert(token.value, TypeVariable { id : *variableIndex });
+                let t = typeVariableMapping.find_or_insert(token.value, *variableIndex);
                 *variableIndex += 1;
-				Some(TypeVariable(t.clone()))
+				Some(Type::new_var(*t))
 			}
 		}
         _ => { self.lexer.backtrack(); None }
 	}
 }
 
-fn parse_type_(&mut self, variableIndex: &mut int, typeVariableMapping : &mut HashMap<~str, TypeVariable>) -> Type {
+fn parse_type_(&mut self, variableIndex: &mut int, typeVariableMapping : &mut HashMap<~str, int>) -> Type {
 	let token = (*self.lexer.next_()).clone();
 	match token.token {
 	    LBRACKET =>
@@ -762,9 +754,11 @@ fn parse_type_(&mut self, variableIndex: &mut int, typeVariableMapping : &mut Ha
 				Type::new_op(token.value, typeArguments)
 			}
 			else {
-                let t = typeVariableMapping.find_or_insert(token.value, TypeVariable { id : *variableIndex });
-                    *variableIndex += 1;
-				TypeVariable(t.clone())
+                let t = typeVariableMapping.find_or_insert(token.value, *variableIndex);
+                *variableIndex += 1;
+				let mut result = Type::new_var(*t);
+                result.types = typeArguments;
+                result
 			};
 			self.parse_return_type(thisType, variableIndex, typeVariableMapping)
 		}
@@ -772,7 +766,7 @@ fn parse_type_(&mut self, variableIndex: &mut int, typeVariableMapping : &mut Ha
 	}
 }
 
-fn parse_return_type(&mut self, typ : Type, variableIndex: &mut int, typeVariableMapping : &mut HashMap<~str, TypeVariable>) -> Type {
+fn parse_return_type(&mut self, typ : Type, variableIndex: &mut int, typeVariableMapping : &mut HashMap<~str, int>) -> Type {
 
     let arrow = self.lexer.next_().token;
     if (arrow == ARROW) {
@@ -924,20 +918,26 @@ fn errorIfNotRParens(tok : &Token) -> bool {
 	tok.token != RPARENS
 }
 
-fn createTypeConstraints(context : TypeOperator) -> ~[TypeOperator] {
+fn createTypeConstraints(context : Type) -> ~[Constraint] {
 	let mut mapping = ~[];
 
-	if (context.name.char_at(0) == '(') {
+	if (context.op().name.char_at(0) == '(') {
 		for t in context.types.move_iter() {
-            let op = match t {
-                TypeOperator(op) => op,
+            match t {
+                Type { typ: TypeOperator(op), types: types } => {
+		            mapping.push(Constraint { class: op.name, variables: ~[types[0].var().clone()] });
+                }
                 _ => fail!("Expected TypeOperator when creating constraints")
-            };
-			mapping.push(op);
+            }
 		}
 	}
 	else {
-		mapping.push(context.clone());
+        match context {
+            Type { typ: TypeOperator(op), types: types } => {
+		        mapping.push(Constraint { class: op.name, variables: ~[types[0].var().clone()] });
+            }
+            _ => fail!("Expected TypeOperator when creating constraints")
+        }
 	}
 	mapping
 }
@@ -1044,7 +1044,7 @@ fn parse_data() {
 r"data Bool = True | False".chars());
     let data = parser.dataDefinition();
 
-    let Bool = TypeOperator(TypeOperator { name: ~"Bool", types: ~[]});
+    let Bool = Type::new_op(~"Bool", ~[]);
     let True = Constructor { name: ~"True", tag:0, arity:0, typ: Bool.clone() };
     let False = Constructor { name: ~"False", tag:1, arity:0, typ: Bool.clone() };
     assert_eq!(data.typ, Bool);
@@ -1058,7 +1058,7 @@ fn parse_data_2() {
 r"data List a = Cons a (List a) | Nil".chars());
     let data = parser.dataDefinition();
 
-    let List = TypeOperator(TypeOperator { name: ~"List", types: ~[Type::new_var(0)]});
+    let List = Type::new_op(~"List", ~[Type::new_var(0)]);
     let Cons = Constructor { name: ~"Cons", tag:0, arity:2, typ: function_type(&Type::new_var(0), &function_type(&List, &List))};
     let Nil = Constructor { name: ~"Nil", tag:1, arity:0, typ: List.clone() };
     assert_eq!(data.typ, List);
@@ -1085,8 +1085,8 @@ instance Eq a => Eq [a] where
 
     assert_eq!(module.classes[0].name, ~"Eq");
     assert_eq!(module.instances[0].classname, ~"Eq");
-    assert_eq!(module.instances[0].constraints, ~[TypeOperator { name:~"Eq", types: ~[Type::new_var(0)] }]);
-    assert_eq!(module.instances[0].typ, TypeOperator { name: ~"[]", types: ~[Type::new_var(0)] });
+    assert_eq!(module.instances[0].constraints[0].class, ~"Eq");
+    assert_eq!(module.instances[0].typ, Type::new_op(~"[]", ~[Type::new_var(0)]));
 }
 
 #[test]

@@ -52,8 +52,8 @@ enum Var<'a> {
     StackVariable(uint),
     GlobalVariable(uint),
     ConstructorVariable(u16, u16),
-    ClassVariable(&'a Type, TypeVariable),
-    ConstraintVariable(uint, &'a Type, &'a[TypeOperator])
+    ClassVariable(&'a Type, &'a TypeVariable),
+    ConstraintVariable(uint, &'a Type, &'a[Constraint])
 }
 
 pub struct SuperCombinator {
@@ -62,7 +62,7 @@ pub struct SuperCombinator {
     assembly_id: uint,
     instructions : ~[Instruction],
     type_declaration: TypeDeclaration,
-    constraints: ~[TypeOperator]
+    constraints: ~[Constraint]
 }
 impl SuperCombinator {
     fn new() -> SuperCombinator {
@@ -74,7 +74,7 @@ pub struct Assembly {
     superCombinators: ~[SuperCombinator],
     instance_dictionaries: ~[~[uint]],
     classes: ~[Class],
-    instances: ~[(~[TypeOperator], TypeOperator)],
+    instances: ~[(~[Constraint], Type)],
     data_definitions: ~[DataDefinition],
     offset: uint
 }
@@ -101,7 +101,7 @@ impl Globals for Assembly {
         for class in self.classes.iter() {
             for decl in class.declarations.iter() {
                 if decl.name.equiv(&name) {
-                    return Some(ClassVariable(&decl.typ, class.variable));
+                    return Some(ClassVariable(&decl.typ, &class.variable));
                 }
             }
         }
@@ -130,7 +130,7 @@ fn find_global<'a>(module: &'a Module, offset: uint, name: &str) -> Option<Var<'
     for class in module.classes.iter() {
         for decl in class.declarations.iter() {
             if decl.name.equiv(&name) {
-                return Some(ClassVariable(&decl.typ, class.variable));
+                return Some(ClassVariable(&decl.typ, &class.variable));
             }
         }
     }
@@ -190,10 +190,10 @@ impl Types for Assembly {
     fn find_class<'a>(&'a self, name: &str) -> Option<&'a Class> {
         self.classes.iter().find(|class| name == class.name)
     }
-    fn find_instance<'a>(&'a self, classname: &str, typ: &TypeOperator) -> Option<(&'a [TypeOperator], &'a TypeOperator)> {
+    fn find_instance<'a>(&'a self, classname: &str, typ: &Type) -> Option<(&'a [Constraint], &'a Type)> {
         for &(ref constraints, ref op) in self.instances.iter() {
-            if classname == op.name && op.types[0].op().name == typ.name {
-                let c : &[TypeOperator] = *constraints;
+            if classname == op.op().name && op.types[0].op().name == typ.op().name {
+                let c : &[Constraint] = *constraints;
                 return Some((c, op));
             }
         }
@@ -215,7 +215,7 @@ impl Types for Assembly {
 pub struct Compiler<'a> {
     type_env: &'a TypeEnvironment<'a>,
     ///Hashmap containging class names mapped to the functions it contains
-    instance_dictionaries: ~[(~[TypeOperator], ~[uint])],
+    instance_dictionaries: ~[(~[(~str, Type)], ~[uint])],
     stackSize : uint,
     ///Array of all the assemblies which can be used to lookup functions in
     assemblies: ~[&'a Assembly],
@@ -236,7 +236,8 @@ impl <'a> Compiler<'a> {
             offset: self.assemblies.iter().flat_map(|assembly| assembly.superCombinators.iter()).len(),
             classes: module.classes.clone(),
             instances: module.instances.iter().map(
-                |inst| (inst.constraints.clone(), TypeOperator { name: inst.classname.clone(), types: ~[TypeOperator(inst.typ.clone())] })).collect(),
+                |inst| (inst.constraints.clone(), Type::new_op(inst.classname.clone(), ~[inst.typ.clone()] ))
+                ).collect(),
             data_definitions: ~[]
         };
         
@@ -314,7 +315,7 @@ impl <'a> Compiler<'a> {
 struct CompilerNode<'a, 'b, 'c> {
     stack: Scope<'a, Var<'a>>,
     compiler: &'a mut Compiler<'b>,
-    constraints: &'a [TypeOperator],
+    constraints: &'a [Constraint],
     module: Option<&'c Module>
 }
 
@@ -406,7 +407,7 @@ impl <'a, 'b, 'c> CompilerNode<'a, 'b, 'c> {
                             StackVariable(index) => { instructions.push(Push(index)); None }
                             GlobalVariable(index) => { instructions.push(PushGlobal(index)); None }
                             ConstructorVariable(tag, arity) => { instructions.push(Pack(tag, arity)); None }
-                            ClassVariable(typ, var) => self.compile_instance_variable(&expr.typ, instructions, *name, typ, &var),
+                            ClassVariable(typ, var) => self.compile_instance_variable(&expr.typ, instructions, *name, typ, var),
                             ConstraintVariable(index, _, constraints) => {
                                 let x = self.compile_with_constraints(*name, &expr.typ, constraints, instructions);
                                 instructions.push(PushGlobal(index));
@@ -539,7 +540,7 @@ impl <'a, 'b, 'c> CompilerNode<'a, 'b, 'c> {
     }
 
     ///Compile a function which is defined in a class
-    fn compile_instance_variable(&self, actual_type: &Type, instructions: &mut ~[Instruction], name: &str, typ: &Type, var: &TypeVariable) -> Option<(~[TypeOperator], ~[uint])> {
+    fn compile_instance_variable(&self, actual_type: &Type, instructions: &mut ~[Instruction], name: &str, typ: &Type, var: &TypeVariable) -> Option<(~[(~str, Type)], ~[uint])> {
         match try_find_instance_type(var, typ, actual_type) {
             Some(typename) => {
                 //We should be able to retrieve the instance directly
@@ -571,7 +572,7 @@ impl <'a, 'b, 'c> CompilerNode<'a, 'b, 'c> {
     }
 
     ///Compile the loading of a variable which has constraints and will thus need to load a dictionary with functions as well
-    fn compile_with_constraints(&self, name: &str, typ: &Type, constraints: &[TypeOperator], instructions: &mut ~[Instruction]) -> Option<(~[TypeOperator], ~[uint])> {
+    fn compile_with_constraints(&self, name: &str, typ: &Type, constraints: &[Constraint], instructions: &mut ~[Instruction]) -> Option<(~[(~str, Type)], ~[uint])> {
         match self.find("$dict") {
             Some(StackVariable(_)) => {
                 //Push dictionary or member of dictionary
@@ -593,12 +594,12 @@ impl <'a, 'b, 'c> CompilerNode<'a, 'b, 'c> {
     }
 
     ///Lookup which index in the instance dictionary that holds the function called 'name'
-    fn push_dictionary_member(&self, constraints: &[TypeOperator], name: &str) -> Option<uint> {
+    fn push_dictionary_member(&self, constraints: &[Constraint], name: &str) -> Option<uint> {
         if constraints.len() == 0 {
             fail!("Attempted to push dictionary member '{}' with no constraints", name)
         }
         for c in constraints.iter() {
-            match self.find_class(c.name) {
+            match self.find_class(c.class) {
                 Some(class) => {
                     for ii in range(0, class.declarations.len()) {
                         if class.declarations[ii].name.equiv(&name) {
@@ -614,7 +615,7 @@ impl <'a, 'b, 'c> CompilerNode<'a, 'b, 'c> {
 
     ///Find the index of the instance dictionary for the constraints and types in 'constraints'
     ///Returns the index and possibly a new dictionary which needs to be added to the assemblies dictionaries
-    fn find_dictionary_index(&self, constraints: &[TypeOperator]) -> (uint, Option<(~[TypeOperator], ~[uint])>) {
+    fn find_dictionary_index(&self, constraints: &[(~str, Type)]) -> (uint, Option<(~[(~str, Type)], ~[uint])>) {
         let dict_len = self.compiler.instance_dictionaries.len();
         for ii in range(0, dict_len) {
             if self.compiler.instance_dictionaries[ii].n0_ref().equiv(&constraints) {
@@ -626,15 +627,12 @@ impl <'a, 'b, 'c> CompilerNode<'a, 'b, 'c> {
             fail!("Attempted to compile dictionary with no constraints");
         }
         let mut function_indexes = ~[];
-        for c in constraints.iter() {
-            match self.find_class(c.name) {
+        for &(ref class_name, ref typ) in constraints.iter() {
+            match self.find_class(*class_name) {
                 Some(class) => {
                     assert!(class.declarations.len() > 0);
                     for decl in class.declarations.iter() {
-                        let f = match &c.types[0] { 
-                            &TypeOperator(ref op) => "#" + op.name + decl.name,
-                            _ => fail!("Expected operator")
-                        };
+                        let f = "#" + typ.op().name + decl.name;
                         match self.find(f) {
                             Some(GlobalVariable(index)) => {
                                 function_indexes.push(index as uint);
@@ -643,7 +641,7 @@ impl <'a, 'b, 'c> CompilerNode<'a, 'b, 'c> {
                         }
                     }
                 }
-                None => fail!("Could not find class '{}'", c.name)
+                None => fail!("Could not find class '{}'", *class_name)
             }
         }
         (dict_len, Some((constraints.to_owned(), function_indexes)))
@@ -752,7 +750,7 @@ impl <'a, 'b, 'c> CompilerNode<'a, 'b, 'c> {
 
 ///Attempts to find the actual type of the for the variable which has a constraint
 fn try_find_instance_type<'a>(class_var: &TypeVariable, class_type: &Type, actual_type: &'a Type) -> Option<&'a str> {
-    match (class_type, actual_type) {
+    match (&class_type.typ, &actual_type.typ) {
         (&TypeVariable(ref var), &TypeOperator(ref actual_op)) => {
             if var == class_var {
                 //Found the class variable so return the name of the type
@@ -763,9 +761,9 @@ fn try_find_instance_type<'a>(class_var: &TypeVariable, class_type: &Type, actua
         }
         (&TypeOperator(ref class_op), &TypeOperator(ref actual_op)) => {
             assert_eq!(class_op.name, actual_op.name);
-            assert_eq!(class_op.types.len(), class_op.types.len());
-            for ii in range(0, class_op.types.len()) {
-                let result = try_find_instance_type(class_var, &class_op.types[ii], &actual_op.types[ii]);
+            assert_eq!(class_type.types.len(), actual_type.types.len());
+            for ii in range(0, class_type.types.len()) {
+                let result = try_find_instance_type(class_var, &class_type.types[ii], &actual_type.types[ii]);
                 if result != None {
                     return result;
                 }

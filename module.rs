@@ -19,8 +19,8 @@ pub struct Class {
 
 pub struct Instance {
     bindings : ~[Binding],
-    constraints: ~[TypeOperator],
-    typ : TypeOperator,
+    constraints: ~[Constraint],
+    typ : Type,
     classname : ~str
 }
 
@@ -42,31 +42,42 @@ pub struct Constructor {
 
 #[deriving(Eq, Clone)]
 pub struct DataDefinition {
-    constructors : ~[Constructor],
-    typ : Type,
-    parameters : HashMap<~str, TypeVariable>
+    constructors: ~[Constructor],
+    typ: Type,
+    parameters: HashMap<~str, int>
 }
 
 #[deriving(Clone, Eq, Default)]
 pub struct TypeDeclaration {
-    context : ~[TypeOperator],
+    context : ~[Constraint],
     typ : Type,
     name : ~str
 }
 
-#[deriving(Clone, Default, ToStr, IterBytes)]
+#[deriving(Clone, Default, Eq, ToStr, IterBytes)]
 pub struct TypeOperator {
-    name : ~str,
-    types : ~[Type]
+    name : ~str
 }
 #[deriving(Clone, Eq, Default, ToStr, IterBytes)]
 pub struct TypeVariable {
     id : int
 }
 #[deriving(Clone, ToStr, IterBytes)]
-pub enum Type {
+pub enum Type_ {
     TypeVariable(TypeVariable),
     TypeOperator(TypeOperator)
+}
+
+#[deriving(Clone, Eq, ToStr, IterBytes)]
+pub struct Constraint {
+    class: ~str,
+    variables: ~[TypeVariable]
+}
+
+#[deriving(Clone, ToStr, IterBytes)]
+pub struct Type {
+    typ: Type_,
+    types: ~[Type]
 }
 
 impl Default for Type {
@@ -81,52 +92,46 @@ impl fmt::Default for TypeVariable {
 }
 impl fmt::Default for TypeOperator {
     fn fmt(op: &TypeOperator, f: &mut fmt::Formatter) {
-        if op.types.len() == 0 {
-            write!(f.buf, "{}", op.name)
-        }
-        else {
-            write!(f.buf, "({}", op.name);
-            for t in op.types.iter() {
-                write!(f.buf, " {}", *t);
-            }
-            write!(f.buf, ")")
-        }
+        write!(f.buf, "{}", op.name)
     }
 }
 impl fmt::Default for Type {
     fn fmt(typ : &Type, f: &mut fmt::Formatter) {
-        match typ {
-            &TypeVariable(ref var) => write!(f.buf, "{}", *var),
-            &TypeOperator(ref op) => write!(f.buf, "{}", *op)
+        if typ.types.len() == 0 {
+            match &typ.typ {
+                &TypeVariable(ref var) => write!(f.buf, "{}", *var),
+                &TypeOperator(ref op) => write!(f.buf, "{}", *op)
+            }
+        }
+        else {
+            write!(f.buf, "(");
+            match &typ.typ {
+                &TypeVariable(ref var) => write!(f.buf, "{}", *var),
+                &TypeOperator(ref op) => write!(f.buf, "{}", *op)
+            }
+            for t in typ.types.iter() {
+                write!(f.buf, " {}", *t);
+            }
+            write!(f.buf, ")");
         }
     }
 }
 
-fn operator_eq(mapping: &mut HashMap<TypeVariable, TypeVariable>, lhs: &TypeOperator, rhs: &TypeOperator) -> bool {
-    lhs.name == rhs.name && lhs.types.len() == rhs.types.len()
-    && lhs.types.iter().zip(rhs.types.iter()).all(|(l, r)| type_eq(mapping, l, r))
-}
-
-impl Eq for TypeOperator {
-    fn eq(&self, other: &TypeOperator) -> bool {
-        let mut mapping = HashMap::new();
-        operator_eq(&mut mapping, self, other)
-    }
-}
-
-fn type_eq(mapping: &mut HashMap<TypeVariable, TypeVariable>, lhs: &Type, rhs: &Type) -> bool {
-    match (lhs, rhs) {
-        (&TypeOperator(ref l), &TypeOperator(ref r)) => operator_eq(mapping, l, r),
+fn type_eq<'a>(mapping: &mut HashMap<&'a TypeVariable, &'a TypeVariable>, lhs: &'a Type, rhs: &'a Type) -> bool {
+    let equal = match (&lhs.typ, &rhs.typ) {
+        (&TypeOperator(ref l), &TypeOperator(ref r)) => l == r,
         (&TypeVariable(ref r), &TypeVariable(ref l)) => {
-            match mapping.find(l) {
+            match mapping.find(&l) {
                 Some(x) => return x.id == r.id,
                 None => ()
             }
-            mapping.insert(*l, *r);
+            mapping.insert(l, r);
             true
         }
         _ => false
-    }
+    };
+    equal && lhs.types.len() == rhs.types.len()
+    && lhs.types.iter().zip(rhs.types.iter()).all(|(l, r)| type_eq(mapping, l, r))
 }
 
 impl Eq for Type {
@@ -138,21 +143,21 @@ impl Eq for Type {
 
 impl Type {
     pub fn new_var(id : int) -> Type {
-        TypeVariable(TypeVariable { id : id })
+        Type { typ: TypeVariable(TypeVariable { id : id }), types: ~[] }
     }
     pub fn new_op(name : ~str, types : ~[Type]) -> Type {
-        TypeOperator(TypeOperator { name : name, types : types })
+        Type { typ: TypeOperator(TypeOperator { name : name }), types : types }
     }
 
     pub fn var<'a>(&'a self) -> &'a TypeVariable {
-        match self {
+        match &self.typ {
             &TypeVariable(ref var) => var,
             _ => fail!("Tried to unwrap TypeOperator as a TypeVariable")
         }
     }
     #[allow(dead_code)]
     pub fn op<'a>(&'a self) -> &'a TypeOperator {
-        match self {
+        match &self.typ {
             &TypeOperator(ref op) => op,
             _ => fail!("Tried to unwrap TypeVariable as a TypeOperator")
         }
@@ -179,10 +184,10 @@ impl fmt::Default for ~TypedExpr {
 
 impl TypedExpr {
     pub fn new(expr : Expr) -> TypedExpr {
-        TypedExpr { expr : expr, typ : TypeVariable(TypeVariable { id : 0 }), location : Location { column : -1, row : -1, absolute : -1 } }
+        TypedExpr { expr : expr, typ : Type::new_var(0), location : Location { column : -1, row : -1, absolute : -1 } }
     }
     pub fn with_location(expr : Expr, loc : Location) -> TypedExpr {
-        TypedExpr { expr : expr, typ : TypeVariable(TypeVariable { id : 0 }), location : loc }
+        TypedExpr { expr : expr, typ : Type::new_var(0), location : loc }
     }
 }
 
