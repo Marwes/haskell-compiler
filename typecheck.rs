@@ -329,7 +329,7 @@ impl <'a> TypeEnvironment<'a> {
                     None => ()
                 }
             }
-            (&TypeOperator(ref actual_op), &TypeOperator(ref op)) => {
+            (&TypeOperator(_), &TypeOperator(_)) => {
                 for ii in range(0, actual_type.types.len()) {
                     self.find_specialized(constraints, &actual_type.types[ii], &typ.types[ii]);
                 }
@@ -659,9 +659,7 @@ fn replace_var(typ: &mut Type, var: &TypeVariable, replacement: &Type) {
                 None
             }
         }
-        &TypeOperator(ref mut op) => {
-            None
-        }
+        &TypeOperator(_) => None
     };
     match new {
         Some(x) => *typ = x.clone(),
