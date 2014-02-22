@@ -95,24 +95,56 @@ impl fmt::Default for TypeOperator {
         write!(f.buf, "{}", op.name)
     }
 }
+impl fmt::Default for Type_ {
+    fn fmt(typ : &Type_, f: &mut fmt::Formatter) {
+        match typ {
+            &TypeVariable(ref var) => write!(f.buf, "{}", *var),
+            &TypeOperator(ref op) => write!(f.buf, "{}", *op)
+        }
+    }
+}
 impl fmt::Default for Type {
     fn fmt(typ : &Type, f: &mut fmt::Formatter) {
         if typ.types.len() == 0 {
-            match &typ.typ {
-                &TypeVariable(ref var) => write!(f.buf, "{}", *var),
-                &TypeOperator(ref op) => write!(f.buf, "{}", *op)
-            }
+            write!(f.buf, "{}", typ.typ);
         }
         else {
-            write!(f.buf, "(");
-            match &typ.typ {
-                &TypeVariable(ref var) => write!(f.buf, "{}", *var),
-                &TypeOperator(ref op) => write!(f.buf, "{}", *op)
+            let is_list = match &typ.typ {
+                &TypeOperator(ref op) => "[]" == op.name,
+                _ => false
+            };
+            let is_func = match &typ.typ {
+                &TypeOperator(ref op) => "->" == op.name,
+                _ => false
+            };
+            if is_list {
+                write!(f.buf, "[");
+            }
+            else if is_func {
+                let is_lhs_func = match &typ.types[0].typ {
+                    &TypeOperator(ref op) => "->" == op.name,
+                    _ => false
+                };
+                if is_lhs_func {
+                    write!(f.buf, "({}) -> {}", typ.types[0], typ.types[1]);
+                }
+                else {
+                    write!(f.buf, "{} -> {}", typ.types[0], typ.types[1]);
+                }
+                return;
+            }
+            else {
+                write!(f.buf, "({}", typ.typ);
             }
             for t in typ.types.iter() {
                 write!(f.buf, " {}", *t);
             }
-            write!(f.buf, ")");
+            if is_list {
+                write!(f.buf, "]");
+            }
+            else {
+                write!(f.buf, ")");
+            }
         }
     }
 }
