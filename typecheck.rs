@@ -830,7 +830,7 @@ fn unify_(env : &mut TypeEnvironment, subs : &mut Substitution, lhs : &mut Type,
             true
         }
         (& &TypeOperator(ref l), & &TypeOperator(ref r)) => {
-            if l.name != r.name && lhs.types.len() == rhs.types.len() {
+            if l.name != r.name || lhs.types.len() != rhs.types.len() {
                 let (location, l, r) = type_error::cond.raise(());
                 fail!("{} Error: Could not unify types {}\nand\n{}", location, l, r)
             }
