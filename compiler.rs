@@ -3,6 +3,10 @@ use Scope;
 use typecheck::{Types, TypeEnvironment, function_type};
 use std::iter::range_step;
 
+condition! {
+    compile_error: () -> (int, int);
+}
+
 #[deriving(Eq)]
 pub enum Instruction {
     Add,
@@ -278,7 +282,7 @@ impl <'a> Compiler<'a> {
         assembly
     }
     fn compileBinding(&mut self, bind : &Binding, module: Option<&Module>) -> SuperCombinator {
-        debug!("Compiling binding {}", bind.name);
+        debug!("Compiling binding {} {:?} {}", bind.name, bind.typeDecl.context, bind.typeDecl.typ);
         let mut comb = SuperCombinator::new();
         comb.assembly_id = self.assemblies.len();
         comb.type_declaration = bind.typeDecl.clone();
@@ -395,6 +399,11 @@ impl <'a, 'b, 'c> CompilerNode<'a, 'b, 'c> {
 
     ///Compile an expression by appending instructions to the instructions array
     fn compile(&mut self, expr : &TypedExpr, instructions : &mut ~[Instruction], strict: bool) {
+        compile_error::cond.trap(|_| (expr.location.row, expr.location.column)).inside(|| {
+            self.compile_(expr, instructions, strict)
+        })
+    }
+    fn compile_(&mut self, expr : &TypedExpr, instructions : &mut ~[Instruction], strict: bool) {
         debug!("Compiling {}", expr.expr);
         match &expr.expr {
             &Identifier(ref name) => {
@@ -566,7 +575,7 @@ impl <'a, 'b, 'c> CompilerNode<'a, 'b, 'c> {
             }
             None => {
                 let constraints = self.compiler.type_env.find_constraints(actual_type);
-                self.compile_with_constraints(name, typ, constraints, instructions)
+                self.compile_with_constraints(name, actual_type, constraints, instructions)
             }
         }
     }
@@ -624,7 +633,8 @@ impl <'a, 'b, 'c> CompilerNode<'a, 'b, 'c> {
         }
 
         if constraints.len() == 0 {
-            fail!("Attempted to compile dictionary with no constraints");
+            let (row, column) = compile_error::cond.raise(());
+            fail!("Error: Attempted to compile dictionary with no constraints at {}:{}", row, column);
         }
         let mut function_indexes = ~[];
         for &(ref class_name, ref typ) in constraints.iter() {

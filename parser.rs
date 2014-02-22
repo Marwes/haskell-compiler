@@ -139,7 +139,7 @@ fn class(&mut self) -> Class {
 
 	let classname = self.requireNext(NAME).value.clone();
 	let typeVariableName = self.requireNext(NAME).value.clone();
-    let typeVariable = 100;
+    let typeVariable = 1000000;
 
 	self.requireNext(WHERE);
 	self.requireNext(LBRACE);

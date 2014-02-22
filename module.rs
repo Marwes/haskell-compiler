@@ -62,7 +62,7 @@ pub struct TypeOperator {
 pub struct TypeVariable {
     id : int
 }
-#[deriving(Clone, ToStr, IterBytes)]
+#[deriving(Clone, Eq, ToStr, IterBytes)]
 pub enum Type_ {
     TypeVariable(TypeVariable),
     TypeOperator(TypeOperator)
@@ -114,6 +114,25 @@ impl fmt::Default for Type {
             }
             write!(f.buf, ")");
         }
+    }
+}
+impl fmt::Default for Constraint {
+    fn fmt(constraint : &Constraint, f: &mut fmt::Formatter) {
+        write!(f.buf, "{}", constraint.class);
+        for var in constraint.variables.iter() {
+            write!(f.buf, " {}", *var);
+        }
+    }
+}
+impl fmt::Default for TypeDeclaration {
+    fn fmt(typ : &TypeDeclaration, f: &mut fmt::Formatter) {
+        for constraint in typ.context.iter() {
+            write!(f.buf, "{} ", *constraint);
+        }
+        if typ.context.len() > 0 {
+            write!(f.buf, "=> ");
+        }
+        write!(f.buf, "{}", typ.typ)
     }
 }
 

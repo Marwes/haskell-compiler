@@ -179,6 +179,15 @@ instance Ord Double where
         True -> x
         False -> y
 
+class Functor f where
+    fmap :: (a -> b) -> f a -> f b
+
+instance Functor Maybe where
+    fmap f x = case x of
+        Just y -> Just (f y)
+        Nothing -> Nothing
+
+
 otherwise :: Bool
 otherwise = True
 
