@@ -735,6 +735,7 @@ fn parse_type_(&mut self, variableIndex: &mut int, typeVariableMapping : &mut Ha
 			{
 				let mut tupleArgs = self.sepBy1(|this| this.parse_type_(variableIndex, typeVariableMapping), COMMA);
 				tupleArgs.unshift(t);
+                self.lexer.backtrack();
                 self.requireNext(RPARENS);
 
                 self.parse_return_type(tupleType(tupleArgs), variableIndex, typeVariableMapping)
