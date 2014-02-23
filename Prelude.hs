@@ -247,11 +247,19 @@ uncurry :: (a -> b -> c) -> (a, b) -> c
 uncurry f x = case x of
     (y, z) -> f y z
 
+const :: a -> b -> a
+const x _ = x
+
 (.) :: (b -> c) -> (a -> b) -> (a -> c)
 (.) f g x = f (g x)
 
 ($) :: (a -> b) -> a -> b
 ($) f x = f x
+
+until :: (a -> Bool) -> (a -> a) -> a -> a
+until p f x = case p x of
+    True -> x
+    False -> until p f (f x)
 
 map :: (a -> b) -> [a] -> [b]
 map f xs = case xs of
@@ -271,9 +279,23 @@ head xs = case xs of
     : y ys -> y
     [] -> undefined
 
+last :: [a] -> a
+last xs = case xs of
+    : y ys -> case ys of
+        : _ zs -> last ys
+        [] -> y
+    [] -> undefined
+
 tail :: [a] -> [a]
 tail xs = case xs of
     : y ys -> ys
+    [] -> undefined
+
+init :: [a] -> [a]
+init xs = case xs of
+    : y ys -> case ys of
+        : _ zs -> y : init ys
+        [] -> []
     [] -> undefined
 
 sum :: Num a => [a] -> a
@@ -287,3 +309,33 @@ sum xs = case xs of
         0 -> y
         _ -> ys !! (n-1)
     [] -> undefined
+
+reverse_ :: [a] -> [a] -> [a]
+reverse_ xs ys = case xs of
+    : z zs -> reverse_ zs (z : ys)
+    [] -> ys
+
+reverse :: [a] -> [a]
+reverse xs = reverse_ xs []
+
+(++) :: [a] -> [a] -> [a]
+(++) xs ys = case xs of
+    : x2 xs2 -> x2 : (xs2 ++ ys)
+    [] -> ys
+
+filter :: (a -> Bool) -> [a] -> [a]
+filter p xs = case xs of
+    : y ys -> case p y of
+        True -> y : filter p ys
+        False -> filter p ys
+    [] -> []
+
+null :: [a] -> Bool
+null xs = case xs of
+    : y ys -> False
+    [] -> True
+
+length :: [a] -> Int
+length xs = case xs of
+    : _ ys -> 1 + length ys
+    [] -> 0
