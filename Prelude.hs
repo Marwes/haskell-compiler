@@ -190,6 +190,20 @@ instance Functor Maybe where
 instance Functor [] where
     fmap = map
 
+class Monad m where
+    (>>=) :: (a -> m b) -> m a -> m b
+    return :: a -> m a
+
+instance Monad Maybe where
+    (>>=) f x = case x of
+        Just y -> f y
+        Nothing -> Nothing
+    return x = Just x
+
+instance Monad [] where
+    (>>=) f xs = concat (map f xs)
+    return x = [x]
+
 class Enum a where
     succ :: a -> a
     pred :: a -> a
@@ -339,3 +353,26 @@ length :: [a] -> Int
 length xs = case xs of
     : _ ys -> 1 + length ys
     [] -> 0
+
+concat :: [[a]] -> [a]
+concat xs = case xs of
+    : y ys -> y ++ concat ys
+    [] -> []
+
+
+class Show a where
+    show :: a -> [Char]
+
+instance Show Bool where
+    show x = case x of
+        True -> "True"
+        False -> "False"
+
+instance (Show a, Show b) => Show (a, b) where
+    show x = case x of
+        (y, z) -> "(" ++ show y ++ ", " ++ show z ++ ")"
+
+instance Show a => Show (Maybe a) where
+    show x = case x of
+        Just y -> "Just (" ++ show y ++ ")"
+        Nothing -> "Nothing"

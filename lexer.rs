@@ -254,6 +254,26 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
         }
         Token { token : token, value : number, location : location }
     }
+
+    fn scan_identifier(&mut self, c: char, startLocation: Location) -> Token {
+        let mut result = c.to_str();
+        loop {
+            match self.peek() {
+                Some(ch) => {
+                    if !ch.is_alphanumeric() && ch != '_' {
+                        break;
+                    }
+                    self.read_char();
+                    result.push_char(ch);
+                }
+                None => break
+            }
+        }
+        return Token {
+            token : name_or_keyword(result),
+            location : startLocation,
+            value : result};
+    }
  
     fn new_token<'a>(&'a mut self, parseError : |&Token| -> bool) -> &'a Token {
         let mut newline = false;
@@ -436,23 +456,22 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
         }
         else if (c.is_alphabetic() || c == '_')
         {
-            let mut result = c.to_str();
-            loop {
-                match self.peek() {
-                    Some(ch) => {
-                        if !ch.is_alphanumeric() && ch != '_' {
-                            break;
-                        }
-                        self.read_char();
-                        result.push_char(ch);
-                    }
-                    None => break
-                }
+            return self.scan_identifier(c, startLocation);
+        }
+        else if c == '`' {
+            let x = self.read_char().expect("Unexpected end of input");
+            if !x.is_alphabetic() && x != '_' {
+                fail!("Parse error on '{}'", x);
             }
-            return Token {
-                token : name_or_keyword(result),
-                location : startLocation,
-                value : result};
+            let mut token = self.scan_identifier(x, startLocation);
+            let end_tick = self.read_char();
+            match end_tick {
+                Some('`') => (),
+                Some(x) => fail!("Parse error on '{}'", x),
+                None => fail!("Unexpected end of input")
+            }
+            token.token = OPERATOR;
+            return token;
         }
         else if c == '"' {
             let mut string = ~"";
