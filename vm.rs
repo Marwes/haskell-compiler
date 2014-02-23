@@ -252,6 +252,7 @@ impl <'a> VM<'a> {
                                     stack.pop();
                                 }
                                 stack.push(newStack.pop());
+                                i -= 1;
                             }
                         }
                         Indirection(node) => {
