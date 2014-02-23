@@ -1,6 +1,7 @@
 use std::hashmap::HashMap;
 use module::{TypeVariable, TypeOperator, Identifier, Number, Rational, String, Char, Apply, Lambda, Let, Case, TypedExpr, Module, Constraint, Pattern, IdentifierPattern, NumberPattern, ConstructorPattern, Binding, Class, TypeDeclaration};
 use graph::{Graph, VertexIndex, strongly_connected_components};
+use std::iter::range_step;
 
 pub use lexer::Location;
 pub use module::Type;
@@ -167,6 +168,20 @@ fn add_primitives(globals: &mut HashMap<~str, Type>, typename: &str) {
     }
 }
 
+fn create_tuple_type(size: uint) -> (~str, Type) {
+    let var_list = ::std::vec::from_fn(size, |i| Type::new_var(i as int));
+    let mut ident = ~"(";
+    for _ in range(1, size) {
+        ident.push_char(',');
+    }
+    ident.push_char(')');
+    let mut typ = Type::new_op(ident.clone(), var_list);
+    for i in range_step(size as int - 1, -1, -1) {
+        typ = Type::new_op(~"->", ~[Type::new_var(i), typ]);
+    }
+    (ident, typ)
+}
+
 impl <'a> TypeEnvironment<'a> {
 
     ///Creates a new TypeEnvironment and adds all the primitive types
@@ -176,10 +191,14 @@ impl <'a> TypeEnvironment<'a> {
         add_primitives(&mut globals, &"Double");
         globals.insert(~"primIntToDouble", function_type(&Type::new_op(~"Int", ~[]), &Type::new_op(~"Double", ~[])));
         globals.insert(~"primDoubleToInt", function_type(&Type::new_op(~"Double", ~[]), &Type::new_op(~"Int", ~[])));
-        let list_var = Type::new_var(-10);
-        let list = Type::new_op(~"[]", ~[list_var.clone()]);
+        let var = Type::new_var(-10);
+        let list = Type::new_op(~"[]", ~[var.clone()]);
         globals.insert(~"[]", list.clone());
-        globals.insert(~":", function_type(&list_var, &function_type(&list, &list)));
+        globals.insert(~":", function_type(&var, &function_type(&list, &list)));
+        for i in range(0 as uint, 10) {
+            let (name, typ) = create_tuple_type(i);
+            globals.insert(name, typ);
+        }
         TypeEnvironment {
             assemblies: ~[],
             namedTypes : globals,
@@ -1091,6 +1110,18 @@ fn typecheck_string() {
     env.typecheck(&mut expr);
 
     assert_eq!(expr.typ, Type::new_op(~"[]", ~[Type::new_op(~"Char", ~[])]));
+}
+
+#[test]
+fn typecheck_tuple() {
+    let mut env = TypeEnvironment::new();
+
+    let mut parser = Parser::new("(primIntAdd 0 0, \"a\")".chars());
+    let mut expr = parser.expression_();
+    env.typecheck(&mut expr);
+
+    let list = Type::new_op(~"[]", ~[Type::new_op(~"Char", ~[])]);
+    assert_eq!(expr.typ, Type::new_op(~"(,)", ~[Type::new_op(~"Int", ~[]), list]));
 }
 
 #[test]

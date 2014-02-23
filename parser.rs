@@ -1074,6 +1074,15 @@ r"data List a = Cons a (List a) | Nil".chars());
 }
 
 #[test]
+fn parse_tuple() {
+    let mut parser = Parser::new(
+r"(1, x)".chars());
+    let expr = parser.expression_();
+
+    assert_eq!(expr, apply(apply(identifier(~"(,)"), number(1)), identifier(~"x")));
+}
+
+#[test]
 fn test_operators() {
     let mut parser = Parser::new("1 : 2 : []".chars());
     let expr = parser.expression_();

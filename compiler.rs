@@ -362,6 +362,11 @@ impl <'a, 'b, 'c> CompilerNode<'a, 'b, 'c> {
             }
             None
         }).or_else(|| {
+            if identifier.len() >= 3 && identifier.char_at(0) == '('
+            && identifier.char_at(identifier.len() - 1) == ')'
+            && identifier.chars().skip(1).take(identifier.len() - 2).all(|c| c == ',') {
+                return Some(ConstructorVariable(0, (identifier.len() - 1) as u16));
+            }
             match identifier {
                 &"[]" => Some(ConstructorVariable(0, 0)),
                 &":" => Some(ConstructorVariable(1, 2)),
@@ -861,6 +866,20 @@ r"primIntAdd 1 0 : []";
     let instructions = comp.compileExpression(&expr);
 
     assert_eq!(instructions, ~[Pack(0, 0), PushInt(0), PushInt(1), Add, Pack(1, 2)]);
+}
+
+#[test]
+fn compile_tuple() {
+    let file =
+r"test x y = (primIntAdd 0 1, x, y)";
+    let mut parser = Parser::new(file.chars());
+    let mut module = parser.module();
+    let mut type_env = TypeEnvironment::new();
+    type_env.typecheck_module(&mut module);
+    let mut comp = Compiler::new(&type_env);
+    let assembly = comp.compileModule(&module);
+
+    assert_eq!(assembly.superCombinators[0].instructions, ~[Push(1), Push(0), PushInt(1), PushInt(0), Add, Pack(0, 3), Update(0), Pop(2), Unwind]);
 }
 
 #[test]

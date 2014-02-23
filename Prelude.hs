@@ -210,6 +210,7 @@ foldl f x xs = case xs of
     : y ys -> foldl f (f x y) ys
     [] -> x
 
+undefined :: a
 undefined = undefined
 
 head :: [a] -> a
