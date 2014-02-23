@@ -714,11 +714,18 @@ fn parse_type_(&mut self, variableIndex: &mut int, typeVariableMapping : &mut Ha
 	match token.token {
 	    LBRACKET =>
 		{
-			let t = self.parse_type_(variableIndex, typeVariableMapping);
-			self.requireNext(RBRACKET);
-			let listType = Type::new_op(~"[]", ~[t]);
-            
-            self.parse_return_type(listType, variableIndex, typeVariableMapping)
+            if self.lexer.next_().token == RBRACKET {
+                let listType = Type::new_op(~"[]", ~[]);
+                self.parse_return_type(listType, variableIndex, typeVariableMapping)
+            }
+            else {
+                self.lexer.backtrack();
+                let t = self.parse_type_(variableIndex, typeVariableMapping);
+                self.requireNext(RBRACKET);
+                let listType = Type::new_op(~"[]", ~[t]);
+                
+                self.parse_return_type(listType, variableIndex, typeVariableMapping)
+            }
 		}
 	    LPARENS =>
 		{

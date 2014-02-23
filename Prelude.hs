@@ -187,6 +187,8 @@ instance Functor Maybe where
         Just y -> Just (f y)
         Nothing -> Nothing
 
+instance Functor [] where
+    fmap = map
 
 otherwise :: Bool
 otherwise = True
