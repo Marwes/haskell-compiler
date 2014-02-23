@@ -190,9 +190,62 @@ instance Functor Maybe where
 instance Functor [] where
     fmap = map
 
+class Enum a where
+    succ :: a -> a
+    pred :: a -> a
+    enumFrom :: a -> [a]
+    enumFromThen :: a -> a -> [a]
+    enumFromTo :: a -> a -> [a]
+    enumFromThenTo :: a -> a -> a -> [a]
+
+instance Enum Int where
+    succ x = x + 1
+    pred x = x - 1
+    enumFrom x =
+        let
+            xs = x : enumFrom (x + 1)
+        in xs
+    enumFromThen n step = n : enumFromThen (n + step) step
+    enumFromTo start stop = case start <= stop of
+        True -> start : enumFromTo (start + 1) stop
+        False -> []
+    enumFromThenTo start step stop = case start <= stop of
+        True -> start : enumFromThenTo (start + step) step stop
+        False -> []
+
+instance Enum Double where
+    succ x = x + 1
+    pred x = x - 1
+    enumFrom x =
+        let
+            xs = x : enumFrom (x + 1)
+        in xs
+    enumFromThen n step = n : enumFromThen (n + step) step
+    enumFromTo start stop = case start <= stop of
+        True -> start : enumFromTo (start + 1) stop
+        False -> []
+    enumFromThenTo start step stop = case start <= stop of
+        True -> start : enumFromThenTo (start + step) step stop
+        False -> []
+
 otherwise :: Bool
 otherwise = True
 
+fst :: (a, b) -> a
+fst x = case x of
+    (y, _) -> y
+
+    
+snd :: (a, b) -> b
+snd x = case x of
+    (_, y) -> y
+
+curry :: ((a, b) -> c) -> a -> b -> c
+curry f x y = f (x, y)
+
+uncurry :: (a -> b -> c) -> (a, b) -> c
+uncurry f x = case x of
+    (y, z) -> f y z
 
 (.) :: (b -> c) -> (a -> b) -> (a -> c)
 (.) f g x = f (g x)
@@ -227,3 +280,10 @@ sum :: Num a => [a] -> a
 sum xs = case xs of
     : y ys -> y + sum ys
     [] -> 0
+
+(!!) :: [a] -> Int -> a
+(!!) xs n = case xs of
+    : y ys -> case n of
+        0 -> y
+        _ -> ys !! (n-1)
+    [] -> undefined
