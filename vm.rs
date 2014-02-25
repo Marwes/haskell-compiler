@@ -123,10 +123,23 @@ impl <'a> VM<'a> {
     pub fn evaluate(&'a self, code: &[Instruction], assembly_id: uint) -> Node_<'a> {
         let mut stack = ~[];
         self.execute(&mut stack, code, assembly_id);
+        self.deepseq(stack, assembly_id)
+    }
+    fn deepseq(&'a self, mut stack: ~[Node<'a>], assembly_id: uint) -> Node_<'a> {
         static evalCode : &'static [Instruction] = &[Eval];
         self.execute(&mut stack, evalCode, assembly_id);
-        assert_eq!(stack.len(), 1);
-        stack[0].borrow().clone()
+        match stack[0].borrow() {
+            &Constructor(tag, ref vals) => {
+                let mut ret = ~[];
+                for v in vals.iter() {
+                    let s = ~[v.clone()];
+                    let x = self.deepseq(s, assembly_id);
+                    ret.push(Node::new(x));
+                }
+                Constructor(tag, ret)
+            }
+            _ => stack[0].borrow().clone()
+        }
     }
 
     pub fn execute(&'a self, stack: &mut ~[Node<'a>], code: &[Instruction], assembly_id: uint) {
