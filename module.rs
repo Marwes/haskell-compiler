@@ -1,83 +1,84 @@
 use std::fmt;
-use std::hashmap::HashMap;
+use collections::HashMap;
+pub use std::default::Default;
 pub use lexer::{Location, Located};
 
 pub struct Module {
-    name : ~str,
-    bindings : ~[Binding],
-    typeDeclarations : ~[TypeDeclaration],
-    classes : ~[Class],
-    instances : ~[Instance],
-    dataDefinitions : ~[DataDefinition]
+    pub name : ~str,
+    pub bindings : ~[Binding],
+    pub typeDeclarations : ~[TypeDeclaration],
+    pub classes : ~[Class],
+    pub instances : ~[Instance],
+    pub dataDefinitions : ~[DataDefinition]
 }
 #[deriving(Clone)]
 pub struct Class {
-    name : ~str,
-    variable: TypeVariable,
-    declarations : ~[TypeDeclaration]
+    pub name : ~str,
+    pub variable : TypeVariable,
+    pub declarations : ~[TypeDeclaration]
 }
 
 pub struct Instance {
-    bindings : ~[Binding],
-    constraints: ~[Constraint],
-    typ : Type,
-    classname : ~str
+    pub bindings : ~[Binding],
+    pub constraints : ~[Constraint],
+    pub typ : Type,
+    pub classname : ~str
 }
 
 #[deriving(Eq)]
 pub struct Binding {
-    name : ~str,
-    expression : TypedExpr,
-    typeDecl : TypeDeclaration,
-    arity : uint
+    pub name : ~str,
+    pub expression : TypedExpr,
+    pub typeDecl : TypeDeclaration,
+    pub arity : uint
 }
 
-#[deriving(Eq, Clone)]
+#[deriving(Eq, TotalEq, Clone, Show)]
 pub struct Constructor {
-    name : ~str,
-    typ : Type,
-    tag : int,
-    arity : int
+    pub name : ~str,
+    pub typ : Type,
+    pub tag : int,
+    pub arity : int
 }
 
 #[deriving(Eq, Clone)]
 pub struct DataDefinition {
-    constructors: ~[Constructor],
-    typ: Type,
-    parameters: HashMap<~str, int>
+    pub constructors : ~[Constructor],
+    pub typ : Type,
+    pub parameters : HashMap<~str, int>
 }
 
-#[deriving(Clone, Eq, Default)]
+#[deriving(Clone, Eq, TotalEq, Default)]
 pub struct TypeDeclaration {
-    context : ~[Constraint],
-    typ : Type,
-    name : ~str
+    pub context : ~[Constraint],
+    pub typ : Type,
+    pub name : ~str
 }
 
-#[deriving(Clone, Default, Eq, ToStr, IterBytes)]
+#[deriving(Clone, Default, Eq, TotalEq, Hash)]
 pub struct TypeOperator {
-    name : ~str
+    pub name : ~str
 }
-#[deriving(Clone, Eq, Default, ToStr, IterBytes)]
+#[deriving(Clone, Eq, TotalEq, Default, Hash)]
 pub struct TypeVariable {
-    id : int
+    pub id : int
 }
-#[deriving(Clone, Eq, ToStr, IterBytes)]
+#[deriving(Clone, Eq, TotalEq, Hash)]
 pub enum Type_ {
     TypeVariable(TypeVariable),
     TypeOperator(TypeOperator)
 }
 
-#[deriving(Clone, Eq, ToStr, IterBytes)]
+#[deriving(Clone, Eq, TotalEq, Hash)]
 pub struct Constraint {
-    class: ~str,
-    variables: ~[TypeVariable]
+    pub class : ~str,
+    pub variables : ~[TypeVariable]
 }
 
-#[deriving(Clone, ToStr, IterBytes)]
+#[deriving(Clone, TotalEq, Hash)]
 pub struct Type {
-    typ: Type_,
-    types: ~[Type]
+    pub typ : Type_,
+    pub types : ~[Type]
 }
 
 impl Default for Type {
@@ -85,28 +86,29 @@ impl Default for Type {
         Type::new_var(-1)
     }
 }
-impl fmt::Default for TypeVariable {
-    fn fmt(var : &TypeVariable, f: &mut fmt::Formatter) {
-        write!(f.buf, "{}", var.id)
+impl fmt::Show for TypeVariable {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f.buf, "{}", self.id)
     }
 }
-impl fmt::Default for TypeOperator {
-    fn fmt(op: &TypeOperator, f: &mut fmt::Formatter) {
-        write!(f.buf, "{}", op.name)
+impl fmt::Show for TypeOperator {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f.buf, "{}", self.name)
     }
 }
-impl fmt::Default for Type_ {
-    fn fmt(typ : &Type_, f: &mut fmt::Formatter) {
-        match typ {
+impl fmt::Show for Type_ {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
             &TypeVariable(ref var) => write!(f.buf, "{}", *var),
             &TypeOperator(ref op) => write!(f.buf, "{}", *op)
         }
     }
 }
-impl fmt::Default for Type {
-    fn fmt(typ : &Type, f: &mut fmt::Formatter) {
+impl fmt::Show for Type {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let typ = self;
         if typ.types.len() == 0 {
-            write!(f.buf, "{}", typ.typ);
+            write!(f.buf, "{}", typ.typ)
         }
         else {
             let is_list = match &typ.typ {
@@ -126,12 +128,11 @@ impl fmt::Default for Type {
                     _ => false
                 };
                 if is_lhs_func {
-                    write!(f.buf, "({}) -> {}", typ.types[0], typ.types[1]);
+                    return write!(f.buf, "({}) -> {}", typ.types[0], typ.types[1]);
                 }
                 else {
-                    write!(f.buf, "{} -> {}", typ.types[0], typ.types[1]);
+                    return write!(f.buf, "{} -> {}", typ.types[0], typ.types[1]);
                 }
-                return;
             }
             else {
                 write!(f.buf, "({}", typ.typ);
@@ -140,31 +141,32 @@ impl fmt::Default for Type {
                 write!(f.buf, " {}", *t);
             }
             if is_list {
-                write!(f.buf, "]");
+                write!(f.buf, "]")
             }
             else {
-                write!(f.buf, ")");
+                write!(f.buf, ")")
             }
         }
     }
 }
-impl fmt::Default for Constraint {
-    fn fmt(constraint : &Constraint, f: &mut fmt::Formatter) {
-        write!(f.buf, "{}", constraint.class);
-        for var in constraint.variables.iter() {
+impl fmt::Show for Constraint {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f.buf, "{}", self.class);
+        for var in self.variables.iter() {
             write!(f.buf, " {}", *var);
         }
+        Ok(())
     }
 }
-impl fmt::Default for TypeDeclaration {
-    fn fmt(typ : &TypeDeclaration, f: &mut fmt::Formatter) {
-        for constraint in typ.context.iter() {
+impl fmt::Show for TypeDeclaration {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        for constraint in self.context.iter() {
             write!(f.buf, "{} ", *constraint);
         }
-        if typ.context.len() > 0 {
+        if self.context.len() > 0 {
             write!(f.buf, "=> ");
         }
-        write!(f.buf, "{}", typ.typ)
+        write!(f.buf, "{}", self.typ)
     }
 }
 
@@ -216,9 +218,9 @@ impl Type {
 }
 
 pub struct TypedExpr {
-    expr : Expr,
-    typ : Type,
-    location : Location
+    pub expr : Expr,
+    pub typ : Type,
+    pub location : Location
 }
 
 impl Eq for TypedExpr {
@@ -227,9 +229,9 @@ impl Eq for TypedExpr {
     }
 }
 
-impl fmt::Default for ~TypedExpr {
-    fn fmt(expr: &~TypedExpr, f: &mut fmt::Formatter) {
-        write!(f.buf, "{}", expr.expr)
+impl fmt::Show for TypedExpr {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f.buf, "{}", self.expr)
     }
 }
 
@@ -244,11 +246,11 @@ impl TypedExpr {
 
 #[deriving(Eq)]
 pub struct Alternative {
-    pattern : Located<Pattern>,
-    expression : TypedExpr
+    pub pattern : Located<Pattern>,
+    pub expression : TypedExpr
 }
 
-#[deriving(Eq)]
+#[deriving(Eq, TotalEq)]
 pub enum Pattern {
     NumberPattern(int),
     IdentifierPattern(~str),
@@ -268,9 +270,9 @@ pub enum Expr {
     Case(~TypedExpr, ~[Alternative])
 }
 
-impl fmt::Default for Expr {
-    fn fmt(expr: &Expr, f: &mut fmt::Formatter) {
-        match expr {
+impl fmt::Show for Expr {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
             &Identifier(ref s) => write!(f.buf, "{}", *s),
             &Apply(ref func, ref arg) => write!(f.buf, "({} {})", *func, *arg),
             &Number(num) => write!(f.buf, "{}", num),
@@ -281,10 +283,5 @@ impl fmt::Default for Expr {
             &Let(_,_) => write!(f.buf, "Let ... "),
             &Case(_,_) => write!(f.buf, "Case ...")
         }
-    }
-}
-impl fmt::Default for ~Expr {
-    fn fmt(expr: &~Expr, f: &mut fmt::Formatter) {
-        write!(f.buf, "{}", *expr)
     }
 }

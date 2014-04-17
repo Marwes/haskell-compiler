@@ -3,11 +3,7 @@ use Scope;
 use typecheck::{Types, TypeEnvironment, function_type};
 use std::iter::range_step;
 
-condition! {
-    compile_error: () -> (int, int);
-}
-
-#[deriving(Eq)]
+#[deriving(Eq, Show)]
 pub enum Instruction {
     Add,
     Sub,
@@ -51,7 +47,6 @@ pub enum Instruction {
     PushDictionaryMember(uint),
 }
 
-#[deriving(Clone)]
 enum Var<'a> {
     StackVariable(uint),
     GlobalVariable(uint),
@@ -60,13 +55,25 @@ enum Var<'a> {
     ConstraintVariable(uint, &'a Type, &'a[Constraint])
 }
 
+impl <'a> Clone for Var<'a> {
+    fn clone(&self) -> Var<'a> {
+        match self {
+            &StackVariable(x) => StackVariable(x),
+            &GlobalVariable(x) => GlobalVariable(x),
+            &ConstructorVariable(x, y) => ConstructorVariable(x, y),
+            &ClassVariable(x, y) => ClassVariable(x, y),
+            &ConstraintVariable(x, y, z) => ConstraintVariable(x, y, z)
+        }
+    }
+}
+
 pub struct SuperCombinator {
-    arity : uint,
-    name: ~str,
-    assembly_id: uint,
-    instructions : ~[Instruction],
-    type_declaration: TypeDeclaration,
-    constraints: ~[Constraint]
+    pub arity : uint,
+    pub name: ~str,
+    pub assembly_id: uint,
+    pub instructions : ~[Instruction],
+    pub type_declaration: TypeDeclaration,
+    pub constraints: ~[Constraint]
 }
 impl SuperCombinator {
     fn new() -> SuperCombinator {
@@ -75,12 +82,12 @@ impl SuperCombinator {
 }
 
 pub struct Assembly {
-    superCombinators: ~[SuperCombinator],
-    instance_dictionaries: ~[~[uint]],
-    classes: ~[Class],
-    instances: ~[(~[Constraint], Type)],
-    data_definitions: ~[DataDefinition],
-    offset: uint
+    pub superCombinators: ~[SuperCombinator],
+    pub instance_dictionaries: ~[~[uint]],
+    pub classes: ~[Class],
+    pub instances: ~[(~[Constraint], Type)],
+    pub data_definitions: ~[DataDefinition],
+    pub offset: uint
 }
 
 trait Globals {
@@ -217,12 +224,12 @@ impl Types for Assembly {
 }
 
 pub struct Compiler<'a> {
-    type_env: &'a TypeEnvironment<'a>,
+    pub type_env: &'a TypeEnvironment<'a>,
     ///Hashmap containging class names mapped to the functions it contains
-    instance_dictionaries: ~[(~[(~str, Type)], ~[uint])],
-    stackSize : uint,
+    pub instance_dictionaries: ~[(~[(~str, Type)], ~[uint])],
+    pub stackSize : uint,
     ///Array of all the assemblies which can be used to lookup functions in
-    assemblies: ~[&'a Assembly],
+    pub assemblies: ~[&'a Assembly],
 }
 
 
@@ -308,7 +315,7 @@ impl <'a> Compiler<'a> {
        comb
     }
     pub fn compileExpression(&mut self, expr: &TypedExpr) -> ~[Instruction] {
-        let mut stack = CompilerNode { compiler: self, stack: Scope::new(), constraints: [], module: None };
+        let mut stack = CompilerNode { compiler: self, stack: Scope::new(), constraints: &'static [], module: None };
         let mut instructions = ~[];
         stack.compile(expr, &mut instructions, false);
         instructions
@@ -335,7 +342,7 @@ impl <'a, 'b, 'c> Drop for CompilerNode<'a, 'b, 'c> {
 impl <'a, 'b, 'c> CompilerNode<'a, 'b, 'c> {
     
     ///Find a variable by walking through the stack followed by all globals
-    fn find(&'a self, identifier : &str) -> Option<Var<'a>> {
+    fn find<'r>(&'r self, identifier : &str) -> Option<Var<'r>> {
         self.stack.find(identifier).map(|x| x.clone())
         .or_else(|| {
             match self.module {
@@ -398,17 +405,12 @@ impl <'a, 'b, 'c> CompilerNode<'a, 'b, 'c> {
     }
 
     ///Create a new scope for variables, such as a lambda or let bindings
-    fn child(&'a self) -> CompilerNode<'a, 'b, 'c> {
+    fn child(&'a mut self) -> CompilerNode<'a, 'b, 'c> {
         CompilerNode { compiler: self.compiler, stack : self.stack.child(), constraints: self.constraints, module: self.module }
     }
 
     ///Compile an expression by appending instructions to the instructions array
-    fn compile(&mut self, expr : &TypedExpr, instructions : &mut ~[Instruction], strict: bool) {
-        compile_error::cond.trap(|_| (expr.location.row, expr.location.column)).inside(|| {
-            self.compile_(expr, instructions, strict)
-        })
-    }
-    fn compile_(&mut self, expr : &TypedExpr, instructions : &mut ~[Instruction], strict: bool) {
+    fn compile(&'a mut self, expr : &TypedExpr, instructions : &mut ~[Instruction], strict: bool) {
         debug!("Compiling {}", expr.expr);
         match &expr.expr {
             &Identifier(ref name) => {
@@ -530,11 +532,11 @@ impl <'a, 'b, 'c> CompilerNode<'a, 'b, 'c> {
                     //We need to set all the jump instructions to their actual location
                     //and append Slide instructions to bring the stack back to normal if the match fails
                     for j in range_step(pattern_end, pattern_start, -1) {
-                        match instructions[j] {
+                        match instructions[j as uint] {
                             Jump(_) => {
-                                instructions[j] = Jump(instructions.len());
+                                instructions[j as uint] = Jump(instructions.len());
                             }
-                            JumpFalse(_) => instructions[j] = JumpFalse(instructions.len()),
+                            JumpFalse(_) => instructions[j as uint] = JumpFalse(instructions.len()),
                             Split(size) => instructions.push(Pop(size)),
                             _ => ()
                         }
@@ -632,14 +634,13 @@ impl <'a, 'b, 'c> CompilerNode<'a, 'b, 'c> {
     fn find_dictionary_index(&self, constraints: &[(~str, Type)]) -> (uint, Option<(~[(~str, Type)], ~[uint])>) {
         let dict_len = self.compiler.instance_dictionaries.len();
         for ii in range(0, dict_len) {
-            if self.compiler.instance_dictionaries[ii].n0_ref().equiv(&constraints) {
+            if self.compiler.instance_dictionaries[ii].ref0().equiv(&constraints) {
                 return (ii, None);
             }
         }
 
         if constraints.len() == 0 {
-            let (row, column) = compile_error::cond.raise(());
-            fail!("Error: Attempted to compile dictionary with no constraints at {}:{}", row, column);
+            fail!("Error: Attempted to compile dictionary with no constraints at <unknown>");
         }
         let mut function_indexes = ~[];
         for &(ref class_name, ref typ) in constraints.iter() {
@@ -663,33 +664,33 @@ impl <'a, 'b, 'c> CompilerNode<'a, 'b, 'c> {
     }
 
     ///Attempt to compile a binary primitive, returning true if it succeded
-    fn primitive(&mut self, func: &TypedExpr, arg: &TypedExpr, instructions: &mut ~[Instruction]) -> bool {
+    fn primitive(&'a mut self, func: &TypedExpr, arg: &TypedExpr, instructions: &mut ~[Instruction]) -> bool {
         match &func.expr {
             &Apply(ref prim_func, ref arg2) => {
                 match &prim_func.expr {
                     &Identifier(ref name) => {
                         //Binary functions
-                        let maybeOP = match *name {
-                            ~"primIntAdd" => Some(Add),
-                            ~"primIntSubtract" => Some(Sub),
-                            ~"primIntMultiply" => Some(Multiply),
-                            ~"primIntDivide" => Some(Divide),
-                            ~"primIntRemainder" => Some(Remainder),
-                            ~"primIntEQ" => Some(IntEQ),
-                            ~"primIntLT" => Some(IntLT),
-                            ~"primIntLE" => Some(IntLE),
-                            ~"primIntGT" => Some(IntGT),
-                            ~"primIntGE" => Some(IntGE),
-                            ~"primDoubleAdd" => Some(DoubleAdd),
-                            ~"primDoubleSubtract" => Some(DoubleSub),
-                            ~"primDoubleMultiply" => Some(DoubleMultiply),
-                            ~"primDoubleDivide" => Some(DoubleDivide),
-                            ~"primDoubleRemainder" => Some(DoubleRemainder),
-                            ~"primDoubleEQ" => Some(DoubleEQ),
-                            ~"primDoubleLT" => Some(DoubleLT),
-                            ~"primDoubleLE" => Some(DoubleLE),
-                            ~"primDoubleGT" => Some(DoubleGT),
-                            ~"primDoubleGE" => Some(DoubleGE),
+                        let maybeOP = match name.as_slice() {
+                            "primIntAdd" => Some(Add),
+                            "primIntSubtract" => Some(Sub),
+                            "primIntMultiply" => Some(Multiply),
+                            "primIntDivide" => Some(Divide),
+                            "primIntRemainder" => Some(Remainder),
+                            "primIntEQ" => Some(IntEQ),
+                            "primIntLT" => Some(IntLT),
+                            "primIntLE" => Some(IntLE),
+                            "primIntGT" => Some(IntGT),
+                            "primIntGE" => Some(IntGE),
+                            "primDoubleAdd" => Some(DoubleAdd),
+                            "primDoubleSubtract" => Some(DoubleSub),
+                            "primDoubleMultiply" => Some(DoubleMultiply),
+                            "primDoubleDivide" => Some(DoubleDivide),
+                            "primDoubleRemainder" => Some(DoubleRemainder),
+                            "primDoubleEQ" => Some(DoubleEQ),
+                            "primDoubleLT" => Some(DoubleLT),
+                            "primDoubleLE" => Some(DoubleLE),
+                            "primDoubleGT" => Some(DoubleGT),
+                            "primDoubleGE" => Some(DoubleGE),
                             _ => None
                         };
                         match maybeOP {
@@ -967,8 +968,7 @@ fn compile_prelude() {
     let mut type_env = TypeEnvironment::new();
     let prelude = {
         let path = &Path::new("Prelude.hs");
-        let s  = File::open(path).read_to_end();
-        let contents : &str = from_utf8(s);
+        let contents  = File::open(path).read_to_str().unwrap();
         let mut parser = Parser::new(contents.chars()); 
         let mut module = parser.module();
         type_env.typecheck_module(&mut module);

@@ -1,5 +1,6 @@
-use std::util::{swap};
-use std::hashmap::HashMap;
+use std::mem::{swap};
+use std::default::Default;
+use collections::HashMap;
 use lexer::{Lexer, Token, TokenEnum,
     EOF, NAME, OPERATOR, NUMBER, FLOAT, STRING, CHAR, LPARENS, RPARENS, LBRACKET, RBRACKET, LBRACE, RBRACE, COMMA, EQUALSSIGN, SEMICOLON, MODULE, CLASS, INSTANCE, WHERE, LET, IN, CASE, OF, ARROW, TYPEDECL, DATA
 };
@@ -855,12 +856,13 @@ fn constructorError(tok : &Token) -> bool
 
 fn tuple_name(size : uint) -> ~str
 {
-	let mut name = ~"(";
+	let mut name = StrBuf::with_capacity(size+1);
+    name.push_char('(');
     for _ in range(1, size) {
         name.push_char(',');
     }
 	name.push_char(')');
-	name
+	name.into_owned()
 }
 
 fn makeApplication(f : TypedExpr, args : ~[TypedExpr]) -> TypedExpr {
@@ -879,7 +881,7 @@ fn makeLambda(a : ~[~str], body : TypedExpr) -> TypedExpr {
     let mut ii = args.len() as int - 1;
 	while ii >= 0 {
         let loc = body.location.clone();
-		body = TypedExpr::with_location(Lambda(args.pop(), ~body), loc);
+		body = TypedExpr::with_location(Lambda(args.pop().unwrap(), ~body), loc);
         ii -= 1;
 	}
     body
@@ -1109,8 +1111,7 @@ instance Eq a => Eq [a] where
 #[test]
 fn parse_prelude() {
     let path = &Path::new("Prelude.hs");
-    let s  = File::open(path).read_to_end();
-    let contents : &str = from_utf8(s);
+    let contents  = File::open(path).read_to_str().unwrap();
     let mut parser = Parser::new(contents.chars());
     let module = parser.module();
 

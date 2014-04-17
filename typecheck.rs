@@ -1,4 +1,5 @@
-use std::hashmap::HashMap;
+use collections::HashMap;
+use std::default::Default;
 use module::{TypeVariable, TypeOperator, Identifier, Number, Rational, String, Char, Apply, Lambda, Let, Case, TypedExpr, Module, Constraint, Pattern, IdentifierPattern, NumberPattern, ConstructorPattern, Binding, Class, TypeDeclaration};
 use graph::{Graph, VertexIndex, strongly_connected_components};
 use std::iter::range_step;
@@ -97,12 +98,6 @@ struct Substitution {
     constraints: HashMap<TypeVariable, ~[~str]>
 }
 
-///Signals that a type error has occured and the top level types as well as the location is needed
-condition! {
-    type_error: () -> (Location, Type, Type);
-}
-
-
 trait Bindings {
     fn get_mut<'a>(&'a mut self, idx: (uint, uint)) -> &'a mut Binding;
 
@@ -169,17 +164,18 @@ fn add_primitives(globals: &mut HashMap<~str, Type>, typename: &str) {
 }
 
 fn create_tuple_type(size: uint) -> (~str, Type) {
-    let var_list = ::std::vec::from_fn(size, |i| Type::new_var(i as int));
-    let mut ident = ~"(";
+    let var_list = ::std::slice::from_fn(size, |i| Type::new_var(i as int));
+    let mut ident = StrBuf::from_char(1, '(');
     for _ in range(1, size) {
         ident.push_char(',');
     }
     ident.push_char(')');
-    let mut typ = Type::new_op(ident.clone(), var_list);
+    let result = ident.into_owned();
+    let mut typ = Type::new_op(result.clone(), var_list);
     for i in range_step(size as int - 1, -1, -1) {
         typ = Type::new_op(~"->", ~[Type::new_var(i), typ]);
     }
-    (ident, typ)
+    (result, typ)
 }
 
 impl <'a> TypeEnvironment<'a> {
@@ -358,7 +354,7 @@ impl <'a> TypeEnvironment<'a> {
                 match self.constraints.find(var) {
                     Some(cons) => {
                         for c in cons.iter() {
-                            if constraints.iter().find(|x| x.n0_ref() == c) == None {
+                            if constraints.iter().find(|x| x.ref0() == c) == None {
                                 constraints.push((c.clone(), actual_type.clone()));
                             }
                         }
@@ -469,9 +465,11 @@ impl <'a> TypeEnvironment<'a> {
 #[unsafe_destructor]
 impl <'a, 'b> Drop for TypeScope<'a, 'b> {
     fn drop(&mut self) {
-        while self.vars.len() > 0 {
-            let (name, typ) = self.vars.pop();
-            self.env.namedTypes.insert(name, typ);
+        loop {
+            match self.vars.pop() {
+                Some((name, typ)) => { self.env.namedTypes.insert(name, typ); }
+                None => break
+            }
         }
     }
 }
@@ -795,7 +793,7 @@ fn occurs(type_var: &TypeVariable, inType: &Type) -> bool {
     }) || inType.types.iter().any(|t| occurs(type_var, t))
 }
 
-fn freshen(env: &TypeScope, mapping: &mut HashMap<TypeVariable, Type>, typ: &Type) -> Type {
+fn freshen<'a, 'b>(env: &'a mut TypeScope<'a, 'b>, mapping: &mut HashMap<TypeVariable, Type>, typ: &Type) -> Type {
     let result = match &typ.typ {
         &TypeVariable(ref id) => {
             if env.is_generic(id) {
@@ -805,7 +803,9 @@ fn freshen(env: &TypeScope, mapping: &mut HashMap<TypeVariable, Type>, typ: &Typ
                     None => None
                 };
                 match (maybe_constraints, new.typ.clone()) {
-                    (Some(c), TypeVariable(newid)) => { env.env.constraints.insert(newid, c); }
+                    (Some(c), TypeVariable(newid)) => {
+                        env.env.constraints.insert(newid, c);
+                    }
                     _ => ()
                 }
                 mapping.find_or_insert(id.clone(), new.clone()).typ.clone()
@@ -818,23 +818,40 @@ fn freshen(env: &TypeScope, mapping: &mut HashMap<TypeVariable, Type>, typ: &Typ
             typ.typ.clone()
         }
     };
-    Type { typ: result, types: typ.types.iter().map(|t| freshen(env, mapping, t)).collect() }
+    let mut new_types = ~[];
+    for t in typ.types.iter() {
+        new_types.push(freshen(env, mapping, t));
+    }
+    Type { typ: result, types: new_types }
 }
 
 ///Takes two types and attempts to make them the same type
 fn unify_location(env: &mut TypeEnvironment, subs: &mut Substitution, location: &Location, lhs: &mut Type, rhs: &mut Type) {
     debug!("Unifying {} <-> {}", *lhs, *rhs);
-    type_error::cond.trap(|_| (location.clone(), lhs.clone(), rhs.clone())).inside(|| {
-        unify_(env, subs, lhs, rhs);
-        
-        let subs2 = subs.clone();
-        for (_, ref mut typ) in subs.subs.mut_iter() {
-            replace(&mut env.constraints, *typ, &subs2);
+    match unify_(env, subs, lhs, rhs) {
+        None => {
+            let subs2 = subs.clone();
+            for (_, ref mut typ) in subs.subs.mut_iter() {
+                replace(&mut env.constraints, *typ, &subs2);
+            }
         }
-    })
+        Some(error) => match error {
+            UnifyFail => fail!("{} Error: Could not unify types {}\nand\n{}", location, *lhs, *rhs),
+            RecursiveUnification => fail!("{} Error: Recursive unification between {}\nand\n{}", location, *lhs, *rhs),
+            WrongArity => fail!("{} Error: Types do not have the same arity.\n{}\nand\n{}", location, *lhs, *rhs),
+            MissingInstance(class, typ, id) => fail!("{} Error: The instance {} {} was not found as required by {} when unifying {}\nand\n{}", location, class, typ, id, *lhs, *rhs)
+        }
+    }
 }
 
-fn unify_(env : &mut TypeEnvironment, subs : &mut Substitution, lhs : &mut Type, rhs : &mut Type) {
+enum TypeError {
+    UnifyFail,
+    RecursiveUnification,
+    WrongArity,
+    MissingInstance(~str, TypeOperator, TypeVariable)
+}
+
+fn unify_(env : &mut TypeEnvironment, subs : &mut Substitution, lhs : &mut Type, rhs : &mut Type) -> Option<TypeError> {
     let unified = match (& &lhs.typ, & &rhs.typ) {
         (& &TypeVariable(ref lid), & &TypeVariable(ref rid)) => {
             if lid != rid {
@@ -850,8 +867,7 @@ fn unify_(env : &mut TypeEnvironment, subs : &mut Substitution, lhs : &mut Type,
         }
         (& &TypeOperator(ref l), & &TypeOperator(ref r)) => {
             if l.name != r.name || lhs.types.len() != rhs.types.len() {
-                let (location, l, r) = type_error::cond.raise(());
-                fail!("{} Error: Could not unify types {}\nand\n{}", location, l, r)
+                return Some(UnifyFail);
             }
             for i in range(0, lhs.types.len()) {
                 unify_(env, subs, &mut lhs.types[i], &mut rhs.types[i]);
@@ -864,8 +880,7 @@ fn unify_(env : &mut TypeEnvironment, subs : &mut Substitution, lhs : &mut Type,
         }
         (& &TypeVariable(ref lid), & &TypeOperator(ref op)) => {
             if (occurs(lid, rhs)) {
-                let (location, l, r) = type_error::cond.raise(());
-                fail!("{} Error: Recursive unification between {}\nand\n{}", location, l, r);
+                return Some(RecursiveUnification);
             }
             let mut t = (*rhs).clone();
             if lhs.types.len() == 0 {
@@ -874,8 +889,7 @@ fn unify_(env : &mut TypeEnvironment, subs : &mut Substitution, lhs : &mut Type,
             }
             else {
                 if lhs.types.len() != rhs.types.len() {
-                let (location, l, r) = type_error::cond.raise(());
-                    fail!("{} Error: Types do not have the same arity.\n{}\nand\n{}", location, l, r);
+                    return Some(WrongArity);
                 }
                 let mut x = Type::new_op(op.name.clone(), ~[]);
                 replace(&mut env.constraints, &mut x, subs);
@@ -900,8 +914,7 @@ fn unify_(env : &mut TypeEnvironment, subs : &mut Substitution, lhs : &mut Type,
                                 continue;
                             }
                             else {
-                                let (location, l, r) = type_error::cond.raise(());
-                                fail!("{} Error: The instance {} {} was not found as required by {} when unifying {}\nand\n{}", location, *c, *op, *lid, l, r);
+                                return Some(MissingInstance(c.clone(), op.clone(), lid.clone()));
                             }
                         }
                     }
@@ -913,9 +926,11 @@ fn unify_(env : &mut TypeEnvironment, subs : &mut Substitution, lhs : &mut Type,
         _ => false
     };
     if !unified {
-        return unify_(env, subs, rhs, lhs);
+        unify_(env, subs, rhs, lhs)
     }
-
+    else {
+        None
+    }
 }
 
 ///Creates a graph containing a vertex for each binding and edges for each 
@@ -1312,8 +1327,7 @@ main = fmap add2 (Just 3)".chars());
 #[test]
 fn typecheck_prelude() {
     let path = &Path::new("Prelude.hs");
-    let s  = File::open(path).read_to_end();
-    let contents : &str = from_utf8(s);
+    let contents = File::open(path).read_to_str().unwrap();
     let mut parser = Parser::new(contents.chars());
     let mut module = parser.module();
     let mut env = TypeEnvironment::new();
@@ -1330,8 +1344,7 @@ fn typecheck_import() {
    
     let prelude = {
         let path = &Path::new("Prelude.hs");
-        let s  = File::open(path).read_to_end();
-        let contents : &str = from_utf8(s);
+        let contents = File::open(path).read_to_str().unwrap();
         let mut parser = Parser::new(contents.chars()); 
         let mut module = parser.module();
         let mut env = TypeEnvironment::new();

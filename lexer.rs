@@ -1,9 +1,7 @@
-extern mod extra;
 use std::fmt;
-use extra::container::Deque;
-use extra::ringbuf::RingBuf;
+use collections::{Deque, RingBuf};
 use std::iter::Peekable;
-#[deriving(Clone, Eq, ToStr)]
+#[deriving(Clone, Eq, Show)]
 pub enum TokenEnum {
 	EOF,
 	NAME,
@@ -36,11 +34,11 @@ pub enum TokenEnum {
 	DATA
 }
 
-#[deriving(Clone, Eq, ToStr)]
+#[deriving(Clone, Eq)]
 pub struct Location {
-    column : int,
-    row : int,
-    absolute : int
+    pub column : int,
+    pub row : int,
+    pub absolute : int
 }
 
 impl Location {
@@ -50,8 +48,8 @@ impl Location {
 }
 
 pub struct Located<T> {
-    location: Location,
-    node: T
+    pub location: Location,
+    pub node: T
 }
 
 impl <T: Eq> Eq for Located<T> {
@@ -61,17 +59,17 @@ impl <T: Eq> Eq for Located<T> {
 }
     
 
-impl fmt::Default for Location {
-    fn fmt(loc: &Location, f: &mut fmt::Formatter) {
-        write!(f.buf, "{}:{}", loc.row, loc.column)
+impl fmt::Show for Location {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f.buf, "{}:{}", self.row, self.column)
     }
 }
 
-#[deriving(Clone)]
+#[deriving(Clone, Show)]
 pub struct Token {
-    token : TokenEnum,
-    value : ~str,
-    location : Location
+    pub token : TokenEnum,
+    pub value : ~str,
+    pub location : Location
 }
 impl Token {
     fn eof() -> Token {
@@ -118,13 +116,13 @@ fn is_operator(first_char : char) -> bool {
 }
 
 pub struct Lexer<Stream> {
-    priv input : Peekable<char, Stream>,
-    priv location : Location,
-    priv previousLocation : Location,
-    priv unprocessedTokens : ~[Token],
-    priv tokens : extra::ringbuf::RingBuf<Token>,
-    priv indentLevels : ~[int],
-    priv offset : uint
+    input : Peekable<char, Stream>,
+    location : Location,
+    previousLocation : Location,
+    unprocessedTokens : ~[Token],
+    tokens : RingBuf<Token>,
+    indentLevels : ~[int],
+    offset : uint
 }
 
 
@@ -137,7 +135,7 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
             location : start,
             previousLocation : start,
             unprocessedTokens : ~[],
-            tokens : extra::ringbuf::RingBuf::with_capacity(20),
+            tokens : RingBuf::with_capacity(20),
             indentLevels : ~[],
             offset : 0}
     }
@@ -224,12 +222,12 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
     }
 
     fn scan_digits(&mut self) -> ~str {
-        let mut result = ~"";
+        let mut result = StrBuf::new();
         loop {
             match self.peek() {
                 Some(x) => {
                     if !x.is_digit() {
-                        return result;
+                        break;
                     }
                     self.read_char();
                     result.push_char(x)
@@ -237,26 +235,27 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
                 None => break
             }
         }
-        result
+        result.into_owned()
     }
 
     fn scan_number(&mut self, c : char, location : Location) -> Token {
-        let mut number = c.to_str() + self.scan_digits();
+        let mut number = StrBuf::from_char(1, c);
+        number.push_str(self.scan_digits());
         let mut token = NUMBER;
         match self.peek() {
             Some('.') => {
                 self.input.next();
                 token = FLOAT;
                 number.push_char('.');
-                number = number.append(self.scan_digits());
+                number.push_str(self.scan_digits());
             }
             _ => ()
         }
-        Token { token : token, value : number, location : location }
+        Token { token : token, value : number.into_owned(), location : location }
     }
 
     fn scan_identifier(&mut self, c: char, startLocation: Location) -> Token {
-        let mut result = c.to_str();
+        let mut result = StrBuf::from_char(1, c);
         loop {
             match self.peek() {
                 Some(ch) => {
@@ -270,9 +269,9 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
             }
         }
         return Token {
-            token : name_or_keyword(result),
+            token : name_or_keyword(result.as_slice()),
             location : startLocation,
-            value : result};
+            value : result.into_owned()};
     }
  
     fn new_token<'a>(&'a mut self, parseError : |&Token| -> bool) -> &'a Token {
@@ -364,7 +363,7 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
                 }
                 RBRACE => {
                     if (self.indentLevels.len() > 0 && self.indentLevels[self.indentLevels.len() - 1] == 0) {
-                        self.tokens.push_back(self.unprocessedTokens.pop());
+                        self.tokens.push_back(self.unprocessedTokens.pop().unwrap());
                         self.indentLevels.pop();
                         return;
                     }
@@ -373,7 +372,7 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
                     }
                 }
                 LBRACE => {
-                    self.tokens.push_back(self.unprocessedTokens.pop());
+                    self.tokens.push_back(self.unprocessedTokens.pop().unwrap());
                     self.indentLevels.push(0);
                     return;
                 }
@@ -391,7 +390,7 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
                     return;
                 }
             }
-            self.tokens.push_back(self.unprocessedTokens.pop());
+            self.tokens.push_back(self.unprocessedTokens.pop().unwrap());
             return;
         }
         else {
@@ -429,7 +428,7 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
         //ie if its an operator then more operators will follow
         if (is_operator(c))
         {
-            let mut result = c.to_str();
+            let mut result = StrBuf::from_char(1, c);
             loop {
                 match self.peek() {
                     Some(ch) => {
@@ -442,13 +441,13 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
                     None => { break; }
                 }
             }
-            let tok = match result {
-                ~"="  => EQUALSSIGN,
-                ~"->" => ARROW,
-                ~"::" => TYPEDECL,
+            let tok = match result.as_slice() {
+                "="  => EQUALSSIGN,
+                "->" => ARROW,
+                "::" => TYPEDECL,
                 _    => OPERATOR
             };
-            return Token { token : tok, value : result, location : startLocation };
+            return Token { token : tok, value : result.into_owned(), location : startLocation };
         }
         else if (c.is_digit())
         {
@@ -474,10 +473,10 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
             return token;
         }
         else if c == '"' {
-            let mut string = ~"";
+            let mut string = StrBuf::new();
             loop {
                 match self.read_char() {
-                    Some('"') => return Token { token: STRING, location: startLocation, value: string },
+                    Some('"') => return Token { token: STRING, location: startLocation, value: string.into_owned() },
                     Some(x) => string.push_char(x),
                     None => fail!("Unexpected EOF")
                 }

@@ -1,7 +1,7 @@
-use std::vec;
+use std::slice;
 use std::cmp::min;
 
-#[deriving(Eq)]
+#[deriving(Eq, Show)]
 pub struct VertexIndex(uint);
 #[deriving(Eq)]
 pub struct EdgeIndex(uint);
@@ -14,7 +14,7 @@ impl EdgeIndex {
 }
 
 struct Vertex<T> {
-    value: T,
+    pub value: T,
     edges: ~[EdgeIndex]
 }
 struct Edge<T> {
@@ -23,8 +23,8 @@ struct Edge<T> {
 }
 
 pub struct Graph<T> {
-    priv edges: ~[Edge<T>],
-    priv vertices: ~[Vertex<T>]
+    edges: ~[Edge<T>],
+    vertices: ~[Vertex<T>]
 }
 
 impl <T> Graph<T> {
@@ -59,8 +59,8 @@ impl <T> Graph<T> {
 pub fn strongly_connected_components<T>(graph: &Graph<T>) -> ~[~[VertexIndex]] {
     
     let mut tarjan = TarjanComponents { graph: graph, index: 1, stack: ~[], connections: ~[],
-        valid: vec::from_fn(graph.len(), |_| 0),
-        lowlink: vec::from_fn(graph.len(), |_| 0)};
+        valid: slice::from_fn(graph.len(), |_| 0),
+        lowlink: slice::from_fn(graph.len(), |_| 0)};
     
 
     for vert in range(0, graph.len()) {
@@ -103,7 +103,7 @@ impl <'a, T> TarjanComponents<'a, T> {
             let mut connected = ~[];
             loop {
                 
-                let w = self.stack.pop();
+                let w = self.stack.pop().unwrap();
                 connected.push(w);
                 if w == v {
                     break

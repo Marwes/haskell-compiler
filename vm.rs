@@ -2,8 +2,7 @@ use std::fmt;
 use std::rc::Rc;
 use std::path::Path;
 use std::io::File;
-use std::str::from_utf8;
-use std::vec::from_fn;
+use std::slice::from_fn;
 use typecheck::TypeEnvironment;
 use compiler::*;
 use parser::Parser;    
@@ -29,23 +28,17 @@ impl <'a> Node<'a> {
         Node { node: Rc::new(n) }
     }
     fn borrow<'b>(&'b self) -> &'b Node_<'a> {
-        self.node.borrow()
+        &*self.node
     }
 }
-impl <'a> fmt::Default for Node<'a> {
-    fn fmt(node: &Node<'a>, f: &mut fmt::Formatter) {
-        write!(f.buf, "{}", *node.borrow())
+impl <'a> fmt::Show for Node<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f.buf, "{}", *self.borrow())
     }
 }
-impl <'a, 'b> fmt::Default for &'b Node_<'a> {
-    fn fmt(node: & &Node_<'a>, f: &mut fmt::Formatter) {
-        write!(f.buf, "{}", **node)
-    }
-}
-
-impl <'a> fmt::Default for Node_<'a> {
-    fn fmt(node: &Node_<'a>, f: &mut fmt::Formatter) {
-        match node {
+impl <'a> fmt::Show for Node_<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
             &Application(ref func, ref arg) => write!(f.buf, "({} {})", *func, *arg),
             &Int(i) => write!(f.buf, "{}", i),
             &Float(i) => write!(f.buf, "{}", i),
@@ -64,7 +57,7 @@ impl <'a> fmt::Default for Node_<'a> {
                                     break;
                                 }
                                 match cons[0].borrow() {
-                                    &Char(c) => write!(f.buf, "{}", c),
+                                    &Char(c) =>  { write!(f.buf, "{}", c); },
                                     _ => break
                                 }
                                 match cons[1].borrow() {
@@ -72,7 +65,7 @@ impl <'a> fmt::Default for Node_<'a> {
                                     _ => break
                                 }
                             }
-                            write!(f.buf, "\"");
+                            write!(f.buf, "\"")
                         }
                         _ => {
                             //Print a normal constructor
@@ -80,7 +73,7 @@ impl <'a> fmt::Default for Node_<'a> {
                             for arg in args.iter() {
                                 write!(f.buf, " {}",arg.borrow());
                             }
-                            write!(f.buf, "\\}");
+                            write!(f.buf, "\\}")
                         }
                     }
                 }
@@ -90,7 +83,7 @@ impl <'a> fmt::Default for Node_<'a> {
                     for arg in args.iter() {
                         write!(f.buf, " {}",arg.borrow());
                     }
-                    write!(f.buf, "\\}");
+                    write!(f.buf, "\\}")
                 }
             }
             &Dictionary(ref dict) => write!(f.buf, "{:?}", dict)
@@ -174,14 +167,14 @@ impl <'a> VM<'a> {
                 &DoubleGT => primitive_float(stack, |l, r| { if l > r { Constructor(0, ~[]) } else { Constructor(1, ~[]) } }),
                 &DoubleGE => primitive_float(stack, |l, r| { if l >= r { Constructor(0, ~[]) } else { Constructor(1, ~[]) } }),
                 &IntToDouble => {
-                    let top = stack.pop();
+                    let top = stack.pop().unwrap();
                     stack.push(match top.borrow() {
                         &Int(i) => Node::new(Float(i as f64)),
                         _ => fail!("Excpected Int in Int -> Double cast")
                     });
                 }
                 &DoubleToInt => {
-                    let top = stack.pop();
+                    let top = stack.pop().unwrap();
                     stack.push(match top.borrow() {
                         &Float(f) => Node::new(Int(f as int)),
                         _ => fail!("Excpected Double in Double -> Int cast")
@@ -205,16 +198,16 @@ impl <'a> VM<'a> {
                 }
                 &Mkap => {
                     assert!(stack.len() >= 2);
-                    let func = stack.pop();
-                    let arg = stack.pop();
+                    let func = stack.pop().unwrap();
+                    let arg = stack.pop().unwrap();
                     debug!("Mkap {} {}", func.borrow(), arg.borrow());
                     stack.push(Node::new(Application(func, arg)));
                 }
                 &Eval => {
                     static unwindCode : &'static [Instruction] = &[Unwind];
-                    let mut newStack = ~[stack.pop()];
+                    let mut newStack = ~[stack.pop().unwrap()];
                     self.execute(&mut newStack, unwindCode, assembly_id);
-                    stack.push(newStack.pop());
+                    stack.push(newStack.pop().unwrap());
                 }
                 &Pop(num) => {
                     for _ in range(0, num) {
@@ -264,7 +257,7 @@ impl <'a> VM<'a> {
                                 for _ in range(0, comb.arity + 1) {
                                     stack.pop();
                                 }
-                                stack.push(newStack.pop());
+                                stack.push(newStack.pop().unwrap());
                                 i -= 1;
                             }
                         }
@@ -276,15 +269,14 @@ impl <'a> VM<'a> {
                     }
                 }
                 &Slide(size) => {
-                    let top = stack.pop();
+                    let top = stack.pop().unwrap();
                     for _ in range(0, size) {
                         stack.pop();
                     }
                     stack.push(top);
                 }
                 &Split(_) => {
-                    let x = stack.pop();
-                    match x.borrow() {
+                    match stack.pop().unwrap().borrow() {
                         &Constructor(_, ref fields) => {
                             for field in fields.iter() {
                                 stack.push(field.clone());
@@ -294,7 +286,7 @@ impl <'a> VM<'a> {
                     }
                 }
                 &Pack(tag, arity) => {
-                    let args = from_fn(arity as uint, |_| stack.pop());
+                    let args = from_fn(arity as uint, |_| stack.pop().unwrap());
                     stack.push(Node::new(Constructor(tag, args)));
                 }
                 &JumpFalse(address) => {
@@ -352,16 +344,16 @@ impl <'a> VM<'a> {
 }
 
 fn primitive_int(stack: &mut ~[Node], f: |int, int| -> Node_) {
-    let l = stack.pop();
-    let r = stack.pop();
+    let l = stack.pop().unwrap();
+    let r = stack.pop().unwrap();
     match (l.borrow(), r.borrow()) {
         (&Int(lhs), &Int(rhs)) => stack.push(Node::new(f(lhs, rhs))),
         (lhs, rhs) => fail!("Expected fully evaluted numbers in primitive instruction\n LHS: {}\nRHS: {} ", lhs, rhs)
     }
 }
 fn primitive_float(stack: &mut ~[Node], f: |f64, f64| -> Node_) {
-    let l = stack.pop();
-    let r = stack.pop();
+    let l = stack.pop().unwrap();
+    let r = stack.pop().unwrap();
     match (l.borrow(), r.borrow()) {
         (&Float(lhs), &Float(rhs)) => stack.push(Node::new(f(lhs, rhs))),
         (lhs, rhs) => fail!("Expected fully evaluted numbers in primitive instruction\n LHS: {}\nRHS: {} ", lhs, rhs)
@@ -371,7 +363,7 @@ fn primitive(stack: &mut ~[Node], f: |int, int| -> int) {
     primitive_int(stack, |l, r| Int(f(l, r)))
 }
 
-#[deriving(Eq)]
+#[deriving(Eq, Show)]
 enum VMResult {
     IntResult(int),
     DoubleResult(f64),
@@ -391,8 +383,7 @@ fn compile_iter<T : Iterator<char>>(iterator: T) -> Assembly {
 
 pub fn compile_file(filename: &str) -> Assembly {
     let path = &Path::new(filename);
-    let s  = File::open(path).read_to_end();
-    let contents : &str = from_utf8(s);
+    let contents = File::open(path).read_to_str().unwrap();
     compile_iter(contents.chars())
 }
 
@@ -436,7 +427,6 @@ mod tests {
 
 use std::path::Path;
 use std::io::File;
-use std::str::from_utf8;
 use typecheck::TypeEnvironment;
 use compiler::Compiler;
 use parser::Parser;
@@ -571,8 +561,7 @@ fn test_run_prelude() {
     let mut type_env = TypeEnvironment::new();
     let prelude = {
         let path = &Path::new("Prelude.hs");
-        let s  = File::open(path).read_to_end();
-        let contents : &str = from_utf8(s);
+        let contents = File::open(path).read_to_str().unwrap();
         let mut parser = Parser::new(contents.chars()); 
         let mut module = parser.module();
         type_env.typecheck_module(&mut module);
@@ -611,8 +600,7 @@ main = foldl add 0 [1,2,3,4]";
 fn instance_super_class() {
     let prelude = {
         let path = &Path::new("Prelude.hs");
-        let s  = File::open(path).read_to_end();
-        let contents : &str = from_utf8(s);
+        let contents = File::open(path).read_to_str().unwrap();
         let mut parser = Parser::new(contents.chars()); 
         let mut module = parser.module();
         let mut type_env = TypeEnvironment::new();
