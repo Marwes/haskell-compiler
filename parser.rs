@@ -1,5 +1,4 @@
 use std::mem::{swap};
-use std::default::Default;
 use collections::HashMap;
 use lexer::{Lexer, Token, TokenEnum,
     EOF, NAME, OPERATOR, NUMBER, FLOAT, STRING, CHAR, LPARENS, RPARENS, LBRACKET, RBRACKET, LBRACE, RBRACE, COMMA, EQUALSSIGN, SEMICOLON, MODULE, CLASS, INSTANCE, WHERE, LET, IN, CASE, OF, ARROW, TYPEDECL, DATA
@@ -812,7 +811,7 @@ fn sepBy1_func<T>(&mut self, f : |&mut Parser<Iter>| -> T, sep : |&Token| -> boo
     let mut result = ~[];
     loop {
         result.push(f(self));
-        if (!sep(self.lexer.next_())) {
+        if !sep(self.lexer.next_()) {
             break;
         }
     }
@@ -991,7 +990,6 @@ use parser::*;
 use module::*;
 use typecheck::{function_type, identifier, apply, number, rational, lambda, let_, case};
 use std::io::File;
-use std::str::from_utf8;
 
 
 #[test]
@@ -1072,12 +1070,12 @@ fn parse_data() {
 r"data Bool = True | False".chars());
     let data = parser.dataDefinition();
 
-    let Bool = Type::new_op(~"Bool", ~[]);
-    let True = Constructor { name: ~"True", tag:0, arity:0, typ: Bool.clone() };
-    let False = Constructor { name: ~"False", tag:1, arity:0, typ: Bool.clone() };
-    assert_eq!(data.typ, Bool);
-    assert_eq!(data.constructors[0], True);
-    assert_eq!(data.constructors[1], False);
+    let b = Type::new_op(~"Bool", ~[]);
+    let t = Constructor { name: ~"True", tag:0, arity:0, typ: b.clone() };
+    let f = Constructor { name: ~"False", tag:1, arity:0, typ: b.clone() };
+    assert_eq!(data.typ, b);
+    assert_eq!(data.constructors[0], t);
+    assert_eq!(data.constructors[1], f);
 }
 
 #[test]
@@ -1086,12 +1084,12 @@ fn parse_data_2() {
 r"data List a = Cons a (List a) | Nil".chars());
     let data = parser.dataDefinition();
 
-    let List = Type::new_op(~"List", ~[Type::new_var(0)]);
-    let Cons = Constructor { name: ~"Cons", tag:0, arity:2, typ: function_type(&Type::new_var(0), &function_type(&List, &List))};
-    let Nil = Constructor { name: ~"Nil", tag:1, arity:0, typ: List.clone() };
-    assert_eq!(data.typ, List);
-    assert_eq!(data.constructors[0], Cons);
-    assert_eq!(data.constructors[1], Nil);
+    let list = Type::new_op(~"List", ~[Type::new_var(0)]);
+    let cons = Constructor { name: ~"Cons", tag:0, arity:2, typ: function_type(&Type::new_var(0), &function_type(&list, &list))};
+    let nil = Constructor { name: ~"Nil", tag:1, arity:0, typ: list.clone() };
+    assert_eq!(data.typ, list);
+    assert_eq!(data.constructors[0], cons);
+    assert_eq!(data.constructors[1], nil);
 }
 
 #[test]

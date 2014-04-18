@@ -1,5 +1,4 @@
 use module::*;
-use Scope;
 use typecheck::{Types, TypeEnvironment, function_type};
 use scoped_map::ScopedMap;
 use std::iter::range_step;
@@ -789,7 +788,6 @@ use typecheck::TypeEnvironment;
 use parser::Parser;
 use typecheck::{identifier, apply, number};
 use std::io::File;
-use std::str::from_utf8;
 
 #[test]
 fn add() {

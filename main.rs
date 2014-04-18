@@ -4,12 +4,16 @@
 #[phase(syntax, link)]
 extern crate log;
 extern crate collections;
-use collections::HashMap;
+
+#[cfg(not(test))]
 use std::io::File;
-use std::str::from_utf8;
+#[cfg(not(test))]
 use parser::Parser;
+#[cfg(not(test))]
 use compiler::Compiler;
+#[cfg(not(test))]
 use typecheck::{Types, TypeEnvironment};
+#[cfg(not(test))]
 use vm::{VM, execute_main, compile_file};
 
 mod compiler;
@@ -20,36 +24,6 @@ mod module;
 mod graph;
 mod vm;
 mod scoped_map;
-
-struct Scope<'a, T> {
-    variables: HashMap<~str, T>,
-    parent: Option<&'a Scope<'a, T>>
-}
-
-impl <'a, T> Scope<'a, T> {
-    
-    fn new() -> Scope<T> {
-        Scope { variables : HashMap::new(), parent : None }
-    }
-
-    fn insert(&mut self, identifier : ~str, value : T) {
-        self.variables.insert(identifier, value);
-    }
-
-    fn find(&'a self, identifier : &str) -> Option<&'a T> {
-       match self.variables.find_equiv(&identifier) {
-            Some(var) => Some(var),
-            None => match self.parent {
-                Some(parent) => parent.find(identifier),
-                None => None
-            }
-       }
-    }
-
-    fn child(&'a self) -> Scope<'a, T> {
-        Scope { variables : HashMap::new(), parent : Some(self) }
-    }
-}
 
 #[cfg(not(test))]
 fn main() {

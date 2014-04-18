@@ -9,6 +9,7 @@ pub struct ScopedMap<K, V> {
     scopes: Vec<Option<K>>
 }
 
+#[allow(dead_code)]
 impl <K: TotalEq + Hash + Clone, V> ScopedMap<K, V> {
     pub fn new() -> ScopedMap<K, V> {
         ScopedMap { map: HashMap::new(), scopes: Vec::new() }
@@ -28,6 +29,7 @@ impl <K: TotalEq + Hash + Clone, V> ScopedMap<K, V> {
             }
         }
     }
+
     pub fn remove(&mut self, k: &K) -> bool {
         match self.map.find_mut(k).map(|x| x.pop()) {
             Some(..) => {
@@ -63,6 +65,7 @@ impl <K: TotalEq + Hash, V> Container for ScopedMap<K, V> {
 }
 
 
+#[cfg(test)]
 mod tests {
     use scoped_map::ScopedMap;
     #[test]

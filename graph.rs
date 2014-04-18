@@ -94,7 +94,7 @@ impl <'a, T> TarjanComponents<'a, T> {
                 self.strong_connect(edge.to);
                 self.lowlink[v.get()] = min(self.lowlink[v.get()], self.lowlink[edge.to.get()]); 
             }
-            else if (self.stack.iter().any(|x| *x == edge.to)) {
+            else if self.stack.iter().any(|x| *x == edge.to) {
                 self.lowlink[v.get()] = min(self.lowlink[v.get()], self.valid[edge.to.get()]);
             }
         }

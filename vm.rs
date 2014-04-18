@@ -50,14 +50,14 @@ impl <'a> fmt::Show for Node_<'a> {
                 if cons.len() > 0 {
                     match cons[0].borrow() {
                         &Char(_) => {
-                            write!(f.buf, "\"");
+                            try!(write!(f.buf, "\""));
                             //Print a string
                             loop {
                                 if cons.len() < 2 {
                                     break;
                                 }
                                 match cons[0].borrow() {
-                                    &Char(c) =>  { write!(f.buf, "{}", c); },
+                                    &Char(c) =>  { try!(write!(f.buf, "{}", c)); },
                                     _ => break
                                 }
                                 match cons[1].borrow() {
@@ -69,9 +69,9 @@ impl <'a> fmt::Show for Node_<'a> {
                         }
                         _ => {
                             //Print a normal constructor
-                            write!(f.buf, "\\{{}", *tag);
+                            try!(write!(f.buf, "\\{{}", *tag));
                             for arg in args.iter() {
-                                write!(f.buf, " {}",arg.borrow());
+                                try!(write!(f.buf, " {}",arg.borrow()));
                             }
                             write!(f.buf, "\\}")
                         }
@@ -79,9 +79,9 @@ impl <'a> fmt::Show for Node_<'a> {
                 }
                 else {
                     //Print a normal constructor
-                    write!(f.buf, "\\{{}", *tag);
+                    try!(write!(f.buf, "\\{{}", *tag));
                     for arg in args.iter() {
-                        write!(f.buf, " {}",arg.borrow());
+                        try!(write!(f.buf, " {}",arg.borrow()));
                     }
                     write!(f.buf, "\\}")
                 }

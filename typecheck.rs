@@ -1,5 +1,4 @@
 use collections::HashMap;
-use std::default::Default;
 use module::{TypeVariable, TypeOperator, Identifier, Number, Rational, String, Char, Apply, Lambda, Let, Case, TypedExpr, Module, Constraint, Pattern, IdentifierPattern, NumberPattern, ConstructorPattern, Binding, Class, TypeDeclaration};
 use graph::{Graph, VertexIndex, strongly_connected_components};
 use std::iter::range_step;
@@ -998,7 +997,6 @@ use typecheck::*;
 
 use parser::Parser;
 use std::io::File;
-use std::str::from_utf8;
 
 #[test]
 fn application() {

@@ -119,53 +119,55 @@ impl fmt::Show for Type {
                 &TypeOperator(ref op) => "->" == op.name,
                 _ => false
             };
-            if is_list {
-                write!(f.buf, "[");
-            }
-            else if is_func {
+            if is_func {
                 let is_lhs_func = match &typ.types[0].typ {
                     &TypeOperator(ref op) => "->" == op.name,
                     _ => false
                 };
                 if is_lhs_func {
-                    return write!(f.buf, "({}) -> {}", typ.types[0], typ.types[1]);
+                    write!(f.buf, "({}) -> {}", typ.types[0], typ.types[1])
                 }
                 else {
-                    return write!(f.buf, "{} -> {}", typ.types[0], typ.types[1]);
+                    write!(f.buf, "{} -> {}", typ.types[0], typ.types[1])
                 }
             }
             else {
-                write!(f.buf, "({}", typ.typ);
-            }
-            for t in typ.types.iter() {
-                write!(f.buf, " {}", *t);
-            }
-            if is_list {
-                write!(f.buf, "]")
-            }
-            else {
-                write!(f.buf, ")")
+                if is_list {
+                    try!(write!(f.buf, "["));
+                }
+                else {
+                    try!(write!(f.buf, "({}", typ.typ));
+                }
+                for t in typ.types.iter() {
+                    try!(write!(f.buf, " {}", *t));
+                }
+                if is_list {
+                    write!(f.buf, "]")
+                }
+                else {
+                    write!(f.buf, ")")
+                }
             }
         }
     }
 }
 impl fmt::Show for Constraint {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f.buf, "{}", self.class);
+        try!(write!(f.buf, "{}", self.class));
         for var in self.variables.iter() {
-            write!(f.buf, " {}", *var);
+            try!(write!(f.buf, " {}", *var));
         }
         Ok(())
     }
 }
 impl fmt::Show for TypeDeclaration {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f.buf, "{} :: ", self.name);
+        try!(write!(f.buf, "{} :: ", self.name));
         for constraint in self.context.iter() {
-            write!(f.buf, "{} ", *constraint);
+            try!(write!(f.buf, "{} ", *constraint));
         }
         if self.context.len() > 0 {
-            write!(f.buf, "=> ");
+            try!(write!(f.buf, "=> "));
         }
         write!(f.buf, "{}", self.typ)
     }
