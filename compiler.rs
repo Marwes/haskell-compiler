@@ -296,32 +296,30 @@ impl <'a> Compiler<'a> {
         assembly
     }
     fn compileBinding(&mut self, bind : &Binding) -> SuperCombinator {
-        debug!("Compiling binding {} {:?} {}", bind.name, bind.typeDecl.context, bind.typeDecl.typ);
+        debug!("Compiling binding {}", bind.typeDecl);
         let mut comb = SuperCombinator::new();
         comb.assembly_id = self.assemblies.len();
         comb.type_declaration = bind.typeDecl.clone();
         let dict_arg = if self.type_env.find_constraints(&comb.type_declaration.typ).len() > 0 { 1 } else { 0 };
         comb.arity = bind.arity + dict_arg;
-        if dict_arg == 1 {
-            self.newStackVar(~"$dict");
-        }
-        match &bind.expression.expr {
-            &Lambda(_, _) => {
-                self.compile(&bind.expression, &mut comb.instructions, true);
-                comb.instructions.push(Update(0));
-                comb.instructions.push(Pop(comb.arity));
-                comb.instructions.push(Unwind);
+        self.scope(|this| {
+            if dict_arg == 1 {
+                this.newStackVar(~"$dict");
             }
-            _ => {
-                self.compile(&bind.expression, &mut comb.instructions, true);
-                comb.instructions.push(Update(0));
-                comb.instructions.push(Unwind);
+            match &bind.expression.expr {
+                &Lambda(_, _) => {
+                    this.compile(&bind.expression, &mut comb.instructions, true);
+                    comb.instructions.push(Update(0));
+                    comb.instructions.push(Pop(comb.arity));
+                    comb.instructions.push(Unwind);
+                }
+                _ => {
+                    this.compile(&bind.expression, &mut comb.instructions, true);
+                    comb.instructions.push(Update(0));
+                    comb.instructions.push(Unwind);
+                }
             }
-        }
-        if dict_arg == 1 {
-            self.stackSize -= 1;
-            self.variables.remove(&~"dict");
-        }
+        });
         comb
     }
     pub fn compileExpression(&mut self, expr: &TypedExpr) -> ~[Instruction] {

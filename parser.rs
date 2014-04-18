@@ -473,11 +473,28 @@ fn binding(&mut self) -> Binding {
     {
         let arity = arguments.len();
 		let lambda = makeLambda(arguments, self.expression_());
-		Binding { name : name, typeDecl : TypeDeclaration { context : ~[], typ : Type::new_var(-1), name : ~"" }, expression : lambda, arity : arity }
+		Binding { name : name.clone(),
+            typeDecl : TypeDeclaration {
+                context : ~[],
+                typ : Type::new_var(-1),
+                name : name
+            },
+            expression : lambda,
+            arity : arity
+        }
 	}
 	else
 	{
-		Binding { name : name, typeDecl : TypeDeclaration { context : ~[], typ : Type::new_var(-1), name : ~"" }, expression : self.expression_(), arity : 0 }
+		Binding {
+            name : name.clone(),
+            typeDecl : TypeDeclaration {
+                context : ~[],
+                typ : Type::new_var(-1),
+                name : name
+            },
+            expression : self.expression_(),
+            arity : 0
+        }
 	}
 }
 
@@ -1010,8 +1027,9 @@ let
     test = add 3 2
 in test - 2".chars());
     let expr = parser.expression_();
-    let bind = Binding { arity: 0, name: ~"test", typeDecl:Default::default(),
+    let mut bind = Binding { arity: 0, name: ~"test", typeDecl:Default::default(),
         expression: apply(apply(identifier(~"add"), number(3)), number(2)) };
+    bind.typeDecl.name = ~"test";
     assert_eq!(expr, let_(~[bind], apply(apply(identifier(~"-"), identifier(~"test")), number(2))));
 }
 

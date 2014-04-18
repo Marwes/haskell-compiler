@@ -160,6 +160,7 @@ impl fmt::Show for Constraint {
 }
 impl fmt::Show for TypeDeclaration {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f.buf, "{} :: ", self.name);
         for constraint in self.context.iter() {
             write!(f.buf, "{} ", *constraint);
         }
