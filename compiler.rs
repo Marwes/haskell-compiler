@@ -317,8 +317,12 @@ impl <'a> Compiler<'a> {
                 comb.instructions.push(Update(0));
                 comb.instructions.push(Unwind);
             }
-       }
-       comb
+        }
+        if dict_arg == 1 {
+            self.stackSize -= 1;
+            self.variables.remove(&~"dict");
+        }
+        comb
     }
     pub fn compileExpression(&mut self, expr: &TypedExpr) -> ~[Instruction] {
         let mut instructions = ~[];
@@ -386,6 +390,14 @@ impl <'a> Compiler<'a> {
         self.stackSize += 1;
     }
 
+    fn scope(&mut self, f: |&mut Compiler|) {
+        self.variables.enter_scope();
+        let stackSize = self.stackSize;
+        f(self);
+        self.stackSize = stackSize;
+        self.variables.exit_scope();
+    }
+
     ///Compile an expression by appending instructions to the instructions array
     fn compile(&mut self, expr : &TypedExpr, instructions : &mut ~[Instruction], strict: bool) {
         debug!("Compiling {}", expr.expr);
@@ -394,7 +406,7 @@ impl <'a> Compiler<'a> {
                 //When compiling a variable which has constraints a new instance dictionary
                 //might be created which is returned here and added to the assembly
                 let maybe_new_dict = match self.find(*name) {
-                    None => fail!("Undefined variable " + *name),
+                    None => fail!("{} Error: Undefined variable {}", expr.location, *name),
                     Some(var) => {
                         match var {
                             StackVariable(index) => { instructions.push(Push(index)); None }
@@ -476,8 +488,10 @@ impl <'a> Compiler<'a> {
                 }
             }
             &Lambda(ref varname, ref body) => {
-                self.newStackVar(varname.clone());
-                self.compile(*body, instructions, false);
+                self.scope(|this| {
+                    this.newStackVar(varname.clone());
+                    this.compile(*body, instructions, false);
+                });
             }
             &Let(ref bindings, ref body) => {
                 for bind in bindings.iter() {
@@ -495,31 +509,31 @@ impl <'a> Compiler<'a> {
                 for i in range(0, alternatives.len()) {
                     let alt = &alternatives[i];
 
-                    self.variables.enter_scope();
-                    let pattern_start = instructions.len() as int;
-                    let mut branches = ~[];
-                    let stack_increase = self.compile_pattern(&alt.pattern.node, &mut branches, instructions, self.stackSize - 1, 0);
-                    let pattern_end = instructions.len() as int;
+                    self.scope(|this| {
+                        let pattern_start = instructions.len() as int;
+                        let mut branches = ~[];
+                        let stack_increase = this.compile_pattern(&alt.pattern.node, &mut branches, instructions, this.stackSize - 1, 0);
+                        let pattern_end = instructions.len() as int;
 
-                    self.compile(&alt.expression, instructions, strict);
-                    instructions.push(Slide(stack_increase));
-                    instructions.push(Jump(0));//Should jump to the end
-                    end_branches.push(instructions.len() - 1);
+                        this.compile(&alt.expression, instructions, strict);
+                        instructions.push(Slide(stack_increase));
+                        instructions.push(Jump(0));//Should jump to the end
+                        end_branches.push(instructions.len() - 1);
 
-                    //Here the current branch ends and the next one starts
-                    //We need to set all the jump instructions to their actual location
-                    //and append Slide instructions to bring the stack back to normal if the match fails
-                    for j in range_step(pattern_end, pattern_start, -1) {
-                        match instructions[j as uint] {
-                            Jump(_) => {
-                                instructions[j as uint] = Jump(instructions.len());
+                        //Here the current branch ends and the next one starts
+                        //We need to set all the jump instructions to their actual location
+                        //and append Slide instructions to bring the stack back to normal if the match fails
+                        for j in range_step(pattern_end, pattern_start, -1) {
+                            match instructions[j as uint] {
+                                Jump(_) => {
+                                    instructions[j as uint] = Jump(instructions.len());
+                                }
+                                JumpFalse(_) => instructions[j as uint] = JumpFalse(instructions.len()),
+                                Split(size) => instructions.push(Pop(size)),
+                                _ => ()
                             }
-                            JumpFalse(_) => instructions[j as uint] = JumpFalse(instructions.len()),
-                            Split(size) => instructions.push(Pop(size)),
-                            _ => ()
                         }
-                    }
-                    self.variables.exit_scope();
+                    });
                 }
                 self.stackSize -= 1;
                 for branch in end_branches.iter() {

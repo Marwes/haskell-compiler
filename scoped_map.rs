@@ -28,6 +28,21 @@ impl <K: TotalEq + Hash + Clone, V> ScopedMap<K, V> {
             }
         }
     }
+    pub fn remove(&mut self, k: &K) -> bool {
+        match self.map.find_mut(k).map(|x| x.pop()) {
+            Some(..) => {
+                let mut i = self.scopes.len() as int - 1;
+                while i >= 0 {
+                    if self.scopes.get(i as uint).as_ref().map_or(false, |x| x == k) {
+                        self.scopes.remove(i as uint);
+                    }
+                    i -= 1;
+                }
+                true
+            }
+            None => false
+        }
+    }
 
     pub fn find_equiv<'a, Q: Hash + Equiv<K>>(&'a self, k: &Q) -> Option<&'a V> {
         self.map.find_equiv(k).and_then(|x| x.last())
