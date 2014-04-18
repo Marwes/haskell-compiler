@@ -1354,18 +1354,42 @@ test x y = primIntAdd (test x) y".chars());
     assert_eq!(module.bindings[0].typeDecl.typ, module.typeDeclarations[0].typ);
 }
 
-#[test]
-#[should_fail]
-fn type_declaration_error() {
-    
-    let mut parser = Parser::new(
-r"
-test :: [Int] -> Int -> Int
-test x y = primIntAdd x y".chars());
+fn do_typecheck(input: &str) {
+    let mut parser = Parser::new(input.chars());
     let mut module = parser.module();
-
     let mut env = TypeEnvironment::new();
     env.typecheck_module(&mut module);
 }
+
+#[test]
+#[should_fail]
+fn wrong_type() {
+    do_typecheck(r"test = primIntAdd 2 []");
+}
+
+#[test]
+#[should_fail]
+fn argument_count_error() {
+    do_typecheck("test = primIntAdd 2 2 3");
+}
+#[test]
+#[should_fail]
+fn case_alternative_error() {
+    do_typecheck(
+r"
+test = case [primIntAdd 1 2] of
+    [] -> primIntAdd 0 1
+    2 -> 1");
+}
+
+#[test]
+#[should_fail]
+fn type_declaration_error() {
+    do_typecheck(
+r"
+test :: [Int] -> Int -> Int
+test x y = primIntAdd x y");
+}
+
 
 }
