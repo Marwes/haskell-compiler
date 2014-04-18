@@ -1,6 +1,7 @@
 use module::*;
 use Scope;
 use typecheck::{Types, TypeEnvironment, function_type};
+use scoped_map::ScopedMap;
 use std::iter::range_step;
 
 #[deriving(Eq, Show)]
@@ -230,17 +231,22 @@ pub struct Compiler<'a> {
     pub stackSize : uint,
     ///Array of all the assemblies which can be used to lookup functions in
     pub assemblies: ~[&'a Assembly],
+    module: Option<&'a Module>,
+    variables: ScopedMap<~str, Var<'a>>
 }
 
 
 impl <'a> Compiler<'a> {
     pub fn new(type_env: &'a TypeEnvironment) -> Compiler<'a> {
         Compiler { type_env: type_env, instance_dictionaries: ~[],
-            stackSize : 0, assemblies: ~[] }
+            stackSize : 0, assemblies: ~[],
+            module: None,
+            variables: ScopedMap::new()
+        }
     }
     
-    pub fn compileModule(&mut self, module : &Module) -> Assembly {
-
+    pub fn compileModule(&mut self, module : &'a Module) -> Assembly {
+        self.module = Some(module);
         let mut assembly = Assembly {
             superCombinators: ~[],
             instance_dictionaries: ~[],
@@ -270,13 +276,13 @@ impl <'a> Compiler<'a> {
         //Compile all bindings
         for instance in module.instances.iter() {
             for bind in instance.bindings.iter() {
-                let mut sc = self.compileBinding(bind, Some(module));
+                let mut sc = self.compileBinding(bind);
                 sc.name = bind.name.clone();
                 assembly.superCombinators.push(sc);
             }
         }
         for bind in module.bindings.iter() {
-            let mut sc = self.compileBinding(bind, Some(module));
+            let mut sc = self.compileBinding(bind);
             let constraints = self.type_env.find_constraints(&bind.expression.typ);
             sc.constraints = constraints;
             sc.name = bind.name.clone();
@@ -286,28 +292,28 @@ impl <'a> Compiler<'a> {
         for &(_, ref dict) in self.instance_dictionaries.iter() {
             assembly.instance_dictionaries.push(dict.clone());
         }
+        self.module = None;
         assembly
     }
-    fn compileBinding(&mut self, bind : &Binding, module: Option<&Module>) -> SuperCombinator {
+    fn compileBinding(&mut self, bind : &Binding) -> SuperCombinator {
         debug!("Compiling binding {} {:?} {}", bind.name, bind.typeDecl.context, bind.typeDecl.typ);
         let mut comb = SuperCombinator::new();
         comb.assembly_id = self.assemblies.len();
         comb.type_declaration = bind.typeDecl.clone();
         let dict_arg = if self.type_env.find_constraints(&comb.type_declaration.typ).len() > 0 { 1 } else { 0 };
         comb.arity = bind.arity + dict_arg;
-        let mut stack = CompilerNode { compiler: self, stack: Scope::new(), constraints: bind.typeDecl.context, module: module };
         if dict_arg == 1 {
-            stack.newStackVar(~"$dict");
+            self.newStackVar(~"$dict");
         }
         match &bind.expression.expr {
             &Lambda(_, _) => {
-                stack.compile(&bind.expression, &mut comb.instructions, true);
+                self.compile(&bind.expression, &mut comb.instructions, true);
                 comb.instructions.push(Update(0));
                 comb.instructions.push(Pop(comb.arity));
                 comb.instructions.push(Unwind);
             }
             _ => {
-                stack.compile(&bind.expression, &mut comb.instructions, true);
+                self.compile(&bind.expression, &mut comb.instructions, true);
                 comb.instructions.push(Update(0));
                 comb.instructions.push(Unwind);
             }
@@ -315,41 +321,21 @@ impl <'a> Compiler<'a> {
        comb
     }
     pub fn compileExpression(&mut self, expr: &TypedExpr) -> ~[Instruction] {
-        let mut stack = CompilerNode { compiler: self, stack: Scope::new(), constraints: &'static [], module: None };
         let mut instructions = ~[];
-        stack.compile(expr, &mut instructions, false);
+        self.compile(expr, &mut instructions, false);
         instructions
     }
 
-}
-
-struct CompilerNode<'a, 'b, 'c> {
-    stack: Scope<'a, Var<'a>>,
-    compiler: &'a mut Compiler<'b>,
-    constraints: &'a [Constraint],
-    module: Option<&'c Module>
-}
-
-//CompilerNode are only used locally and the destructor are just to reduce the stack size
-//so this should be safe(?)
-#[unsafe_destructor]
-impl <'a, 'b, 'c> Drop for CompilerNode<'a, 'b, 'c> {
-    fn drop(&mut self) {
-        self.compiler.stackSize -= self.stack.variables.len();
-    }
-}
-
-impl <'a, 'b, 'c> CompilerNode<'a, 'b, 'c> {
     
     ///Find a variable by walking through the stack followed by all globals
     fn find<'r>(&'r self, identifier : &str) -> Option<Var<'r>> {
-        self.stack.find(identifier).map(|x| x.clone())
+        self.variables.find_equiv(&identifier).map(|x| x.clone())
         .or_else(|| {
             match self.module {
                 Some(ref module) => {
-                    let n = self.compiler.assemblies.len();
+                    let n = self.assemblies.len();
                     let offset = if n > 0 {
-                        let assembly = self.compiler.assemblies[n-1];
+                        let assembly = self.assemblies[n-1];
                         assembly.offset + assembly.superCombinators.len()
                     }
                     else {
@@ -361,7 +347,7 @@ impl <'a, 'b, 'c> CompilerNode<'a, 'b, 'c> {
             }
         })
         .or_else(|| {
-            for assembly in self.compiler.assemblies.iter() {
+            for assembly in self.assemblies.iter() {
                 match assembly.find_global(identifier) {
                     Some(var) => return Some(var),
                     None => ()
@@ -385,7 +371,7 @@ impl <'a, 'b, 'c> CompilerNode<'a, 'b, 'c> {
     fn find_class<'r>(&'r self, name: &str) -> Option<&'r Class> {
         self.module.and_then(|m| m.find_class(name))
             .or_else(|| {
-            for types in self.compiler.assemblies.iter() {
+            for types in self.assemblies.iter() {
                 match types.find_class(name) {
                     Some(result) => return Some(result),
                     None => ()
@@ -396,21 +382,12 @@ impl <'a, 'b, 'c> CompilerNode<'a, 'b, 'c> {
     }
 
     fn newStackVar(&mut self, identifier : ~str) {
-        self.stack.insert(identifier, StackVariable(self.compiler.stackSize));
-        self.compiler.stackSize += 1;
-    }
-    fn removeStackVar(&mut self, identifier : &~str) {
-        self.stack.variables.remove(identifier);
-        self.compiler.stackSize -= 1;
-    }
-
-    ///Create a new scope for variables, such as a lambda or let bindings
-    fn child(&'a mut self) -> CompilerNode<'a, 'b, 'c> {
-        CompilerNode { compiler: self.compiler, stack : self.stack.child(), constraints: self.constraints, module: self.module }
+        self.variables.insert(identifier, StackVariable(self.stackSize));
+        self.stackSize += 1;
     }
 
     ///Compile an expression by appending instructions to the instructions array
-    fn compile(&'a mut self, expr : &TypedExpr, instructions : &mut ~[Instruction], strict: bool) {
+    fn compile(&mut self, expr : &TypedExpr, instructions : &mut ~[Instruction], strict: bool) {
         debug!("Compiling {}", expr.expr);
         match &expr.expr {
             &Identifier(ref name) => {
@@ -434,7 +411,7 @@ impl <'a, 'b, 'c> CompilerNode<'a, 'b, 'c> {
                     }
                 };
                 match maybe_new_dict {
-                    Some(dict) => self.compiler.instance_dictionaries.push(dict),
+                    Some(dict) => self.instance_dictionaries.push(dict),
                     None => ()
                 }
                 if strict {
@@ -512,18 +489,19 @@ impl <'a, 'b, 'c> CompilerNode<'a, 'b, 'c> {
             }
             &Case(ref body, ref alternatives) => {
                 self.compile(*body, instructions, true);
-                self.newStackVar(~"");//Dummy variable for the case expression
+                self.stackSize += 1;//Dummy variable for the case expression
                 //Storage for all the jumps that should go to the end of the case expression
                 let mut end_branches = ~[];
                 for i in range(0, alternatives.len()) {
                     let alt = &alternatives[i];
-                    let mut childScope = self.child();
+
+                    self.variables.enter_scope();
                     let pattern_start = instructions.len() as int;
                     let mut branches = ~[];
-                    let stack_increase = childScope.compile_pattern(&alt.pattern.node, &mut branches, instructions, self.compiler.stackSize - 1, 0);
+                    let stack_increase = self.compile_pattern(&alt.pattern.node, &mut branches, instructions, self.stackSize - 1, 0);
                     let pattern_end = instructions.len() as int;
 
-                    childScope.compile(&alt.expression, instructions, strict);
+                    self.compile(&alt.expression, instructions, strict);
                     instructions.push(Slide(stack_increase));
                     instructions.push(Jump(0));//Should jump to the end
                     end_branches.push(instructions.len() - 1);
@@ -541,8 +519,9 @@ impl <'a, 'b, 'c> CompilerNode<'a, 'b, 'c> {
                             _ => ()
                         }
                     }
+                    self.variables.exit_scope();
                 }
-                self.removeStackVar(&~"");
+                self.stackSize -= 1;
                 for branch in end_branches.iter() {
                     instructions[*branch] = Jump(instructions.len());
                 }
@@ -563,9 +542,9 @@ impl <'a, 'b, 'c> CompilerNode<'a, 'b, 'c> {
                 let instance_fn_name = "#" + typename + name;
                 match self.find(instance_fn_name) {
                     Some(GlobalVariable(index)) => {
-                        let function_type = self.compiler.type_env.find(instance_fn_name)
+                        let function_type = self.type_env.find(instance_fn_name)
                             .expect(format!("Error {} does not exist in the type environment", instance_fn_name));
-                        let constraints = self.compiler.type_env.find_constraints(function_type);
+                        let constraints = self.type_env.find_constraints(function_type);
                         if constraints.len() > 0 {
                             let dict = self.compile_with_constraints(instance_fn_name, actual_type, constraints, instructions);
                             instructions.push(PushGlobal(index));
@@ -581,7 +560,7 @@ impl <'a, 'b, 'c> CompilerNode<'a, 'b, 'c> {
                 None
             }
             None => {
-                let constraints = self.compiler.type_env.find_constraints(actual_type);
+                let constraints = self.type_env.find_constraints(actual_type);
                 self.compile_with_constraints(name, actual_type, constraints, instructions)
             }
         }
@@ -601,7 +580,7 @@ impl <'a, 'b, 'c> CompilerNode<'a, 'b, 'c> {
             _ => {
                 //get dictionary index
                 //push dictionary
-                let dictionary_key = self.compiler.type_env.find_specialized_instances(name, typ);
+                let dictionary_key = self.type_env.find_specialized_instances(name, typ);
                 let (index, dict) = self.find_dictionary_index(dictionary_key);
                 instructions.push(PushDictionary(index));
                 dict
@@ -632,9 +611,9 @@ impl <'a, 'b, 'c> CompilerNode<'a, 'b, 'c> {
     ///Find the index of the instance dictionary for the constraints and types in 'constraints'
     ///Returns the index and possibly a new dictionary which needs to be added to the assemblies dictionaries
     fn find_dictionary_index(&self, constraints: &[(~str, Type)]) -> (uint, Option<(~[(~str, Type)], ~[uint])>) {
-        let dict_len = self.compiler.instance_dictionaries.len();
+        let dict_len = self.instance_dictionaries.len();
         for ii in range(0, dict_len) {
-            if self.compiler.instance_dictionaries[ii].ref0().equiv(&constraints) {
+            if self.instance_dictionaries[ii].ref0().equiv(&constraints) {
                 return (ii, None);
             }
         }
@@ -664,7 +643,7 @@ impl <'a, 'b, 'c> CompilerNode<'a, 'b, 'c> {
     }
 
     ///Attempt to compile a binary primitive, returning true if it succeded
-    fn primitive(&'a mut self, func: &TypedExpr, arg: &TypedExpr, instructions: &mut ~[Instruction]) -> bool {
+    fn primitive(&mut self, func: &TypedExpr, arg: &TypedExpr, instructions: &mut ~[Instruction]) -> bool {
         match &func.expr {
             &Apply(ref prim_func, ref arg2) => {
                 match &prim_func.expr {
@@ -804,7 +783,7 @@ use std::str::from_utf8;
 fn add() {
     let mut e = apply(apply(identifier(~"primIntAdd"), number(1)), number(2));
     let mut type_env = TypeEnvironment::new();
-    type_env.typecheck(&mut e);
+    type_env.typecheck_expr(&mut e);
     let mut comp = Compiler::new(&type_env);
     let instr = comp.compileExpression(&e);
 
@@ -862,7 +841,7 @@ r"primIntAdd 1 0 : []";
     let mut parser = Parser::new(file.chars());
     let mut expr = parser.expression_();
     let mut type_env = TypeEnvironment::new();
-    type_env.typecheck(&mut expr);
+    type_env.typecheck_expr(&mut expr);
     let mut comp = Compiler::new(&type_env);
     let instructions = comp.compileExpression(&expr);
 
@@ -892,7 +871,7 @@ r"case [primIntAdd 1 0] of
     let mut parser = Parser::new(file.chars());
     let mut expr = parser.expression_();
     let mut type_env = TypeEnvironment::new();
-    type_env.typecheck(&mut expr);
+    type_env.typecheck_expr(&mut expr);
     let mut comp = Compiler::new(&type_env);
     let instructions = comp.compileExpression(&expr);
 
@@ -910,7 +889,7 @@ r"case [primIntAdd 1 0] of
     let mut parser = Parser::new(file.chars());
     let mut expr = parser.expression_();
     let mut type_env = TypeEnvironment::new();
-    type_env.typecheck(&mut expr);
+    type_env.typecheck_expr(&mut expr);
     let mut comp = Compiler::new(&type_env);
     let instructions = comp.compileExpression(&expr);
 

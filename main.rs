@@ -1,6 +1,6 @@
 #![crate_id = "vm#0.0"]
 #![crate_type = "bin"]
-#![feature(globs, phase)]
+#![feature(globs, phase, default_type_params)]
 #[phase(syntax, link)]
 extern crate log;
 extern crate collections;
@@ -19,6 +19,7 @@ mod parser;
 mod module;
 mod graph;
 mod vm;
+mod scoped_map;
 
 struct Scope<'a, T> {
     variables: HashMap<~str, T>,
@@ -50,6 +51,7 @@ impl <'a, T> Scope<'a, T> {
     }
 }
 
+#[cfg(not(test))]
 fn main() {
     let args = std::os::args();
     if args.len() == 2 {
@@ -61,7 +63,7 @@ fn main() {
 
             let mut type_env = TypeEnvironment::new();
             type_env.add_types(&prelude as &Types);
-            type_env.typecheck(&mut expr);
+            type_env.typecheck_expr(&mut expr);
             
             let mut compiler = Compiler::new(&type_env);
             compiler.assemblies.push(&prelude);
