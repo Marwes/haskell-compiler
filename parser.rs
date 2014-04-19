@@ -150,7 +150,8 @@ fn class(&mut self) -> Class {
 	self.lexer.backtrack();
 	self.requireNext(RBRACE);
 
-	Class { name : classname, variable: TypeVariable { id: typeVariable }, declarations : declarations }
+    //TODO infer kind from class?
+	Class { name : classname, variable: TypeVariable { id: typeVariable, kind: unknown_kind }, declarations : declarations }
 }
 
 fn instance(&mut self) -> Instance {
@@ -159,7 +160,7 @@ fn instance(&mut self) -> Instance {
     let mut mapping = HashMap::new();
     let (constraints, instance_type) = self.constrained_type(&mut mapping);
     match instance_type {
-        Type { typ: TypeOperator(TypeOperator { name: classname}), types: types } => {
+        Type { typ: TypeOperator(TypeOperator { name: classname, ..}), types: types } => {
             self.requireNext(WHERE);
             self.requireNext(LBRACE);
 
@@ -675,13 +676,14 @@ fn dataDefinition(&mut self) -> DataDefinition {
         typ : Type::new_var(0),
         parameters : HashMap::new()
     };
-    definition.typ.typ = TypeOperator(TypeOperator { name: dataName });
+    definition.typ.typ = TypeOperator(TypeOperator { name: dataName, kind: star_kind });
 	while (self.lexer.next_().token == NAME)
 	{
         //TODO use new variables isntead of only  -1
 		definition.typ.types.push(Type::new_var(-1));
 		definition.parameters.insert(self.lexer.current().value.clone(), -1);
 	}
+    *definition.typ.typ.mut_kind() = Kind::new(definition.typ.types.len() as int);
 
 	let equalToken = self.lexer.current().token;
 	if (equalToken != EQUALSSIGN)

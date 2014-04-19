@@ -1,5 +1,5 @@
 use collections::HashMap;
-use module::{TypeVariable, TypeOperator, Identifier, Number, Rational, String, Char, Apply, Lambda, Let, Case, TypedExpr, Module, Constraint, Pattern, IdentifierPattern, NumberPattern, ConstructorPattern, Binding, Class, TypeDeclaration};
+use module::{Kind, TypeVariable, TypeOperator, Identifier, Number, Rational, String, Char, Apply, Lambda, Let, Case, TypedExpr, Module, Constraint, Pattern, IdentifierPattern, NumberPattern, ConstructorPattern, Binding, Class, TypeDeclaration, unknown_kind, star_kind};
 use graph::{Graph, VertexIndex, strongly_connected_components};
 use std::iter::range_step;
 
@@ -83,7 +83,7 @@ pub struct TypeEnvironment<'a> {
     types : ~[Type],
     constraints: HashMap<TypeVariable, ~[~str]>,
     instances: ~[(~str, Type)],
-    variableIndex : TypeVariable,
+    variableIndex : int,
     non_generic: ~[Type]
 }
 
@@ -159,7 +159,7 @@ fn add_primitives(globals: &mut ScopedMap<~str, Type>, typename: &str) {
 }
 
 fn create_tuple_type(size: uint) -> (~str, Type) {
-    let var_list = ::std::slice::from_fn(size, |i| Type::new_var(i as int));
+    let var_list = ::std::slice::from_fn(size, |i| Type::new_var_kind(i as int, star_kind));
     let mut ident = StrBuf::from_char(1, '(');
     for _ in range(1, size) {
         ident.push_char(',');
@@ -182,7 +182,7 @@ impl <'a> TypeEnvironment<'a> {
         add_primitives(&mut globals, &"Double");
         globals.insert(~"primIntToDouble", function_type(&Type::new_op(~"Int", ~[]), &Type::new_op(~"Double", ~[])));
         globals.insert(~"primDoubleToInt", function_type(&Type::new_op(~"Double", ~[]), &Type::new_op(~"Int", ~[])));
-        let var = Type::new_var(-10);
+        let var = Type::new_var_kind(-10, star_kind);
         let list = Type::new_op(~"[]", ~[var.clone()]);
         globals.insert(~"[]", list.clone());
         globals.insert(~":", function_type(&var, &function_type(&list, &list)));
@@ -196,7 +196,7 @@ impl <'a> TypeEnvironment<'a> {
             types : ~[] ,
             constraints: HashMap::new(),
             instances: ~[],
-            variableIndex : TypeVariable { id : 0 },
+            variableIndex : 0 ,
             non_generic: ~[]
         }
     }
@@ -210,7 +210,7 @@ impl <'a> TypeEnvironment<'a> {
                 self.constraints.find_or_insert(var, ~[]).push(constraint.class.clone());
             }
         });
-        self.variableIndex.id = max_id;
+        self.variableIndex = max_id;
         self.assemblies.push(types);
     }
 
@@ -450,8 +450,8 @@ impl <'a> TypeEnvironment<'a> {
     }
 
     fn new_var(&mut self) -> Type {
-        self.variableIndex.id += 1;
-        Type::new_var(self.variableIndex.id)
+        self.variableIndex += 1;
+        Type::new_var(self.variableIndex)
     }
 
     fn typecheck(&mut self, expr : &mut TypedExpr, subs: &mut Substitution) {
@@ -462,9 +462,17 @@ impl <'a> TypeEnvironment<'a> {
         match &mut expr.expr {
             &Number(_) => {
                 self.constraints.insert(expr.typ.var().clone(), ~[~"Num"]);
+                match &mut expr.typ.typ {
+                    &TypeVariable(ref mut v) => v.kind = star_kind,
+                    _ => ()
+                }
             }
             &Rational(_) => {
                 self.constraints.insert(expr.typ.var().clone(), ~[~"Fractional"]);
+                match &mut expr.typ.typ {
+                    &TypeVariable(ref mut v) => v.kind = star_kind,
+                    _ => ()
+                }
             }
             &String(_) => {
                 expr.typ = Type::new_op(~"[]", ~[Type::new_op(~"Char", ~[])]);
@@ -815,12 +823,41 @@ fn unify_(env : &mut TypeEnvironment, subs : &mut Substitution, lhs : &mut Type,
     let unified = match (& &lhs.typ, & &rhs.typ) {
         (& &TypeVariable(ref lid), & &TypeVariable(ref rid)) => {
             if lid != rid {
-                let mut t = Type::new_var(rid.id);
-                replace(&mut env.constraints, &mut t, subs);
-                subs.subs.insert(lid.clone(), t);
-                match env.constraints.pop(lid) {
-                    Some(constraints) => { subs.constraints.insert(lid.clone(), constraints); }
-                    None => ()
+                if lhs.typ.kind() == &unknown_kind {
+                    let mut t = rhs.clone();
+                    replace(&mut env.constraints, &mut t, subs);
+                    subs.subs.insert(lid.clone(), t);
+                    match env.constraints.pop(lid) {
+                        Some(constraints) => { subs.constraints.insert(lid.clone(), constraints); }
+                        None => ()
+                    }
+                }
+                else if rhs.typ.kind() == &unknown_kind {
+                    let mut t = lhs.clone();
+                    replace(&mut env.constraints, &mut t, subs);
+                    subs.subs.insert(rid.clone(), t);
+                    match env.constraints.pop(rid) {
+                        Some(constraints) => { subs.constraints.insert(rid.clone(), constraints); }
+                        None => ()
+                    }
+                }
+                else {
+                    if lhs.types.len() != rhs.types.len() {
+                        return Some(WrongArity);
+                    }
+                    let mut x = Type::new_var(lid.id.clone());
+                    replace(&mut env.constraints, &mut x, subs);
+                    subs.subs.insert(lid.clone(), x);
+                    for i in range(0, lhs.types.len()) {
+                        match unify_(env, subs, &mut lhs.types[i], &mut rhs.types[i]) {
+                            Some(e) => return Some(e),
+                            None => ()
+                        }
+                        if i < lhs.types.len() - 1 {
+                            replace(&mut env.constraints, &mut lhs.types[i+1], subs);
+                            replace(&mut env.constraints, &mut rhs.types[i+1], subs);
+                        }
+                    }
                 }
             }
             true
@@ -846,7 +883,7 @@ fn unify_(env : &mut TypeEnvironment, subs : &mut Substitution, lhs : &mut Type,
                 return Some(RecursiveUnification);
             }
             let mut t = (*rhs).clone();
-            if lhs.types.len() == 0 {
+            if lhs.typ.kind() == &unknown_kind {
                 replace(&mut env.constraints, &mut t, subs);
                 subs.subs.insert(lid.clone(), t);
             }
@@ -897,6 +934,33 @@ fn unify_(env : &mut TypeEnvironment, subs : &mut Substitution, lhs : &mut Type,
     else {
         None
     }
+}
+
+fn unify_arguments(env: &mut TypeEnvironment, subs: &mut Substitution, lid: &TypeVariable, lhs: &mut Type, rhs: &mut Type) -> Option<TypeError> {
+    let mut t = (*rhs).clone();
+    if lhs.types.len() == 0 {
+        replace(&mut env.constraints, &mut t, subs);
+        subs.subs.insert(lid.clone(), t);
+    }
+    else {
+        if lhs.types.len() != rhs.types.len() {
+            return Some(WrongArity);
+        }
+        let mut x = Type { typ: rhs.typ.clone(), types: ~[] };
+        replace(&mut env.constraints, &mut x, subs);
+        subs.subs.insert(lid.clone(), x);
+        for i in range(0, lhs.types.len()) {
+            match unify_(env, subs, &mut lhs.types[i], &mut rhs.types[i]) {
+                Some(e) => return Some(e),
+                None => ()
+            }
+            if i < lhs.types.len() - 1 {
+                replace(&mut env.constraints, &mut lhs.types[i+1], subs);
+                replace(&mut env.constraints, &mut rhs.types[i+1], subs);
+            }
+        }
+    }
+    None
 }
 
 ///Creates a graph containing a vertex for each binding and edges for each 
@@ -958,7 +1022,7 @@ fn each_type_(typ: &Type, var_fn: &|&TypeVariable|, op_fn: &|&TypeOperator|) {
 }
 
 pub fn function_type(func : &Type, arg : &Type) -> Type {
-    Type::new_op(~"->", ~[func.clone(), arg.clone()])
+    Type::new_op_kind(~"->", ~[func.clone(), arg.clone()], Kind::new(2))
 }
 
 #[cfg(test)]
@@ -1287,6 +1351,24 @@ main = fmap add2 (Just 3)".chars());
 
     let main = &module.bindings[1];
     assert_eq!(main.expression.typ, Type::new_op(~"Maybe", ~[Type::new_op(~"Int", ~[])]));
+}
+#[should_fail]
+#[test]
+fn typecheck_functor_error() {
+
+    do_typecheck(
+r"data Maybe a = Just a | Nothing
+
+class Functor f where
+    fmap :: (a -> b) -> f a -> f b
+
+instance Functor Maybe where
+    fmap f x = case x of
+        Just y -> Just (f y)
+        Nothing -> Nothing
+
+add2 x = primIntAdd x 2
+main = fmap add2 3");
 }
 
 #[test]

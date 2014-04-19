@@ -57,11 +57,13 @@ pub struct TypeDeclaration {
 
 #[deriving(Clone, Default, Eq, TotalEq, Hash)]
 pub struct TypeOperator {
-    pub name : ~str
+    pub name : ~str,
+    pub kind : Kind
 }
 #[deriving(Clone, Eq, TotalEq, Default, Hash)]
 pub struct TypeVariable {
-    pub id : int
+    pub id : int,
+    pub kind : Kind
 }
 #[deriving(Clone, Eq, TotalEq, Hash)]
 pub enum Type_ {
@@ -69,11 +71,38 @@ pub enum Type_ {
     TypeOperator(TypeOperator)
 }
 
+impl Type_ {
+    pub fn kind<'a>(&'a self) -> &'a Kind {
+        match self {
+            &TypeVariable(ref v) => &v.kind,
+            &TypeOperator(ref v) => &v.kind
+        }
+    }
+    pub fn mut_kind<'a>(&'a mut self) -> &'a mut Kind {
+        match self {
+            &TypeVariable(ref mut v) => &mut v.kind,
+            &TypeOperator(ref mut v) => &mut v.kind
+        }
+    }
+}
+
 #[deriving(Clone, Eq, TotalEq, Hash)]
 pub struct Constraint {
     pub class : ~str,
     pub variables : ~[TypeVariable]
 }
+
+#[deriving(Clone, Eq, TotalEq, Default, Hash)]
+pub struct Kind {
+    value: int
+}
+impl Kind {
+    pub fn new(v: int) -> Kind {
+        Kind { value: v }
+    }
+}
+pub static unknown_kind : Kind = Kind { value: 0 };
+pub static star_kind : Kind = Kind { value: 0 };
 
 #[deriving(Clone, TotalEq, Hash)]
 pub struct Type {
@@ -199,10 +228,16 @@ impl Eq for Type {
 
 impl Type {
     pub fn new_var(id : int) -> Type {
-        Type { typ: TypeVariable(TypeVariable { id : id }), types: ~[] }
+        Type { typ: TypeVariable(TypeVariable { id : id, kind: unknown_kind }), types: ~[] }
+    }
+    pub fn new_var_kind(id : int, kind: Kind) -> Type {
+        Type { typ: TypeVariable(TypeVariable { id : id, kind: kind }), types: ~[] }
     }
     pub fn new_op(name : ~str, types : ~[Type]) -> Type {
-        Type { typ: TypeOperator(TypeOperator { name : name }), types : types }
+        Type { typ: TypeOperator(TypeOperator { name : name, kind: star_kind }), types : types }
+    }
+    pub fn new_op_kind(name : ~str, types : ~[Type], kind: Kind) -> Type {
+        Type { typ: TypeOperator(TypeOperator { name : name, kind: kind }), types : types }
     }
 
     pub fn var<'a>(&'a self) -> &'a TypeVariable {
