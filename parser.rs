@@ -151,7 +151,7 @@ fn class(&mut self) -> Class {
 	self.requireNext(RBRACE);
 
     //TODO infer kind from class?
-	Class { name : classname, variable: TypeVariable { id: typeVariable, kind: unknown_kind }, declarations : declarations }
+	Class { name : classname, variable: TypeVariable { id: typeVariable, kind: unknown_kind.clone() }, declarations : declarations }
 }
 
 fn instance(&mut self) -> Instance {
@@ -160,19 +160,25 @@ fn instance(&mut self) -> Instance {
     let mut mapping = HashMap::new();
     let (constraints, instance_type) = self.constrained_type(&mut mapping);
     match instance_type {
-        Type { typ: TypeOperator(TypeOperator { name: classname, ..}), types: types } => {
+        TypeApplication(op, arg) => {
+            let classname = match *op {
+                TypeOperator(TypeOperator { name: classname, ..}) => classname,
+                _ => fail!("Expected type operator")
+            };
             self.requireNext(WHERE);
             self.requireNext(LBRACE);
 
             let mut bindings = self.sepBy1(|this| this.binding(), SEMICOLON);
-            for bind in bindings.mut_iter()
             {
-                bind.name = encodeBindingIdentifier(types[0].op().name, bind.name);
+                let inner_type = extract_applied_type(arg);
+                for bind in bindings.mut_iter() {
+                    bind.name = encodeBindingIdentifier(inner_type.op().name, bind.name);
+                }
             }
 
             self.lexer.backtrack();
             self.requireNext(RBRACE);
-            Instance { typ : types[0], classname : classname, bindings : bindings, constraints: constraints }
+            Instance { typ : *arg, classname : classname, bindings : bindings, constraints: constraints }
         }
         _ => fail!("TypeVariable in instance")
     }
@@ -625,16 +631,40 @@ fn typeDeclaration_(&mut self, typeVariableMapping : &mut HashMap<~str, int>) ->
 
 fn constrained_type(&mut self, typeVariableMapping : &mut HashMap<~str, int>) -> (~[Constraint], Type) {
     let mut variableIndex = 0;
-	let typeOrContext = self.parse_type_(&mut variableIndex, typeVariableMapping);
-    {
-        let maybeContextArrow = self.lexer.next_().token;
-        if (maybeContextArrow == OPERATOR && self.lexer.current().value == ~"=>") {
-            let t = self.parse_type_(&mut variableIndex, typeVariableMapping);
-            return (createTypeConstraints(typeOrContext), t);
+    let mut maybeConstraints = if self.lexer.next_().token == LPARENS {
+        let t = self.sepBy1(|this| this.parse_type_(&mut variableIndex, typeVariableMapping), COMMA);
+        if self.lexer.current().token != RPARENS {
+            fail!("Expected RPARENS");
         }
+        t
     }
-	self.lexer.backtrack();
-	(~[], typeOrContext)
+    else {
+        self.lexer.backtrack();
+        ~[self.parse_type_(&mut variableIndex, typeVariableMapping)]
+    };
+    let maybeContextArrow = self.lexer.next_().token;
+    //If there is => arrow we proceed to parse the type
+    let typ = if (maybeContextArrow == OPERATOR && self.lexer.current().value == ~"=>") {
+        self.parse_type_(&mut variableIndex, typeVariableMapping)
+    }
+    else if maybeContextArrow == ARROW {
+	    self.lexer.backtrack();
+        let mut args = ~[];
+        swap(&mut args, &mut maybeConstraints);
+        self.parse_return_type(tupleType(args), &mut variableIndex, typeVariableMapping)
+    }
+    else {//If no => was found, translate the constraint list into a type
+	    self.lexer.backtrack();
+        if maybeConstraints.len() == 1 {
+            maybeConstraints.pop().unwrap()
+        }
+        else {
+            let mut args = ~[];
+            swap(&mut args, &mut maybeConstraints);
+            tupleType(args)
+        }
+    };
+	(make_constraints(maybeConstraints), typ)
 }
 
 fn constructorType(&mut self, arity : &mut int, dataDef: &DataDefinition, mapping : &mut HashMap<~str, int>) -> Type
@@ -676,14 +706,14 @@ fn dataDefinition(&mut self) -> DataDefinition {
         typ : Type::new_var(0),
         parameters : HashMap::new()
     };
-    definition.typ.typ = TypeOperator(TypeOperator { name: dataName, kind: star_kind });
-	while (self.lexer.next_().token == NAME)
-	{
+    let mut typ = TypeOperator(TypeOperator { name: dataName, kind: star_kind.clone() });
+	while self.lexer.next_().token == NAME {
         //TODO use new variables isntead of only  -1
-		definition.typ.types.push(Type::new_var(-1));
+		typ = TypeApplication(~typ, ~Type::new_var(-1));
 		definition.parameters.insert(self.lexer.current().value.clone(), -1);
 	}
-    *definition.typ.typ.mut_kind() = Kind::new(definition.typ.types.len() as int);
+    definition.typ = typ;
+    Parser::<Iter>::set_kind(&mut definition.typ, 1);
 
 	let equalToken = self.lexer.current().token;
 	if (equalToken != EQUALSSIGN)
@@ -698,6 +728,17 @@ fn dataDefinition(&mut self) -> DataDefinition {
 	}
 	self.lexer.backtrack();
 	definition
+}
+
+fn set_kind(typ: &mut Type, kind: int) {
+    match typ {
+        &TypeApplication(ref mut lhs, _) => {
+            Parser::<Iter>::set_kind(*lhs, kind + 1)
+        }
+        _ => {
+            *typ.mut_kind() = Kind::new(kind)
+        }
+    }
 }
 
 fn sub_type(&mut self, variableIndex: &mut int, typeVariableMapping: &mut HashMap<~str, int>) -> Option<Type> {
@@ -734,7 +775,7 @@ fn parse_type_(&mut self, variableIndex: &mut int, typeVariableMapping : &mut Ha
 	    LBRACKET =>
 		{
             if self.lexer.next_().token == RBRACKET {
-                let listType = Type::new_op(~"[]", ~[]);
+                let listType = Type::new_op_kind(~"[]", ~[], Kind::new(2));
                 self.parse_return_type(listType, variableIndex, typeVariableMapping)
             }
             else {
@@ -783,9 +824,7 @@ fn parse_type_(&mut self, variableIndex: &mut int, typeVariableMapping : &mut Ha
 			else {
                 let t = typeVariableMapping.find_or_insert(token.value, *variableIndex);
                 *variableIndex += 1;
-				let mut result = Type::new_var(*t);
-                result.types = typeArguments;
-                result
+                apply_type(Type::new_var(*t), typeArguments)
 			};
 			self.parse_return_type(thisType, variableIndex, typeVariableMapping)
 		}
@@ -837,6 +876,17 @@ fn precedence(s : &str) -> int {
         _ => 9
     }
 }
+fn make_constraints(types: ~[Type]) -> ~[Constraint] {
+    types.move_iter().map(|typ| {
+        match typ {
+            TypeApplication(lhs, rhs) => {
+                Constraint { class: lhs.op().name.clone(), variables: ~[rhs.var().clone()] }
+            }
+            _ => fail!("Parse error in constraint, non applied type")
+        }
+    }).collect()
+}
+
 
 
 fn toplevelError(t : &Token) -> bool
@@ -911,6 +961,13 @@ fn newTuple(arguments : ~[TypedExpr]) -> TypedExpr {
 	makeApplication(name, arguments)
 }
 
+fn apply_type(mut typ: Type, args: ~[Type]) -> Type {
+    for arg in args.move_iter() {
+        typ = TypeApplication(~typ, ~arg);
+    }
+    typ
+}
+
 fn letExpressionEndError(t : &Token) -> bool {
 	t.token != IN
 }
@@ -946,32 +1003,20 @@ fn errorIfNotRParens(tok : &Token) -> bool {
 	tok.token != RPARENS
 }
 
-fn createTypeConstraints(context : Type) -> ~[Constraint] {
-	let mut mapping = ~[];
-
-	if (context.op().name.char_at(0) == '(') {
-		for t in context.types.move_iter() {
-            match t {
-                Type { typ: TypeOperator(op), types: types } => {
-		            mapping.push(Constraint { class: op.name, variables: ~[types[0].var().clone()] });
-                }
-                _ => fail!("Expected TypeOperator when creating constraints")
-            }
-		}
-	}
-	else {
-        match context {
-            Type { typ: TypeOperator(op), types: types } => {
-		        mapping.push(Constraint { class: op.name, variables: ~[types[0].var().clone()] });
-            }
-            _ => fail!("Expected TypeOperator when creating constraints")
-        }
-	}
-	mapping
+fn extract_applied_type<'a>(typ: &'a Type) -> &'a Type {
+    match typ {
+        &TypeApplication(ref lhs, _) => extract_applied_type(*lhs),
+        _ => typ
+    }
 }
 
 fn tupleType(types : ~[Type]) -> Type {
-	Type::new_op(tuple_name(types.len()), types)
+    if types.len() == 1 {
+        types[0]
+    }
+    else {
+	    Type::new_op(tuple_name(types.len()), types)
+    }
 }
 
 fn ParseError2<Iter : Iterator<char>>(lexer : &Lexer<Iter>, expected : &[TokenEnum]) -> ~str {

@@ -171,6 +171,13 @@ fn find_global<'a>(module: &'a Module, offset: uint, name: &str) -> Option<Var<'
     None
 }
 
+fn extract_applied_type<'a>(typ: &'a Type) -> &'a Type {
+    match typ {
+        &TypeApplication(ref lhs, _) => extract_applied_type(*lhs),
+        _ => typ
+    }
+}
+
 impl Types for Assembly {
     ///Lookup a type
     fn find_type<'a>(&'a self, name: &str) -> Option<&'a Type> {
@@ -203,9 +210,15 @@ impl Types for Assembly {
     }
     fn find_instance<'a>(&'a self, classname: &str, typ: &Type) -> Option<(&'a [Constraint], &'a Type)> {
         for &(ref constraints, ref op) in self.instances.iter() {
-            if classname == op.op().name && op.types[0].op().name == typ.op().name {
-                let c : &[Constraint] = *constraints;
-                return Some((c, op));
+            match op {
+                &TypeApplication(ref op, ref t) => {
+                    if classname == extract_applied_type(*op).op().name && extract_applied_type(*t).op().name == extract_applied_type(typ).op().name {
+                        let c : &[Constraint] = *constraints;
+                        let o : &Type = *op;
+                        return Some((c, o));
+                    }
+                }
+                _ => ()
             }
         }
         None
@@ -547,6 +560,7 @@ impl <'a> Compiler<'a> {
 
     ///Compile a function which is defined in a class
     fn compile_instance_variable(&self, actual_type: &Type, instructions: &mut ~[Instruction], name: &str, typ: &Type, var: &TypeVariable) -> Option<(~[(~str, Type)], ~[uint])> {
+        println!("Try {} {} {}", var, typ, actual_type);
         match try_find_instance_type(var, typ, actual_type) {
             Some(typename) => {
                 //We should be able to retrieve the instance directly
@@ -622,6 +636,15 @@ impl <'a> Compiler<'a> {
     ///Find the index of the instance dictionary for the constraints and types in 'constraints'
     ///Returns the index and possibly a new dictionary which needs to be added to the assemblies dictionaries
     fn find_dictionary_index(&self, constraints: &[(~str, Type)]) -> (uint, Option<(~[(~str, Type)], ~[uint])>) {
+
+
+        fn extract_applied_type<'a>(typ: &'a Type) -> &'a Type {
+            match typ {
+                &TypeApplication(ref lhs, _) => extract_applied_type(*lhs),
+                _ => typ
+            }
+        }
+
         let dict_len = self.instance_dictionaries.len();
         for ii in range(0, dict_len) {
             if self.instance_dictionaries[ii].ref0().equiv(&constraints) {
@@ -638,7 +661,7 @@ impl <'a> Compiler<'a> {
                 Some(class) => {
                     assert!(class.declarations.len() > 0);
                     for decl in class.declarations.iter() {
-                        let f = "#" + typ.op().name + decl.name;
+                        let f = "#" + extract_applied_type(typ).op().name + decl.name;
                         match self.find(f) {
                             Some(GlobalVariable(index)) => {
                                 function_indexes.push(index as uint);
@@ -756,25 +779,21 @@ impl <'a> Compiler<'a> {
 
 ///Attempts to find the actual type of the for the variable which has a constraint
 fn try_find_instance_type<'a>(class_var: &TypeVariable, class_type: &Type, actual_type: &'a Type) -> Option<&'a str> {
-    match (&class_type.typ, &actual_type.typ) {
-        (&TypeVariable(ref var), &TypeOperator(ref actual_op)) => {
-            if var == class_var {
-                //Found the class variable so return the name of the type
-                let x : &str = actual_op.name;
-                return Some(x)
+    match (class_type, actual_type) {
+        (&TypeVariable(ref var), _) if var == class_var => {
+            //Found the class variable so return the name of the type
+            match extract_applied_type(actual_type) {
+                &TypeOperator(ref op) => { Some(op.name.as_slice()) }
+                _ => None
             }
-            None
         }
         (&TypeOperator(ref class_op), &TypeOperator(ref actual_op)) => {
             assert_eq!(class_op.name, actual_op.name);
-            assert_eq!(class_type.types.len(), actual_type.types.len());
-            for ii in range(0, class_type.types.len()) {
-                let result = try_find_instance_type(class_var, &class_type.types[ii], &actual_type.types[ii]);
-                if result != None {
-                    return result;
-                }
-            }
             None
+        }
+        (&TypeApplication(ref lhs1, ref rhs1), &TypeApplication(ref lhs2, ref rhs2)) => {
+            try_find_instance_type(class_var, *lhs1, *lhs2)
+                .or_else(|| try_find_instance_type(class_var, *rhs1, *rhs2))
         }
         _ => None
     }

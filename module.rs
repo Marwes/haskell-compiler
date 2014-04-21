@@ -65,23 +65,83 @@ pub struct TypeVariable {
     pub id : int,
     pub kind : Kind
 }
-#[deriving(Clone, Eq, TotalEq, Hash)]
-pub enum Type_ {
+#[deriving(Clone, TotalEq, Hash)]
+pub enum Type {
     TypeVariable(TypeVariable),
-    TypeOperator(TypeOperator)
+    TypeOperator(TypeOperator),
+    TypeApplication(~Type, ~Type)
 }
 
-impl Type_ {
+impl Type {
+
+    pub fn new_var(id : int) -> Type {
+        TypeVariable(TypeVariable { id : id, kind: unknown_kind.clone() })
+    }
+    pub fn new_var_kind(id : int, kind: Kind) -> Type {
+        TypeVariable(TypeVariable { id : id, kind: kind })
+    }
+    pub fn new_op(name : ~str, types : ~[Type]) -> Type {
+        let mut result = TypeOperator(TypeOperator { name : name, kind: Kind::new(types.len() as int + 1) });
+        for typ in types.move_iter() {
+            result = TypeApplication(~result, ~typ);
+        }
+        result
+    }
+    pub fn new_op_kind(name : ~str, types : ~[Type], kind: Kind) -> Type {
+        let mut result = TypeOperator(TypeOperator { name : name, kind: kind });
+        for typ in types.move_iter() {
+            result = TypeApplication(~result, ~typ);
+        }
+        result
+    }
+
+    pub fn var<'a>(&'a self) -> &'a TypeVariable {
+        match self {
+            &TypeVariable(ref var) => var,
+            _ => fail!("Tried to unwrap {} as a TypeVariable", self)
+        }
+    }
+    #[allow(dead_code)]
+    pub fn op<'a>(&'a self) -> &'a TypeOperator {
+        match self {
+            &TypeOperator(ref op) => op,
+            _ => fail!("Tried to unwrap {} as a TypeOperator", self)
+        }
+    }
+    #[allow(dead_code)]
+    pub fn appl<'a>(&'a self) -> &'a Type {
+        match self {
+            &TypeApplication(ref lhs, _) => { let l: &Type = *lhs; l }
+            _ => fail!("Error: Tried to unwrap {} as TypeApplication", self)
+        }
+    }
+    #[allow(dead_code)]
+    pub fn appr<'a>(&'a self) -> &'a Type {
+        match self {
+            &TypeApplication(_, ref rhs) => { let r: &Type = *rhs; r }
+            _ => fail!("Error: Tried to unwrap TypeApplication")
+        }
+    }
+
     pub fn kind<'a>(&'a self) -> &'a Kind {
         match self {
             &TypeVariable(ref v) => &v.kind,
-            &TypeOperator(ref v) => &v.kind
+            &TypeOperator(ref v) => &v.kind,
+            &TypeApplication(ref lhs, _) => 
+                match lhs.kind() {
+                    &KindFunction(_, ref k) => {
+                        let kind: &Kind = *k;
+                        kind
+                    }
+                    _ => fail!("Type application must have a kind of KindFunction, {}", self)
+                }
         }
     }
     pub fn mut_kind<'a>(&'a mut self) -> &'a mut Kind {
         match self {
             &TypeVariable(ref mut v) => &mut v.kind,
-            &TypeOperator(ref mut v) => &mut v.kind
+            &TypeOperator(ref mut v) => &mut v.kind,
+            _ => fail!("Typeapplication has no kind")
         }
     }
 }
@@ -92,23 +152,37 @@ pub struct Constraint {
     pub variables : ~[TypeVariable]
 }
 
-#[deriving(Clone, Eq, TotalEq, Default, Hash)]
-pub struct Kind {
-    value: int
+#[deriving(Clone, Eq, TotalEq, Hash)]
+pub enum Kind {
+    KindFunction(~Kind, ~Kind),
+    StarKind
 }
-impl Kind {
-    pub fn new(v: int) -> Kind {
-        Kind { value: v }
+impl fmt::Show for Kind {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            &StarKind => write!(f.buf, "*"),
+            &KindFunction(ref lhs, ref rhs) => write!(f.buf, "({} -> {})", *lhs, *rhs)
+        }
     }
 }
-pub static unknown_kind : Kind = Kind { value: 0 };
-pub static star_kind : Kind = Kind { value: 0 };
 
-#[deriving(Clone, TotalEq, Hash)]
-pub struct Type {
-    pub typ : Type_,
-    pub types : ~[Type]
+impl Kind {
+    pub fn new(v: int) -> Kind {
+        let mut kind = star_kind.clone();
+        for _ in range(1, v) {
+            kind = KindFunction(~StarKind, ~kind);
+        }
+        kind
+    }
 }
+
+impl Default for Kind {
+    fn default() -> Kind {
+        StarKind
+    }
+}
+pub static unknown_kind : Kind = StarKind;
+pub static star_kind : Kind = StarKind;
 
 impl Default for Type {
     fn default() -> Type {
@@ -125,56 +199,66 @@ impl fmt::Show for TypeOperator {
         write!(f.buf, "{}", self.name)
     }
 }
-impl fmt::Show for Type_ {
+
+impl fmt::Show for Type {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             &TypeVariable(ref var) => write!(f.buf, "{}", *var),
-            &TypeOperator(ref op) => write!(f.buf, "{}", *op)
-        }
-    }
-}
-impl fmt::Show for Type {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let typ = self;
-        if typ.types.len() == 0 {
-            write!(f.buf, "{}", typ.typ)
-        }
-        else {
-            let is_list = match &typ.typ {
-                &TypeOperator(ref op) => "[]" == op.name,
-                _ => false
-            };
-            let is_func = match &typ.typ {
-                &TypeOperator(ref op) => "->" == op.name,
-                _ => false
-            };
-            if is_func {
-                let is_lhs_func = match &typ.types[0].typ {
-                    &TypeOperator(ref op) => "->" == op.name,
+            &TypeOperator(ref op) => write!(f.buf, "{}", *op),
+            &TypeApplication(ref lhs, ref rhs) => {
+                let l: &Type = *lhs;
+                let is_list = match l {
+                    &TypeOperator(ref op) => "[]" == op.name,
                     _ => false
                 };
-                if is_lhs_func {
-                    write!(f.buf, "({}) -> {}", typ.types[0], typ.types[1])
+                let is_func = match l {
+                    &TypeApplication(ref xx, _) => {
+                        let x: &Type = *xx;
+                        match x {
+                            &TypeOperator(ref op) => "->" == op.name,
+                            _ => false
+                        }
+                    }
+                    _ => false
+                };
+                if is_func {
+                    let is_lhs_func = match l {
+                        &TypeApplication(ref x, _) => {
+                            let xx: &Type = *x;
+                            match xx {
+                                &TypeApplication(ref y, _) => {
+                                    let yy: &Type = *y;
+                                    match yy {
+                                        &TypeOperator(ref op) => "->" == op.name,
+                                        _ => false
+                                    }
+                                }
+                                _ => false
+                            }
+                        }
+                        _ => false
+                    };
+                    if is_lhs_func {
+                        write!(f.buf, "({}) -> {}", lhs, rhs)
+                    }
+                    else {
+                        write!(f.buf, "{} -> {}", lhs, rhs)
+                    }
                 }
                 else {
-                    write!(f.buf, "{} -> {}", typ.types[0], typ.types[1])
-                }
-            }
-            else {
-                if is_list {
-                    try!(write!(f.buf, "["));
-                }
-                else {
-                    try!(write!(f.buf, "({}", typ.typ));
-                }
-                for t in typ.types.iter() {
-                    try!(write!(f.buf, " {}", *t));
-                }
-                if is_list {
-                    write!(f.buf, "]")
-                }
-                else {
-                    write!(f.buf, ")")
+                    if is_list {
+                        try!(write!(f.buf, "["));
+                    }
+                    else {
+                        try!(write!(f.buf, "({} ", lhs));
+                    }
+                    try!(write!(f.buf, "{}", rhs));
+                    if is_list {
+                        write!(f.buf, "]")
+                    }
+                    else {
+                        write!(f.buf, ")")
+                    }
                 }
             }
         }
@@ -203,8 +287,8 @@ impl fmt::Show for TypeDeclaration {
 }
 
 fn type_eq<'a>(mapping: &mut HashMap<&'a TypeVariable, &'a TypeVariable>, lhs: &'a Type, rhs: &'a Type) -> bool {
-    let equal = match (&lhs.typ, &rhs.typ) {
-        (&TypeOperator(ref l), &TypeOperator(ref r)) => l == r,
+    match (lhs, rhs) {
+        (&TypeOperator(ref l), &TypeOperator(ref r)) => l.name == r.name,
         (&TypeVariable(ref r), &TypeVariable(ref l)) => {
             match mapping.find(&l) {
                 Some(x) => return x.id == r.id,
@@ -213,45 +297,17 @@ fn type_eq<'a>(mapping: &mut HashMap<&'a TypeVariable, &'a TypeVariable>, lhs: &
             mapping.insert(l, r);
             true
         }
+        (&TypeApplication(ref lhs1, ref rhs1), &TypeApplication(ref lhs2, ref rhs2)) => {
+            type_eq(mapping, *lhs1, *lhs2) && type_eq(mapping, *rhs1, *rhs2)
+        }
         _ => false
-    };
-    equal && lhs.types.len() == rhs.types.len()
-    && lhs.types.iter().zip(rhs.types.iter()).all(|(l, r)| type_eq(mapping, l, r))
+    }
 }
 
 impl Eq for Type {
     fn eq(&self, other: &Type) -> bool {
         let mut mapping = HashMap::new();
         type_eq(&mut mapping, self, other)
-    }
-}
-
-impl Type {
-    pub fn new_var(id : int) -> Type {
-        Type { typ: TypeVariable(TypeVariable { id : id, kind: unknown_kind }), types: ~[] }
-    }
-    pub fn new_var_kind(id : int, kind: Kind) -> Type {
-        Type { typ: TypeVariable(TypeVariable { id : id, kind: kind }), types: ~[] }
-    }
-    pub fn new_op(name : ~str, types : ~[Type]) -> Type {
-        Type { typ: TypeOperator(TypeOperator { name : name, kind: star_kind }), types : types }
-    }
-    pub fn new_op_kind(name : ~str, types : ~[Type], kind: Kind) -> Type {
-        Type { typ: TypeOperator(TypeOperator { name : name, kind: kind }), types : types }
-    }
-
-    pub fn var<'a>(&'a self) -> &'a TypeVariable {
-        match &self.typ {
-            &TypeVariable(ref var) => var,
-            _ => fail!("Tried to unwrap TypeOperator as a TypeVariable")
-        }
-    }
-    #[allow(dead_code)]
-    pub fn op<'a>(&'a self) -> &'a TypeOperator {
-        match &self.typ {
-            &TypeOperator(ref op) => op,
-            _ => fail!("Tried to unwrap TypeVariable as a TypeOperator")
-        }
     }
 }
 
