@@ -1,5 +1,5 @@
 use collections::HashMap;
-use module::{Kind, TypeVariable, TypeOperator, TypeApplication, Identifier, Number, Rational, String, Char, Apply, Lambda, Let, Case, TypedExpr, Module, Constraint, Pattern, IdentifierPattern, NumberPattern, ConstructorPattern, Binding, Class, TypeDeclaration, unknown_kind, star_kind};
+use module::{TypeVariable, TypeOperator, TypeApplication, Identifier, Number, Rational, String, Char, Apply, Lambda, Let, Case, TypedExpr, Module, Constraint, Pattern, IdentifierPattern, NumberPattern, ConstructorPattern, Binding, Class, TypeDeclaration, star_kind};
 use graph::{Graph, VertexIndex, strongly_connected_components};
 use std::iter::range_step;
 
@@ -814,7 +814,7 @@ fn unify_location(env: &mut TypeEnvironment, subs: &mut Substitution, location: 
     match unify(env, subs, lhs.clone(), rhs.clone()) {
         Ok(typ) => {
             let subs2 = subs.clone();
-            for (var, ref mut typ) in subs.subs.mut_iter() {
+            for (_, ref mut typ) in subs.subs.mut_iter() {
                 replace(&mut env.constraints, *typ, &subs2);
             }
             *lhs = typ.clone();
@@ -920,102 +920,6 @@ fn unify(env: &mut TypeEnvironment, subs: &mut Substitution, lhs: Type, rhs: Typ
         (TypeOperator(lhs), TypeOperator(rhs)) =>
             if lhs.name == rhs.name { Ok(TypeOperator(lhs)) } else { Err(UnifyFail) },
         _ => Err(UnifyFail)
-    }
-}
-
-fn unify_(env : &mut TypeEnvironment, subs : &mut Substitution, lhs : &Type, rhs : &Type) -> Option<TypeError> {
-    let unified = match (lhs, rhs) {
-        (&TypeVariable(ref lid), &TypeVariable(ref rid)) => {
-            if lid != rid {
-                if lhs.kind() != rhs.kind() {
-                    return Some(WrongArity(lhs.clone(), rhs.clone()));
-                }
-                else {
-                    let mut t = rhs.clone();
-                    replace(&mut env.constraints, &mut t, subs);
-                    for (_, typ) in subs.subs.mut_iter() {
-                        replace_var(typ, lid, rhs);
-                    }
-                    subs.subs.insert(lid.clone(), t);
-                    match env.constraints.pop(lid) {
-                        Some(constraints) => {
-                            let to_update = env.constraints.find_or_insert(rid.clone(), ~[]);
-                            for c in constraints.iter() {
-                                if to_update.iter().find(|x| *x == c) == None {
-                                    to_update.push(c.clone());
-                                }
-                            }
-                        }
-                        None => ()
-                    }
-                }
-            }
-            true
-        }
-        (&TypeOperator(ref l), &TypeOperator(ref r)) => {
-            if l.name != r.name {
-                return Some(UnifyFail);
-            }
-            true
-        }
-        (&TypeVariable(ref lid), _) => {
-            if (occurs(lid, rhs)) {
-                return Some(RecursiveUnification);
-            }
-            let mut t = (*rhs).clone();
-            if lhs.kind() == &unknown_kind {
-                replace(&mut env.constraints, &mut t, subs);
-                for (_, typ) in subs.subs.mut_iter() {
-                    replace_var(typ, lid, &t);
-                }
-                subs.subs.insert(lid.clone(), t);
-            }
-            else {
-                return Some(WrongArity(lhs.clone(), rhs.clone()));
-            }
-            //Check that the type operator has an instance for all the constraints of the variable
-            match env.constraints.find(lid) {
-                Some(constraints) => {
-                    for c in constraints.iter() {
-                        if !env.has_instance(*c, rhs) {
-                            match rhs {
-                                &TypeOperator(ref op) => {
-                                    if c.equiv(& &"Num") && (op.name.equiv(& &"Int") || op.name.equiv(& &"Double")) && *rhs.kind() == star_kind {
-                                        continue;
-                                    }
-                                    else if c.equiv(& &"Fractional") && "Double" == op.name && *rhs.kind() == star_kind {
-                                        continue;
-                                    }
-                                }
-                                _ => ()
-                            }
-                            return Some(MissingInstance(c.clone(), rhs.clone(), lid.clone()));
-                        }
-                    }
-                }
-                None => ()
-            }
-            true
-        }
-        (&TypeApplication(ref lhs1, ref rhs1), &TypeApplication(ref lhs2, ref rhs2)) => {
-            match unify_(env, subs, *rhs1, *rhs2) {
-                Some(e) => return Some(e),
-                None => ()
-            }
-            match unify_(env, subs, *lhs1, *lhs2) {
-                Some(e) => return Some(e),
-                None => ()
-            }
-            true
-        }
-        (_, &TypeVariable(ref rhs)) => false,
-        _ => return Some(UnifyFail)
-    };
-    if !unified {
-        unify_(env, subs, rhs, lhs)
-    }
-    else {
-        None
     }
 }
 

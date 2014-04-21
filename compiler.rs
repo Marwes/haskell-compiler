@@ -560,7 +560,6 @@ impl <'a> Compiler<'a> {
 
     ///Compile a function which is defined in a class
     fn compile_instance_variable(&self, actual_type: &Type, instructions: &mut ~[Instruction], name: &str, typ: &Type, var: &TypeVariable) -> Option<(~[(~str, Type)], ~[uint])> {
-        println!("Try {} {} {}", var, typ, actual_type);
         match try_find_instance_type(var, typ, actual_type) {
             Some(typename) => {
                 //We should be able to retrieve the instance directly
