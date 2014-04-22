@@ -391,7 +391,7 @@ impl fmt::Show for Expr {
         }
     }
 }
-impl fmt::Show for Pattern {
+impl <T: fmt::Show> fmt::Show for Pattern<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             &IdentifierPattern(ref s) => write!(f.buf, "{}", s),
