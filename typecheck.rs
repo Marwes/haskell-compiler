@@ -1000,6 +1000,10 @@ pub fn function_type(func : &Type, arg : &Type) -> Type {
     Type::new_op(~"->", ~[func.clone(), arg.clone()])
 }
 
+pub fn function_type_(func : Type, arg : Type) -> Type {
+    Type::new_op(~"->", ~[func, arg])
+}
+
 pub fn with_arg_return(func_type: &mut Type, func: |&mut Type, &mut Type|) -> bool {
     match func_type {
         &TypeApplication(ref mut lhs, ref mut return_type) => {

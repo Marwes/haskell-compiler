@@ -1,6 +1,11 @@
 use collections::hashmap::{HashMap, HashSet};
 use core::*;
 use scoped_map::ScopedMap;
+use typecheck::function_type_;
+
+fn do_lambda_lift(module: Module<(Type, ~str)>) -> Module<Id> {
+    lift_lambdas(rename_module(abstract_module(module)))
+}
 
 //Walks through an expression and notes all the free variables and for each lambda, adds the
 //free variables to its arguments and performs an immediate application
@@ -62,14 +67,16 @@ fn free_variables(variables: &mut HashMap<(Type, ~str), int>, free_vars: &mut Ha
 fn abstract(free_vars: &HashSet<(Type, ~str)>, input_expr: Expr<(Type, ~str)>) -> Expr<(Type, ~str)> {
     let mut e = {
         let mut rhs = input_expr;
+        let mut typ = rhs.get_type().clone();
         for var in free_vars.iter() {
             rhs = Lambda(var.clone(), ~rhs);
+            typ = function_type_(var.ref0().clone(), typ);
         }
         let bind = Binding {
-            name: (Type::new_var(0), "sc".to_owned()),
+            name: (typ.clone(), "sc".to_owned()),
             expression: rhs
         };
-        Let(~[bind], ~Identifier((Type::new_var(0), "sc".to_owned())))
+        Let(~[bind], ~Identifier((typ.clone(), "sc".to_owned())))
     };
     for var in free_vars.iter() {
         e = Apply(~e, ~Identifier(var.clone()));
@@ -163,6 +170,57 @@ impl Renamer {
         u
     }
 }
+
+fn lift_lambdas_expr<T>(expr: Expr<T>, out_lambdas: &mut Vec<Binding<T>>) -> Expr<T> {
+    match expr {
+        Apply(func, arg) => Apply(~lift_lambdas_expr(*func, out_lambdas), ~lift_lambdas_expr(*arg, out_lambdas)),
+        Lambda(arg, body) => Lambda(arg, ~lift_lambdas_expr(*body, out_lambdas)),
+        Let(bindings, expr) => {
+            let mut new_binds = Vec::new();
+            for Binding { name: name, expression: expression } in bindings.move_iter() {
+                let is_lambda = match &expression {
+                    &Lambda(..) => true,
+                    _ => false
+                };
+                let bind = Binding { name: name, expression: lift_lambdas_expr(expression, out_lambdas) };
+                if is_lambda {
+                    out_lambdas.push(bind);
+                }
+                else {
+                    new_binds.push(bind);
+                }
+            }
+            if new_binds.len() == 0 {
+                lift_lambdas_expr(*expr, out_lambdas)
+            }
+            else {
+                Let(new_binds.move_iter().collect(), ~lift_lambdas_expr(*expr, out_lambdas))
+            }
+        }
+        Case(expr, alts) => {
+            let a = alts.move_iter().map(|Alternative { pattern: pattern, expression: expression }| {
+                Alternative { pattern: pattern, expression: lift_lambdas_expr(expression, out_lambdas) }
+            }).collect();
+            Case(~lift_lambdas_expr(*expr, out_lambdas), a)
+        }
+        _ => expr
+    }
+}
+pub fn lift_lambdas<T>(module: Module<T>) -> Module<T> {
+    let Module {
+        bindings : bindings,
+    } = module;
+    
+    let mut new_bindings : Vec<Binding<T>> = Vec::new();
+    let bindings2 : ~[Binding<T>] = bindings.move_iter().map(|Binding { name: name, expression: expression }| {
+        Binding { name: name, expression: lift_lambdas_expr(expression, &mut new_bindings) }
+    }).collect();
+    
+    Module {
+        bindings : bindings2.move_iter().chain(new_bindings.move_iter()).collect(),
+    }
+}
+
 
 pub fn rename_module(module: Module<(Type, ~str)>) -> Module<Id> {
     let mut renamer = Renamer { uniques: ScopedMap::new(), unique_id: 0 };
@@ -320,5 +378,44 @@ test2 x =
         let module = rename_module(abstract_module(m));
         (&mut visitor as &mut Visitor<Id>).visit_module(&module);
         assert_eq!(visitor.count, 2);
+    }
+
+    struct NoLambdas;
+
+    impl <T> Visitor<T> for NoLambdas {
+        fn visit_expr(&mut self, expr: &Expr<T>) {
+            match expr {
+                &Lambda(..) => assert!(false, "Found lambda in expression"),
+                _ => ()
+            }
+            walk_expr(self, expr);
+        }
+    }
+    #[test]
+    fn no_local_lambdas() {
+        fn skip_lambdas<'a, T>(expr: &'a Expr<T>) -> &'a Expr<T> {
+            match expr {
+                &Lambda(_, ref body) => skip_lambdas(*body),
+                _ => expr
+            }
+        }
+
+        let mut visitor = NoLambdas;
+        let mut parser = Parser::new(
+r"add x y = 2
+test = 3.14
+test2 x =
+    let
+        test = 2
+        f x =
+            let g y = add x (f y)
+            in add x test
+    in f x".chars());
+        let m = translate_module(parser.module());
+        let module = lift_lambdas(m);
+        for bind in module.bindings.iter() {
+            println!("{}", bind.expression);
+            (&mut visitor as &mut Visitor<(Type, ~str)>).visit_expr(skip_lambdas(&bind.expression));
+        }
     }
 }
