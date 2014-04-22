@@ -374,8 +374,35 @@ impl fmt::Show for Expr {
             &String(ref s) => write!(f.buf, "\"{}\"", *s),
             &Char(c) => write!(f.buf, "'{}'", c),
             &Lambda(ref arg, ref body) => write!(f.buf, "({} -> {})", *arg, *body),
-            &Let(_,_) => write!(f.buf, "Let ... "),
-            &Case(_,_) => write!(f.buf, "Case ...")
+            &Let(ref bindings, ref body) => {
+                try!(write!(f.buf, "let \\{\n"));
+                for bind in bindings.iter() {
+                    try!(write!(f.buf, "; {} = {}\n", bind.name, bind.expression));
+                }
+                write!(f.buf, "\\} in {}\n", *body)
+            }
+            &Case(ref expr, ref alts) => {
+                try!(write!(f.buf, "case {} of \\{\n", *expr));
+                for alt in alts.iter() {
+                    try!(write!(f.buf, "; {} -> {}\n", alt.pattern.node, alt.expression));
+                }
+                write!(f.buf, "\\}\n")
+            }
+        }
+    }
+}
+impl fmt::Show for Pattern {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            &IdentifierPattern(ref s) => write!(f.buf, "{}", s),
+            &NumberPattern(ref i) => write!(f.buf, "{}", i),
+            &ConstructorPattern(ref name, ref patterns) => {
+                try!(write!(f.buf, "({}", name));
+                for p in patterns.iter() {
+                    try!(write!(f.buf, "{} ", p));
+                }
+                write!(f.buf, ")")
+            }
         }
     }
 }
