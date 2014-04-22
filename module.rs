@@ -3,32 +3,32 @@ use collections::HashMap;
 pub use std::default::Default;
 pub use lexer::{Location, Located};
 
-pub struct Module {
-    pub name : ~str,
-    pub bindings : ~[Binding],
+pub struct Module<Ident = ~str> {
+    pub name : Ident,
+    pub bindings : ~[Binding<Ident>],
     pub typeDeclarations : ~[TypeDeclaration],
     pub classes : ~[Class],
-    pub instances : ~[Instance],
+    pub instances : ~[Instance<Ident>],
     pub dataDefinitions : ~[DataDefinition]
 }
 #[deriving(Clone)]
-pub struct Class {
-    pub name : ~str,
+pub struct Class<Ident = ~str> {
+    pub name : Ident,
     pub variable : TypeVariable,
     pub declarations : ~[TypeDeclaration]
 }
 
-pub struct Instance {
-    pub bindings : ~[Binding],
+pub struct Instance<Ident = ~str> {
+    pub bindings : ~[Binding<Ident>],
     pub constraints : ~[Constraint],
     pub typ : Type,
     pub classname : ~str
 }
 
 #[deriving(Eq)]
-pub struct Binding {
-    pub name : ~str,
-    pub expression : TypedExpr,
+pub struct Binding<Ident = ~str> {
+    pub name : Ident,
+    pub expression : TypedExpr<Ident>,
     pub typeDecl : TypeDeclaration,
     pub arity : uint
 }
@@ -311,14 +311,14 @@ impl Eq for Type {
     }
 }
 
-pub struct TypedExpr {
-    pub expr : Expr,
+pub struct TypedExpr<Ident = ~str> {
+    pub expr : Expr<Ident>,
     pub typ : Type,
     pub location : Location
 }
 
-impl Eq for TypedExpr {
-    fn eq(&self, other : &TypedExpr) -> bool {
+impl <T: Eq> Eq for TypedExpr<T> {
+    fn eq(&self, other : &TypedExpr<T>) -> bool {
         self.expr == other.expr
     }
 }
@@ -339,29 +339,29 @@ impl TypedExpr {
 }
 
 #[deriving(Eq)]
-pub struct Alternative {
-    pub pattern : Located<Pattern>,
-    pub expression : TypedExpr
+pub struct Alternative<Ident = ~str> {
+    pub pattern : Located<Pattern<Ident>>,
+    pub expression : TypedExpr<Ident>
 }
 
 #[deriving(Eq, TotalEq)]
-pub enum Pattern {
+pub enum Pattern<Ident = ~str> {
     NumberPattern(int),
-    IdentifierPattern(~str),
-    ConstructorPattern(~str, ~[Pattern])
+    IdentifierPattern(Ident),
+    ConstructorPattern(~str, ~[Pattern<Ident>])
 }
 
 #[deriving(Eq)]
-pub enum Expr {
-    Identifier(~str),
-    Apply(~TypedExpr, ~TypedExpr),
+pub enum Expr<Ident = ~str> {
+    Identifier(Ident),
+    Apply(~TypedExpr<Ident>, ~TypedExpr<Ident>),
     Number(int),
     Rational(f64),
     String(~str),
     Char(char),
-    Lambda(~str, ~TypedExpr),
-    Let(~[Binding], ~TypedExpr),
-    Case(~TypedExpr, ~[Alternative])
+    Lambda(Ident, ~TypedExpr<Ident>),
+    Let(~[Binding<Ident>], ~TypedExpr<Ident>),
+    Case(~TypedExpr<Ident>, ~[Alternative<Ident>])
 }
 
 impl fmt::Show for Expr {
@@ -404,5 +404,74 @@ impl fmt::Show for Pattern {
                 write!(f.buf, ")")
             }
         }
+    }
+}
+
+pub trait Visitor<Ident> {
+    fn visit_expr(&mut self, expr: &TypedExpr<Ident>) {
+        walk_expr(self, expr)
+    }
+    fn visit_alternative(&mut self, alt: &Alternative<Ident>) {
+        walk_alternative(self, alt)
+    }
+    fn visit_pattern(&mut self, pattern: &Pattern<Ident>) {
+        walk_pattern(self, pattern)
+    }
+    fn visit_binding(&mut self, binding: &Binding<Ident>) {
+        walk_binding(self, binding);
+    }
+    fn visit_module(&mut self, module: &Module<Ident>) {
+        walk_module(self, module);
+    }
+}
+
+pub fn walk_module<Ident>(visitor: &mut Visitor<Ident>, module: &Module<Ident>) {
+    for bind in module.instances.iter().flat_map(|i| i.bindings.iter()) {
+        visitor.visit_binding(bind);
+    }
+    for bind in module.bindings.iter() {
+        visitor.visit_binding(bind);
+    }
+}
+
+pub fn walk_binding<Ident>(visitor: &mut Visitor<Ident>, binding: &Binding<Ident>) {
+    visitor.visit_expr(&binding.expression);
+}
+
+pub fn walk_expr<Ident>(visitor: &mut Visitor<Ident>, expr: &TypedExpr<Ident>) {
+    match &expr.expr {
+        &Apply(ref func, ref arg) => {
+            visitor.visit_expr(*func);
+            visitor.visit_expr(*arg);
+        }
+        &Lambda(_, ref body) => visitor.visit_expr(*body),
+        &Let(ref binds, ref e) => {
+            for b in binds.iter() {
+                visitor.visit_binding(b);
+            }
+            visitor.visit_expr(*e);
+        }
+        &Case(ref e, ref alts) => {
+            visitor.visit_expr(*e);
+            for alt in alts.iter() {
+                visitor.visit_alternative(alt);
+            }
+        }
+        _ => ()
+    }
+}
+
+pub fn walk_alternative<Ident>(visitor: &mut Visitor<Ident>, alt: &Alternative<Ident>) {
+    visitor.visit_expr(&alt.expression);
+}
+
+pub fn walk_pattern<Ident>(visitor: &mut Visitor<Ident>, pattern: &Pattern<Ident>) {
+    match pattern {
+        &ConstructorPattern(_, ref ps) => {
+            for p in ps.iter() {
+                visitor.visit_pattern(p);
+            }
+        }
+        _ => ()
     }
 }
