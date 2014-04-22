@@ -239,10 +239,10 @@ impl Types for Assembly {
 pub struct Compiler<'a> {
     pub type_env: &'a TypeEnvironment<'a>,
     ///Hashmap containging class names mapped to the functions it contains
-    pub instance_dictionaries: ~[(~[(~str, Type)], ~[uint])],
+    pub instance_dictionaries: Vec<(~[(~str, Type)], ~[uint])>,
     pub stackSize : uint,
     ///Array of all the assemblies which can be used to lookup functions in
-    pub assemblies: ~[&'a Assembly],
+    pub assemblies: Vec<&'a Assembly>,
     module: Option<&'a Module>,
     variables: ScopedMap<~str, Var<'a>>
 }
@@ -250,8 +250,8 @@ pub struct Compiler<'a> {
 
 impl <'a> Compiler<'a> {
     pub fn new(type_env: &'a TypeEnvironment) -> Compiler<'a> {
-        Compiler { type_env: type_env, instance_dictionaries: ~[],
-            stackSize : 0, assemblies: ~[],
+        Compiler { type_env: type_env, instance_dictionaries: Vec::new(),
+            stackSize : 0, assemblies: Vec::new(),
             module: None,
             variables: ScopedMap::new()
         }
@@ -259,38 +259,24 @@ impl <'a> Compiler<'a> {
     
     pub fn compileModule(&mut self, module : &'a Module) -> Assembly {
         self.module = Some(module);
-        let mut assembly = Assembly {
-            superCombinators: ~[],
-            instance_dictionaries: ~[],
-            offset: self.assemblies.iter().flat_map(|assembly| assembly.superCombinators.iter()).len(),
-            classes: module.classes.clone(),
-            instances: module.instances.iter().map(
-                |inst| (inst.constraints.clone(), Type::new_op(inst.classname.clone(), ~[inst.typ.clone()] ))
-                ).collect(),
-            data_definitions: ~[]
-        };
+        let mut superCombinators = Vec::new();
+        let mut instance_dictionaries = Vec::new();
+        let mut data_definitions = Vec::new();
         
         for def in module.dataDefinitions.iter() {
-            let mut constructors = ~[];
+            let mut constructors = Vec::new();
             for ctor in def.constructors.iter() {
                 constructors.push(ctor.clone());
             }
-            assembly.data_definitions.push(def.clone());
+            data_definitions.push(def.clone());
         }
 
-        for class in module.classes.iter() {
-            let mut function_names = ~[];
-            for decl in class.declarations.iter() {
-                function_names.push(decl.name.clone());
-            }
-        }
-        
         //Compile all bindings
         for instance in module.instances.iter() {
             for bind in instance.bindings.iter() {
                 let mut sc = self.compileBinding(bind);
                 sc.name = bind.name.clone();
-                assembly.superCombinators.push(sc);
+                superCombinators.push(sc);
             }
         }
         for bind in module.bindings.iter() {
@@ -298,14 +284,23 @@ impl <'a> Compiler<'a> {
             let constraints = self.type_env.find_constraints(&bind.expression.typ);
             sc.constraints = constraints;
             sc.name = bind.name.clone();
-            assembly.superCombinators.push(sc);
+            superCombinators.push(sc);
         }
 
         for &(_, ref dict) in self.instance_dictionaries.iter() {
-            assembly.instance_dictionaries.push(dict.clone());
+            instance_dictionaries.push(dict.clone());
         }
         self.module = None;
-        assembly
+        Assembly {
+            superCombinators: superCombinators.move_iter().collect(),
+            instance_dictionaries: instance_dictionaries.move_iter().collect(),
+            offset: self.assemblies.iter().flat_map(|assembly| assembly.superCombinators.iter()).len(),
+            classes: module.classes.clone(),
+            instances: module.instances.iter().map(
+                |inst| (inst.constraints.clone(), Type::new_op(inst.classname.clone(), ~[inst.typ.clone()] ))
+                ).collect(),
+            data_definitions: data_definitions.move_iter().collect()
+        }
     }
     fn compileBinding(&mut self, bind : &Binding) -> SuperCombinator {
         debug!("Compiling binding {}", bind.typeDecl);
@@ -314,30 +309,32 @@ impl <'a> Compiler<'a> {
         comb.type_declaration = bind.typeDecl.clone();
         let dict_arg = if self.type_env.find_constraints(&comb.type_declaration.typ).len() > 0 { 1 } else { 0 };
         comb.arity = bind.arity + dict_arg;
+        let mut instructions = Vec::new();
         self.scope(|this| {
             if dict_arg == 1 {
                 this.newStackVar(~"$dict");
             }
             match &bind.expression.expr {
                 &Lambda(_, _) => {
-                    this.compile(&bind.expression, &mut comb.instructions, true);
-                    comb.instructions.push(Update(0));
-                    comb.instructions.push(Pop(comb.arity));
-                    comb.instructions.push(Unwind);
+                    this.compile(&bind.expression, &mut instructions, true);
+                    instructions.push(Update(0));
+                    instructions.push(Pop(comb.arity));
+                    instructions.push(Unwind);
                 }
                 _ => {
-                    this.compile(&bind.expression, &mut comb.instructions, true);
-                    comb.instructions.push(Update(0));
-                    comb.instructions.push(Unwind);
+                    this.compile(&bind.expression, &mut instructions, true);
+                    instructions.push(Update(0));
+                    instructions.push(Unwind);
                 }
             }
         });
+        comb.instructions = instructions.move_iter().collect();
         comb
     }
     pub fn compileExpression(&mut self, expr: &TypedExpr) -> ~[Instruction] {
-        let mut instructions = ~[];
+        let mut instructions = Vec::new();
         self.compile(expr, &mut instructions, false);
-        instructions
+        instructions.move_iter().collect()
     }
 
     
@@ -349,7 +346,7 @@ impl <'a> Compiler<'a> {
                 Some(ref module) => {
                     let n = self.assemblies.len();
                     let offset = if n > 0 {
-                        let assembly = self.assemblies[n-1];
+                        let assembly = self.assemblies.get(n-1);
                         assembly.offset + assembly.superCombinators.len()
                     }
                     else {
@@ -409,7 +406,7 @@ impl <'a> Compiler<'a> {
     }
 
     ///Compile an expression by appending instructions to the instructions array
-    fn compile(&mut self, expr : &TypedExpr, instructions : &mut ~[Instruction], strict: bool) {
+    fn compile(&mut self, expr : &TypedExpr, instructions : &mut Vec<Instruction>, strict: bool) {
         debug!("Compiling {}", expr.expr);
         match &expr.expr {
             &Identifier(ref name) => {
@@ -486,7 +483,7 @@ impl <'a> Compiler<'a> {
                 if !self.primitive(*func, *arg, instructions) {
                     self.compile(*arg, instructions, false);
                     self.compile(*func, instructions, false);
-                    match &instructions[instructions.len() - 1] {
+                    match instructions.get(instructions.len() - 1) {
                         &Pack(_, _) => (),//The application was a constructor so dont do Mkap and the Pack instruction is strict already
                         _ => {
                             instructions.push(Mkap);
@@ -515,13 +512,13 @@ impl <'a> Compiler<'a> {
                 self.compile(*body, instructions, true);
                 self.stackSize += 1;//Dummy variable for the case expression
                 //Storage for all the jumps that should go to the end of the case expression
-                let mut end_branches = ~[];
+                let mut end_branches = Vec::new();
                 for i in range(0, alternatives.len()) {
                     let alt = &alternatives[i];
 
                     self.scope(|this| {
                         let pattern_start = instructions.len() as int;
-                        let mut branches = ~[];
+                        let mut branches = Vec::new();
                         let stack_increase = this.compile_pattern(&alt.pattern.node, &mut branches, instructions, this.stackSize - 1, 0);
                         let pattern_end = instructions.len() as int;
 
@@ -534,11 +531,11 @@ impl <'a> Compiler<'a> {
                         //We need to set all the jump instructions to their actual location
                         //and append Slide instructions to bring the stack back to normal if the match fails
                         for j in range_step(pattern_end, pattern_start, -1) {
-                            match instructions[j as uint] {
+                            match *instructions.get(j as uint) {
                                 Jump(_) => {
-                                    instructions[j as uint] = Jump(instructions.len());
+                                    *instructions.get_mut(j as uint) = Jump(instructions.len());
                                 }
-                                JumpFalse(_) => instructions[j as uint] = JumpFalse(instructions.len()),
+                                JumpFalse(_) => *instructions.get_mut(j as uint) = JumpFalse(instructions.len()),
                                 Split(size) => instructions.push(Pop(size)),
                                 _ => ()
                             }
@@ -547,7 +544,7 @@ impl <'a> Compiler<'a> {
                 }
                 self.stackSize -= 1;
                 for branch in end_branches.iter() {
-                    instructions[*branch] = Jump(instructions.len());
+                    *instructions.get_mut(*branch) = Jump(instructions.len());
                 }
                 //Remove the matched expr
                 instructions.push(Slide(1));
@@ -559,7 +556,7 @@ impl <'a> Compiler<'a> {
     }
 
     ///Compile a function which is defined in a class
-    fn compile_instance_variable(&self, actual_type: &Type, instructions: &mut ~[Instruction], name: &str, typ: &Type, var: &TypeVariable) -> Option<(~[(~str, Type)], ~[uint])> {
+    fn compile_instance_variable(&self, actual_type: &Type, instructions: &mut Vec<Instruction>, name: &str, typ: &Type, var: &TypeVariable) -> Option<(~[(~str, Type)], ~[uint])> {
         match try_find_instance_type(var, typ, actual_type) {
             Some(typename) => {
                 //We should be able to retrieve the instance directly
@@ -591,7 +588,7 @@ impl <'a> Compiler<'a> {
     }
 
     ///Compile the loading of a variable which has constraints and will thus need to load a dictionary with functions as well
-    fn compile_with_constraints(&self, name: &str, typ: &Type, constraints: &[Constraint], instructions: &mut ~[Instruction]) -> Option<(~[(~str, Type)], ~[uint])> {
+    fn compile_with_constraints(&self, name: &str, typ: &Type, constraints: &[Constraint], instructions: &mut Vec<Instruction>) -> Option<(~[(~str, Type)], ~[uint])> {
         match self.find("$dict") {
             Some(StackVariable(_)) => {
                 //Push dictionary or member of dictionary
@@ -646,7 +643,7 @@ impl <'a> Compiler<'a> {
 
         let dict_len = self.instance_dictionaries.len();
         for ii in range(0, dict_len) {
-            if self.instance_dictionaries[ii].ref0().equiv(&constraints) {
+            if self.instance_dictionaries.get(ii).ref0().equiv(&constraints) {
                 return (ii, None);
             }
         }
@@ -654,7 +651,7 @@ impl <'a> Compiler<'a> {
         if constraints.len() == 0 {
             fail!("Error: Attempted to compile dictionary with no constraints at <unknown>");
         }
-        let mut function_indexes = ~[];
+        let mut function_indexes = Vec::new();
         for &(ref class_name, ref typ) in constraints.iter() {
             match self.find_class(*class_name) {
                 Some(class) => {
@@ -672,11 +669,11 @@ impl <'a> Compiler<'a> {
                 None => fail!("Could not find class '{}'", *class_name)
             }
         }
-        (dict_len, Some((constraints.to_owned(), function_indexes)))
+        (dict_len, Some((constraints.to_owned(), function_indexes.move_iter().collect())))
     }
 
     ///Attempt to compile a binary primitive, returning true if it succeded
-    fn primitive(&mut self, func: &TypedExpr, arg: &TypedExpr, instructions: &mut ~[Instruction]) -> bool {
+    fn primitive(&mut self, func: &TypedExpr, arg: &TypedExpr, instructions: &mut Vec<Instruction>) -> bool {
         match &func.expr {
             &Apply(ref prim_func, ref arg2) => {
                 match &prim_func.expr {
@@ -738,7 +735,7 @@ impl <'a> Compiler<'a> {
         }
     }
 
-    fn compile_pattern(&mut self, pattern: &Pattern, branches: &mut ~[uint], instructions: &mut ~[Instruction], stack_index: uint, pattern_index: uint) -> uint {
+    fn compile_pattern(&mut self, pattern: &Pattern, branches: &mut Vec<uint>, instructions: &mut Vec<Instruction>, stack_index: uint, pattern_index: uint) -> uint {
         //TODO this is unlikely to work with nested patterns currently
         match pattern {
             &ConstructorPattern(ref name, ref patterns) => {

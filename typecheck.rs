@@ -1,7 +1,8 @@
 use collections::HashMap;
+use std::iter::range_step;
+use std::mem::swap;
 use module::{TypeVariable, TypeOperator, TypeApplication, Identifier, Number, Rational, String, Char, Apply, Lambda, Let, Case, TypedExpr, Module, Constraint, Pattern, IdentifierPattern, NumberPattern, ConstructorPattern, Binding, Class, TypeDeclaration, star_kind};
 use graph::{Graph, VertexIndex, strongly_connected_components};
-use std::iter::range_step;
 
 use scoped_map::ScopedMap;
 
@@ -78,13 +79,12 @@ impl Types for Module {
 }
 
 pub struct TypeEnvironment<'a> {
-    assemblies: ~[&'a Types],
+    assemblies: Vec<&'a Types>,
     namedTypes : ScopedMap<~str, Type>,
-    types : ~[Type],
-    constraints: HashMap<TypeVariable, ~[~str]>,
-    instances: ~[(~str, Type)],
+    constraints: HashMap<TypeVariable, Vec<~str>>,
+    instances: Vec<(~str, Type)>,
     variableIndex : int,
-    non_generic: ~[Type]
+    non_generic: Vec<Type>
 }
 
 #[deriving(Clone)]
@@ -159,14 +159,17 @@ fn add_primitives(globals: &mut ScopedMap<~str, Type>, typename: &str) {
 }
 
 fn create_tuple_type(size: uint) -> (~str, Type) {
-    let var_list = ::std::slice::from_fn(size, |i| Type::new_var_kind(i as int, star_kind.clone()));
+    let mut var_list = Vec::new();
+    for i in range(0, size) {
+        var_list.push(Type::new_var_kind(i as int, star_kind.clone()));
+    }
     let mut ident = StrBuf::from_char(1, '(');
     for _ in range(1, size) {
         ident.push_char(',');
     }
     ident.push_char(')');
     let result = ident.into_owned();
-    let mut typ = Type::new_op(result.clone(), var_list);
+    let mut typ = Type::new_op(result.clone(), var_list.move_iter().collect());
     for i in range_step(size as int - 1, -1, -1) {
         typ = Type::new_op(~"->", ~[Type::new_var(i), typ]);
     }
@@ -191,13 +194,12 @@ impl <'a> TypeEnvironment<'a> {
             globals.insert(name, typ);
         }
         TypeEnvironment {
-            assemblies: ~[],
+            assemblies: Vec::new(),
             namedTypes : globals,
-            types : ~[] ,
             constraints: HashMap::new(),
-            instances: ~[],
+            instances: Vec::new(),
             variableIndex : 0 ,
-            non_generic: ~[]
+            non_generic: Vec::new()
         }
     }
 
@@ -207,7 +209,7 @@ impl <'a> TypeEnvironment<'a> {
             for constraint in decl.context.iter() {
                 let var = constraint.variables[0].clone();
                 max_id = ::std::cmp::max(var.id, max_id);
-                self.constraints.find_or_insert(var, ~[]).push(constraint.class.clone());
+                self.constraints.find_or_insert(var, Vec::new()).push(constraint.class.clone());
             }
         });
         self.variableIndex = max_id;
@@ -229,14 +231,20 @@ impl <'a> TypeEnvironment<'a> {
             let replaced = class.variable.clone();
             let new = self.new_var();
             class.variable = new.var().clone();
-            self.constraints.insert(class.variable.clone(), ~[class.name.clone()]);
+            self.constraints.insert(class.variable.clone(), vec![class.name.clone()]);
 
             for type_decl in class.declarations.mut_iter() {
                 let c = Constraint { class: class.name.clone(), variables: ~[class.variable.clone()] };
                 let mut mapping = HashMap::new();
                 mapping.insert(replaced.clone(), new.clone());
                 self.freshen_declaration2(type_decl, mapping);
-                type_decl.context.push(c);
+                {//Workaround to add the class's constraints directyly to the declaration
+                    let mut context = ~[];
+                    swap(&mut context, &mut type_decl.context);
+                    let mut vec_context: Vec<Constraint> = context.move_iter().collect();
+                    vec_context.push(c);
+                    type_decl.context = vec_context.move_iter().collect();
+                }
                 self.namedTypes.insert(type_decl.name.clone(), type_decl.typ.clone());
             }
         }
@@ -256,12 +264,18 @@ impl <'a> TypeEnvironment<'a> {
                     .expect(format!("Could not find {} in class {}", binding.name, class.name));
                 binding.typeDecl = decl.clone();
                 replace_var(&mut binding.typeDecl.typ, &class.variable, &instance.typ);
-                for constraint in instance.constraints.iter() {
-                    binding.typeDecl.context.push(constraint.clone());
+                {
+                    let mut context = ~[];
+                    swap(&mut context, &mut binding.typeDecl.context);
+                    let mut vec_context: Vec<Constraint> = context.move_iter().collect();
+                    for constraint in instance.constraints.iter() {
+                        vec_context.push(constraint.clone());
+                    }
+                    binding.typeDecl.context = vec_context.move_iter().collect();
                 }
                 self.freshen_declaration(&mut binding.typeDecl);
                 for constraint in binding.typeDecl.context.iter() {
-                    self.constraints.find_or_insert(constraint.variables[0].clone(), ~[])
+                    self.constraints.find_or_insert(constraint.variables[0].clone(), Vec::new())
                         .push(constraint.class.clone());
                 }
             }
@@ -309,7 +323,7 @@ impl <'a> TypeEnvironment<'a> {
 
     ///Finds all the constraints for a type
     pub fn find_constraints(&self, typ: &Type) -> ~[Constraint] {
-        let mut result : ~[Constraint] = ~[];
+        let mut result : Vec<Constraint> = Vec::new();
         each_type(typ,
         |var| {
             match self.constraints.find(var) {
@@ -324,21 +338,21 @@ impl <'a> TypeEnvironment<'a> {
             }
         },
         |_| ());
-        result
+        result.move_iter().collect()
     }
     
     ///Searches through a type, comparing it with the type on the identifier, returning all the specialized constraints
     pub fn find_specialized_instances(&self, name: &str, actual_type: &Type) -> ~[(~str, Type)] {
         match self.find(name) {
             Some(typ) => {
-                let mut constraints = ~[];
+                let mut constraints = Vec::new();
                 self.find_specialized(&mut constraints, actual_type, typ);
-                constraints
+                constraints.move_iter().collect()
             }
             None => fail!("Could not find '{}' in type environment", name)
         }
     }
-    fn find_specialized(&self, constraints: &mut ~[(~str, Type)], actual_type: &Type, typ: &Type) {
+    fn find_specialized(&self, constraints: &mut Vec<(~str, Type)>, actual_type: &Type, typ: &Type) {
         match (actual_type, typ) {
             (_, &TypeVariable(ref var)) => {
                 match self.constraints.find(var) {
@@ -453,14 +467,14 @@ impl <'a> TypeEnvironment<'a> {
 
         match &mut expr.expr {
             &Number(_) => {
-                self.constraints.insert(expr.typ.var().clone(), ~[~"Num"]);
+                self.constraints.insert(expr.typ.var().clone(), vec![~"Num"]);
                 match &mut expr.typ {
                     &TypeVariable(ref mut v) => v.kind = star_kind.clone(),
                     _ => ()
                 }
             }
             &Rational(_) => {
-                self.constraints.insert(expr.typ.var().clone(), ~[~"Fractional"]);
+                self.constraints.insert(expr.typ.var().clone(), vec![~"Fractional"]);
                 match &mut expr.typ {
                     &TypeVariable(ref mut v) => v.kind = star_kind.clone(),
                     _ => ()
@@ -710,12 +724,12 @@ fn get_returntype(typ: &Type) -> Type {
 }
 
 ///Update the constraints when replacing the variable 'old' with 'new'
-fn update_constraints(constraints: &mut HashMap<TypeVariable, ~[~str]>, old: &TypeVariable, new: &Type, subs: &Substitution) {
+fn update_constraints(constraints: &mut HashMap<TypeVariable, Vec<~str>>, old: &TypeVariable, new: &Type, subs: &Substitution) {
     match new {
         &TypeVariable(ref new_var) => {
             match subs.constraints.find(old) {
                 Some(subs_constraints) => {
-                    let to_update = constraints.find_or_insert(new_var.clone(), ~[]);
+                    let to_update = constraints.find_or_insert(new_var.clone(), Vec::new());
                     for c in subs_constraints.iter() {
                         if to_update.iter().find(|x| *x == c) == None {
                             to_update.push(c.clone());
@@ -730,7 +744,7 @@ fn update_constraints(constraints: &mut HashMap<TypeVariable, ~[~str]>, old: &Ty
 }
 
 ///Replace all typevariables using the substitution 'subs'
-fn replace(constraints: &mut HashMap<TypeVariable, ~[~str]>, old : &mut Type, subs : &Substitution) {
+fn replace(constraints: &mut HashMap<TypeVariable, Vec<~str>>, old : &mut Type, subs : &Substitution) {
     let replaced = match old {
         &TypeVariable(ref id) => {
             match subs.subs.find(id) {
@@ -847,7 +861,7 @@ fn unify(env: &mut TypeEnvironment, subs: &mut Substitution, lhs: Type, rhs: Typ
                     subs.subs.insert(var.clone(), typ.clone());
                     match env.constraints.pop(&var) {
                         Some(constraints) => {
-                            let to_update = env.constraints.find_or_insert(var2.clone(), ~[]);
+                            let to_update = env.constraints.find_or_insert(var2.clone(), Vec::new());
                             for c in constraints.iter() {
                                 if to_update.iter().find(|x| *x == c) == None {
                                     to_update.push(c.clone());
@@ -1232,7 +1246,7 @@ main x y = primIntAdd (test x) (test y)".chars());
     let int_type = Type::new_op(~"Int", ~[]);
     let test = function_type(&Type::new_var(-1),  &function_type(&Type::new_var(-2), &int_type));
     assert_eq!(typ, &test);
-    let test_cons = ~[~"Test"];
+    let test_cons = vec![~"Test"];
     assert_eq!(env.constraints.find(typ.appl().appr().var()), Some(&test_cons));
     let second_fn = &typ.appr();
     assert_eq!(env.constraints.find(second_fn.appl().appr().var()), Some(&test_cons));
@@ -1288,7 +1302,7 @@ instance Eq a => Eq [a] where
     let list_type = Type::new_op(~"[]", ~[Type::new_var(100)]);
     assert_eq!(*typ, function_type(&list_type, &function_type(&list_type, &Type::new_op(~"Bool", ~[]))));
     let var = typ.appl().appr().appr().var();
-    let eq = ~[~"Eq"];
+    let eq = vec![~"Eq"];
     assert_eq!(env.constraints.find(var), Some(&eq));
 }
 

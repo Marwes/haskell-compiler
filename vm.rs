@@ -2,7 +2,6 @@ use std::fmt;
 use std::rc::Rc;
 use std::path::Path;
 use std::io::File;
-use std::slice::from_fn;
 use typecheck::TypeEnvironment;
 use compiler::*;
 use parser::Parser;    
@@ -15,7 +14,7 @@ enum Node_<'a> {
     Char(char),
     Combinator(&'a SuperCombinator),
     Indirection(Node<'a>),
-    Constructor(u16, ~[Node<'a>]),
+    Constructor(u16, Vec<Node<'a>>),
     Dictionary(&'a [uint])
 }
 #[deriving(Clone)]
@@ -48,7 +47,7 @@ impl <'a> fmt::Show for Node_<'a> {
             &Constructor(ref tag, ref args) => {
                 let mut cons = args;
                 if cons.len() > 0 {
-                    match cons[0].borrow() {
+                    match cons.get(0).borrow() {
                         &Char(_) => {
                             try!(write!(f.buf, "\""));
                             //Print a string
@@ -56,11 +55,11 @@ impl <'a> fmt::Show for Node_<'a> {
                                 if cons.len() < 2 {
                                     break;
                                 }
-                                match cons[0].borrow() {
+                                match cons.get(0).borrow() {
                                     &Char(c) =>  { try!(write!(f.buf, "{}", c)); },
                                     _ => break
                                 }
-                                match cons[1].borrow() {
+                                match cons.get(1).borrow() {
                                     &Constructor(_, ref args2) => cons = args2,
                                     _ => break
                                 }
@@ -92,14 +91,14 @@ impl <'a> fmt::Show for Node_<'a> {
 }
 
 pub struct VM<'a> {
-    assembly : ~[Assembly],
-    globals: ~[(uint, uint)],
-    heap : ~[Node<'a>],
+    assembly : Vec<Assembly>,
+    globals: Vec<(uint, uint)>,
+    heap : Vec<Node<'a>>,
 }
 
 impl <'a> VM<'a> {
     pub fn new() -> VM {
-        VM { assembly : ~[], heap : ~[], globals: ~[] }
+        VM { assembly : Vec::new(), heap : Vec::new(), globals: Vec::new() }
     }
 
     ///Adds an assembly to the VM, adding entries to the global table as necessary
@@ -107,35 +106,35 @@ impl <'a> VM<'a> {
         self.assembly.push(assembly);
         let assembly_index = self.assembly.len() - 1;
         let mut index = 0;
-        for _ in self.assembly[self.assembly.len() - 1].superCombinators.iter() {
+        for _ in self.assembly.last().unwrap().superCombinators.iter() {
             self.globals.push((assembly_index, index));
             index += 1;
         }
     }
 
     pub fn evaluate(&'a self, code: &[Instruction], assembly_id: uint) -> Node_<'a> {
-        let mut stack = ~[];
+        let mut stack = Vec::new();
         self.execute(&mut stack, code, assembly_id);
         self.deepseq(stack, assembly_id)
     }
-    fn deepseq(&'a self, mut stack: ~[Node<'a>], assembly_id: uint) -> Node_<'a> {
+    fn deepseq(&'a self, mut stack: Vec<Node<'a>>, assembly_id: uint) -> Node_<'a> {
         static evalCode : &'static [Instruction] = &[Eval];
         self.execute(&mut stack, evalCode, assembly_id);
-        match stack[0].borrow() {
+        match stack.get(0).borrow() {
             &Constructor(tag, ref vals) => {
-                let mut ret = ~[];
+                let mut ret = Vec::new();
                 for v in vals.iter() {
-                    let s = ~[v.clone()];
+                    let s = vec!(v.clone());
                     let x = self.deepseq(s, assembly_id);
                     ret.push(Node::new(x));
                 }
                 Constructor(tag, ret)
             }
-            _ => stack[0].borrow().clone()
+            _ => stack.get(0).borrow().clone()
         }
     }
 
-    pub fn execute(&'a self, stack: &mut ~[Node<'a>], code: &[Instruction], assembly_id: uint) {
+    pub fn execute(&'a self, stack: &mut Vec<Node<'a>>, code: &[Instruction], assembly_id: uint) {
         debug!("----------------------------");
         debug!("Entering frame with stack");
         for x in stack.iter() {
@@ -151,21 +150,21 @@ impl <'a> VM<'a> {
                 &Multiply => primitive(stack, |l, r| { l * r }),
                 &Divide => primitive(stack, |l, r| { l / r }),
                 &Remainder => primitive(stack, |l, r| { l % r }),
-                &IntEQ => primitive_int(stack, |l, r| { if l == r { Constructor(0, ~[]) } else { Constructor(1, ~[]) } }),
-                &IntLT => primitive_int(stack, |l, r| { if l < r { Constructor(0, ~[]) } else { Constructor(1, ~[]) } }),
-                &IntLE => primitive_int(stack, |l, r| { if l <= r { Constructor(0, ~[]) } else { Constructor(1, ~[]) } }),
-                &IntGT => primitive_int(stack, |l, r| { if l > r { Constructor(0, ~[]) } else { Constructor(1, ~[]) } }),
-                &IntGE => primitive_int(stack, |l, r| { if l >= r { Constructor(0, ~[]) } else { Constructor(1, ~[]) } }),
+                &IntEQ => primitive_int(stack, |l, r| { if l == r { Constructor(0, Vec::new()) } else { Constructor(1, Vec::new()) } }),
+                &IntLT => primitive_int(stack, |l, r| { if l < r { Constructor(0, Vec::new()) } else { Constructor(1, Vec::new()) } }),
+                &IntLE => primitive_int(stack, |l, r| { if l <= r { Constructor(0, Vec::new()) } else { Constructor(1, Vec::new()) } }),
+                &IntGT => primitive_int(stack, |l, r| { if l > r { Constructor(0, Vec::new()) } else { Constructor(1, Vec::new()) } }),
+                &IntGE => primitive_int(stack, |l, r| { if l >= r { Constructor(0, Vec::new()) } else { Constructor(1, Vec::new()) } }),
                 &DoubleAdd => primitive_float(stack, |l, r| { Float(l + r) }),
                 &DoubleSub => primitive_float(stack, |l, r| { Float(l - r) }),
                 &DoubleMultiply => primitive_float(stack, |l, r| { Float(l * r) }),
                 &DoubleDivide => primitive_float(stack, |l, r| { Float(l / r) }),
                 &DoubleRemainder => primitive_float(stack, |l, r| { Float(l % r) }),
-                &DoubleEQ => primitive_float(stack, |l, r| { if l == r { Constructor(0, ~[]) } else { Constructor(1, ~[]) } }),
-                &DoubleLT => primitive_float(stack, |l, r| { if l < r { Constructor(0, ~[]) } else { Constructor(1, ~[]) } }),
-                &DoubleLE => primitive_float(stack, |l, r| { if l <= r { Constructor(0, ~[]) } else { Constructor(1, ~[]) } }),
-                &DoubleGT => primitive_float(stack, |l, r| { if l > r { Constructor(0, ~[]) } else { Constructor(1, ~[]) } }),
-                &DoubleGE => primitive_float(stack, |l, r| { if l >= r { Constructor(0, ~[]) } else { Constructor(1, ~[]) } }),
+                &DoubleEQ => primitive_float(stack, |l, r| { if l == r { Constructor(0, Vec::new()) } else { Constructor(1, Vec::new()) } }),
+                &DoubleLT => primitive_float(stack, |l, r| { if l < r { Constructor(0, Vec::new()) } else { Constructor(1, Vec::new()) } }),
+                &DoubleLE => primitive_float(stack, |l, r| { if l <= r { Constructor(0, Vec::new()) } else { Constructor(1, Vec::new()) } }),
+                &DoubleGT => primitive_float(stack, |l, r| { if l > r { Constructor(0, Vec::new()) } else { Constructor(1, Vec::new()) } }),
+                &DoubleGE => primitive_float(stack, |l, r| { if l >= r { Constructor(0, Vec::new()) } else { Constructor(1, Vec::new()) } }),
                 &IntToDouble => {
                     let top = stack.pop().unwrap();
                     stack.push(match top.borrow() {
@@ -184,16 +183,16 @@ impl <'a> VM<'a> {
                 &PushFloat(value) => { stack.push(Node::new(Float(value))); }
                 &PushChar(value) => { stack.push(Node::new(Char(value))); }
                 &Push(index) => {
-                    let x = stack[index].clone();
+                    let x = stack.get(index).clone();
                     debug!("Pushed {}", x.borrow());
                     for j in range(0, stack.len()) {
-                        debug!(" {}  {}", j, stack[j].borrow());
+                        debug!(" {}  {}", j, stack.get(j).borrow());
                     }
                     stack.push(x);
                 }
                 &PushGlobal(index) => {
-                    let (assembly_index, index) = self.globals[index];
-                    let sc = &self.assembly[assembly_index].superCombinators[index];
+                    let &(assembly_index, index) = self.globals.get(index);
+                    let sc = &self.assembly.get(assembly_index).superCombinators[index];
                     stack.push(Node::new(Combinator(sc)));
                 }
                 &Mkap => {
@@ -205,7 +204,7 @@ impl <'a> VM<'a> {
                 }
                 &Eval => {
                     static unwindCode : &'static [Instruction] = &[Unwind];
-                    let mut newStack = ~[stack.pop().unwrap()];
+                    let mut newStack = vec!(stack.pop().unwrap());
                     self.execute(&mut newStack, unwindCode, assembly_id);
                     stack.push(newStack.pop().unwrap());
                 }
@@ -215,10 +214,10 @@ impl <'a> VM<'a> {
                     }
                 }
                 &Update(index) => {
-                    stack[index] = Node::new(Indirection(stack[stack.len() - 1].clone()));
+                    *stack.get_mut(index) = Node::new(Indirection(stack.last().unwrap().clone()));
                 }
                 &Unwind => {
-                    let x = (*stack[stack.len() - 1].borrow()).clone();
+                    let x = (*stack.last().unwrap().borrow()).clone();
                     debug!("Unwinding {}", x);
                     match x {
                         Application(func, _) => {
@@ -233,25 +232,25 @@ impl <'a> VM<'a> {
                             }
                             else {
                                 for j in range(stack.len() - (comb.arity as uint) - 1, stack.len() - 1) {
-                                    stack[j] = match stack[j].borrow() {
+                                    *stack.get_mut(j) = match stack.get(j).borrow() {
                                         &Application(_, ref arg) => arg.clone(),
                                         _ => fail!("Expected Application")
                                     };
                                 }
-                                let mut newStack = ~[];
+                                let mut newStack = Vec::new();
                                 for i in range(0, comb.arity as uint) {
                                     let index = stack.len() - i - 2;
-                                    newStack.push(stack[index].clone());
+                                    newStack.push(stack.get(index).clone());
                                 }
                                 
                                 debug!("Called {}", comb.name);
                                 for j in range(0, newStack.len()) {
-                                    debug!(" {}  {}", j, newStack[j].borrow());
+                                    debug!(" {}  {}", j, newStack.get(j).borrow());
                                 }
                                 self.execute(&mut newStack, comb.instructions, comb.assembly_id);
                                 debug!("Returned {}", comb.name);
                                 for j in range(0, newStack.len()) {
-                                    debug!(" {}  {}", j, newStack[j].borrow());
+                                    debug!(" {}  {}", j, newStack.get(j).borrow());
                                 }
                                 assert_eq!(newStack.len(), 1);
                                 for _ in range(0, comb.arity + 1) {
@@ -262,7 +261,7 @@ impl <'a> VM<'a> {
                             }
                         }
                         Indirection(node) => {
-                            stack[stack.len() - 1] = node;
+                            *stack.mut_last().unwrap() = node;
                             i -= 1;
                         }
                         _ => ()
@@ -286,11 +285,14 @@ impl <'a> VM<'a> {
                     }
                 }
                 &Pack(tag, arity) => {
-                    let args = from_fn(arity as uint, |_| stack.pop().unwrap());
+                    let mut args = Vec::new();
+                    for _ in range(0, arity) {
+                        args.push(stack.pop().unwrap());
+                    }
                     stack.push(Node::new(Constructor(tag, args)));
                 }
                 &JumpFalse(address) => {
-                    match stack[stack.len() - 1].borrow() {
+                    match stack.last().unwrap().borrow() {
                         &Constructor(0, _) => (),
                         &Constructor(1, _) => i = address - 1,
                         _ => ()
@@ -298,7 +300,7 @@ impl <'a> VM<'a> {
                     stack.pop();
                 }
                 &CaseJump(jump_tag) => {
-                    let jumped = match stack[stack.len() - 1].borrow() {
+                    let jumped = match stack.last().unwrap().borrow() {
                         &Constructor(tag, _) => {
                             if jump_tag == tag as uint {
                                 i += 1;//Skip the jump instruction ie continue to the next test
@@ -318,19 +320,19 @@ impl <'a> VM<'a> {
                     i = to - 1;
                 }
                 &PushDictionary(index) => {
-                    let assembly = &self.assembly[assembly_id];
+                    let assembly = self.assembly.get(assembly_id);
                     let dict : &[uint] = assembly.instance_dictionaries[index];
                     stack.push(Node::new(Dictionary(dict)));
                 }
                 &PushDictionaryMember(index) => {
                     let sc = {
-                        let dict = match stack[0].borrow() {
+                        let dict = match stack.get(0).borrow() {
                             &Dictionary(ref x) => x,
                             x => fail!("Attempted to retrieve {} as dictionary", x)
                         };
                         let gi = dict[index];
-                        let (assembly_index, i) = self.globals[gi];
-                        &self.assembly[assembly_index].superCombinators[i]
+                        let &(assembly_index, i) = self.globals.get(gi);
+                        &self.assembly.get(assembly_index).superCombinators[i]
                     };
                     stack.push(Node::new(Combinator(sc)));
                 }
@@ -343,7 +345,7 @@ impl <'a> VM<'a> {
     }
 }
 
-fn primitive_int(stack: &mut ~[Node], f: |int, int| -> Node_) {
+fn primitive_int(stack: &mut Vec<Node>, f: |int, int| -> Node_) {
     let l = stack.pop().unwrap();
     let r = stack.pop().unwrap();
     match (l.borrow(), r.borrow()) {
@@ -351,7 +353,7 @@ fn primitive_int(stack: &mut ~[Node], f: |int, int| -> Node_) {
         (lhs, rhs) => fail!("Expected fully evaluted numbers in primitive instruction\n LHS: {}\nRHS: {} ", lhs, rhs)
     }
 }
-fn primitive_float(stack: &mut ~[Node], f: |f64, f64| -> Node_) {
+fn primitive_float(stack: &mut Vec<Node>, f: |f64, f64| -> Node_) {
     let l = stack.pop().unwrap();
     let r = stack.pop().unwrap();
     match (l.borrow(), r.borrow()) {
@@ -359,7 +361,7 @@ fn primitive_float(stack: &mut ~[Node], f: |f64, f64| -> Node_) {
         (lhs, rhs) => fail!("Expected fully evaluted numbers in primitive instruction\n LHS: {}\nRHS: {} ", lhs, rhs)
     }
 }
-fn primitive(stack: &mut ~[Node], f: |int, int| -> int) {
+fn primitive(stack: &mut Vec<Node>, f: |int, int| -> int) {
     primitive_int(stack, |l, r| Int(f(l, r)))
 }
 
@@ -367,7 +369,7 @@ fn primitive(stack: &mut ~[Node], f: |int, int| -> int) {
 enum VMResult {
     IntResult(int),
     DoubleResult(f64),
-    ConstructorResult(u16, ~[VMResult])
+    ConstructorResult(u16, Vec<VMResult>)
 }
 
 fn compile_iter<T : Iterator<char>>(iterator: T) -> Assembly {
@@ -390,7 +392,7 @@ pub fn compile_file(filename: &str) -> Assembly {
 fn extract_result(node: Node_) -> Option<VMResult> {
     match node {
         Constructor(tag, fields) => {
-            let mut result = ~[];
+            let mut result = Vec::new();
             for field in fields.iter() {
                 match extract_result(field.borrow().clone()) {
                     Some(x) => result.push(x),
@@ -442,7 +444,7 @@ fn test_primitive()
     let s = 
 r"data Bool = True | False
 main = primIntLT 1 2";
-    assert_eq!(execute_main(s.chars()), Some(ConstructorResult(0, ~[])));
+    assert_eq!(execute_main(s.chars()), Some(ConstructorResult(0, Vec::new())));
 }
 
 #[test]
@@ -633,7 +635,7 @@ fn instance_super_class() {
         }
         None => None
     };
-    assert_eq!(result, Some(ConstructorResult(1, ~[])));
+    assert_eq!(result, Some(ConstructorResult(1, Vec::new())));
 }
 
 }

@@ -1,4 +1,3 @@
-use std::slice;
 use std::cmp::min;
 
 #[deriving(Eq, Show)]
@@ -15,7 +14,7 @@ impl EdgeIndex {
 
 struct Vertex<T> {
     pub value: T,
-    edges: ~[EdgeIndex]
+    edges: Vec<EdgeIndex>
 }
 struct Edge<T> {
     from: VertexIndex,
@@ -23,32 +22,32 @@ struct Edge<T> {
 }
 
 pub struct Graph<T> {
-    edges: ~[Edge<T>],
-    vertices: ~[Vertex<T>]
+    edges: Vec<Edge<T>>,
+    vertices: Vec<Vertex<T>>
 }
 
 impl <T> Graph<T> {
 
     pub fn new() -> Graph<T> {
-        Graph { edges: ~[], vertices: ~[] }
+        Graph { edges: Vec::new(), vertices: Vec::new() }
     }
 
     pub fn new_vertex(&mut self, value: T) -> VertexIndex {
-        self.vertices.push(Vertex { edges:~[], value: value });
+        self.vertices.push(Vertex { edges:Vec::new(), value: value });
         VertexIndex(self.vertices.len() - 1)
     }
 
     pub fn connect(&mut self, from: VertexIndex, to: VertexIndex) {
-        self.vertices[from.get()].edges.push(EdgeIndex(self.edges.len()));
+        self.vertices.get_mut(from.get()).edges.push(EdgeIndex(self.edges.len()));
         self.edges.push(Edge { from: from, to: to });
     }
 
     pub fn get_vertex<'a>(&'a self, v: VertexIndex) -> &'a Vertex<T> {
-        &self.vertices[v.get()]
+        self.vertices.get(v.get())
     }
 
     pub fn get_edge<'a>(&'a self, edge: EdgeIndex) -> &'a Edge<T> {
-        &self.edges[edge.get()]
+        self.edges.get(edge.get())
     }
 
     pub fn len(&self) -> uint {
@@ -58,49 +57,49 @@ impl <T> Graph<T> {
 
 pub fn strongly_connected_components<T>(graph: &Graph<T>) -> ~[~[VertexIndex]] {
     
-    let mut tarjan = TarjanComponents { graph: graph, index: 1, stack: ~[], connections: ~[],
-        valid: slice::from_fn(graph.len(), |_| 0),
-        lowlink: slice::from_fn(graph.len(), |_| 0)};
+    let mut tarjan = TarjanComponents { graph: graph, index: 1, stack: Vec::new(), connections: Vec::new(),
+        valid: Vec::from_fn(graph.len(), |_| 0),
+        lowlink: Vec::from_fn(graph.len(), |_| 0)};
     
 
     for vert in range(0, graph.len()) {
-        if tarjan.valid[vert] == 0 {
+        if *tarjan.valid.get(vert) == 0 {
             tarjan.strong_connect(VertexIndex(vert));
         }
     }
 
-    tarjan.connections
+    tarjan.connections.move_iter().map(|vec| vec.move_iter().collect()).collect()
 }
 
 struct TarjanComponents<'a, T>{
     index: uint,
     graph: &'a Graph<T>,
-    valid: ~[uint],
-    lowlink: ~[uint],
-    stack: ~[VertexIndex],
-    connections: ~[~[VertexIndex]]
+    valid: Vec<uint>,
+    lowlink: Vec<uint>,
+    stack: Vec<VertexIndex>,
+    connections: Vec<Vec<VertexIndex>>
 }
 
 impl <'a, T> TarjanComponents<'a, T> {
     fn strong_connect(&mut self, v: VertexIndex) {
-        self.valid[v.get()] = self.index;
-        self.lowlink[v.get()] = self.index;
+        *self.valid.get_mut(v.get()) = self.index;
+        *self.lowlink.get_mut(v.get()) = self.index;
         self.index += 1;
         self.stack.push(v);
 
         for edge_index in self.graph.get_vertex(v).edges.iter() {
             let edge = self.graph.get_edge(*edge_index);
-            if self.valid[edge.to.get()] == 0 {
+            if *self.valid.get(edge.to.get()) == 0 {
                 self.strong_connect(edge.to);
-                self.lowlink[v.get()] = min(self.lowlink[v.get()], self.lowlink[edge.to.get()]); 
+                *self.lowlink.get_mut(v.get()) = min(*self.lowlink.get(v.get()), *self.lowlink.get(edge.to.get())); 
             }
             else if self.stack.iter().any(|x| *x == edge.to) {
-                self.lowlink[v.get()] = min(self.lowlink[v.get()], self.valid[edge.to.get()]);
+                *self.lowlink.get_mut(v.get()) = min(*self.lowlink.get(v.get()), *self.valid.get(edge.to.get()));
             }
         }
 
-        if self.lowlink[v.get()] == self.valid[v.get()] {
-            let mut connected = ~[];
+        if self.lowlink.get(v.get()) == self.valid.get(v.get()) {
+            let mut connected = Vec::new();
             loop {
                 
                 let w = self.stack.pop().unwrap();
