@@ -24,6 +24,7 @@ mod module;
 mod graph;
 mod vm;
 mod scoped_map;
+mod core;
 
 #[cfg(not(test))]
 fn main() {
