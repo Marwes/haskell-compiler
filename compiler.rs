@@ -571,7 +571,9 @@ impl <'a> Compiler<'a> {
             &Apply(ref func, ref arg) => {
                 if !self.primitive(*func, *arg, instructions) {
                     self.compile(*arg, instructions, false);
+                    self.stackSize += 1;
                     self.compile(*func, instructions, false);
+                    self.stackSize -= 1;
                     match instructions.get(instructions.len() - 1) {
                         &Pack(_, _) => (),//The application was a constructor so dont do Mkap and the Pack instruction is strict already
                         _ => {
