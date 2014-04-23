@@ -1,7 +1,11 @@
-use module::*;
+use core::*;
 use typecheck::{Types, TypeEnvironment, function_type};
 use scoped_map::ScopedMap;
 use std::iter::range_step;
+use std::default::Default;
+
+use core::translate::{translate_module};
+use lambda_lift::do_lambda_lift;
 
 #[deriving(Eq, Show)]
 pub enum Instruction {
@@ -46,7 +50,6 @@ pub enum Instruction {
     PushDictionary(uint),
     PushDictionaryMember(uint),
 }
-
 enum Var<'a> {
     StackVariable(uint),
     GlobalVariable(uint),
@@ -128,9 +131,9 @@ impl Globals for Assembly {
     }
 }
 
-fn find_global<'a>(module: &'a Module, offset: uint, name: &str) -> Option<Var<'a>> {
+fn find_global<'a>(module: &'a Module<Id>, offset: uint, name: &str) -> Option<Var<'a>> {
     
-    for dataDef in module.dataDefinitions.iter() {
+    for dataDef in module.data_definitions.iter() {
         for ctor in dataDef.constructors.iter() {
             if ctor.name.equiv(&name) {
                 return Some(ConstructorVariable(ctor.tag as u16, ctor.arity as u16));
@@ -147,18 +150,10 @@ fn find_global<'a>(module: &'a Module, offset: uint, name: &str) -> Option<Var<'
     }
 
     let mut global_index = 0;
-    for instance in module.instances.iter() {
-        for bind in instance.bindings.iter() {
-            if bind.name.equiv(&name) {
-                return Some(GlobalVariable(offset + global_index));
-            }
-            global_index += 1;
-        }
-    }
     for bind in module.bindings.iter() {
-        if bind.name.equiv(&name) {
-            let typ = &bind.expression.typ;
-            let constraints = &bind.typeDecl.context;
+        if bind.name.name.name.equiv(&name) {
+            let typ = bind.expression.get_type();
+            let constraints = &bind.name.constraints;
             if constraints.len() > 0 {
                 return Some(ConstraintVariable(offset + global_index, typ, *constraints));
             }
@@ -169,6 +164,64 @@ fn find_global<'a>(module: &'a Module, offset: uint, name: &str) -> Option<Var<'
         global_index += 1;
     }
     None
+}
+
+impl Types for Module<Id> {
+    fn find_type<'a>(&'a self, name: &str) -> Option<&'a Type> {
+        for bind in self.bindings.iter() {
+            if bind.name.name.name.equiv(&name) {
+                return Some(bind.expression.get_type());
+            }
+        }
+
+        for class in self.classes.iter() {
+            for decl in class.declarations.iter() {
+                if decl.name.equiv(&name) {
+                    return Some(&decl.typ);
+                }
+            }
+        }
+        for data in self.data_definitions.iter() {
+            for ctor in data.constructors.iter() {
+                if ctor.name.equiv(&name) {
+                    return Some(&ctor.typ);
+                }
+            }
+        }
+        return None;
+    }
+
+    fn find_class<'a>(&'a self, name: &str) -> Option<&'a Class> {
+        self.classes.iter().find(|class| name == class.name)
+    }
+
+    fn find_instance<'a>(&'a self, classname: &str, typ: &Type) -> Option<(&'a [Constraint], &'a Type)> {
+        for &(ref constraints, ref op) in self.instances.iter() {
+            match op {
+                &TypeApplication(ref op, ref t) => {
+                    if classname == extract_applied_type(*op).op().name && extract_applied_type(*t).op().name == extract_applied_type(typ).op().name {
+                        let c : &[Constraint] = *constraints;
+                        let o : &Type = *op;
+                        return Some((c, o));
+                    }
+                }
+                _ => ()
+            }
+        }
+        None
+    }
+
+    fn each_constraint_list(&self, func: |&[Constraint]|) {
+        for bind in self.bindings.iter() {
+            func(bind.name.constraints);
+        }
+
+        for class in self.classes.iter() {
+            for decl in class.declarations.iter() {
+                func(decl.context);
+            }
+        }
+    }
 }
 
 fn extract_applied_type<'a>(typ: &'a Type) -> &'a Type {
@@ -223,14 +276,14 @@ impl Types for Assembly {
         }
         None
     }
-    fn each_typedeclaration(&self, func: |&TypeDeclaration|) {
+    fn each_constraint_list(&self, func: |&[Constraint]|) {
         for sc in self.superCombinators.iter() {
-            func(&sc.type_declaration);
+            func(sc.constraints);
         }
         
         for class in self.classes.iter() {
             for decl in class.declarations.iter() {
-                func(decl);
+                func(decl.context);
             }
         }
     }
@@ -243,7 +296,7 @@ pub struct Compiler<'a> {
     pub stackSize : uint,
     ///Array of all the assemblies which can be used to lookup functions in
     pub assemblies: Vec<&'a Assembly>,
-    module: Option<&'a Module>,
+    module: Option<&'a Module<Id>>,
     variables: ScopedMap<~str, Var<'a>>
 }
 
@@ -257,13 +310,13 @@ impl <'a> Compiler<'a> {
         }
     }
     
-    pub fn compileModule(&mut self, module : &'a Module) -> Assembly {
+    pub fn compileModule(&mut self, module : &'a Module<Id>) -> Assembly {
         self.module = Some(module);
         let mut superCombinators = Vec::new();
         let mut instance_dictionaries = Vec::new();
         let mut data_definitions = Vec::new();
         
-        for def in module.dataDefinitions.iter() {
+        for def in module.data_definitions.iter() {
             let mut constructors = Vec::new();
             for ctor in def.constructors.iter() {
                 constructors.push(ctor.clone());
@@ -271,19 +324,11 @@ impl <'a> Compiler<'a> {
             data_definitions.push(def.clone());
         }
 
-        //Compile all bindings
-        for instance in module.instances.iter() {
-            for bind in instance.bindings.iter() {
-                let mut sc = self.compileBinding(bind);
-                sc.name = bind.name.clone();
-                superCombinators.push(sc);
-            }
-        }
         for bind in module.bindings.iter() {
             let mut sc = self.compileBinding(bind);
-            let constraints = self.type_env.find_constraints(&bind.expression.typ);
+            let constraints = self.type_env.find_constraints(bind.expression.get_type());
             sc.constraints = constraints;
-            sc.name = bind.name.clone();
+            sc.name = bind.name.name.name.clone();
             superCombinators.push(sc);
         }
 
@@ -296,25 +341,37 @@ impl <'a> Compiler<'a> {
             instance_dictionaries: instance_dictionaries.move_iter().collect(),
             offset: self.assemblies.iter().flat_map(|assembly| assembly.superCombinators.iter()).len(),
             classes: module.classes.clone(),
-            instances: module.instances.iter().map(
-                |inst| (inst.constraints.clone(), Type::new_op(inst.classname.clone(), ~[inst.typ.clone()] ))
-                ).collect(),
+            instances: module.instances.iter().map(|x| x.clone()).collect(),
             data_definitions: data_definitions.move_iter().collect()
         }
     }
-    fn compileBinding(&mut self, bind : &Binding) -> SuperCombinator {
-        debug!("Compiling binding {}", bind.typeDecl);
+
+    fn compileBinding(&mut self, bind : &Binding<Id>) -> SuperCombinator {
+        fn arity(expr: &Expr<Id>) -> uint {
+            match expr {
+                &Lambda(_, ref body) => 1 + arity(*body),
+                _ => 0
+            }
+        }
+        debug!("Compiling binding {}", bind.name);
         let mut comb = SuperCombinator::new();
         comb.assembly_id = self.assemblies.len();
-        comb.type_declaration = bind.typeDecl.clone();
-        let dict_arg = if self.type_env.find_constraints(&comb.type_declaration.typ).len() > 0 { 1 } else { 0 };
-        comb.arity = bind.arity + dict_arg;
+        comb.type_declaration = TypeDeclaration {
+            name: bind.name.name.name.clone(),
+            typ: bind.name.typ.clone(),
+            context: bind.name.constraints.clone()
+        };
+        comb.constraints = bind.name.constraints.clone();
+        let dict_arg = if bind.name.constraints.len() > 0 { 1 } else { 0 };
+        comb.arity = arity(&bind.expression) + dict_arg;
         let mut instructions = Vec::new();
         self.scope(|this| {
             if dict_arg == 1 {
-                this.newStackVar(~"$dict");
+                println!("{}", bind.name);
+                this.newStackVar(Name { name: ~"$dict", uid: 0 });
             }
-            match &bind.expression.expr {
+            debug!("{}\n {}", bind.name, bind.expression);
+            match &bind.expression {
                 &Lambda(_, _) => {
                     this.compile(&bind.expression, &mut instructions, true);
                     instructions.push(Update(0));
@@ -331,12 +388,6 @@ impl <'a> Compiler<'a> {
         comb.instructions = instructions.move_iter().collect();
         comb
     }
-    pub fn compileExpression(&mut self, expr: &TypedExpr) -> ~[Instruction] {
-        let mut instructions = Vec::new();
-        self.compile(expr, &mut instructions, false);
-        instructions.move_iter().collect()
-    }
-
     
     ///Find a variable by walking through the stack followed by all globals
     fn find<'r>(&'r self, identifier : &str) -> Option<Var<'r>> {
@@ -392,8 +443,8 @@ impl <'a> Compiler<'a> {
         })
     }
 
-    fn newStackVar(&mut self, identifier : ~str) {
-        self.variables.insert(identifier, StackVariable(self.stackSize));
+    fn newStackVar(&mut self, identifier : Name) {
+        self.variables.insert(identifier.name, StackVariable(self.stackSize));
         self.stackSize += 1;
     }
 
@@ -406,22 +457,21 @@ impl <'a> Compiler<'a> {
     }
 
     ///Compile an expression by appending instructions to the instructions array
-    fn compile(&mut self, expr : &TypedExpr, instructions : &mut Vec<Instruction>, strict: bool) {
-        debug!("Compiling {}", expr.expr);
-        match &expr.expr {
+    fn compile(&mut self, expr : &Expr<Id>, instructions : &mut Vec<Instruction>, strict: bool) {
+        match expr {
             &Identifier(ref name) => {
                 //When compiling a variable which has constraints a new instance dictionary
                 //might be created which is returned here and added to the assembly
-                let maybe_new_dict = match self.find(*name) {
-                    None => fail!("{} Error: Undefined variable {}", expr.location, *name),
+                let maybe_new_dict = match self.find(name.name.name) {
+                    None => fail!("Error: Undefined variable {}", *name),
                     Some(var) => {
                         match var {
                             StackVariable(index) => { instructions.push(Push(index)); None }
                             GlobalVariable(index) => { instructions.push(PushGlobal(index)); None }
                             ConstructorVariable(tag, arity) => { instructions.push(Pack(tag, arity)); None }
-                            ClassVariable(typ, var) => self.compile_instance_variable(&expr.typ, instructions, *name, typ, var),
+                            ClassVariable(typ, var) => self.compile_instance_variable(expr.get_type(), instructions, name.name.name, typ, var),
                             ConstraintVariable(index, _, constraints) => {
-                                let x = self.compile_with_constraints(*name, &expr.typ, constraints, instructions);
+                                let x = self.compile_with_constraints(name.name.name, expr.get_type(), constraints, instructions);
                                 instructions.push(PushGlobal(index));
                                 instructions.push(Mkap);
                                 x
@@ -437,47 +487,53 @@ impl <'a> Compiler<'a> {
                     instructions.push(Eval);
                 }
             }
-            &Number(num) => {
-                if expr.typ == Type::new_op(~"Int", ~[]) {
-                    instructions.push(PushInt(num));
+            &Literal(ref literal) => {
+                match &literal.value {
+                    &Integral(i) => {
+                        if literal.typ == Type::new_op(~"Int", ~[]) {
+                            instructions.push(PushInt(i));
+                        }
+                        else if literal.typ == Type::new_op(~"Double", ~[]) {
+                            instructions.push(PushFloat(i as f64));
+                        }
+                        else {
+                            let fromInteger = Identifier(Id {
+                                name: Name { name: ~"fromInteger", uid: 999999 }, 
+                                typ: function_type(&Type::new_op(~"Int", ~[]), &literal.typ),
+                                constraints: ~[]
+                            });
+                            let number = Literal(Literal { typ: Type::new_op(~"Double", ~[]), value: Integral(i) });
+                            let apply = Apply(~fromInteger, ~number);
+                            self.compile(&apply, instructions, strict);
+                        }
+                    }
+                    &Fractional(f) => {
+                        if literal.typ == Type::new_op(~"Double", ~[]) {
+                            instructions.push(PushFloat(f));
+                        }
+                        else {
+                            let fromRational = Identifier(Id {
+                                name: Name { name: ~"fromRational", uid: 999999 }, 
+                                typ: function_type(&Type::new_op(~"Double", ~[]), &literal.typ),
+                                constraints: ~[]
+                            });
+                            let number = Literal(Literal {
+                                typ: Type::new_op(~"Double", ~[]),
+                                value: Fractional(f)
+                            });
+                            let apply = Apply(~fromRational, ~number);
+                            self.compile(&apply, instructions, strict);
+                        }
+                    }
+                    &String(ref s) => {
+                        instructions.push(Pack(0, 0));
+                        for c in s.chars_rev() {
+                            instructions.push(PushChar(c));
+                            instructions.push(Pack(1, 2));
+                        }
+                    }
+                    &Char(c) => instructions.push(PushChar(c))
                 }
-                else if expr.typ == Type::new_op(~"Double", ~[]) {
-                    instructions.push(PushFloat(num as f64));
-                }
-                else {
-                    let mut fromInteger = TypedExpr::new(Identifier(~"fromInteger"));
-                    fromInteger.typ = function_type(&Type::new_op(~"Int", ~[]), &expr.typ);
-                    let mut number = TypedExpr::new(Number(num));
-                    number.typ = Type::new_op(~"Int", ~[]);
-                    let mut apply = TypedExpr::new(Apply(~fromInteger, ~number));
-                    apply.typ = expr.typ.clone();
-                    self.compile(&apply, instructions, strict);
-                }
-
-            }
-            &Rational(num) => {
-                if expr.typ == Type::new_op(~"Double", ~[]) {
-                    instructions.push(PushFloat(num));
-                }
-                else {
-                    let mut fromRational = TypedExpr::new(Identifier(~"fromRational"));
-                    fromRational.typ = function_type(&Type::new_op(~"Double", ~[]), &expr.typ);
-                    let mut number = TypedExpr::new(Rational(num));
-                    number.typ = Type::new_op(~"Double", ~[]);
-                    let mut apply = TypedExpr::new(Apply(~fromRational, ~number));
-                    apply.typ = expr.typ.clone();
-                    self.compile(&apply, instructions, strict);
-                }
-            }
-            &String(ref s) => {
-                instructions.push(Pack(0, 0));
-                for c in s.chars_rev() {
-                    instructions.push(PushChar(c));
-                    instructions.push(Pack(1, 2));
-                }
-            }
-            &Char(c) => {
-                instructions.push(PushChar(c));
             }
             &Apply(ref func, ref arg) => {
                 if !self.primitive(*func, *arg, instructions) {
@@ -496,13 +552,13 @@ impl <'a> Compiler<'a> {
             }
             &Lambda(ref varname, ref body) => {
                 self.scope(|this| {
-                    this.newStackVar(varname.clone());
+                    this.newStackVar(varname.name.clone());
                     this.compile(*body, instructions, false);
                 });
             }
             &Let(ref bindings, ref body) => {
                 for bind in bindings.iter() {
-                    self.newStackVar(bind.name.clone());
+                    self.newStackVar(bind.name.name.clone());
                     self.compile(&bind.expression, instructions, false);
                 }
                 self.compile(*body, instructions, strict);
@@ -519,7 +575,7 @@ impl <'a> Compiler<'a> {
                     self.scope(|this| {
                         let pattern_start = instructions.len() as int;
                         let mut branches = Vec::new();
-                        let stack_increase = this.compile_pattern(&alt.pattern.node, &mut branches, instructions, this.stackSize - 1, 0);
+                        let stack_increase = this.compile_pattern(&alt.pattern, &mut branches, instructions, this.stackSize - 1, 0);
                         let pattern_end = instructions.len() as int;
 
                         this.compile(&alt.expression, instructions, strict);
@@ -563,22 +619,17 @@ impl <'a> Compiler<'a> {
                 let instance_fn_name = "#" + typename + name;
                 match self.find(instance_fn_name) {
                     Some(GlobalVariable(index)) => {
-                        let function_type = self.type_env.find(instance_fn_name)
-                            .expect(format!("Error {} does not exist in the type environment", instance_fn_name));
-                        let constraints = self.type_env.find_constraints(function_type);
-                        if constraints.len() > 0 {
-                            let dict = self.compile_with_constraints(instance_fn_name, actual_type, constraints, instructions);
-                            instructions.push(PushGlobal(index));
-                            instructions.push(Mkap);
-                            return dict;
-                        }
-                        else {
-                            instructions.push(PushGlobal(index));
-                        }
+                        instructions.push(PushGlobal(index));
+                        None
+                    }
+                    Some(ConstraintVariable(index, _function_type, constraints)) => {
+                        let dict = self.compile_with_constraints(instance_fn_name, actual_type, constraints, instructions);
+                        instructions.push(PushGlobal(index));
+                        instructions.push(Mkap);
+                        dict
                     }
                     _ => fail!("Unregistered instance function {}", instance_fn_name)
                 }
-                None
             }
             None => {
                 let constraints = self.type_env.find_constraints(actual_type);
@@ -673,13 +724,14 @@ impl <'a> Compiler<'a> {
     }
 
     ///Attempt to compile a binary primitive, returning true if it succeded
-    fn primitive(&mut self, func: &TypedExpr, arg: &TypedExpr, instructions: &mut Vec<Instruction>) -> bool {
-        match &func.expr {
+    fn primitive(&mut self, func: &Expr<Id>, arg: &Expr<Id>, instructions: &mut Vec<Instruction>) -> bool {
+        match func {
             &Apply(ref prim_func, ref arg2) => {
-                match &prim_func.expr {
+                let p: &Expr<Id> = *prim_func;
+                match p {
                     &Identifier(ref name) => {
                         //Binary functions
-                        let maybeOP = match name.as_slice() {
+                        let maybeOP = match name.name.name.as_slice() {
                             "primIntAdd" => Some(Add),
                             "primIntSubtract" => Some(Sub),
                             "primIntMultiply" => Some(Multiply),
@@ -716,7 +768,7 @@ impl <'a> Compiler<'a> {
                 }
             }
             &Identifier(ref name) => {
-                let n: &str = *name;
+                let n: &str = name.name.name;
                 let maybeOP = match n {
                     "primIntToDouble" => Some(IntToDouble),
                     "primDoubleToInt" => Some(DoubleToInt),
@@ -735,7 +787,7 @@ impl <'a> Compiler<'a> {
         }
     }
 
-    fn compile_pattern(&mut self, pattern: &Pattern, branches: &mut Vec<uint>, instructions: &mut Vec<Instruction>, stack_index: uint, pattern_index: uint) -> uint {
+    fn compile_pattern(&mut self, pattern: &Pattern<Id>, branches: &mut Vec<uint>, instructions: &mut Vec<Instruction>, stack_index: uint, pattern_index: uint) -> uint {
         //TODO this is unlikely to work with nested patterns currently
         match pattern {
             &ConstructorPattern(ref name, ref patterns) => {
@@ -757,7 +809,7 @@ impl <'a> Compiler<'a> {
                 size + patterns.len()
             }
             &NumberPattern(number) => {
-                self.newStackVar(pattern_index.to_str());
+                self.newStackVar(Name { name: pattern_index.to_str(), uid: 0 });
                 instructions.push(Push(stack_index - pattern_index));
                 instructions.push(Eval);
                 instructions.push(PushInt(number));
@@ -766,7 +818,7 @@ impl <'a> Compiler<'a> {
                 0
             }
             &IdentifierPattern(ref ident) => {
-                self.newStackVar(ident.clone());
+                self.newStackVar(ident.name.clone());
                 0
             }
         }
@@ -795,24 +847,42 @@ fn try_find_instance_type<'a>(class_var: &TypeVariable, class_type: &Type, actua
     }
 }
 
+pub fn compile(contents: &str) -> Assembly {
+    let mut type_env = TypeEnvironment::new();
+    compile_with_type_env(&mut type_env, [], contents)
+}
+
+pub fn compile_with_type_env(type_env: &mut TypeEnvironment, assemblies: &[&Assembly], contents: &str) -> Assembly {
+    use parser::Parser;
+
+    let mut parser = Parser::new(contents.chars()); 
+    let mut module = parser.module();
+    for assem in assemblies.iter() {
+        type_env.add_types(*assem);
+    }
+    type_env.typecheck_module(&mut module);
+    let core_module = do_lambda_lift(translate_module(module));
+    let mut compiler = Compiler::new(type_env);
+    for assem in assemblies.iter() {
+        compiler.assemblies.push(*assem);
+    }
+    compiler.compileModule(&core_module)
+}
+
+
 #[cfg(test)]
 mod tests {
 
 use compiler::*;
 use typecheck::TypeEnvironment;
-use parser::Parser;
-use typecheck::{identifier, apply, number};
 use std::io::File;
 
 #[test]
 fn add() {
-    let mut e = apply(apply(identifier(~"primIntAdd"), number(1)), number(2));
-    let mut type_env = TypeEnvironment::new();
-    type_env.typecheck_expr(&mut e);
-    let mut comp = Compiler::new(&type_env);
-    let instr = comp.compileExpression(&e);
+    let file = "main = primIntAdd 1 2";
+    let assembly = compile(file);
 
-    assert_eq!(instr, ~[PushInt(2), PushInt(1), Add]);
+    assert_eq!(assembly.superCombinators[0].instructions, ~[PushInt(2), PushInt(1), Add, Update(0), Unwind]);
 }
 
 #[test]
@@ -820,12 +890,7 @@ fn add_double() {
     let file =
 r"add x y = primDoubleAdd x y
 main = add 2. 3.";
-    let mut parser = Parser::new(file.chars());
-    let mut module = parser.module();
-    let mut type_env = TypeEnvironment::new();
-    type_env.typecheck_module(&mut module);
-    let mut comp = Compiler::new(&type_env);
-    let assembly = comp.compileModule(&module);
+    let assembly = compile(file);
 
     assert_eq!(assembly.superCombinators[0].instructions, ~[Push(1), Eval, Push(0), Eval, DoubleAdd, Update(0), Pop(2), Unwind]);
     assert_eq!(assembly.superCombinators[1].instructions, ~[PushFloat(3.), PushFloat(2.), PushGlobal(0), Mkap, Mkap, Eval, Update(0), Unwind]);
@@ -834,12 +899,7 @@ main = add 2. 3.";
 fn push_num_double() {
     let file =
 r"main = primDoubleAdd 2 3";
-    let mut parser = Parser::new(file.chars());
-    let mut module = parser.module();
-    let mut type_env = TypeEnvironment::new();
-    type_env.typecheck_module(&mut module);
-    let mut comp = Compiler::new(&type_env);
-    let assembly = comp.compileModule(&module);
+    let assembly = compile(file);
 
     assert_eq!(assembly.superCombinators[0].instructions, ~[PushFloat(3.), PushFloat(2.), DoubleAdd, Update(0), Unwind]);
 }
@@ -849,12 +909,7 @@ fn application() {
     let file =
 r"add x y = primIntAdd x y
 main = add 2 3";
-    let mut parser = Parser::new(file.chars());
-    let mut module = parser.module();
-    let mut type_env = TypeEnvironment::new();
-    type_env.typecheck_module(&mut module);
-    let mut comp = Compiler::new(&type_env);
-    let assembly = comp.compileModule(&module);
+    let assembly = compile(file);
 
     assert_eq!(assembly.superCombinators[1].instructions, ~[PushInt(3), PushInt(2), PushGlobal(0), Mkap, Mkap, Eval, Update(0), Unwind]);
 }
@@ -862,27 +917,17 @@ main = add 2 3";
 #[test]
 fn compile_constructor() {
     let file =
-r"primIntAdd 1 0 : []";
-    let mut parser = Parser::new(file.chars());
-    let mut expr = parser.expression_();
-    let mut type_env = TypeEnvironment::new();
-    type_env.typecheck_expr(&mut expr);
-    let mut comp = Compiler::new(&type_env);
-    let instructions = comp.compileExpression(&expr);
+r"main = primIntAdd 1 0 : []";
+    let assembly = compile(file);
 
-    assert_eq!(instructions, ~[Pack(0, 0), PushInt(0), PushInt(1), Add, Pack(1, 2)]);
+    assert_eq!(assembly.superCombinators[0].instructions, ~[Pack(0, 0), PushInt(0), PushInt(1), Add, Pack(1, 2), Update(0), Unwind]);
 }
 
 #[test]
 fn compile_tuple() {
     let file =
 r"test x y = (primIntAdd 0 1, x, y)";
-    let mut parser = Parser::new(file.chars());
-    let mut module = parser.module();
-    let mut type_env = TypeEnvironment::new();
-    type_env.typecheck_module(&mut module);
-    let mut comp = Compiler::new(&type_env);
-    let assembly = comp.compileModule(&module);
+    let assembly = compile(file);
 
     assert_eq!(assembly.superCombinators[0].instructions, ~[Push(1), Push(0), PushInt(1), PushInt(0), Add, Pack(0, 3), Update(0), Pop(2), Unwind]);
 }
@@ -890,37 +935,28 @@ r"test x y = (primIntAdd 0 1, x, y)";
 #[test]
 fn compile_case() {
     let file =
-r"case [primIntAdd 1 0] of
+r"main = case [primIntAdd 1 0] of
     : x xs -> x
     [] -> 2";
-    let mut parser = Parser::new(file.chars());
-    let mut expr = parser.expression_();
-    let mut type_env = TypeEnvironment::new();
-    type_env.typecheck_expr(&mut expr);
-    let mut comp = Compiler::new(&type_env);
-    let instructions = comp.compileExpression(&expr);
+    let assembly = compile(file);
 
-    assert_eq!(instructions, ~[Pack(0, 0), PushInt(0), PushInt(1), Add, Pack(1, 2),
-        Push(0), CaseJump(1), Jump(13), Split(2), Push(1), Slide(2), Jump(21), Pop(2),
-        Push(0), CaseJump(0), Jump(21), Split(0), PushInt(2), Slide(0), Jump(21), Pop(0), Slide(1)]);
+
+    assert_eq!(assembly.superCombinators[0].instructions, ~[Pack(0, 0), PushInt(0), PushInt(1), Add, Pack(1, 2),
+        Push(0), CaseJump(1), Jump(14), Split(2), Push(1), Eval, Slide(2), Jump(22), Pop(2),
+        Push(0), CaseJump(0), Jump(22), Split(0), PushInt(2), Slide(0), Jump(22), Pop(0), Slide(1), Eval, Update(0), Unwind]);
 }
 
 #[test]
 fn compile_nested_case() {
     let file =
-r"case [primIntAdd 1 0] of
+r"main = case [primIntAdd 1 0] of
     : 1 xs -> primIntAdd 1 1
     [] -> 2";
-    let mut parser = Parser::new(file.chars());
-    let mut expr = parser.expression_();
-    let mut type_env = TypeEnvironment::new();
-    type_env.typecheck_expr(&mut expr);
-    let mut comp = Compiler::new(&type_env);
-    let instructions = comp.compileExpression(&expr);
+    let assembly = compile(file);
 
-    assert_eq!(instructions, ~[Pack(0, 0), PushInt(0), PushInt(1), Add, Pack(1, 2),
+    assert_eq!(assembly.superCombinators[0].instructions, ~[Pack(0, 0), PushInt(0), PushInt(1), Add, Pack(1, 2),
         Push(0), CaseJump(1), Jump(20), Split(2), Push(1), Eval, PushInt(1), IntEQ, JumpFalse(19), PushInt(1), PushInt(1), Add, Slide(2), Jump(28), Pop(2),
-        Push(0), CaseJump(0), Jump(28), Split(0), PushInt(2), Slide(0), Jump(28), Pop(0), Slide(1)]);
+        Push(0), CaseJump(0), Jump(28), Split(0), PushInt(2), Slide(0), Jump(28), Pop(0), Slide(1), Eval, Update(0), Unwind]);
 }
 
 #[test]
@@ -933,12 +969,7 @@ instance Test Int where
     test x = x
 
 main = test (primIntAdd 6 0)";
-    let mut parser = Parser::new(file.chars());
-    let mut module = parser.module();
-    let mut type_env = TypeEnvironment::new();
-    type_env.typecheck_module(&mut module);
-    let mut comp = Compiler::new(&type_env);
-    let assembly = comp.compileModule(&module);
+    let assembly = compile(file);
 
     let main = &assembly.superCombinators[1];
     assert_eq!(main.name, ~"main");
@@ -955,12 +986,7 @@ instance Test Int where
     test x = x
 
 main x = primIntAdd (test x) 6";
-    let mut parser = Parser::new(file.chars());
-    let mut module = parser.module();
-    let mut type_env = TypeEnvironment::new();
-    type_env.typecheck_module(&mut module);
-    let mut comp = Compiler::new(&type_env);
-    let assembly = comp.compileModule(&module);
+    let assembly = compile(file);
 
     let main = assembly.superCombinators[1];
     assert_eq!(main.name, ~"main");
@@ -970,24 +996,9 @@ main x = primIntAdd (test x) 6";
 #[test]
 fn compile_prelude() {
     let mut type_env = TypeEnvironment::new();
-    let prelude = {
-        let path = &Path::new("Prelude.hs");
-        let contents  = File::open(path).read_to_str().unwrap();
-        let mut parser = Parser::new(contents.chars()); 
-        let mut module = parser.module();
-        type_env.typecheck_module(&mut module);
-        let mut compiler = Compiler::new(&type_env);
-        compiler.compileModule(&mut module)
-    };
+    let prelude = compile_with_type_env(&mut type_env, [], File::open(&Path::new("Prelude.hs")).read_to_str().unwrap());
 
-    let file =
-r"main = id (primIntAdd 2 0)";
-    let mut parser = Parser::new(file.chars());
-    let mut module = parser.module();
-    type_env.typecheck_module(&mut module);
-    let mut compiler = Compiler::new(&type_env);
-    compiler.assemblies.push(&prelude);
-    let assembly = compiler.compileModule(&module);
+    let assembly = compile_with_type_env(&mut type_env, [&prelude], r"main = id (primIntAdd 2 0)");
 
     let sc = &assembly.superCombinators[0];
     let id_index = prelude.superCombinators.iter().position(|sc| sc.name.equiv(& &"id")).unwrap();

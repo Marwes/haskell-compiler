@@ -24,7 +24,8 @@ mod module;
 mod graph;
 mod vm;
 mod scoped_map;
-mod core;mod lambda_lift;
+mod core;
+mod lambda_lift;
 
 #[cfg(not(test))]
 fn main() {

@@ -4,7 +4,9 @@ use std::path::Path;
 use std::io::File;
 use typecheck::TypeEnvironment;
 use compiler::*;
-use parser::Parser;    
+use parser::Parser;
+use core::translate::translate_module;
+use lambda_lift::do_lambda_lift;
 
 #[deriving(Clone)]
 enum Node_<'a> {
@@ -378,9 +380,10 @@ fn compile_iter<T : Iterator<char>>(iterator: T) -> Assembly {
     
     let mut typer = TypeEnvironment::new();
     typer.typecheck_module(&mut module);
+    let core_module = do_lambda_lift(translate_module(module));
     
     let mut compiler = Compiler::new(&typer);
-    compiler.compileModule(&module)
+    compiler.compileModule(&core_module)
 }
 
 pub fn compile_file(filename: &str) -> Assembly {
@@ -430,9 +433,8 @@ mod tests {
 use std::path::Path;
 use std::io::File;
 use typecheck::TypeEnvironment;
-use compiler::Compiler;
-use parser::Parser;
-use vm::{VM, execute_main, extract_result, IntResult, DoubleResult, ConstructorResult};
+use compiler::{compile_with_type_env};
+use vm::{VM, compile_file, execute_main, extract_result, IntResult, DoubleResult, ConstructorResult};
 
 #[test]
 fn test_primitive()
@@ -498,6 +500,18 @@ main = case [mult2 123, 0] of
     [] -> 10";
     assert_eq!(execute_main(module.chars()), Some(IntResult(20)));
 }
+#[test]
+fn local_function() {
+    let module = 
+r"main =
+    let
+        f x y =
+            let
+                g x = primIntAdd x y
+            in g (primIntAdd 1 x)
+    in f (primIntAdd 2 0) (primIntAdd 3 0)";
+    assert_eq!(execute_main(module.chars()), Some(IntResult(6)));
+}
 
 #[test]
 fn test_data_types()
@@ -561,27 +575,11 @@ main = testAdd True";
 #[test]
 fn test_run_prelude() {
     let mut type_env = TypeEnvironment::new();
-    let prelude = {
-        let path = &Path::new("Prelude.hs");
-        let contents = File::open(path).read_to_str().unwrap();
-        let mut parser = Parser::new(contents.chars()); 
-        let mut module = parser.module();
-        type_env.typecheck_module(&mut module);
-        let mut compiler = Compiler::new(&type_env);
-        compiler.compileModule(&mut module)
-    };
+    let prelude = compile_with_type_env(&mut type_env, [], File::open(&Path::new("Prelude.hs")).read_to_str().unwrap());
 
-    let assembly = {
-        let file =
+    let assembly = compile_with_type_env(&mut type_env, [&prelude],
 r"add x y = primIntAdd x y
-main = foldl add 0 [1,2,3,4]";
-        let mut parser = Parser::new(file.chars());
-        let mut module = parser.module();
-        type_env.typecheck_module(&mut module);
-        let mut compiler = Compiler::new(&type_env);
-        compiler.assemblies.push(&prelude);
-        compiler.compileModule(&module)
-    };
+main = foldl add 0 [1,2,3,4]");
 
     let mut vm = VM::new();
     vm.add_assembly(prelude);
@@ -600,28 +598,10 @@ main = foldl add 0 [1,2,3,4]";
 
 #[test]
 fn instance_super_class() {
-    let prelude = {
-        let path = &Path::new("Prelude.hs");
-        let contents = File::open(path).read_to_str().unwrap();
-        let mut parser = Parser::new(contents.chars()); 
-        let mut module = parser.module();
-        let mut type_env = TypeEnvironment::new();
-        type_env.typecheck_module(&mut module);
-        let mut compiler = Compiler::new(&type_env);
-        compiler.compileModule(&mut module)
-    };
+    let prelude = compile_file("Prelude.hs");
 
-    let assembly = {
-        let file = r"main = [primIntAdd 0 1,2,3,4] == [1,2,3]";
-        let mut parser = Parser::new(file.chars());
-        let mut module = parser.module();
-        let mut type_env = TypeEnvironment::new();
-        type_env.add_types(&prelude);
-        type_env.typecheck_module(&mut module);
-        let mut compiler = Compiler::new(&type_env);
-        compiler.assemblies.push(&prelude);
-        compiler.compileModule(&module)
-    };
+    let mut type_env = TypeEnvironment::new();
+    let assembly = compile_with_type_env(&mut type_env, [&prelude], "main = [primIntAdd 0 1,2,3,4] == [1,2,3]");
 
     let mut vm = VM::new();
     vm.add_assembly(prelude);

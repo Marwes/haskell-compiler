@@ -1,9 +1,11 @@
-use collections::hashmap::{HashMap, HashSet};
+use collections::hashmap::HashMap;
 use core::*;
 use scoped_map::ScopedMap;
 use typecheck::function_type_;
 
-fn do_lambda_lift(module: Module<(Type, ~str)>) -> Module<Id> {
+pub type TypeAndStr = (~[Constraint], Type, ~str);
+
+pub fn do_lambda_lift(module: Module<TypeAndStr>) -> Module<Id> {
     lift_lambdas(rename_module(abstract_module(module)))
 }
 
@@ -11,12 +13,12 @@ fn do_lambda_lift(module: Module<(Type, ~str)>) -> Module<Id> {
 //free variables to its arguments and performs an immediate application
 //@variables All the local variables in scope, values are how many of the name there exists
 //@free_vars The free variables for the returned expression
-fn free_variables(variables: &mut HashMap<(Type, ~str), int>, free_vars: &mut HashSet<(Type, ~str)>, expr: Expr<(Type, ~str)>) -> Expr<(Type, ~str)> {
+fn free_variables(variables: &mut HashMap<~str, int>, free_vars: &mut HashMap<~str, TypeAndStr>, expr: Expr<TypeAndStr>) -> Expr<TypeAndStr> {
     match expr {
         Identifier(i) => {
             //If the identifier is a local, add it to the free variables
-            if variables.find(&i).map(|x| *x > 0).unwrap_or(false) {
-                free_vars.insert(i.clone());
+            if variables.find(i.ref2()).map(|x| *x > 0).unwrap_or(false) {
+                free_vars.insert(i.ref2().clone(), i.clone());
             }
             Identifier(i)
         }
@@ -26,24 +28,24 @@ fn free_variables(variables: &mut HashMap<(Type, ~str), int>, free_vars: &mut Ha
             Apply(f, a)
         }
         Lambda(arg, body) => {
-            variables.insert_or_update_with(arg.clone(), 1, |_, v| *v += 1);
+            variables.insert_or_update_with(arg.ref2().clone(), 1, |_, v| *v += 1);
             let b = free_variables(variables, free_vars, *body);
-            *variables.get_mut(&arg) -= 1;
-            free_vars.remove(&arg);//arg was not actually a free variable
+            *variables.get_mut(arg.ref2()) -= 1;
+            free_vars.remove(arg.ref2());//arg was not actually a free variable
             Lambda(arg, ~b)
         }
         Let(bindings, expr) => {
             for bind in bindings.iter() {
-                variables.insert_or_update_with(bind.name.clone(), 1, |_, v| *v += 1);
+                variables.insert_or_update_with(bind.name.ref2().clone(), 1, |_, v| *v += 1);
             }
-            let mut free_vars2 = HashSet::new();
-            let new_bindings: ~[Binding<(Type, ~str)>] = bindings.move_iter().map(
+            let mut free_vars2 = HashMap::new();
+            let new_bindings: ~[Binding<TypeAndStr>] = bindings.move_iter().map(
                 |Binding { name: name, expression: bind_expr }| {
                 free_vars2.clear();
                 let e = free_variables(variables, &mut free_vars2, bind_expr);
                 //free_vars2 is the free variables for this binding
-                for v in free_vars2.iter() {
-                    free_vars.insert(v.clone());
+                for (k, v) in free_vars2.iter() {
+                    free_vars.insert(k.clone(), v.clone());
                 }
                 Binding{
                     name: name,
@@ -52,8 +54,8 @@ fn free_variables(variables: &mut HashMap<(Type, ~str), int>, free_vars: &mut Ha
             }).collect();
             let e = ~free_variables(variables, free_vars, *expr);
             for bind in new_bindings.iter() {
-                *variables.get_mut(&bind.name) -= 1;
-                free_vars.remove(&bind.name);
+                *variables.get_mut(bind.name.ref2()) -= 1;
+                free_vars.remove(bind.name.ref2());
             }
             Let(new_bindings, e)
         }
@@ -64,35 +66,25 @@ fn free_variables(variables: &mut HashMap<(Type, ~str), int>, free_vars: &mut Ha
     }
 }
 
-fn abstract(free_vars: &HashSet<(Type, ~str)>, input_expr: Expr<(Type, ~str)>) -> Expr<(Type, ~str)> {
+fn abstract(free_vars: &HashMap<~str, TypeAndStr>, input_expr: Expr<TypeAndStr>) -> Expr<TypeAndStr> {
     let mut e = {
         let mut rhs = input_expr;
         let mut typ = rhs.get_type().clone();
-        for var in free_vars.iter() {
+        for (_, var) in free_vars.iter() {
+            debug!("xxxxxxxxxxxxxxxx {}", var);
             rhs = Lambda(var.clone(), ~rhs);
-            typ = function_type_(var.ref0().clone(), typ);
+            typ = function_type_(var.ref1().clone(), typ);
         }
         let bind = Binding {
-            name: (typ.clone(), "sc".to_owned()),
+            name: (~[], typ.clone(), "sc".to_owned()),
             expression: rhs
         };
-        Let(~[bind], ~Identifier((typ.clone(), "sc".to_owned())))
+        Let(~[bind], ~Identifier((~[], typ.clone(), "sc".to_owned())))
     };
-    for var in free_vars.iter() {
+    for (_, var) in free_vars.iter() {
         e = Apply(~e, ~Identifier(var.clone()));
     }
     e
-}
-
-#[deriving(Eq, TotalEq, Hash, Clone, Show)]
-pub struct Name {
-    name: ~str,
-    uid: uint
-}
-#[deriving(Eq, TotalEq, Hash, Clone, Show)]
-pub struct Id {
-    name: Name,
-    typ: Type
 }
 
 struct Renamer {
@@ -101,32 +93,36 @@ struct Renamer {
 }
 impl Renamer {
 
-    fn rename_bindings(&mut self, bindings: ~[Binding<(Type, ~str)>]) -> ~[Binding<Id>] {
+    fn rename_bindings(&mut self, bindings: ~[Binding<TypeAndStr>]) -> ~[Binding<Id>] {
         //Add all bindings in the scope
         for bind in bindings.iter() {
-            self.make_unique(bind.name.ref1().clone());
+            self.make_unique(bind.name.ref2().clone());
         }
         bindings.move_iter().map(|binding| {
-            let Binding { name: (typ, name), expression: expression } = binding;
-            let n = self.uniques.find(&name).map(|u| u.clone()).expect(format!("Undefined variable {}", name));
+            let Binding { name: (constraints, typ, name), expression: expression } = binding;
+            let n = self.uniques.find(&name).map(|u| u.clone())
+                .expect(format!("Error: lambda_lift: Undefined variable {}", name));
             Binding {
-                name: Id { typ: typ, name: n },
+                name: Id::new(n, typ, constraints),
                 expression: self.rename(expression)
             }
         }).collect()
     }
 
-    fn rename(&mut self, expr: Expr<(Type, ~str)>) -> Expr<Id> {
+    fn rename(&mut self, expr: Expr<TypeAndStr>) -> Expr<Id> {
         match expr {
             Literal(l) => Literal(l),
-            Identifier((typ, i)) => {
-                let n = self.uniques.find(&i).map(|u| u.clone()).expect(format!("Undefined variable {}", i));
-                Identifier(Id { typ: typ, name: n })
+            Identifier((constraints, typ, i)) => {
+                let n = match self.uniques.find(&i).map(|u| u.clone()) {
+                    Some(n) => n,
+                    None => Name { name: i, uid: 0 }//If the variable is not found in variables it is a global variable
+                };
+                Identifier(Id::new(n, typ, constraints))
             }
             Apply(func, arg) => Apply(~self.rename(*func), ~self.rename(*arg)),
-            Lambda((typ, arg), body) => {
+            Lambda((constraints, typ, arg), body) => {
                 self.uniques.enter_scope();
-                let l = Lambda(Id { typ: typ, name: self.make_unique(arg) }, ~self.rename(*body));
+                let l = Lambda(Id::new(self.make_unique(arg), typ, constraints), ~self.rename(*body));
                 self.uniques.exit_scope();
                 l
             }
@@ -152,14 +148,14 @@ impl Renamer {
         }
     }
 
-    fn rename_pattern(&mut self, pattern: Pattern<(Type, ~str)>) -> Pattern<Id> {
+    fn rename_pattern(&mut self, pattern: Pattern<TypeAndStr>) -> Pattern<Id> {
         match pattern {
             NumberPattern(i) => NumberPattern(i),
             ConstructorPattern(s, ps) => {
                 let ps2 = ps.move_iter().map(|p| self.rename_pattern(p)).collect();
                 ConstructorPattern(s, ps2)
             }
-            IdentifierPattern((typ, s)) => IdentifierPattern(Id { typ: typ, name: self.make_unique(s) })
+            IdentifierPattern((constraints, typ, s)) => IdentifierPattern(Id::new(self.make_unique(s), typ, constraints))
         }
     }
 
@@ -206,41 +202,53 @@ fn lift_lambdas_expr<T>(expr: Expr<T>, out_lambdas: &mut Vec<Binding<T>>) -> Exp
         _ => expr
     }
 }
-pub fn lift_lambdas<T>(module: Module<T>) -> Module<T> {
+pub fn lift_lambdas<T: ::std::fmt::Show>(module: Module<T>) -> Module<T> {
     let Module {
+        classes : classes,
+        data_definitions: data_definitions,
         bindings : bindings,
+        instances: instances
     } = module;
     
     let mut new_bindings : Vec<Binding<T>> = Vec::new();
     let bindings2 : ~[Binding<T>] = bindings.move_iter().map(|Binding { name: name, expression: expression }| {
         Binding { name: name, expression: lift_lambdas_expr(expression, &mut new_bindings) }
     }).collect();
-    
+
     Module {
+        classes : classes,
+        data_definitions: data_definitions,
         bindings : bindings2.move_iter().chain(new_bindings.move_iter()).collect(),
+        instances: instances
     }
 }
 
 
-pub fn rename_module(module: Module<(Type, ~str)>) -> Module<Id> {
+pub fn rename_module(module: Module<TypeAndStr>) -> Module<Id> {
     let mut renamer = Renamer { uniques: ScopedMap::new(), unique_id: 0 };
     let Module {
+        classes : classes,
+        data_definitions: data_definitions,
         bindings : bindings,
+        instances: instances
     } = module;
     
     let bindings2 = renamer.rename_bindings(bindings);
     
     Module {
+        classes : classes,
+        data_definitions: data_definitions,
         bindings : bindings2,
+        instances: instances
     }
 }
-pub fn abstract_module(module: Module<(Type, ~str)>) -> Module<(Type, ~str)> {
+pub fn abstract_module(module: Module<TypeAndStr>) -> Module<TypeAndStr> {
     each_binding(module,
         |name| name,
         |bind| {
             let Binding { name: name, expression: bind_expr } = bind;
             let mut variables = HashMap::new();
-            let mut free_vars = HashSet::new();
+            let mut free_vars = HashMap::new();
             let e = free_variables(&mut variables, &mut free_vars, bind_expr);
             Binding { name: name, expression: e }
         })
@@ -248,13 +256,19 @@ pub fn abstract_module(module: Module<(Type, ~str)>) -> Module<(Type, ~str)> {
 
 pub fn each_binding<Ident, Ident2>(module: Module<Ident>, _trans: |Ident| -> Ident2, bind_f: |Binding<Ident>| -> Binding<Ident2>) -> Module<Ident2> {
     let Module {
+        classes : classes,
+        data_definitions: data_definitions,
         bindings : bindings,
+        instances: instances
     } = module;
     
     let bindings2 = bindings.move_iter().map(|x| bind_f(x)).collect();
     
     Module {
+        classes : classes,
+        data_definitions: data_definitions,
         bindings : bindings2,
+        instances: instances
     }
 }
 
@@ -414,8 +428,7 @@ test2 x =
         let m = translate_module(parser.module());
         let module = lift_lambdas(m);
         for bind in module.bindings.iter() {
-            println!("{}", bind.expression);
-            (&mut visitor as &mut Visitor<(Type, ~str)>).visit_expr(skip_lambdas(&bind.expression));
+            (&mut visitor as &mut Visitor<TypeAndStr>).visit_expr(skip_lambdas(&bind.expression));
         }
     }
 }

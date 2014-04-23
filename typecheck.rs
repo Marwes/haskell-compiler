@@ -23,7 +23,7 @@ pub trait Types {
         }
     }
     fn find_instance<'a>(&'a self, classname: &str, typ: &Type) -> Option<(&'a [Constraint], &'a Type)>;
-    fn each_typedeclaration(&self, |&TypeDeclaration|);
+    fn each_constraint_list(&self, |&[Constraint]|);
 }
 
 impl Types for Module {
@@ -65,14 +65,14 @@ impl Types for Module {
         None
     }
 
-    fn each_typedeclaration(&self, func: |&TypeDeclaration|) {
+    fn each_constraint_list(&self, func: |&[Constraint]|) {
         for bind in self.bindings.iter() {
-            func(&bind.typeDecl);
+            func(bind.typeDecl.context);
         }
 
         for class in self.classes.iter() {
             for decl in class.declarations.iter() {
-                func(decl);
+                func(decl.context);
             }
         }
     }
@@ -205,8 +205,8 @@ impl <'a> TypeEnvironment<'a> {
 
     pub fn add_types(&'a mut self, types: &'a Types) {
         let mut max_id = 0;
-        types.each_typedeclaration(|decl| {
-            for constraint in decl.context.iter() {
+        types.each_constraint_list(|context| {
+            for constraint in context.iter() {
                 let var = constraint.variables[0].clone();
                 max_id = ::std::cmp::max(var.id, max_id);
                 self.constraints.find_or_insert(var, Vec::new()).push(constraint.class.clone());
@@ -347,6 +347,9 @@ impl <'a> TypeEnvironment<'a> {
             Some(typ) => {
                 let mut constraints = Vec::new();
                 self.find_specialized(&mut constraints, actual_type, typ);
+                if constraints.len() == 0 {
+                    fail!("Could not find the specialized instance between {} <-> {}", typ, actual_type);
+                }
                 constraints.move_iter().collect()
             }
             None => fail!("Could not find '{}' in type environment", name)
