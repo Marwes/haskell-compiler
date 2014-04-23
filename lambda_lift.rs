@@ -225,7 +225,7 @@ pub fn lift_lambdas<T: ::std::fmt::Show>(module: Module<T>) -> Module<T> {
 
 
 pub fn rename_module(module: Module<TypeAndStr>) -> Module<Id> {
-    let mut renamer = Renamer { uniques: ScopedMap::new(), unique_id: 0 };
+    let mut renamer = Renamer { uniques: ScopedMap::new(), unique_id: 1 };
     let Module {
         classes : classes,
         data_definitions: data_definitions,
@@ -233,7 +233,13 @@ pub fn rename_module(module: Module<TypeAndStr>) -> Module<Id> {
         instances: instances
     } = module;
     
-    let bindings2 = renamer.rename_bindings(bindings);
+    let bindings2 = bindings.move_iter().map(|binding| {
+        let Binding { name: (constraints, typ, name), expression: expression } = binding;
+        Binding {
+            name: Id::new(Name { name: name, uid: 0 }, typ, constraints),
+            expression: renamer.rename(expression)
+        }
+    }).collect();
     
     Module {
         classes : classes,

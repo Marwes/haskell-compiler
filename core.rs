@@ -47,10 +47,10 @@ pub enum Expr<Ident> {
     Case(~Expr<Ident>, ~[Alternative<Ident>])
 }
 
-impl <T: Str> fmt::Show for Expr<T> {
+impl <T: fmt::Show> fmt::Show for Expr<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            &Identifier(ref s) => write!(f.buf, "{}", s.as_slice()),
+            &Identifier(ref s) => write!(f.buf, "{}", s),
             &Apply(ref func, ref arg) => write!(f.buf, "({} {})", *func, *arg),
             &Literal(ref literal) => {
                 match &literal.value {
@@ -60,38 +60,21 @@ impl <T: Str> fmt::Show for Expr<T> {
                     &Char(i) => write!(f.buf, "{}", i)
                 }
             }
-            &Lambda(ref arg, ref body) => write!(f.buf, "({} -> {})", arg.as_slice(), *body),
+            &Lambda(ref arg, ref body) => write!(f.buf, "({} -> {})", arg, *body),
             &Let(ref bindings, ref body) => {
                 try!(write!(f.buf, "let \\{\n"));
                 for bind in bindings.iter() {
-                    try!(write!(f.buf, "; {} = {}\n", bind.name.as_slice(), bind.expression));
+                    try!(write!(f.buf, "; {} = {}\n", bind.name, bind.expression));
                 }
                 write!(f.buf, "\\} in {}\n", *body)
             }
             &Case(ref expr, ref alts) => {
                 try!(write!(f.buf, "case {} of \\{\n", *expr));
                 for alt in alts.iter() {
-                    try!(write!(f.buf, "; "));
-                    try!(write_pattern(f, &alt.pattern));
-                    try!(write!(f.buf, " -> {}\n", alt.expression));
+                    try!(write!(f.buf, "; {} -> {}\n", alt.pattern, alt.expression));
                 }
                 write!(f.buf, "\\}\n")
             }
-        }
-    }
-}
-
-fn write_pattern<T: Str>(f: &mut fmt::Formatter, pattern: &Pattern<T>) -> fmt::Result {
-    match pattern {
-        &IdentifierPattern(ref i) => write!(f.buf, "{}", i.as_slice()),
-        &NumberPattern(ref i) => write!(f.buf, "{}", i),
-        &ConstructorPattern(ref i, ref patterns) => {
-            try!(write!(f.buf, "{}", i.as_slice()));
-            for p in patterns.iter() {
-                try!(write!(f.buf, " "));
-                try!(write_pattern(f, p)); 
-            }
-            Ok(())
         }
     }
 }
@@ -129,13 +112,25 @@ pub struct Name {
     pub name: ~str,
     pub uid: uint
 }
-#[deriving(Eq, TotalEq, Hash, Clone, Show)]
+
+impl <'a> Equiv<&'a str> for Name {
+    fn equiv(&self, o: & &str) -> bool {
+        *o == self.name
+    }
+}
+
+#[deriving(Eq, TotalEq, Hash, Clone)]
 pub struct Id {
     pub name: Name,
     pub typ: Type,
     pub constraints: ~[Constraint]
 }
 
+impl fmt::Show for Id {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f.buf, "{}_{}", self.name.name, self.name.uid)
+    }
+}
 
 impl Id {
     pub fn new(name: Name, typ: Type, constraints: ~[Constraint]) -> Id {

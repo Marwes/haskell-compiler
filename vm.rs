@@ -416,7 +416,7 @@ fn extract_result(node: Node_) -> Option<VMResult> {
 pub fn execute_main<T : Iterator<char>>(iterator: T) -> Option<VMResult> {
     let mut vm = VM::new();
     vm.add_assembly(compile_iter(iterator));
-    let x = vm.assembly.iter().flat_map(|a| a.superCombinators.iter()).find(|sc| sc.name == ~"main");
+    let x = vm.assembly.iter().flat_map(|a| a.superCombinators.iter()).find(|sc| sc.name.name == ~"main");
     match x {
         Some(sc) => {
             assert!(sc.arity == 0);
@@ -584,7 +584,7 @@ main = foldl add 0 [1,2,3,4]");
     let mut vm = VM::new();
     vm.add_assembly(prelude);
     vm.add_assembly(assembly);
-    let x = vm.assembly.iter().flat_map(|a| a.superCombinators.iter()).find(|sc| sc.name == ~"main");
+    let x = vm.assembly.iter().flat_map(|a| a.superCombinators.iter()).find(|sc| sc.name.name == ~"main");
     let result = match x {
         Some(sc) => {
             assert!(sc.arity == 0);
@@ -606,7 +606,7 @@ fn instance_super_class() {
     let mut vm = VM::new();
     vm.add_assembly(prelude);
     vm.add_assembly(assembly);
-    let x = vm.assembly.iter().flat_map(|a| a.superCombinators.iter()).find(|sc| sc.name == ~"main");
+    let x = vm.assembly.iter().flat_map(|a| a.superCombinators.iter()).find(|sc| sc.name.name == ~"main");
     let result = match x {
         Some(sc) => {
             assert!(sc.arity == 0);

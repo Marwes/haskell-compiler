@@ -72,7 +72,7 @@ impl <'a> Clone for Var<'a> {
 
 pub struct SuperCombinator {
     pub arity : uint,
-    pub name: ~str,
+    pub name: Name,
     pub assembly_id: uint,
     pub instructions : ~[Instruction],
     pub type_declaration: TypeDeclaration,
@@ -80,7 +80,7 @@ pub struct SuperCombinator {
 }
 impl SuperCombinator {
     fn new() -> SuperCombinator {
-        SuperCombinator { arity : 0, name: ~"", instructions : ~[], type_declaration: Default::default(), constraints: ~[], assembly_id: 0 }
+        SuperCombinator { arity : 0, name: Name { name: ~"", uid: 0}, instructions : ~[], type_declaration: Default::default(), constraints: ~[], assembly_id: 0 }
     }
 }
 
@@ -95,14 +95,15 @@ pub struct Assembly {
 
 trait Globals {
     ///Lookup a global variable
-    fn find_global<'a>(&'a self, name: &str) -> Option<Var<'a>>;
+    fn find_global<'a>(&'a self, name: &Name) -> Option<Var<'a>>;
+    fn find_constructor(&self, name: &str) -> Option<(u16, u16)>;
 }
 
 impl Globals for Assembly {
-    fn find_global<'a>(&'a self, name: &str) -> Option<Var<'a>> {
+    fn find_global<'a>(&'a self, name: &Name) -> Option<Var<'a>> {
         let mut index = 0;
         for sc in self.superCombinators.iter() {
-            if name == sc.name {
+            if *name == sc.name {
                 if sc.constraints.len() > 0 {
                     return Some(ConstraintVariable(self.offset + index, &sc.type_declaration.typ, sc.constraints));
                 }
@@ -114,36 +115,31 @@ impl Globals for Assembly {
         }
         for class in self.classes.iter() {
             for decl in class.declarations.iter() {
-                if decl.name.equiv(&name) {
+                if decl.name == name.name {
                     return Some(ClassVariable(&decl.typ, &class.variable));
                 }
             }
         }
         
+        self.find_constructor(name.name).map(|(tag, arity)| ConstructorVariable(tag, arity))
+    }
+    fn find_constructor(&self, name: &str) -> Option<(u16, u16)> {
         for data_def in self.data_definitions.iter() {
             for ctor in data_def.constructors.iter() {
                 if name == ctor.name {
-                    return Some(ConstructorVariable(ctor.tag as u16, ctor.arity as u16));
+                    return Some((ctor.tag as u16, ctor.arity as u16));
                 }
             }
         }
-        return None;
+        None
     }
 }
 
-fn find_global<'a>(module: &'a Module<Id>, offset: uint, name: &str) -> Option<Var<'a>> {
-    
-    for dataDef in module.data_definitions.iter() {
-        for ctor in dataDef.constructors.iter() {
-            if ctor.name.equiv(&name) {
-                return Some(ConstructorVariable(ctor.tag as u16, ctor.arity as u16));
-            }
-        }
-    }
+fn find_global<'a>(module: &'a Module<Id>, offset: uint, name: &Name) -> Option<Var<'a>> {
     
     for class in module.classes.iter() {
         for decl in class.declarations.iter() {
-            if decl.name.equiv(&name) {
+            if decl.name == name.name {
                 return Some(ClassVariable(&decl.typ, &class.variable));
             }
         }
@@ -151,7 +147,7 @@ fn find_global<'a>(module: &'a Module<Id>, offset: uint, name: &str) -> Option<V
 
     let mut global_index = 0;
     for bind in module.bindings.iter() {
-        if bind.name.name.name.equiv(&name) {
+        if bind.name.name == *name {
             let typ = bind.expression.get_type();
             let constraints = &bind.name.constraints;
             if constraints.len() > 0 {
@@ -162,6 +158,18 @@ fn find_global<'a>(module: &'a Module<Id>, offset: uint, name: &str) -> Option<V
             }
         }
         global_index += 1;
+    }
+    find_constructor(module, name.name).map(|(tag, arity)| ConstructorVariable(tag, arity))
+}
+
+fn find_constructor(module: &Module<Id>, name: &str) -> Option<(u16, u16)> {
+
+    for dataDef in module.data_definitions.iter() {
+        for ctor in dataDef.constructors.iter() {
+            if name == ctor.name {
+                return Some((ctor.tag as u16, ctor.arity as u16));
+            }
+        }
     }
     None
 }
@@ -235,7 +243,7 @@ impl Types for Assembly {
     ///Lookup a type
     fn find_type<'a>(&'a self, name: &str) -> Option<&'a Type> {
         for sc in self.superCombinators.iter() {
-            if sc.name.equiv(&name) {
+            if sc.name.name.equiv(&name) {
                 return Some(&sc.type_declaration.typ);
             }
         }
@@ -297,7 +305,7 @@ pub struct Compiler<'a> {
     ///Array of all the assemblies which can be used to lookup functions in
     pub assemblies: Vec<&'a Assembly>,
     module: Option<&'a Module<Id>>,
-    variables: ScopedMap<~str, Var<'a>>
+    variables: ScopedMap<Name, Var<'a>>
 }
 
 
@@ -328,7 +336,7 @@ impl <'a> Compiler<'a> {
             let mut sc = self.compileBinding(bind);
             let constraints = self.type_env.find_constraints(bind.expression.get_type());
             sc.constraints = constraints;
-            sc.name = bind.name.name.name.clone();
+            sc.name = bind.name.name.clone();
             superCombinators.push(sc);
         }
 
@@ -390,8 +398,8 @@ impl <'a> Compiler<'a> {
     }
     
     ///Find a variable by walking through the stack followed by all globals
-    fn find<'r>(&'r self, identifier : &str) -> Option<Var<'r>> {
-        self.variables.find_equiv(&identifier).map(|x| x.clone())
+    fn find<'r>(&'r self, identifier : &Name) -> Option<Var<'r>> {
+        self.variables.find(identifier).map(|x| x.clone())
         .or_else(|| {
             match self.module {
                 Some(ref module) => {
@@ -417,6 +425,7 @@ impl <'a> Compiler<'a> {
             }
             None
         }).or_else(|| {
+            let identifier = identifier.name.as_slice();
             if identifier.len() >= 3 && identifier.char_at(0) == '('
             && identifier.char_at(identifier.len() - 1) == ')'
             && identifier.chars().skip(1).take(identifier.len() - 2).all(|c| c == ',') {
@@ -425,6 +434,30 @@ impl <'a> Compiler<'a> {
             match identifier {
                 &"[]" => Some(ConstructorVariable(0, 0)),
                 &":" => Some(ConstructorVariable(1, 2)),
+                _ => None
+            }
+        })
+    }
+
+    fn find_constructor(&self, identifier : &str) -> Option<(u16, u16)> {
+        self.module.and_then(|module| find_constructor(module, identifier))
+        .or_else(|| {
+            for assembly in self.assemblies.iter() {
+                match assembly.find_constructor(identifier) {
+                    Some(var) => return Some(var),
+                    None => ()
+                }
+            }
+            None
+        }).or_else(|| {
+            if identifier.len() >= 3 && identifier.char_at(0) == '('
+            && identifier.char_at(identifier.len() - 1) == ')'
+            && identifier.chars().skip(1).take(identifier.len() - 2).all(|c| c == ',') {
+                return Some((0, (identifier.len() - 1) as u16));
+            }
+            match identifier {
+                &"[]" => Some((0, 0)),
+                &":" => Some((1, 2)),
                 _ => None
             }
         })
@@ -444,7 +477,7 @@ impl <'a> Compiler<'a> {
     }
 
     fn newStackVar(&mut self, identifier : Name) {
-        self.variables.insert(identifier.name, StackVariable(self.stackSize));
+        self.variables.insert(identifier, StackVariable(self.stackSize));
         self.stackSize += 1;
     }
 
@@ -462,7 +495,7 @@ impl <'a> Compiler<'a> {
             &Identifier(ref name) => {
                 //When compiling a variable which has constraints a new instance dictionary
                 //might be created which is returned here and added to the assembly
-                let maybe_new_dict = match self.find(name.name.name) {
+                let maybe_new_dict = match self.find(&name.name) {
                     None => fail!("Error: Undefined variable {}", *name),
                     Some(var) => {
                         match var {
@@ -617,18 +650,19 @@ impl <'a> Compiler<'a> {
             Some(typename) => {
                 //We should be able to retrieve the instance directly
                 let instance_fn_name = "#" + typename + name;
-                match self.find(instance_fn_name) {
+                let name = Name {name: instance_fn_name, uid: 0 };
+                match self.find(&name) {
                     Some(GlobalVariable(index)) => {
                         instructions.push(PushGlobal(index));
                         None
                     }
                     Some(ConstraintVariable(index, _function_type, constraints)) => {
-                        let dict = self.compile_with_constraints(instance_fn_name, actual_type, constraints, instructions);
+                        let dict = self.compile_with_constraints(name.name, actual_type, constraints, instructions);
                         instructions.push(PushGlobal(index));
                         instructions.push(Mkap);
                         dict
                     }
-                    _ => fail!("Unregistered instance function {}", instance_fn_name)
+                    _ => fail!("Unregistered instance function {}", name)
                 }
             }
             None => {
@@ -640,7 +674,7 @@ impl <'a> Compiler<'a> {
 
     ///Compile the loading of a variable which has constraints and will thus need to load a dictionary with functions as well
     fn compile_with_constraints(&self, name: &str, typ: &Type, constraints: &[Constraint], instructions: &mut Vec<Instruction>) -> Option<(~[(~str, Type)], ~[uint])> {
-        match self.find("$dict") {
+        match self.find(&Name { name: "$dict".to_owned(), uid: 0}) {
             Some(StackVariable(_)) => {
                 //Push dictionary or member of dictionary
                 match self.push_dictionary_member(constraints, name) {
@@ -709,11 +743,12 @@ impl <'a> Compiler<'a> {
                     assert!(class.declarations.len() > 0);
                     for decl in class.declarations.iter() {
                         let f = "#" + extract_applied_type(typ).op().name + decl.name;
-                        match self.find(f) {
+                        let name = Name { name: f, uid: 0 };
+                        match self.find(&name) {
                             Some(GlobalVariable(index)) => {
                                 function_indexes.push(index as uint);
                             }
-                            _ => fail!("Did not find function {}", f)
+                            _ => fail!("Did not find function {}", name)
                         }
                     }
                 }
@@ -792,8 +827,8 @@ impl <'a> Compiler<'a> {
         match pattern {
             &ConstructorPattern(ref name, ref patterns) => {
                 instructions.push(Push(stack_index - pattern_index));
-                match self.find(*name) {
-                    Some(ConstructorVariable(tag, _)) => {
+                match self.find_constructor(*name) {
+                    Some((tag, _)) => {
                         instructions.push(CaseJump(tag as uint));
                         branches.push(instructions.len());
                         instructions.push(Jump(0));
@@ -972,7 +1007,7 @@ main = test (primIntAdd 6 0)";
     let assembly = compile(file);
 
     let main = &assembly.superCombinators[1];
-    assert_eq!(main.name, ~"main");
+    assert_eq!(main.name.name, ~"main");
     assert_eq!(main.instructions, ~[PushInt(0), PushInt(6), Add, PushGlobal(0), Mkap, Eval, Update(0), Unwind]);
 }
 
@@ -989,7 +1024,7 @@ main x = primIntAdd (test x) 6";
     let assembly = compile(file);
 
     let main = assembly.superCombinators[1];
-    assert_eq!(main.name, ~"main");
+    assert_eq!(main.name.name, ~"main");
     assert_eq!(main.instructions, ~[PushInt(6), Push(1), PushDictionaryMember(0), Mkap, Eval, Add, Update(0), Pop(2), Unwind]);
 }
 
