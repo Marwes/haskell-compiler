@@ -9,6 +9,20 @@ pub struct Module<Ident> {
     pub bindings: ~[Binding<Ident>]
 }
 
+impl Module<(~[Constraint], Type, ~str)> {
+    pub fn from_expr(expr: Expr<(~[Constraint], Type, ~str)>) -> Module<(~[Constraint], Type, ~str)> {
+        Module {
+            classes: ~[],
+            data_definitions: ~[],
+            instances: ~[],
+            bindings: ~[Binding {
+                name: (~[], expr.get_type().clone(), "main".to_owned()),
+                expression: expr
+            }]
+        }
+    }
+}
+
 #[deriving(Eq)]
 pub struct Binding<Ident> {
     pub name: Ident,

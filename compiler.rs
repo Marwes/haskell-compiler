@@ -7,7 +7,7 @@ use std::default::Default;
 use core::translate::{translate_module};
 use lambda_lift::do_lambda_lift;
 
-#[deriving(Eq, Show)]
+#[deriving(Eq, Clone, Show)]
 pub enum Instruction {
     Add,
     Sub,
@@ -375,7 +375,6 @@ impl <'a> Compiler<'a> {
         let mut instructions = Vec::new();
         self.scope(|this| {
             if dict_arg == 1 {
-                println!("{}", bind.name);
                 this.newStackVar(Name { name: ~"$dict", uid: 0 });
             }
             debug!("{}\n {}", bind.name, bind.expression);
@@ -882,11 +881,12 @@ fn try_find_instance_type<'a>(class_var: &TypeVariable, class_type: &Type, actua
     }
 }
 
+#[allow(dead_code)]
 pub fn compile(contents: &str) -> Assembly {
     let mut type_env = TypeEnvironment::new();
     compile_with_type_env(&mut type_env, [], contents)
 }
-
+#[allow(dead_code)]
 pub fn compile_with_type_env(type_env: &mut TypeEnvironment, assemblies: &[&Assembly], contents: &str) -> Assembly {
     use parser::Parser;
 

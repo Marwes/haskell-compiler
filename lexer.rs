@@ -31,7 +31,8 @@ pub enum TokenEnum {
 	OF,
 	ARROW,
 	TYPEDECL,
-	DATA
+	DATA,
+    LAMBDA
 }
 
 #[deriving(Clone, Eq)]
@@ -502,6 +503,7 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
             '{' => LBRACE,
             '}' => RBRACE,
             ',' => COMMA,
+            '\\'=> LAMBDA,
             _   => EOF
         };
         Token { token : tok, location : startLocation, value : c.to_str() }

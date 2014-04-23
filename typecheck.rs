@@ -1409,7 +1409,6 @@ test2 = id (primIntAdd 2 0)".chars());
 
     assert_eq!(module.bindings[0].name, ~"test1");
     assert_eq!(module.bindings[0].expression.typ, Type::new_op(~"[]", ~[Type::new_op(~"Bool", ~[])]));
-    println!("{:?}", module.bindings[1].expression);
     assert_eq!(module.bindings[1].name, ~"test2");
     assert_eq!(module.bindings[1].expression.typ, Type::new_op(~"Int", ~[]));
 }

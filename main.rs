@@ -10,11 +10,17 @@ use std::io::File;
 #[cfg(not(test))]
 use parser::Parser;
 #[cfg(not(test))]
-use compiler::Compiler;
+use compiler::{Compiler};
 #[cfg(not(test))]
 use typecheck::{Types, TypeEnvironment};
 #[cfg(not(test))]
 use vm::{VM, execute_main, compile_file};
+#[cfg(not(test))]
+use core::{Name, Module};
+#[cfg(not(test))]
+use core::translate::{translate_expr};
+#[cfg(not(test))]
+use lambda_lift::do_lambda_lift;
 
 mod compiler;
 mod typecheck;
@@ -32,28 +38,29 @@ fn main() {
     let args = std::os::args();
     if args.len() == 2 {
         let expr_str = args[1];
-        let mut prelude = compile_file(&"Prelude.hs");
-        let (instr, dict) = {
+        let prelude = compile_file(&"Prelude.hs");
+        let assembly = {
             let mut parser = Parser::new(expr_str.chars());
             let mut expr = parser.expression_();
 
             let mut type_env = TypeEnvironment::new();
             type_env.add_types(&prelude as &Types);
             type_env.typecheck_expr(&mut expr);
+            let temp_module = Module::from_expr(translate_expr(expr));
+            let m = do_lambda_lift(temp_module);
             
             let mut compiler = Compiler::new(&type_env);
             compiler.assemblies.push(&prelude);
-            let i = compiler.compileExpression(&expr);
-            (i, compiler.instance_dictionaries.get(0).map(|&(_, ref x)| x.clone()))
-        };
-        //Add the dictionary if one is needed
-        match dict {
-            Some(dict) => prelude.instance_dictionaries.push(dict),
-            None => ()
+            compiler.compileModule(&m)
         };
         let mut vm = VM::new();
         vm.add_assembly(prelude);
-        let result = vm.evaluate(instr, 0);//TODO 0 is not necessarily correct
+        let instructions = assembly.superCombinators.iter()
+            .find(|sc| sc.name == Name { name: "main".to_owned(), uid: 0 })
+            .map(|x| x.instructions.clone())
+            .expect("Expected main function");
+        vm.add_assembly(assembly);
+        let result = vm.evaluate(instructions, 0);//TODO 0 is not necessarily correct
         println!("{}", result);
     }
     else if args.len() == 3 && "-l" == args[1] {

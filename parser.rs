@@ -1,8 +1,6 @@
 use std::mem::{swap};
 use collections::HashMap;
-use lexer::{Lexer, Token, TokenEnum,
-    EOF, NAME, OPERATOR, NUMBER, FLOAT, STRING, CHAR, LPARENS, RPARENS, LBRACKET, RBRACKET, LBRACE, RBRACE, COMMA, EQUALSSIGN, SEMICOLON, MODULE, CLASS, INSTANCE, WHERE, LET, IN, CASE, OF, ARROW, TYPEDECL, DATA
-};
+use lexer::*;
 use module::*;
 use typecheck::function_type;
 
@@ -301,6 +299,22 @@ fn subExpression(&mut self, parseError : |&Token| -> bool) -> Option<TypedExpr> 
                 None => None
             }
 		}
+        LAMBDA => {
+            let mut args = Vec::new();
+            loop {
+                let token = self.lexer.next_().token;
+                if token == NAME {
+                    args.push(self.lexer.current().value.clone());
+                }
+                else if token == ARROW {
+                    break;
+                }
+                else {
+                    fail!(ParseError2(&self.lexer, [ARROW, NAME]));
+                }
+            }
+            Some(makeLambda(args.move_iter(), self.expression_()))
+        }
         NAME => {
             let token = self.lexer.current();
             Some(TypedExpr::with_location(Identifier(token.value.clone()), token.location))
