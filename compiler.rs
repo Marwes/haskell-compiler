@@ -355,12 +355,6 @@ impl <'a> Compiler<'a> {
     }
 
     fn compileBinding(&mut self, bind : &Binding<Id>) -> SuperCombinator {
-        fn arity(expr: &Expr<Id>) -> uint {
-            match expr {
-                &Lambda(_, ref body) => 1 + arity(*body),
-                _ => 0
-            }
-        }
         debug!("Compiling binding {}", bind.name);
         let mut comb = SuperCombinator::new();
         comb.assembly_id = self.assemblies.len();
@@ -371,29 +365,36 @@ impl <'a> Compiler<'a> {
         };
         comb.constraints = bind.name.constraints.clone();
         let dict_arg = if bind.name.constraints.len() > 0 { 1 } else { 0 };
-        comb.arity = arity(&bind.expression) + dict_arg;
         let mut instructions = Vec::new();
         self.scope(|this| {
             if dict_arg == 1 {
                 this.newStackVar(Name { name: ~"$dict", uid: 0 });
             }
             debug!("{}\n {}", bind.name, bind.expression);
-            match &bind.expression {
-                &Lambda(_, _) => {
-                    this.compile(&bind.expression, &mut instructions, true);
-                    instructions.push(Update(0));
-                    instructions.push(Pop(comb.arity));
-                    instructions.push(Unwind);
-                }
-                _ => {
-                    this.compile(&bind.expression, &mut instructions, true);
-                    instructions.push(Update(0));
-                    instructions.push(Unwind);
-                }
+            let arity = this.compile_lambda_binding(&bind.expression, &mut instructions);
+            comb.arity = arity + dict_arg;
+            instructions.push(Update(0));
+            if comb.arity != 0 {
+                instructions.push(Pop(comb.arity));
             }
+            instructions.push(Unwind);
         });
         comb.instructions = instructions.move_iter().collect();
+        debug!("{} compiled as:\n{}", bind.name, comb.instructions);
         comb
+    }
+
+    fn compile_lambda_binding(&mut self, expr: &Expr<Id>, instructions: &mut Vec<Instruction>) -> uint {
+        match expr {
+            &Lambda(ref ident, ref body) => {
+                self.newStackVar(ident.name.clone());
+                1 + self.compile_lambda_binding(*body, instructions)
+            }
+            _ => {
+                self.compile(expr, instructions, true);
+                0
+            }
+        }
     }
     
     ///Find a variable by walking through the stack followed by all globals
@@ -582,12 +583,6 @@ impl <'a> Compiler<'a> {
                     }
                 }
             }
-            &Lambda(ref varname, ref body) => {
-                self.scope(|this| {
-                    this.newStackVar(varname.name.clone());
-                    this.compile(*body, instructions, false);
-                });
-            }
             &Let(ref bindings, ref body) => {
                 for bind in bindings.iter() {
                     self.newStackVar(bind.name.name.clone());
@@ -640,6 +635,7 @@ impl <'a> Compiler<'a> {
                     instructions.push(Eval);
                 }
             }
+            &Lambda(_, _) => fail!("Error: Found non-lifted lambda when compiling expression")
         }
     }
 

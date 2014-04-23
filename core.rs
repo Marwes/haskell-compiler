@@ -74,7 +74,7 @@ impl <T: fmt::Show> fmt::Show for Expr<T> {
                     &Char(i) => write!(f.buf, "{}", i)
                 }
             }
-            &Lambda(ref arg, ref body) => write!(f.buf, "({} -> {})", arg, *body),
+            &Lambda(ref arg, ref body) => write!(f.buf, "(\\\\{} -> {})", arg, *body),
             &Let(ref bindings, ref body) => {
                 try!(write!(f.buf, "let \\{\n"));
                 for bind in bindings.iter() {
@@ -261,12 +261,30 @@ pub mod translate {
         }
     }
 
-    fn translate_binding(binding : module::Binding) -> Binding<(~[Constraint], Type, ~str)> {
-        let module::Binding { name: name, expression: expr, typeDecl: typeDecl, .. } = binding;
-        let expr = translate_expr(expr);
-        Binding { name: (typeDecl.context, expr.get_type().clone(), name), expression: expr }
-    }
     pub fn translate_expr(input_expr: module::TypedExpr) -> Expr<(~[Constraint], Type, ~str)> {
+        //Checks if the expression is lambda not bound by a let binding
+        //if it is then we wrap the lambda in a let binding
+        let is_lambda = match &input_expr.expr {
+            &module::Lambda(_, _) => true,
+            _ => false
+        };
+        if is_lambda {
+            let module::TypedExpr { typ: typ, expr: expr, ..} = input_expr;
+            match expr {
+                module::Lambda(arg, body) => {
+                    let l = Lambda((~[], typ.clone(), arg.clone()), ~translate_expr_rest(*body));
+                    let bind = Binding { name: (~[], typ.clone(), "#lambda".to_owned()), expression: l };
+                    Let(~[bind], ~Identifier((~[], typ, "#lambda".to_owned())))
+                }
+                _ => fail!()
+            }
+        }
+        else {
+            translate_expr_rest(input_expr)
+        }
+    }
+
+    fn translate_expr_rest(input_expr: module::TypedExpr) -> Expr<(~[Constraint], Type, ~str)> {
         let module::TypedExpr { typ: typ, expr: expr, ..} = input_expr;
         match expr {
             module::Identifier(s) => Identifier((~[], typ, s)),
@@ -275,7 +293,7 @@ pub mod translate {
             module::Rational(num) => Literal(Literal { typ: typ, value: Fractional(num) }),
             module::String(s) => Literal(Literal { typ: typ, value: String(s) }),
             module::Char(c) => Literal(Literal { typ: typ, value: Char(c) }),
-            module::Lambda(arg, body) => Lambda((~[], typ, arg), ~translate_expr(*body)),
+            module::Lambda(arg, body) => Lambda((~[], typ, arg), ~translate_expr_rest(*body)),
             module::Let(bindings, body) => {
                 let bs = bindings.move_iter().map(translate_binding).collect();
                 Let(bs, ~translate_expr(*body))
@@ -290,6 +308,13 @@ pub mod translate {
             }
         }
     }
+
+    fn translate_binding(binding : module::Binding) -> Binding<(~[Constraint], Type, ~str)> {
+        let module::Binding { name: name, expression: expr, typeDecl: typeDecl, .. } = binding;
+        let expr = translate_expr_rest(expr);
+        Binding { name: (typeDecl.context, expr.get_type().clone(), name), expression: expr }
+    }
+    
     fn translate_pattern(pattern: module::Pattern) -> Pattern<(~[Constraint], Type, ~str)> {
         match pattern {
             IdentifierPattern(i) => IdentifierPattern((~[], Type::new_var(0), i)),
