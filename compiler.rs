@@ -571,6 +571,7 @@ impl <'a> Compiler<'a> {
             &Apply(ref func, ref arg) => {
                 if !self.primitive(*func, *arg, instructions) {
                     self.compile(*arg, instructions, false);
+                    //The stack has increased by 1 until the function compiles add reduces it wtih Pack or Mkap
                     self.stackSize += 1;
                     self.compile(*func, instructions, false);
                     self.stackSize -= 1;
@@ -586,12 +587,18 @@ impl <'a> Compiler<'a> {
                 }
             }
             &Let(ref bindings, ref body) => {
-                for bind in bindings.iter() {
-                    self.newStackVar(bind.name.name.clone());
-                    self.compile(&bind.expression, instructions, false);
-                }
-                self.compile(*body, instructions, strict);
-                instructions.push(Slide(bindings.len()));
+                self.scope(|this| {
+                    for bind in bindings.iter() {
+                        this.newStackVar(bind.name.name.clone());
+                        //Workaround since this compiles non-recursive bindings
+                        //The stack is not actually increased until after the binding is compiled
+                        this.stackSize -= 1;
+                        this.compile(&bind.expression, instructions, false);
+                        this.stackSize += 1;
+                    }
+                    this.compile(*body, instructions, strict);
+                    instructions.push(Slide(bindings.len()));
+                });
             }
             &Case(ref body, ref alternatives) => {
                 self.compile(*body, instructions, true);
@@ -789,7 +796,9 @@ impl <'a> Compiler<'a> {
                         match maybeOP {
                             Some(op) => {
                                 self.compile(arg, instructions, true);
+                                self.stackSize += 1;
                                 self.compile(*arg2, instructions, true);
+                                self.stackSize -= 1;
                                 instructions.push(op);
                                 true
                             }
@@ -991,6 +1000,16 @@ r"main = case [primIntAdd 1 0] of
         Push(0), CaseJump(1), Jump(20), Split(2), Push(1), Eval, PushInt(1), IntEQ, JumpFalse(19), PushInt(1), PushInt(1), Add, Slide(2), Jump(28), Pop(2),
         Push(0), CaseJump(0), Jump(28), Split(0), PushInt(2), Slide(0), Jump(28), Pop(0), Slide(1), Eval, Update(0), Unwind]);
 }
+
+#[test]
+fn compile_let_as_argument() {
+    let file =
+r"main = primIntAdd (let x = primIntAdd 0 3 in x) 2";
+    let assembly = compile(file);
+
+    assert_eq!(assembly.superCombinators[0].instructions, ~[PushInt(2), PushInt(3), PushInt(0), Add, Push(1), Eval, Slide(1), Add, Update(0), Unwind]);
+}
+
 
 #[test]
 fn compile_class_constraints() {
