@@ -67,24 +67,28 @@ fn free_variables(variables: &mut HashMap<~str, int>, free_vars: &mut HashMap<~s
 }
 
 fn abstract(free_vars: &HashMap<~str, TypeAndStr>, input_expr: Expr<TypeAndStr>) -> Expr<TypeAndStr> {
-    let mut e = {
-        let mut rhs = input_expr;
-        let mut typ = rhs.get_type().clone();
-        for (_, var) in free_vars.iter() {
-            debug!("xxxxxxxxxxxxxxxx {}", var);
-            rhs = Lambda(var.clone(), ~rhs);
-            typ = function_type_(var.ref1().clone(), typ);
-        }
-        let bind = Binding {
-            name: (~[], typ.clone(), "sc".to_owned()),
-            expression: rhs
-        };
-        Let(~[bind], ~Identifier((~[], typ.clone(), "sc".to_owned())))
-    };
-    for (_, var) in free_vars.iter() {
-        e = Apply(~e, ~Identifier(var.clone()));
+    if free_vars.len() == 0 {
+        input_expr
     }
-    e
+    else {
+        let mut e = {
+            let mut rhs = input_expr;
+            let mut typ = rhs.get_type().clone();
+            for (_, var) in free_vars.iter() {
+                rhs = Lambda(var.clone(), ~rhs);
+                typ = function_type_(var.ref1().clone(), typ);
+            }
+            let bind = Binding {
+                name: (~[], typ.clone(), "sc".to_owned()),
+                expression: rhs
+            };
+            Let(~[bind], ~Identifier((~[], typ.clone(), "sc".to_owned())))
+        };
+        for (_, var) in free_vars.iter() {
+            e = Apply(~e, ~Identifier(var.clone()));
+        }
+        e
+    }
 }
 
 struct Renamer {
