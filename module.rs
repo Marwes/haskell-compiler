@@ -9,7 +9,7 @@ pub struct Module<Ident = ~str> {
     pub typeDeclarations : ~[TypeDeclaration],
     pub classes : ~[Class],
     pub instances : ~[Instance<Ident>],
-    pub dataDefinitions : ~[DataDefinition]
+    pub dataDefinitions : ~[DataDefinition<Ident>]
 }
 #[deriving(Clone)]
 pub struct Class<Ident = ~str> {
@@ -34,16 +34,16 @@ pub struct Binding<Ident = ~str> {
 }
 
 #[deriving(Eq, TotalEq, Clone, Show)]
-pub struct Constructor {
-    pub name : ~str,
+pub struct Constructor<Ident = ~str> {
+    pub name : Ident,
     pub typ : Type,
     pub tag : int,
     pub arity : int
 }
 
 #[deriving(Eq, Clone)]
-pub struct DataDefinition {
-    pub constructors : ~[Constructor],
+pub struct DataDefinition<Ident = ~str> {
+    pub constructors : ~[Constructor<Ident>],
     pub typ : Type,
     pub parameters : HashMap<~str, int>
 }

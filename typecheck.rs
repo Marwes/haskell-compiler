@@ -43,8 +43,7 @@ impl Types for Module<Name> {
         }
         for data in self.dataDefinitions.iter() {
             for ctor in data.constructors.iter() {
-                println!("{} == {}", name.as_slice(), ctor.name);
-                if name.as_slice() == ctor.name {
+                if *name == ctor.name {
                     return Some(&ctor.typ);
                 }
             }
@@ -227,7 +226,7 @@ impl <'a> TypeEnvironment<'a> {
             freshen(self, &mut subs, &mut data_def.typ);
             for constructor in data_def.constructors.mut_iter() {
                 replace(&mut self.constraints, &mut constructor.typ, &subs);
-                self.namedTypes.insert(Name { name: constructor.name.clone(), uid: 0 }, constructor.typ.clone());
+                self.namedTypes.insert(constructor.name.clone(), constructor.typ.clone());
             }
         }
         for class in module.classes.mut_iter() {

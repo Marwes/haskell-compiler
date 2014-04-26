@@ -90,7 +90,7 @@ pub struct Assembly {
     pub instance_dictionaries: ~[~[uint]],
     pub classes: ~[Class],
     pub instances: ~[(~[Constraint], Type)],
-    pub data_definitions: ~[DataDefinition],
+    pub data_definitions: ~[DataDefinition<Name>],
     pub offset: uint
 }
 
@@ -127,7 +127,7 @@ impl Globals for Assembly {
     fn find_constructor(&self, name: &str) -> Option<(u16, u16)> {
         for data_def in self.data_definitions.iter() {
             for ctor in data_def.constructors.iter() {
-                if name == ctor.name {
+                if name == ctor.name.as_slice() {
                     return Some((ctor.tag as u16, ctor.arity as u16));
                 }
             }
@@ -167,7 +167,7 @@ fn find_constructor(module: &Module<Id>, name: &str) -> Option<(u16, u16)> {
 
     for dataDef in module.data_definitions.iter() {
         for ctor in dataDef.constructors.iter() {
-            if name == ctor.name {
+            if name == ctor.name.as_slice() {
                 return Some((ctor.tag as u16, ctor.arity as u16));
             }
         }
@@ -192,7 +192,7 @@ impl Types for Module<Id> {
         }
         for data in self.data_definitions.iter() {
             for ctor in data.constructors.iter() {
-                if name.as_slice() == ctor.name {
+                if *name == ctor.name {
                     return Some(&ctor.typ);
                 }
             }
@@ -259,7 +259,7 @@ impl Types for Assembly {
 
         for data_def in self.data_definitions.iter() {
             for ctor in data_def.constructors.iter() {
-                if name.as_slice() == ctor.name {
+                if *name == ctor.name {
                     return Some(&ctor.typ);
                 }
             }

@@ -48,13 +48,7 @@ impl Renamer {
             Rational(r) => Rational(r),
             String(s) => String(s),
             Char(c) => Char(c),
-            Identifier(i) => {
-                let n = match self.uniques.find(&i).map(|u| u.clone()) {
-                    Some(n) => n,
-                    None => Name { name: i, uid: 0 }//If the variable is not found in variables it is a global variable
-                };
-                Identifier(n)
-            }
+            Identifier(i) => Identifier(self.get_name(i)),
             Apply(func, arg) => Apply(~self.rename(*func), ~self.rename(*arg)),
             Lambda(arg, body) => {
                 self.uniques.enter_scope();
@@ -93,9 +87,15 @@ impl Renamer {
             NumberPattern(i) => NumberPattern(i),
             ConstructorPattern(s, ps) => {
                 let ps2 = ps.move_iter().map(|p| self.rename_pattern(p)).collect();
-                ConstructorPattern(self.make_unique(s), ps2)
+                ConstructorPattern(self.get_name(s), ps2)
             }
             IdentifierPattern(s) => IdentifierPattern(self.make_unique(s))
+        }
+    }
+    fn get_name(&self, s: ~str) -> Name {
+        match self.uniques.find(&s) {
+            Some(&Name { uid: uid, .. }) => Name { name: s, uid: uid },
+            None => Name { name: s, uid: 0 }//If the variable is not found in variables it is a global variable
         }
     }
 
@@ -132,6 +132,32 @@ pub fn rename_module(module: Module<~str>) -> Module<Name> {
         bindings : bindings,
         instances: instances
     } = module;
+
+    let data_definitions2 = data_definitions.move_iter().map(|data| {
+        let DataDefinition {
+            constructors : ctors,
+            typ : typ,
+            parameters : parameters
+        } = data;
+        DataDefinition {
+            typ : typ,
+            parameters : parameters,
+            constructors : ctors.move_iter().map(|ctor| {
+                let Constructor {
+                    name : name,
+                    typ : typ,
+                    tag : tag,
+                    arity : arity
+                } = ctor;
+                Constructor {
+                    name : renamer.make_unique(name),
+                    typ : typ,
+                    tag : tag,
+                    arity : arity
+                }
+            }).collect()
+        }
+    }).collect();
     
     let instances2 = instances.move_iter().map(|instance| {
         let Instance {
@@ -153,7 +179,7 @@ pub fn rename_module(module: Module<~str>) -> Module<Name> {
     Module {
         name: renamer.make_unique(name),
         classes : classes,
-        dataDefinitions: data_definitions,
+        dataDefinitions: data_definitions2,
         typeDeclarations: typeDeclarations,
         bindings : bindings2,
         instances: instances2

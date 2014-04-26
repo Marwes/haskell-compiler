@@ -5,7 +5,7 @@ pub use renamer::Name;
 
 pub struct Module<Ident> {
     pub classes: ~[Class],
-    pub data_definitions: ~[DataDefinition],
+    pub data_definitions: ~[DataDefinition<Name>],
     pub instances: ~[(~[Constraint], Type)],
     pub bindings: ~[Binding<Ident>]
 }
@@ -235,6 +235,7 @@ pub mod translate {
             instances : instances,
             dataDefinitions : dataDefinitions
         } = module;
+
         let mut instance_functions = Vec::new();
         let mut new_instances = Vec::new();
         for module::Instance {classname: classname, typ: typ, constraints: constraints, bindings: bindings } in instances.move_iter() {
@@ -244,7 +245,7 @@ pub mod translate {
         instance_functions.extend(bindings.move_iter().map(translate_binding));
         Module {
             classes: classes,
-            data_definitions: dataDefinitions,
+            data_definitions: dataDefinitions.move_iter().collect(),
             bindings: instance_functions.move_iter().collect(),
             instances: new_instances.move_iter().collect()
         }
