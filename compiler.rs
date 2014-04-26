@@ -6,6 +6,7 @@ use std::default::Default;
 
 use core::translate::{translate_module};
 use lambda_lift::do_lambda_lift;
+use renamer::rename_module;
 
 #[deriving(Eq, Clone, Show)]
 pub enum Instruction {
@@ -175,23 +176,23 @@ fn find_constructor(module: &Module<Id>, name: &str) -> Option<(u16, u16)> {
 }
 
 impl Types for Module<Id> {
-    fn find_type<'a>(&'a self, name: &str) -> Option<&'a Type> {
+    fn find_type<'a>(&'a self, name: &Name) -> Option<&'a Type> {
         for bind in self.bindings.iter() {
-            if bind.name.name.name.equiv(&name) {
+            if bind.name.name == *name {
                 return Some(bind.expression.get_type());
             }
         }
 
         for class in self.classes.iter() {
             for decl in class.declarations.iter() {
-                if decl.name.equiv(&name) {
+                if name.as_slice() == decl.name {
                     return Some(&decl.typ);
                 }
             }
         }
         for data in self.data_definitions.iter() {
             for ctor in data.constructors.iter() {
-                if ctor.name.equiv(&name) {
+                if name.as_slice() == ctor.name {
                     return Some(&ctor.typ);
                 }
             }
@@ -241,16 +242,16 @@ fn extract_applied_type<'a>(typ: &'a Type) -> &'a Type {
 
 impl Types for Assembly {
     ///Lookup a type
-    fn find_type<'a>(&'a self, name: &str) -> Option<&'a Type> {
+    fn find_type<'a>(&'a self, name: &Name) -> Option<&'a Type> {
         for sc in self.superCombinators.iter() {
-            if sc.name.name.equiv(&name) {
+            if sc.name == *name {
                 return Some(&sc.type_declaration.typ);
             }
         }
         
         for class in self.classes.iter() {
             for decl in class.declarations.iter() {
-                if name == decl.name {
+                if name.as_slice() == decl.name {
                     return Some(&decl.typ);
                 }
             }
@@ -258,7 +259,7 @@ impl Types for Assembly {
 
         for data_def in self.data_definitions.iter() {
             for ctor in data_def.constructors.iter() {
-                if name == ctor.name {
+                if name.as_slice() == ctor.name {
                     return Some(&ctor.typ);
                 }
             }
@@ -502,9 +503,9 @@ impl <'a> Compiler<'a> {
                             StackVariable(index) => { instructions.push(Push(index)); None }
                             GlobalVariable(index) => { instructions.push(PushGlobal(index)); None }
                             ConstructorVariable(tag, arity) => { instructions.push(Pack(tag, arity)); None }
-                            ClassVariable(typ, var) => self.compile_instance_variable(expr.get_type(), instructions, name.name.name, typ, var),
+                            ClassVariable(typ, var) => self.compile_instance_variable(expr.get_type(), instructions, &name.name, typ, var),
                             ConstraintVariable(index, _, constraints) => {
-                                let x = self.compile_with_constraints(name.name.name, expr.get_type(), constraints, instructions);
+                                let x = self.compile_with_constraints(&name.name, expr.get_type(), constraints, instructions);
                                 instructions.push(PushGlobal(index));
                                 instructions.push(Mkap);
                                 x
@@ -649,19 +650,18 @@ impl <'a> Compiler<'a> {
     }
 
     ///Compile a function which is defined in a class
-    fn compile_instance_variable(&self, actual_type: &Type, instructions: &mut Vec<Instruction>, name: &str, typ: &Type, var: &TypeVariable) -> Option<(~[(~str, Type)], ~[uint])> {
+    fn compile_instance_variable(&self, actual_type: &Type, instructions: &mut Vec<Instruction>, name: &Name, typ: &Type, var: &TypeVariable) -> Option<(~[(~str, Type)], ~[uint])> {
         match try_find_instance_type(var, typ, actual_type) {
             Some(typename) => {
                 //We should be able to retrieve the instance directly
-                let instance_fn_name = "#" + typename + name;
-                let name = Name {name: instance_fn_name, uid: 0 };
-                match self.find(&name) {
+                let instance_fn_name = Name { name: "#" + typename + name.as_slice(), uid: 0 };
+                match self.find(&instance_fn_name) {
                     Some(GlobalVariable(index)) => {
                         instructions.push(PushGlobal(index));
                         None
                     }
                     Some(ConstraintVariable(index, _function_type, constraints)) => {
-                        let dict = self.compile_with_constraints(name.name, actual_type, constraints, instructions);
+                        let dict = self.compile_with_constraints(&instance_fn_name, actual_type, constraints, instructions);
                         instructions.push(PushGlobal(index));
                         instructions.push(Mkap);
                         dict
@@ -677,11 +677,11 @@ impl <'a> Compiler<'a> {
     }
 
     ///Compile the loading of a variable which has constraints and will thus need to load a dictionary with functions as well
-    fn compile_with_constraints(&self, name: &str, typ: &Type, constraints: &[Constraint], instructions: &mut Vec<Instruction>) -> Option<(~[(~str, Type)], ~[uint])> {
+    fn compile_with_constraints(&self, name: &Name, typ: &Type, constraints: &[Constraint], instructions: &mut Vec<Instruction>) -> Option<(~[(~str, Type)], ~[uint])> {
         match self.find(&Name { name: "$dict".to_owned(), uid: 0}) {
             Some(StackVariable(_)) => {
                 //Push dictionary or member of dictionary
-                match self.push_dictionary_member(constraints, name) {
+                match self.push_dictionary_member(constraints, name.as_slice()) {
                     Some(index) => instructions.push(PushDictionaryMember(index)),
                     None => instructions.push(Push(0))
                 }
@@ -833,7 +833,7 @@ impl <'a> Compiler<'a> {
         match pattern {
             &ConstructorPattern(ref name, ref patterns) => {
                 instructions.push(Push(stack_index - pattern_index));
-                match self.find_constructor(*name) {
+                match self.find_constructor(name.as_slice()) {
                     Some((tag, _)) => {
                         instructions.push(CaseJump(tag as uint));
                         branches.push(instructions.len());
@@ -898,7 +898,7 @@ pub fn compile_with_type_env(type_env: &mut TypeEnvironment, assemblies: &[&Asse
     use parser::Parser;
 
     let mut parser = Parser::new(contents.chars()); 
-    let mut module = parser.module();
+    let mut module = rename_module(parser.module());
     for assem in assemblies.iter() {
         type_env.add_types(*assem);
     }

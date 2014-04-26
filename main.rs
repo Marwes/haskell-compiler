@@ -16,11 +16,12 @@ use typecheck::{Types, TypeEnvironment};
 #[cfg(not(test))]
 use vm::{VM, execute_main, compile_file};
 #[cfg(not(test))]
-use core::{Name, Module};
+use core::{Module};
 #[cfg(not(test))]
 use core::translate::{translate_expr};
 #[cfg(not(test))]
 use lambda_lift::do_lambda_lift;
+use renamer::{rename_expr, Name};
 
 mod compiler;
 mod typecheck;
@@ -42,7 +43,7 @@ fn main() {
         let prelude = compile_file(&"Prelude.hs");
         let assembly = {
             let mut parser = Parser::new(expr_str.chars());
-            let mut expr = parser.expression_();
+            let mut expr = rename_expr(parser.expression_());
 
             let mut type_env = TypeEnvironment::new();
             type_env.add_types(&prelude as &Types);

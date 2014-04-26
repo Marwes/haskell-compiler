@@ -4,7 +4,7 @@ use std::mem::swap;
 use module::{TypeVariable, TypeOperator, TypeApplication, Identifier, Number, Rational, String, Char, Apply, Lambda, Let, Case, TypedExpr, Module, Constraint, Pattern, IdentifierPattern, NumberPattern, ConstructorPattern, Binding, Class, TypeDeclaration, star_kind};
 use graph::{Graph, VertexIndex, strongly_connected_components};
 
-use scoped_map::ScopedMap;
+use renamer::*;
 
 pub use lexer::Location;
 pub use module::Type;
@@ -14,7 +14,7 @@ use module::Alternative;
 
 ///Trait which can be implemented by types where types can be looked up by name
 pub trait Types {
-    fn find_type<'a>(&'a self, name: &str) -> Option<&'a Type>;
+    fn find_type<'a>(&'a self, name: &Name) -> Option<&'a Type>;
     fn find_class<'a>(&'a self, name: &str) -> Option<&'a Class>;
     fn has_instance(&self, classname: &str, typ: &Type) -> bool {
         match self.find_instance(classname, typ) {
@@ -26,24 +26,25 @@ pub trait Types {
     fn each_constraint_list(&self, |&[Constraint]|);
 }
 
-impl Types for Module {
-    fn find_type<'a>(&'a self, name: &str) -> Option<&'a Type> {
+impl Types for Module<Name> {
+    fn find_type<'a>(&'a self, name: &Name) -> Option<&'a Type> {
         for bind in self.bindings.iter() {
-            if bind.name.equiv(&name) {
+            if bind.name == *name {
                 return Some(&bind.expression.typ);
             }
         }
 
         for class in self.classes.iter() {
             for decl in class.declarations.iter() {
-                if decl.name.equiv(&name) {
+                if name.as_slice() == decl.name {
                     return Some(&decl.typ);
                 }
             }
         }
         for data in self.dataDefinitions.iter() {
             for ctor in data.constructors.iter() {
-                if ctor.name.equiv(&name) {
+                println!("{} == {}", name.as_slice(), ctor.name);
+                if name.as_slice() == ctor.name {
                     return Some(&ctor.typ);
                 }
             }
@@ -80,7 +81,7 @@ impl Types for Module {
 
 pub struct TypeEnvironment<'a> {
     assemblies: Vec<&'a Types>,
-    namedTypes : ScopedMap<~str, Type>,
+    namedTypes : HashMap<Name, Type>,
     constraints: HashMap<TypeVariable, Vec<~str>>,
     instances: Vec<(~str, Type)>,
     variableIndex : int,
@@ -94,13 +95,13 @@ struct Substitution {
 }
 
 trait Bindings {
-    fn get_mut<'a>(&'a mut self, idx: (uint, uint)) -> &'a mut Binding;
+    fn get_mut<'a>(&'a mut self, idx: (uint, uint)) -> &'a mut Binding<Name>;
 
-    fn each_binding(&self, |&Binding, (uint, uint)|);
+    fn each_binding(&self, |&Binding<Name>, (uint, uint)|);
 }
 
-impl Bindings for Module {
-    fn get_mut<'a>(&'a mut self, (instance_idx, idx): (uint, uint)) -> &'a mut Binding {
+impl Bindings for Module<Name> {
+    fn get_mut<'a>(&'a mut self, (instance_idx, idx): (uint, uint)) -> &'a mut Binding<Name> {
         if instance_idx == 0 {
             &mut self.bindings[idx]
         }
@@ -109,7 +110,7 @@ impl Bindings for Module {
         }
     }
 
-    fn each_binding(&self, func: |&Binding, (uint, uint)|) {
+    fn each_binding(&self, func: |&Binding<Name>, (uint, uint)|) {
         for (index, bind) in self.bindings.iter().enumerate() {
             func(bind, (0, index));
         }
@@ -123,38 +124,41 @@ impl Bindings for Module {
 
 //Woraround since traits around a vector seems problematic
 struct BindingsWrapper<'a> {
-    value: &'a mut [Binding]
+    value: &'a mut [Binding<Name>]
 }
 
 impl <'a> Bindings for BindingsWrapper<'a> {
-    fn get_mut<'a>(&'a mut self, (_, idx): (uint, uint)) -> &'a mut Binding {
+    fn get_mut<'a>(&'a mut self, (_, idx): (uint, uint)) -> &'a mut Binding<Name> {
         &mut self.value[idx]
     }
 
-    fn each_binding(&self, func: |&Binding, (uint, uint)|) {
+    fn each_binding(&self, func: |&Binding<Name>, (uint, uint)|) {
         for (index, bind) in self.value.iter().enumerate() {
             func(bind, (0, index));
         }
     }
 }
 
-fn add_primitives(globals: &mut ScopedMap<~str, Type>, typename: &str) {
+fn insertTo(map: &mut HashMap<Name, Type>, name: ~str, typ: Type) {
+    map.insert(Name { name: name, uid: 0 }, typ);
+}
+fn add_primitives(globals: &mut HashMap<Name, Type>, typename: &str) {
     let typ = Type::new_op(typename.to_owned(), ~[]);
     {
         let binop = function_type(&typ, &function_type(&typ, &typ));
-        globals.insert("prim" + typename + "Add", binop.clone());
-        globals.insert("prim" + typename + "Subtract", binop.clone());
-        globals.insert("prim" + typename + "Multiply", binop.clone());
-        globals.insert("prim" + typename + "Divide", binop.clone());
-        globals.insert("prim" + typename + "Remainder", binop.clone());
+        insertTo(globals, "prim" + typename + "Add", binop.clone());
+        insertTo(globals, "prim" + typename + "Subtract", binop.clone());
+        insertTo(globals, "prim" + typename + "Multiply", binop.clone());
+        insertTo(globals, "prim" + typename + "Divide", binop.clone());
+        insertTo(globals, "prim" + typename + "Remainder", binop.clone());
     }
     {
         let binop = function_type(&typ, &function_type(&typ, &Type::new_op(~"Bool", ~[])));
-        globals.insert("prim" + typename + "EQ", binop.clone());
-        globals.insert("prim" + typename + "LT", binop.clone());
-        globals.insert("prim" + typename + "LE", binop.clone());
-        globals.insert("prim" + typename + "GT", binop.clone());
-        globals.insert("prim" + typename + "GE", binop.clone());
+        insertTo(globals, "prim" + typename + "EQ", binop.clone());
+        insertTo(globals, "prim" + typename + "LT", binop.clone());
+        insertTo(globals, "prim" + typename + "LE", binop.clone());
+        insertTo(globals, "prim" + typename + "GT", binop.clone());
+        insertTo(globals, "prim" + typename + "GE", binop.clone());
     }
 }
 
@@ -180,18 +184,18 @@ impl <'a> TypeEnvironment<'a> {
 
     ///Creates a new TypeEnvironment and adds all the primitive types
     pub fn new() -> TypeEnvironment {
-        let mut globals = ScopedMap::new();
+        let mut globals = HashMap::new();
         add_primitives(&mut globals, &"Int");
         add_primitives(&mut globals, &"Double");
-        globals.insert(~"primIntToDouble", function_type(&Type::new_op(~"Int", ~[]), &Type::new_op(~"Double", ~[])));
-        globals.insert(~"primDoubleToInt", function_type(&Type::new_op(~"Double", ~[]), &Type::new_op(~"Int", ~[])));
+        insertTo(&mut globals, ~"primIntToDouble", function_type(&Type::new_op(~"Int", ~[]), &Type::new_op(~"Double", ~[])));
+        insertTo(&mut globals, ~"primDoubleToInt", function_type(&Type::new_op(~"Double", ~[]), &Type::new_op(~"Int", ~[])));
         let var = Type::new_var_kind(-10, star_kind.clone());
         let list = Type::new_op(~"[]", ~[var.clone()]);
-        globals.insert(~"[]", list.clone());
-        globals.insert(~":", function_type(&var, &function_type(&list, &list)));
+        insertTo(&mut globals, ~"[]", list.clone());
+        insertTo(&mut globals, ~":", function_type(&var, &function_type(&list, &list)));
         for i in range(0 as uint, 10) {
             let (name, typ) = create_tuple_type(i);
-            globals.insert(name, typ);
+            insertTo(&mut globals, name, typ);
         }
         TypeEnvironment {
             assemblies: Vec::new(),
@@ -217,13 +221,13 @@ impl <'a> TypeEnvironment<'a> {
     }
 
     ///Typechecks a module by updating all the types in place
-    pub fn typecheck_module(&mut self, module: &mut Module) {
+    pub fn typecheck_module(&mut self, module: &mut Module<Name>) {
         for data_def in module.dataDefinitions.mut_iter() {
             let mut subs = Substitution { subs: HashMap::new(), constraints: HashMap::new() };
             freshen(self, &mut subs, &mut data_def.typ);
             for constructor in data_def.constructors.mut_iter() {
                 replace(&mut self.constraints, &mut constructor.typ, &subs);
-                self.namedTypes.insert(constructor.name.clone(), constructor.typ.clone());
+                self.namedTypes.insert(Name { name: constructor.name.clone(), uid: 0 }, constructor.typ.clone());
             }
         }
         for class in module.classes.mut_iter() {
@@ -245,7 +249,7 @@ impl <'a> TypeEnvironment<'a> {
                     vec_context.push(c);
                     type_decl.context = vec_context.move_iter().collect();
                 }
-                self.namedTypes.insert(type_decl.name.clone(), type_decl.typ.clone());
+                self.namedTypes.insert(Name { name: type_decl.name.clone(), uid: 0 }, type_decl.typ.clone());
             }
         }
         for instance in module.instances.mut_iter() {
@@ -260,7 +264,7 @@ impl <'a> TypeEnvironment<'a> {
                 freshen(self, &mut subs, &mut instance.typ);
             }
             for binding in instance.bindings.mut_iter() {
-                let decl = class.declarations.iter().find(|decl| binding.name.ends_with(decl.name))
+                let decl = class.declarations.iter().find(|decl| binding.name.as_slice().ends_with(decl.name))
                     .expect(format!("Could not find {} in class {}", binding.name, class.name));
                 binding.typeDecl = decl.clone();
                 replace_var(&mut binding.typeDecl.typ, &class.variable, &instance.typ);
@@ -285,7 +289,7 @@ impl <'a> TypeEnvironment<'a> {
         for type_decl in module.typeDeclarations.mut_iter() {
             self.freshen_declaration(type_decl);
 
-            match module.bindings.mut_iter().find(|bind| bind.name == type_decl.name) {
+            match module.bindings.mut_iter().find(|bind| bind.name.as_slice() == type_decl.name) {
                 Some(bind) => {
                     bind.typeDecl = type_decl.clone();
                 }
@@ -303,14 +307,14 @@ impl <'a> TypeEnvironment<'a> {
         //}
     }
 
-    pub fn typecheck_expr(&mut self, expr : &mut TypedExpr) {
+    pub fn typecheck_expr(&mut self, expr : &mut TypedExpr<Name>) {
         let mut subs = Substitution { subs: HashMap::new(), constraints: HashMap::new() }; 
         self.typecheck(expr, &mut subs);
         self.substitute(&mut subs, expr);
     }
 
-    pub fn find(&'a self, ident: &str) -> Option<&'a Type> {
-        self.namedTypes.find_equiv(&ident).or_else(|| {
+    pub fn find(&'a self, ident: &Name) -> Option<&'a Type> {
+        self.namedTypes.find(ident).or_else(|| {
             for types in self.assemblies.iter() {
                 let v = types.find_type(ident);
                 if v != None {
@@ -342,7 +346,7 @@ impl <'a> TypeEnvironment<'a> {
     }
     
     ///Searches through a type, comparing it with the type on the identifier, returning all the specialized constraints
-    pub fn find_specialized_instances(&self, name: &str, actual_type: &Type) -> ~[(~str, Type)] {
+    pub fn find_specialized_instances(&self, name: &Name, actual_type: &Type) -> ~[(~str, Type)] {
         match self.find(name) {
             Some(typ) => {
                 let mut constraints = Vec::new();
@@ -393,15 +397,13 @@ impl <'a> TypeEnvironment<'a> {
 
     ///Applies a substitution on all global types
     fn apply(&mut self, subs: &Substitution) {
-        for (_, types) in self.namedTypes.mut_iter() {
-            for typ in types.mut_iter() {
-                replace(&mut self.constraints, typ, subs);
-            }
+        for (_, typ) in self.namedTypes.mut_iter() {
+            replace(&mut self.constraints, typ, subs);
         }
     }
 
     ///Walks through an expression and applies the substitution on each of its types
-    fn substitute(&mut self, subs : &Substitution, expr: &mut TypedExpr) {
+    fn substitute(&mut self, subs : &Substitution, expr: &mut TypedExpr<Name>) {
         replace(&mut self.constraints, &mut expr.typ, subs);
         match &mut expr.expr {
             &Apply(ref mut func, ref mut arg) => {
@@ -463,7 +465,7 @@ impl <'a> TypeEnvironment<'a> {
         Type::new_var(self.variableIndex)
     }
 
-    fn typecheck(&mut self, expr : &mut TypedExpr, subs: &mut Substitution) {
+    fn typecheck(&mut self, expr : &mut TypedExpr<Name>, subs: &mut Substitution) {
         if expr.typ == Type::new_var(0) {
             expr.typ = self.new_var();
         }
@@ -490,7 +492,7 @@ impl <'a> TypeEnvironment<'a> {
                 expr.typ = Type::new_op(~"Char", ~[]);
             }
             &Identifier(ref name) => {
-                match self.fresh(*name) {
+                match self.fresh(name) {
                     Some(t) => {
                         expr.typ = t;
                     }
@@ -513,7 +515,6 @@ impl <'a> TypeEnvironment<'a> {
                 let argType = self.new_var();
                 expr.typ = function_type(&argType, &self.new_var());
 
-                self.namedTypes.enter_scope();
                 {
                     self.namedTypes.insert(arg.clone(), argType.clone());
                     let non_generics = self.non_generic.len();
@@ -523,7 +524,6 @@ impl <'a> TypeEnvironment<'a> {
                         self.non_generic.pop();
                     }
                 }
-                self.namedTypes.exit_scope();
 
                 replace(&mut self.constraints, &mut expr.typ, subs);
                 with_arg_return(&mut expr.typ, |_, return_type| {
@@ -532,13 +532,11 @@ impl <'a> TypeEnvironment<'a> {
             }
             &Let(ref mut bindings, ref mut body) => {
 
-                self.namedTypes.enter_scope();
                 {
                     self.typecheck_mutually_recursive_bindings(subs, &mut BindingsWrapper { value: *bindings });
                     self.apply(subs);
                     self.typecheck(*body, subs);
                 }
-                self.namedTypes.exit_scope();
 
                 replace(&mut self.constraints, &mut body.typ, subs);
                 expr.typ = body.typ.clone();
@@ -561,7 +559,7 @@ impl <'a> TypeEnvironment<'a> {
         };
     }
 
-    fn typecheck_pattern(&mut self, location: &Location, subs: &mut Substitution, pattern: &Pattern, match_type: &mut Type) {
+    fn typecheck_pattern(&mut self, location: &Location, subs: &mut Substitution, pattern: &Pattern<Name>, match_type: &mut Type) {
         match pattern {
             &IdentifierPattern(ref ident) => {
                 let mut typ = self.new_var();
@@ -582,7 +580,7 @@ impl <'a> TypeEnvironment<'a> {
                 }
             }
             &ConstructorPattern(ref ctorname, ref patterns) => {
-                let mut t = self.fresh(*ctorname).expect(format!("Undefined constructer '{}' when matching pattern", *ctorname));
+                let mut t = self.fresh(ctorname).expect(format!("Undefined constructer '{}' when matching pattern", *ctorname));
                 let mut data_type = get_returntype(&t);
                 
                 unify_location(self, subs, location, &mut data_type, match_type);
@@ -594,7 +592,7 @@ impl <'a> TypeEnvironment<'a> {
         }
     }
 
-    fn pattern_rec(&mut self, i: uint, location: &Location, subs: &mut Substitution, patterns: &[Pattern], func_type: &mut Type) {
+    fn pattern_rec(&mut self, i: uint, location: &Location, subs: &mut Substitution, patterns: &[Pattern<Name>], func_type: &mut Type) {
         if i < patterns.len() {
             let p = &patterns[i];
             with_arg_return(func_type, |arg_type, return_type| {
@@ -649,7 +647,7 @@ impl <'a> TypeEnvironment<'a> {
     }
 
     ///Instantiates new typevariables for every typevariable in the type found at 'name'
-    fn fresh(&'a mut self, name: &str) -> Option<Type> {
+    fn fresh(&'a mut self, name: &Name) -> Option<Type> {
         match self.find(name).map(|x| x.clone()) {
             Some(mut typ) => {
                 let mut subs = Substitution { subs: HashMap::new(), constraints: HashMap::new() };
@@ -954,10 +952,10 @@ fn build_graph(bindings: &Bindings) -> Graph<(uint, uint)> {
     graph
 }
 
-fn add_edges<T>(graph: &mut Graph<T>, map: &HashMap<~str, VertexIndex>, function_index: VertexIndex, expr: &TypedExpr) {
+fn add_edges<T>(graph: &mut Graph<T>, map: &HashMap<Name, VertexIndex>, function_index: VertexIndex, expr: &TypedExpr<Name>) {
     match &expr.expr {
         &Identifier(ref n) => {
-            match map.find_equiv(n) {
+            match map.find(n) {
                 Some(index) => graph.connect(function_index, *index),
                 None => ()
             }

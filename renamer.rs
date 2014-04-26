@@ -7,6 +7,15 @@ pub struct Name {
     pub uid: uint
 }
 
+impl Str for Name {
+    fn as_slice<'a>(&'a self) -> &'a str {
+        self.name.as_slice()
+    }
+    fn into_owned(self) -> ~str {
+        self.name
+    }
+}
+
 struct Renamer {
     uniques: ScopedMap<~str, Name>,
     unique_id: uint
@@ -84,11 +93,22 @@ impl Renamer {
             NumberPattern(i) => NumberPattern(i),
             ConstructorPattern(s, ps) => {
                 let ps2 = ps.move_iter().map(|p| self.rename_pattern(p)).collect();
-                ConstructorPattern(s, ps2)
+                ConstructorPattern(self.make_unique(s), ps2)
             }
             IdentifierPattern(s) => IdentifierPattern(self.make_unique(s))
         }
     }
+
+    fn rename_binding(&mut self, binding: Binding<~str>) -> Binding<Name> {
+        let Binding { name: name, expression: expression, typeDecl: td, arity: a } = binding;
+        Binding {
+            name: Name { name: name, uid: 0 },
+            expression: self.rename(expression),
+            typeDecl: td,
+            arity: a
+        }
+    }
+
 
     fn make_unique(&mut self, name: ~str) -> Name {
         self.unique_id += 1;
@@ -97,3 +117,46 @@ impl Renamer {
         u
     }
 }
+pub fn rename_expr(expr: TypedExpr<~str>) -> TypedExpr<Name> {
+    let mut renamer = Renamer { uniques: ScopedMap::new(), unique_id: 1 };
+    renamer.rename(expr)
+}
+
+pub fn rename_module(module: Module<~str>) -> Module<Name> {
+    let mut renamer = Renamer { uniques: ScopedMap::new(), unique_id: 1 };
+    let Module {
+        name: name,
+        classes : classes,
+        dataDefinitions: data_definitions,
+        typeDeclarations: typeDeclarations,
+        bindings : bindings,
+        instances: instances
+    } = module;
+    
+    let instances2 = instances.move_iter().map(|instance| {
+        let Instance {
+            bindings : bindings,
+            constraints : constraints,
+            typ : typ,
+            classname : classname
+        } = instance;
+        Instance {
+            bindings : bindings.move_iter().map(|b| renamer.rename_binding(b)).collect(),
+            constraints : constraints,
+            typ : typ,
+            classname : classname
+        }
+    }).collect();
+    
+    let bindings2 : ~[Binding<Name>] = bindings.move_iter().map(|b| renamer.rename_binding(b)).collect();
+    
+    Module {
+        name: renamer.make_unique(name),
+        classes : classes,
+        dataDefinitions: data_definitions,
+        typeDeclarations: typeDeclarations,
+        bindings : bindings2,
+        instances: instances2
+    }
+}
+

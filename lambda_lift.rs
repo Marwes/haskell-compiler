@@ -1,24 +1,23 @@
 use collections::hashmap::HashMap;
 use core::*;
-use scoped_map::ScopedMap;
 use typecheck::function_type_;
 
-pub type TypeAndStr = (~[Constraint], Type, ~str);
+pub type TypeAndStr = Id;
 
 pub fn do_lambda_lift(module: Module<TypeAndStr>) -> Module<Id> {
-    lift_lambdas(rename_module(abstract_module(module)))
+    lift_lambdas(abstract_module(module))
 }
 
 //Walks through an expression and notes all the free variables and for each lambda, adds the
 //free variables to its arguments and performs an immediate application
 //@variables All the local variables in scope, values are how many of the name there exists
 //@free_vars The free variables for the returned expression
-fn free_variables(variables: &mut HashMap<~str, int>, free_vars: &mut HashMap<~str, TypeAndStr>, expr: Expr<TypeAndStr>) -> Expr<TypeAndStr> {
+fn free_variables(variables: &mut HashMap<Name, int>, free_vars: &mut HashMap<Name, TypeAndStr>, expr: Expr<TypeAndStr>) -> Expr<TypeAndStr> {
     match expr {
         Identifier(i) => {
             //If the identifier is a local, add it to the free variables
-            if variables.find(i.ref2()).map(|x| *x > 0).unwrap_or(false) {
-                free_vars.insert(i.ref2().clone(), i.clone());
+            if variables.find(&i.name).map(|x| *x > 0).unwrap_or(false) {
+                free_vars.insert(i.name.clone(), i.clone());
             }
             Identifier(i)
         }
@@ -28,15 +27,15 @@ fn free_variables(variables: &mut HashMap<~str, int>, free_vars: &mut HashMap<~s
             Apply(f, a)
         }
         Lambda(arg, body) => {
-            variables.insert_or_update_with(arg.ref2().clone(), 1, |_, v| *v += 1);
+            variables.insert_or_update_with(arg.name.clone(), 1, |_, v| *v += 1);
             let b = free_variables(variables, free_vars, *body);
-            *variables.get_mut(arg.ref2()) -= 1;
-            free_vars.remove(arg.ref2());//arg was not actually a free variable
+            *variables.get_mut(&arg.name) -= 1;
+            free_vars.remove(&arg.name);//arg was not actually a free variable
             Lambda(arg, ~b)
         }
         Let(bindings, expr) => {
             for bind in bindings.iter() {
-                variables.insert_or_update_with(bind.name.ref2().clone(), 1, |_, v| *v += 1);
+                variables.insert_or_update_with(bind.name.name.clone(), 1, |_, v| *v += 1);
             }
             let mut free_vars2 = HashMap::new();
             let new_bindings: ~[Binding<TypeAndStr>] = bindings.move_iter().map(
@@ -54,8 +53,8 @@ fn free_variables(variables: &mut HashMap<~str, int>, free_vars: &mut HashMap<~s
             }).collect();
             let e = ~free_variables(variables, free_vars, *expr);
             for bind in new_bindings.iter() {
-                *variables.get_mut(bind.name.ref2()) -= 1;
-                free_vars.remove(bind.name.ref2());
+                *variables.get_mut(&bind.name.name) -= 1;
+                free_vars.remove(&bind.name.name);
             }
             Let(new_bindings, e)
         }
@@ -66,7 +65,7 @@ fn free_variables(variables: &mut HashMap<~str, int>, free_vars: &mut HashMap<~s
     }
 }
 
-fn abstract(free_vars: &HashMap<~str, TypeAndStr>, input_expr: Expr<TypeAndStr>) -> Expr<TypeAndStr> {
+fn abstract(free_vars: &HashMap<Name, TypeAndStr>, input_expr: Expr<TypeAndStr>) -> Expr<TypeAndStr> {
     if free_vars.len() == 0 {
         input_expr
     }
@@ -76,98 +75,18 @@ fn abstract(free_vars: &HashMap<~str, TypeAndStr>, input_expr: Expr<TypeAndStr>)
             let mut typ = rhs.get_type().clone();
             for (_, var) in free_vars.iter() {
                 rhs = Lambda(var.clone(), ~rhs);
-                typ = function_type_(var.ref1().clone(), typ);
+                typ = function_type_(var.get_type().clone(), typ);
             }
             let bind = Binding {
-                name: (~[], typ.clone(), "sc".to_owned()),
+                name: Id::new(Name {name: "sc".to_owned(), uid: 0 }, typ.clone(), ~[]),
                 expression: rhs
             };
-            Let(~[bind], ~Identifier((~[], typ.clone(), "sc".to_owned())))
+            Let(~[bind], ~Identifier(Id::new(Name { name: "sc".to_owned(), uid: 0 }, typ.clone(), ~[])))
         };
         for (_, var) in free_vars.iter() {
             e = Apply(~e, ~Identifier(var.clone()));
         }
         e
-    }
-}
-
-struct Renamer {
-    uniques: ScopedMap<~str, Name>,
-    unique_id: uint
-}
-impl Renamer {
-
-    fn rename_bindings(&mut self, bindings: ~[Binding<TypeAndStr>]) -> ~[Binding<Id>] {
-        //Add all bindings in the scope
-        for bind in bindings.iter() {
-            self.make_unique(bind.name.ref2().clone());
-        }
-        bindings.move_iter().map(|binding| {
-            let Binding { name: (constraints, typ, name), expression: expression } = binding;
-            let n = self.uniques.find(&name).map(|u| u.clone())
-                .expect(format!("Error: lambda_lift: Undefined variable {}", name));
-            Binding {
-                name: Id::new(n, typ, constraints),
-                expression: self.rename(expression)
-            }
-        }).collect()
-    }
-
-    fn rename(&mut self, expr: Expr<TypeAndStr>) -> Expr<Id> {
-        match expr {
-            Literal(l) => Literal(l),
-            Identifier((constraints, typ, i)) => {
-                let n = match self.uniques.find(&i).map(|u| u.clone()) {
-                    Some(n) => n,
-                    None => Name { name: i, uid: 0 }//If the variable is not found in variables it is a global variable
-                };
-                Identifier(Id::new(n, typ, constraints))
-            }
-            Apply(func, arg) => Apply(~self.rename(*func), ~self.rename(*arg)),
-            Lambda((constraints, typ, arg), body) => {
-                self.uniques.enter_scope();
-                let l = Lambda(Id::new(self.make_unique(arg), typ, constraints), ~self.rename(*body));
-                self.uniques.exit_scope();
-                l
-            }
-            Let(bindings, expr) => {
-                self.uniques.enter_scope();
-                let bs = self.rename_bindings(bindings);
-                let l = Let(bs, ~self.rename(*expr));
-                self.uniques.exit_scope();
-                l
-            }
-            Case(expr, alts) => {
-                let a = alts.move_iter().map(|Alternative { pattern: pattern, expression: expression }| {
-                    self.uniques.enter_scope();
-                    let a = Alternative {
-                        pattern: self.rename_pattern(pattern),
-                        expression: self.rename(expression)
-                    };
-                    self.uniques.exit_scope();
-                    a
-                }).collect();
-                Case(~self.rename(*expr), a)
-            }
-        }
-    }
-
-    fn rename_pattern(&mut self, pattern: Pattern<TypeAndStr>) -> Pattern<Id> {
-        match pattern {
-            NumberPattern(i) => NumberPattern(i),
-            ConstructorPattern(s, ps) => {
-                let ps2 = ps.move_iter().map(|p| self.rename_pattern(p)).collect();
-                ConstructorPattern(s, ps2)
-            }
-            IdentifierPattern((constraints, typ, s)) => IdentifierPattern(Id::new(self.make_unique(s), typ, constraints))
-        }
-    }
-
-    fn make_unique(&mut self, name: ~str) -> Name {
-        self.unique_id += 1;
-        let u = Name { name: name.clone(), uid: self.unique_id};
-        self.uniques.insert(name, u.clone());
-        u
     }
 }
 
@@ -227,31 +146,6 @@ pub fn lift_lambdas<T: ::std::fmt::Show>(module: Module<T>) -> Module<T> {
     }
 }
 
-
-pub fn rename_module(module: Module<TypeAndStr>) -> Module<Id> {
-    let mut renamer = Renamer { uniques: ScopedMap::new(), unique_id: 1 };
-    let Module {
-        classes : classes,
-        data_definitions: data_definitions,
-        bindings : bindings,
-        instances: instances
-    } = module;
-    
-    let bindings2 = bindings.move_iter().map(|binding| {
-        let Binding { name: (constraints, typ, name), expression: expression } = binding;
-        Binding {
-            name: Id::new(Name { name: name, uid: 0 }, typ, constraints),
-            expression: renamer.rename(expression)
-        }
-    }).collect();
-    
-    Module {
-        classes : classes,
-        data_definitions: data_definitions,
-        bindings : bindings2,
-        instances: instances
-    }
-}
 pub fn abstract_module(module: Module<TypeAndStr>) -> Module<TypeAndStr> {
     each_binding(module,
         |name| name,

@@ -348,7 +348,7 @@ pub struct Alternative<Ident = ~str> {
 pub enum Pattern<Ident = ~str> {
     NumberPattern(int),
     IdentifierPattern(Ident),
-    ConstructorPattern(~str, ~[Pattern<Ident>])
+    ConstructorPattern(Ident, ~[Pattern<Ident>])
 }
 
 #[deriving(Eq)]

@@ -7,6 +7,7 @@ use compiler::*;
 use parser::Parser;
 use core::translate::translate_module;
 use lambda_lift::do_lambda_lift;
+use renamer::rename_module;
 
 #[deriving(Clone)]
 enum Node_<'a> {
@@ -376,7 +377,7 @@ enum VMResult {
 
 fn compile_iter<T : Iterator<char>>(iterator: T) -> Assembly {
     let mut parser = Parser::new(iterator);
-    let mut module = parser.module();
+    let mut module = rename_module(parser.module());
     
     let mut typer = TypeEnvironment::new();
     typer.typecheck_module(&mut module);

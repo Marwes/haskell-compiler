@@ -1,6 +1,7 @@
 use std::fmt;
 pub use module::{Type, TypeApplication, TypeOperator, TypeVariable, IdentifierPattern, ConstructorPattern, NumberPattern, Constraint, Class, DataDefinition, TypeDeclaration};
 use module;
+pub use renamer::Name;
 
 pub struct Module<Ident> {
     pub classes: ~[Class],
@@ -9,14 +10,14 @@ pub struct Module<Ident> {
     pub bindings: ~[Binding<Ident>]
 }
 
-impl Module<(~[Constraint], Type, ~str)> {
-    pub fn from_expr(expr: Expr<(~[Constraint], Type, ~str)>) -> Module<(~[Constraint], Type, ~str)> {
+impl Module<Id> {
+    pub fn from_expr(expr: Expr<Id>) -> Module<Id> {
         Module {
             classes: ~[],
             data_definitions: ~[],
             instances: ~[],
             bindings: ~[Binding {
-                name: (~[], expr.get_type().clone(), "main".to_owned()),
+                name: Id::new(Name { name: "main".to_owned(), uid: 0 }, expr.get_type().clone(), ~[]),
                 expression: expr
             }]
         }
@@ -97,12 +98,6 @@ pub trait Typed {
     fn get_type<'a>(&'a self) -> &'a Type;
 }
 
-impl Typed for (~[Constraint], Type, ~str) {
-    fn get_type<'a>(&'a self) -> &'a Type {
-        self.ref1()
-    }
-}
-
 impl <Ident: Typed> Typed for Expr<Ident> {
     fn get_type<'a>(&'a self) -> &'a Type {
         match self {
@@ -121,12 +116,6 @@ impl <Ident: Typed> Typed for Expr<Ident> {
     }
 }
 
-#[deriving(Eq, TotalEq, Hash, Clone, Show)]
-pub struct Name {
-    pub name: ~str,
-    pub uid: uint
-}
-
 impl <'a> Equiv<&'a str> for Name {
     fn equiv(&self, o: & &str) -> bool {
         *o == self.name
@@ -134,8 +123,8 @@ impl <'a> Equiv<&'a str> for Name {
 }
 
 #[deriving(Eq, TotalEq, Hash, Clone)]
-pub struct Id {
-    pub name: Name,
+pub struct Id<T = Name> {
+    pub name: T,
     pub typ: Type,
     pub constraints: ~[Constraint]
 }
@@ -146,8 +135,8 @@ impl fmt::Show for Id {
     }
 }
 
-impl Id {
-    pub fn new(name: Name, typ: Type, constraints: ~[Constraint]) -> Id {
+impl <T> Id<T> {
+    pub fn new(name: T, typ: Type, constraints: ~[Constraint]) -> Id<T> {
         Id { name: name, typ: typ, constraints: constraints }
     }
 }
@@ -161,7 +150,7 @@ impl Str for Id {
     }
 }
 
-impl Typed for Id {
+impl <T> Typed for Id<T> {
     fn get_type<'a>(&'a self) -> &'a Type {
         &self.typ
     }
@@ -238,7 +227,7 @@ pub mod translate {
     use core::*;
     use module;
         
-    pub fn translate_module(module: module::Module) -> Module<(~[Constraint], Type, ~str)> {
+    pub fn translate_module(module: module::Module<Name>) -> Module<Id<Name>> {
         let module::Module { name : _name,
             bindings : bindings,
             typeDeclarations : _typeDeclarations,
@@ -261,7 +250,7 @@ pub mod translate {
         }
     }
 
-    pub fn translate_expr(input_expr: module::TypedExpr) -> Expr<(~[Constraint], Type, ~str)> {
+    pub fn translate_expr(input_expr: module::TypedExpr<Name>) -> Expr<Id<Name>> {
         //Checks if the expression is lambda not bound by a let binding
         //if it is then we wrap the lambda in a let binding
         let is_lambda = match &input_expr.expr {
@@ -272,9 +261,10 @@ pub mod translate {
             let module::TypedExpr { typ: typ, expr: expr, ..} = input_expr;
             match expr {
                 module::Lambda(arg, body) => {
-                    let l = Lambda((~[], typ.clone(), arg.clone()), ~translate_expr_rest(*body));
-                    let bind = Binding { name: (~[], typ.clone(), "#lambda".to_owned()), expression: l };
-                    Let(~[bind], ~Identifier((~[], typ, "#lambda".to_owned())))
+                    //TODO need to make unique names for the lambdas created here
+                    let l = Lambda(Id::new(arg, typ.clone(), ~[]), ~translate_expr_rest(*body));
+                    let bind = Binding { name: Id::new(Name { name: "#lambda".to_owned(), uid: 0 }, typ.clone(), ~[]), expression: l };
+                    Let(~[bind], ~Identifier(Id::new(Name { name: "#lambda".to_owned(), uid: 0 }, typ.clone(), ~[])))
                 }
                 _ => fail!()
             }
@@ -284,16 +274,16 @@ pub mod translate {
         }
     }
 
-    fn translate_expr_rest(input_expr: module::TypedExpr) -> Expr<(~[Constraint], Type, ~str)> {
+    fn translate_expr_rest(input_expr: module::TypedExpr<Name>) -> Expr<Id<Name>> {
         let module::TypedExpr { typ: typ, expr: expr, ..} = input_expr;
         match expr {
-            module::Identifier(s) => Identifier((~[], typ, s)),
+            module::Identifier(s) => Identifier(Id::new(s, typ, ~[])),
             module::Apply(func, arg) => Apply(~translate_expr(*func), ~translate_expr(*arg)),
             module::Number(num) => Literal(Literal { typ: typ, value: Integral(num) }),
             module::Rational(num) => Literal(Literal { typ: typ, value: Fractional(num) }),
             module::String(s) => Literal(Literal { typ: typ, value: String(s) }),
             module::Char(c) => Literal(Literal { typ: typ, value: Char(c) }),
-            module::Lambda(arg, body) => Lambda((~[], typ, arg), ~translate_expr_rest(*body)),
+            module::Lambda(arg, body) => Lambda(Id::new(arg, typ, ~[]), ~translate_expr_rest(*body)),
             module::Let(bindings, body) => {
                 let bs = bindings.move_iter().map(translate_binding).collect();
                 Let(bs, ~translate_expr(*body))
@@ -309,18 +299,18 @@ pub mod translate {
         }
     }
 
-    fn translate_binding(binding : module::Binding) -> Binding<(~[Constraint], Type, ~str)> {
+    fn translate_binding(binding : module::Binding<Name>) -> Binding<Id<Name>> {
         let module::Binding { name: name, expression: expr, typeDecl: typeDecl, .. } = binding;
         let expr = translate_expr_rest(expr);
-        Binding { name: (typeDecl.context, expr.get_type().clone(), name), expression: expr }
+        Binding { name: Id::new(name, expr.get_type().clone(), typeDecl.context), expression: expr }
     }
     
-    fn translate_pattern(pattern: module::Pattern) -> Pattern<(~[Constraint], Type, ~str)> {
+    fn translate_pattern(pattern: module::Pattern<Name>) -> Pattern<Id<Name>> {
         match pattern {
-            IdentifierPattern(i) => IdentifierPattern((~[], Type::new_var(0), i)),
+            IdentifierPattern(i) => IdentifierPattern(Id::new(i, Type::new_var(0), ~[])),
             NumberPattern(n) => NumberPattern(n),
             ConstructorPattern(name, patterns) =>
-                ConstructorPattern(name, patterns.move_iter().map(translate_pattern).collect())
+                ConstructorPattern(Id::new(name, Type::new_var(0), ~[]), patterns.move_iter().map(translate_pattern).collect())
         }
     }
 }
