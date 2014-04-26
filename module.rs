@@ -330,10 +330,10 @@ impl fmt::Show for TypedExpr {
 }
 
 impl TypedExpr {
-    pub fn new(expr : Expr) -> TypedExpr {
+    pub fn new<T>(expr : Expr<T>) -> TypedExpr<T> {
         TypedExpr { expr : expr, typ : Type::new_var(0), location : Location { column : -1, row : -1, absolute : -1 } }
     }
-    pub fn with_location(expr : Expr, loc : Location) -> TypedExpr {
+    pub fn with_location<T>(expr : Expr<T>, loc : Location) -> TypedExpr<T> {
         TypedExpr { expr : expr, typ : Type::new_var(0), location : loc }
     }
 }

@@ -32,6 +32,7 @@ mod vm;
 mod scoped_map;
 mod core;
 mod lambda_lift;
+mod renamer;
 
 #[cfg(not(test))]
 fn main() {
