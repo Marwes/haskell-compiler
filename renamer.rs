@@ -87,7 +87,7 @@ impl Renamer {
             NumberPattern(i) => NumberPattern(i),
             ConstructorPattern(s, ps) => {
                 let ps2 = ps.move_iter().map(|p| self.rename_pattern(p)).collect();
-                ConstructorPattern(self.get_name(s), ps2)
+                ConstructorPattern(Name { name: s, uid: 0}, ps2)
             }
             IdentifierPattern(s) => IdentifierPattern(self.make_unique(s))
         }
@@ -150,7 +150,7 @@ pub fn rename_module(module: Module<~str>) -> Module<Name> {
                     arity : arity
                 } = ctor;
                 Constructor {
-                    name : renamer.make_unique(name),
+                    name : Name { name: name, uid: 0 },
                     typ : typ,
                     tag : tag,
                     arity : arity

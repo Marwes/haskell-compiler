@@ -21,6 +21,7 @@ use core::{Module};
 use core::translate::{translate_expr};
 #[cfg(not(test))]
 use lambda_lift::do_lambda_lift;
+#[cfg(not(test))]
 use renamer::{rename_expr, Name};
 
 mod compiler;

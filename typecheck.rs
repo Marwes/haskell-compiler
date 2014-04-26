@@ -1053,6 +1053,7 @@ pub fn case(expr : TypedExpr, alts: ~[Alternative]) -> TypedExpr {
 mod test {
 use module::*;
 use typecheck::*;
+use renamer::*;
 
 use parser::Parser;
 use std::io::File;
@@ -1060,13 +1061,12 @@ use std::io::File;
 #[test]
 fn application() {
     let mut env = TypeEnvironment::new();
-    let n = ~TypedExpr::new(Identifier(~"add"));
+    let n = ~TypedExpr::new(Identifier(~"primIntAdd"));
     let num = ~TypedExpr::new(Number(1));
-    let mut expr = TypedExpr::new(Apply(n, num));
+    let e = TypedExpr::new(Apply(n, num));
+    let mut expr = rename_expr(e);
     let type_int = Type::new_op(~"Int", ~[]);
     let unary_func = function_type(&type_int, &type_int);
-    let add_type = function_type(&type_int, &unary_func);
-    env.namedTypes.insert(~"add", add_type);
     env.typecheck_expr(&mut expr);
 
     let expr_type = expr.typ;
@@ -1078,10 +1078,9 @@ fn typecheck_lambda() {
     let mut env = TypeEnvironment::new();
     let type_int = Type::new_op(~"Int",~[]);
     let unary_func = function_type(&type_int, &type_int);
-    let add_type = function_type(&type_int, &unary_func);
 
-    let mut expr = lambda(~"x", apply(apply(identifier(~"add"), identifier(~"x")), number(1)));
-    env.namedTypes.insert(~"add", add_type);
+    let e = lambda(~"x", apply(apply(identifier(~"primIntAdd"), identifier(~"x")), number(1)));
+    let mut expr = rename_expr(e);
     env.typecheck_expr(&mut expr);
 
     assert_eq!(expr.typ, unary_func);
@@ -1092,12 +1091,11 @@ fn typecheck_let() {
     let mut env = TypeEnvironment::new();
     let type_int = Type::new_op(~"Int", ~[]);
     let unary_func = function_type(&type_int, &type_int);
-    let add_type = function_type(&type_int, &unary_func);
 
     //let test x = add x in test
-    let unary_bind = lambda(~"x", apply(apply(identifier(~"add"), identifier(~"x")), number(1)));
-    let mut expr = let_(~[Binding { arity: 1, name: ~"test", expression: unary_bind, typeDecl: Default::default() }], identifier(~"test"));
-    env.namedTypes.insert(~"add", add_type);
+    let unary_bind = lambda(~"x", apply(apply(identifier(~"primIntAdd"), identifier(~"x")), number(1)));
+    let e = let_(~[Binding { arity: 1, name: ~"test", expression: unary_bind, typeDecl: Default::default() }], identifier(~"test"));
+    let mut expr = rename_expr(e);
     env.typecheck_expr(&mut expr);
 
     assert_eq!(expr.typ, unary_func);
@@ -1107,12 +1105,9 @@ fn typecheck_let() {
 fn typecheck_case() {
     let mut env = TypeEnvironment::new();
     let type_int = Type::new_op(~"Int", ~[]);
-    let unary_func = function_type(&type_int, &type_int);
-    let add_type = function_type(&type_int, &unary_func);
 
-    let mut parser = Parser::new("case [] of { : x xs -> add x 2 ; [] -> 3}".chars());
-    let mut expr = parser.expression_();
-    env.namedTypes.insert(~"add", add_type);
+    let mut parser = Parser::new(r"case [] of { : x xs -> primIntAdd x 2 ; [] -> 3}".chars());
+    let mut expr = rename_expr(parser.expression_());
     env.typecheck_expr(&mut expr);
 
     assert_eq!(expr.typ, type_int);
@@ -1126,16 +1121,13 @@ fn typecheck_case() {
 
 #[test]
 fn typecheck_list() {
-    let mut env = TypeEnvironment::new();
-
-    let mut parser = Parser::new(
+    let file =
 r"mult2 x = primIntMultiply x 2
 
 main = case [mult2 123, 0] of
     : x xs -> x
-    [] -> 10".chars());
-    let mut module = parser.module();
-    env.typecheck_module(&mut module);
+    [] -> 10";
+    let module = do_typecheck(file);
 
     assert_eq!(module.bindings[1].expression.typ, Type::new_op(~"Int", ~[]));
 }
@@ -1145,7 +1137,7 @@ fn typecheck_string() {
     let mut env = TypeEnvironment::new();
 
     let mut parser = Parser::new("\"hello\"".chars());
-    let mut expr = parser.expression_();
+    let mut expr = rename_expr(parser.expression_());
     env.typecheck_expr(&mut expr);
 
     assert_eq!(expr.typ, Type::new_op(~"[]", ~[Type::new_op(~"Char", ~[])]));
@@ -1156,7 +1148,7 @@ fn typecheck_tuple() {
     let mut env = TypeEnvironment::new();
 
     let mut parser = Parser::new("(primIntAdd 0 0, \"a\")".chars());
-    let mut expr = parser.expression_();
+    let mut expr = rename_expr(parser.expression_());
     env.typecheck_expr(&mut expr);
 
     let list = Type::new_op(~"[]", ~[Type::new_op(~"Char", ~[])]);
@@ -1165,13 +1157,11 @@ fn typecheck_tuple() {
 
 #[test]
 fn typecheck_module() {
-    let mut env = TypeEnvironment::new();
 
-    let mut parser = Parser::new(
+    let file =
 r"data Bool = True | False
-test x = True".chars());
-    let mut module = parser.module();
-    env.typecheck_module(&mut module);
+test x = True";
+    let module = do_typecheck(file);
 
     let typ = function_type(&Type::new_var(0), &Type::new_op(~"Bool", ~[]));
     let bind_type0 = module.bindings[0].expression.typ;
@@ -1190,7 +1180,7 @@ r"let
     test2 = 2 : test
     b = test
 in b".chars());
-    let mut expr = parser.expression_();
+    let mut expr = rename_expr(parser.expression_());
     env.typecheck_expr(&mut expr);
 
     
@@ -1199,9 +1189,9 @@ in b".chars());
     match &expr.expr {
         &Let(ref binds, _) => {
             assert_eq!(binds.len(), 4);
-            assert_eq!(binds[0].name, ~"a");
+            assert_eq!(binds[0].name.as_slice(), "a");
             assert_eq!(binds[0].expression.typ, int_type);
-            assert_eq!(binds[1].name, ~"test");
+            assert_eq!(binds[1].name.as_slice(), "test");
             assert_eq!(binds[1].expression.typ, list_type);
         }
         _ => fail!("Error")
@@ -1210,19 +1200,16 @@ in b".chars());
 
 #[test]
 fn typecheck_constraints() {
-    let mut parser = Parser::new(
+    let file =
 r"class Test a where
     test :: a -> Int
 
 instance Test Int where
     test x = 10
 
-main = test 1".chars());
+main = test 1";
 
-    let mut module = parser.module();
-
-    let mut env = TypeEnvironment::new();
-    env.typecheck_module(&mut module);
+    let module = do_typecheck(file);
 
     let typ = &module.bindings[0].expression.typ;
     assert_eq!(typ, &Type::new_op(~"Int", ~[]));
@@ -1241,7 +1228,7 @@ instance Test Int where
 
 main x y = primIntAdd (test x) (test y)".chars());
 
-    let mut module = parser.module();
+    let mut module = rename_module(parser.module());
 
     let mut env = TypeEnvironment::new();
     env.typecheck_module(&mut module);
@@ -1259,19 +1246,16 @@ main x y = primIntAdd (test x) (test y)".chars());
 #[test]
 #[should_fail]
 fn typecheck_constraints_no_instance() {
-    let mut parser = Parser::new(
+    let file =
 r"class Test a where
     test :: a -> Int
 
 instance Test Int where
     test x = 10
 
-main = test [1]".chars());
+main = test [1]";
 
-    let mut module = parser.module();
-
-    let mut env = TypeEnvironment::new();
-    env.typecheck_module(&mut module);
+    do_typecheck(file);
 }
 
 #[test]
@@ -1297,7 +1281,7 @@ instance Eq a => Eq [a] where
     False -> False
 ".chars());
 
-    let mut module = parser.module();
+    let mut module = rename_module(parser.module());
 
     let mut env = TypeEnvironment::new();
     env.typecheck_module(&mut module);
@@ -1312,12 +1296,10 @@ instance Eq a => Eq [a] where
 
 #[test]
 fn typecheck_num_double() {
-    let mut env = TypeEnvironment::new();
 
-    let mut parser = Parser::new(
-r"test x = primDoubleAdd 0 x".chars());
-    let mut module = parser.module();
-    env.typecheck_module(&mut module);
+    let file = 
+r"test x = primDoubleAdd 0 x";
+    let module = do_typecheck(file);
 
     let typ = function_type(&Type::new_op(~"Double", ~[]), &Type::new_op(~"Double", ~[]));
     let bind_type0 = module.bindings[0].expression.typ;
@@ -1326,9 +1308,7 @@ r"test x = primDoubleAdd 0 x".chars());
 
 #[test]
 fn typecheck_functor() {
-    let mut env = TypeEnvironment::new();
-
-    let mut parser = Parser::new(
+    let file = 
 r"data Maybe a = Just a | Nothing
 
 class Functor f where
@@ -1340,9 +1320,8 @@ instance Functor Maybe where
         Nothing -> Nothing
 
 add2 x = primIntAdd x 2
-main = fmap add2 (Just 3)".chars());
-    let mut module = parser.module();
-    env.typecheck_module(&mut module);
+main = fmap add2 (Just 3)";
+    let module = do_typecheck(file);
 
     let main = &module.bindings[1];
     assert_eq!(main.expression.typ, Type::new_op(~"Maybe", ~[Type::new_op(~"Int", ~[])]));
@@ -1370,12 +1349,9 @@ main = fmap add2 3");
 fn typecheck_prelude() {
     let path = &Path::new("Prelude.hs");
     let contents = File::open(path).read_to_str().unwrap();
-    let mut parser = Parser::new(contents.chars());
-    let mut module = parser.module();
-    let mut env = TypeEnvironment::new();
-    env.typecheck_module(&mut module);
+    let module = do_typecheck(contents);
 
-    let id = module.bindings.iter().find(|bind| bind.name == ~"id");
+    let id = module.bindings.iter().find(|bind| bind.name.as_slice() == "id");
     assert!(id != None);
     let id_bind = id.unwrap();
     assert_eq!(id_bind.expression.typ, function_type(&Type::new_var(0), &Type::new_var(0)));
@@ -1387,33 +1363,25 @@ fn typecheck_import() {
     let prelude = {
         let path = &Path::new("Prelude.hs");
         let contents = File::open(path).read_to_str().unwrap();
-        let mut parser = Parser::new(contents.chars()); 
-        let mut module = parser.module();
-        let mut env = TypeEnvironment::new();
-        env.typecheck_module(&mut module);
-        module
+        do_typecheck(contents)
     };
 
-    let mut parser = Parser::new(
+    let file = 
 r"
 test1 = map not [True, False]
-test2 = id (primIntAdd 2 0)".chars());
-    let mut module = parser.module();
+test2 = id (primIntAdd 2 0)";
+    let module = do_typecheck_with(file, [&prelude as &Types]);
 
-    let mut env = TypeEnvironment::new();
-    env.add_types(&prelude as &Types);
-    env.typecheck_module(&mut module);
-
-    assert_eq!(module.bindings[0].name, ~"test1");
+    assert_eq!(module.bindings[0].name.as_slice(), "test1");
     assert_eq!(module.bindings[0].expression.typ, Type::new_op(~"[]", ~[Type::new_op(~"Bool", ~[])]));
-    assert_eq!(module.bindings[1].name, ~"test2");
+    assert_eq!(module.bindings[1].name.as_slice(), "test2");
     assert_eq!(module.bindings[1].expression.typ, Type::new_op(~"Int", ~[]));
 }
 
 #[test]
 fn type_declaration() {
     
-    let mut parser = Parser::new(
+    let input =
 r"
 class Test a where
     test :: a -> Int
@@ -1422,20 +1390,24 @@ instance Test Int where
     test x = x
 
 test :: Test a => a -> Int -> Int
-test x y = primIntAdd (test x) y".chars());
-    let mut module = parser.module();
-
-    let mut env = TypeEnvironment::new();
-    env.typecheck_module(&mut module);
+test x y = primIntAdd (test x) y";
+    let module = do_typecheck(input);
 
     assert_eq!(module.bindings[0].typeDecl.typ, module.typeDeclarations[0].typ);
 }
 
-fn do_typecheck(input: &str) {
+fn do_typecheck(input: &str) -> Module<Name> {
+    do_typecheck_with(input, [])
+}
+fn do_typecheck_with(input: &str, types: &[&Types]) -> Module<Name> {
     let mut parser = Parser::new(input.chars());
-    let mut module = parser.module();
+    let mut module = rename_module(parser.module());
     let mut env = TypeEnvironment::new();
+    for t in types.iter() {
+        env.add_types(*t);
+    }
     env.typecheck_module(&mut module);
+    module
 }
 
 #[test]

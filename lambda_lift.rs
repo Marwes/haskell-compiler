@@ -184,6 +184,7 @@ mod tests {
     use parser::Parser;
     use core::*;
     use core::translate::translate_module;
+    use renamer::rename_module;
 
     struct CheckUniques {
         found: HashSet<Id>
@@ -218,8 +219,7 @@ test2 x =
             let g y = add x (f y)
             in add x test
     in f x".chars());
-        let m = translate_module(parser.module());
-        let module = rename_module(m);
+        let module = translate_module(rename_module(parser.module()));
         (&mut visitor as &mut Visitor<Id>).visit_module(&module);
     }
 
@@ -292,8 +292,8 @@ test2 x =
             let g y = add x (f y)
             in add x test
     in f x".chars());
-        let m = translate_module(parser.module());
-        let module = rename_module(abstract_module(m));
+        let m = translate_module(rename_module(parser.module()));
+        let module = abstract_module(m);
         (&mut visitor as &mut Visitor<Id>).visit_module(&module);
         assert_eq!(visitor.count, 2);
     }
@@ -329,7 +329,7 @@ test2 x =
             let g y = add x (f y)
             in add x test
     in f x".chars());
-        let m = translate_module(parser.module());
+        let m = translate_module(rename_module(parser.module()));
         let module = lift_lambdas(m);
         for bind in module.bindings.iter() {
             (&mut visitor as &mut Visitor<TypeAndStr>).visit_expr(skip_lambdas(&bind.expression));
