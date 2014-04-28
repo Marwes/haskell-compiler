@@ -8,6 +8,7 @@ use std::default::Default;
 use core::translate::{translate_module};
 use lambda_lift::do_lambda_lift;
 use renamer::rename_module;
+use primitive::primitives;
 
 #[deriving(Eq, Clone, Show)]
 pub enum Instruction {
@@ -58,7 +59,8 @@ enum Var<'a> {
     GlobalVariable(uint),
     ConstructorVariable(u16, u16),
     ClassVariable(&'a Type, &'a TypeVariable),
-    ConstraintVariable(uint, &'a Type, &'a[Constraint])
+    ConstraintVariable(uint, &'a Type, &'a[Constraint]),
+    PrimitiveVariable(uint)
 }
 
 impl <'a> Clone for Var<'a> {
@@ -68,7 +70,8 @@ impl <'a> Clone for Var<'a> {
             &GlobalVariable(x) => GlobalVariable(x),
             &ConstructorVariable(x, y) => ConstructorVariable(x, y),
             &ClassVariable(x, y) => ClassVariable(x, y),
-            &ConstraintVariable(x, y, z) => ConstraintVariable(x, y, z)
+            &ConstraintVariable(x, y, z) => ConstraintVariable(x, y, z),
+            &PrimitiveVariable(x) => PrimitiveVariable(x)
         }
     }
 }
@@ -314,10 +317,14 @@ pub struct Compiler<'a> {
 
 impl <'a> Compiler<'a> {
     pub fn new(type_env: &'a TypeEnvironment) -> Compiler<'a> {
+        let mut variables = ScopedMap::new();
+        for (i, &(name, _)) in primitives().iter().enumerate() {
+            variables.insert(Name { name: name.to_owned(), uid: 0}, PrimitiveVariable(i));
+        }
         Compiler { type_env: type_env, instance_dictionaries: Vec::new(),
             stackSize : 0, assemblies: Vec::new(),
             module: None,
-            variables: ScopedMap::new()
+            variables: variables
         }
     }
     
@@ -499,20 +506,13 @@ impl <'a> Compiler<'a> {
                 //When compiling a variable which has constraints a new instance dictionary
                 //might be created which is returned here and added to the assembly
                 let maybe_new_dict = match self.find(&name.name) {
-                    None => {
-                        if name.as_slice() == "error" {
-                            instructions.push(PushPrimitive(0));
-                            None
-                        }
-                        else {
-                            fail!("Error: Undefined variable {}", *name);
-                        }
-                    }
+                    None => fail!("Error: Undefined variable {}", *name),
                     Some(var) => {
                         match var {
                             StackVariable(index) => { instructions.push(Push(index)); None }
                             GlobalVariable(index) => { instructions.push(PushGlobal(index)); None }
                             ConstructorVariable(tag, arity) => { instructions.push(Pack(tag, arity)); None }
+                            PrimitiveVariable(index) => { instructions.push(PushPrimitive(index)); None }
                             ClassVariable(typ, var) => self.compile_instance_variable(expr.get_type(), instructions, &name.name, typ, var),
                             ConstraintVariable(index, _, constraints) => {
                                 let x = self.compile_with_constraints(&name.name, expr.get_type(), constraints, instructions);
