@@ -35,6 +35,7 @@ mod scoped_map;
 mod core;
 mod lambda_lift;
 mod renamer;
+mod primitive;
 
 #[cfg(not(test))]
 fn main() {

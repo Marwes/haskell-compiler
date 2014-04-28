@@ -286,31 +286,31 @@ foldl f x xs = case xs of
     [] -> x
 
 undefined :: a
-undefined = undefined
+undefined = error "undefined"
 
 head :: [a] -> a
 head xs = case xs of
     : y ys -> y
-    [] -> undefined
+    [] -> error "head called on empty list"
 
 last :: [a] -> a
 last xs = case xs of
     : y ys -> case ys of
         : _ zs -> last ys
         [] -> y
-    [] -> undefined
+    [] -> error "last called on empty list"
 
 tail :: [a] -> [a]
 tail xs = case xs of
     : y ys -> ys
-    [] -> undefined
+    [] -> error "tail called on empty list"
 
 init :: [a] -> [a]
 init xs = case xs of
     : y ys -> case ys of
         : _ zs -> y : init ys
         [] -> []
-    [] -> undefined
+    [] -> error "init called on empty list"
 
 sum :: Num a => [a] -> a
 sum xs = case xs of
@@ -322,7 +322,7 @@ sum xs = case xs of
     : y ys -> case n of
         0 -> y
         _ -> ys !! (n-1)
-    [] -> undefined
+    [] -> error "(!!) index to large"
 
 reverse_ :: [a] -> [a] -> [a]
 reverse_ xs ys = case xs of

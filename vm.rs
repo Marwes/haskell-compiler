@@ -8,8 +8,8 @@ use parser::Parser;
 use core::translate::translate_module;
 use lambda_lift::do_lambda_lift;
 use renamer::rename_module;
+use vm::primitive::{PrimFun, get_primitive};
 
-#[deriving(Clone)]
 enum Node_<'a> {
     Application(Node<'a>, Node<'a>),
     Int(int),
@@ -18,8 +18,25 @@ enum Node_<'a> {
     Combinator(&'a SuperCombinator),
     Indirection(Node<'a>),
     Constructor(u16, Vec<Node<'a>>),
-    Dictionary(&'a [uint])
+    Dictionary(&'a [uint]),
+    PrimitiveFunction(uint, PrimFun)
 }
+impl <'a> Clone for Node_<'a> {
+    fn clone(&self) -> Node_<'a> {
+        match self {
+            &Application(ref func, ref arg) => Application(func.clone(), arg.clone()),
+            &Int(i) => Int(i),
+            &Float(i) => Float(i),
+            &Char(c) => Char(c),
+            &Combinator(sc) => Combinator(sc),
+            &Indirection(ref n) => Indirection(n.clone()),
+            &Constructor(ref tag, ref args) => Constructor(tag.clone(), args.clone()),
+            &Dictionary(dict) => Dictionary(dict),
+            &PrimitiveFunction(arity, f) => PrimitiveFunction(arity, f)
+        }
+    }
+}
+
 #[deriving(Clone)]
 struct Node<'a> {
     node: Rc<Node_<'a>>
@@ -88,7 +105,8 @@ impl <'a> fmt::Show for Node_<'a> {
                     write!(f.buf, "\\}")
                 }
             }
-            &Dictionary(ref dict) => write!(f.buf, "{:?}", dict)
+            &Dictionary(ref dict) => write!(f.buf, "{:?}", dict),
+            &PrimitiveFunction(..) => write!(f.buf, "<extern function>")
         }
     }
 }
@@ -198,6 +216,10 @@ impl <'a> VM<'a> {
                     let sc = &self.assembly.get(assembly_index).superCombinators[index];
                     stack.push(Node::new(Combinator(sc)));
                 }
+                &PushPrimitive(index) => {
+                    let (arity, f) = get_primitive(index);
+                    stack.push(Node::new(PrimitiveFunction(arity, f)));
+                }
                 &Mkap => {
                     assert!(stack.len() >= 2);
                     let func = stack.pop().unwrap();
@@ -260,6 +282,38 @@ impl <'a> VM<'a> {
                                     stack.pop();
                                 }
                                 stack.push(newStack.pop().unwrap());
+                                i -= 1;
+                            }
+                        }
+                        PrimitiveFunction(arity, func) => {
+                            if stack.len() - 1 < arity {
+                                while stack.len() > 1 {
+                                    stack.pop();
+                                }
+                            }
+                            else {
+                                for j in range(stack.len() - arity - 1, stack.len() - 1) {
+                                    *stack.get_mut(j) = match stack.get(j).borrow() {
+                                        &Application(_, ref arg) => arg.clone(),
+                                        _ => fail!("Expected Application")
+                                    };
+                                }
+                                let value = {
+                                    let mut newStack = Vec::new();
+                                    for i in range(0, arity) {
+                                        let index = stack.len() - i - 2;
+                                        newStack.push(stack.get(index).clone());
+                                    }
+                                    debug!("Called <extern function>");
+                                    for (j, elem) in newStack.iter().enumerate() {
+                                        debug!(" {}  {}", j, elem.borrow());
+                                    }
+                                    func(newStack.as_slice())
+                                };
+                                for _ in range(0, arity + 1) {
+                                    stack.pop();
+                                }
+                                stack.push(value);
                                 i -= 1;
                             }
                         }
@@ -426,6 +480,25 @@ pub fn execute_main<T : Iterator<char>>(iterator: T) -> Option<VMResult> {
         }
         None => None
     }
+}
+
+mod primitive {
+
+    use vm::Node;
+
+    pub fn get_primitive(i: uint) -> (uint, PrimFun) {
+        match i {
+            0 => (1, error),
+            _ => fail!("undefined primitive")
+        }
+    }
+
+    pub type PrimFun = extern "Rust" fn <'a>(&[Node<'a>]) -> Node<'a>;
+
+    fn error<'a>(stack: &[Node<'a>]) -> Node<'a> {
+        fail!("error: {}", stack[0])
+    }
+
 }
 
 #[cfg(test)]

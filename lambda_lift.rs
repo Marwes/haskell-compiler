@@ -1,6 +1,6 @@
 use collections::hashmap::HashMap;
 use core::*;
-use typecheck::function_type_;
+use module::function_type_;
 
 pub type TypeAndStr = Id;
 

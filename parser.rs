@@ -2,7 +2,6 @@ use std::mem::{swap};
 use collections::HashMap;
 use lexer::*;
 use module::*;
-use typecheck::function_type;
 
 pub struct Parser<Iter> {
     lexer : Lexer<Iter>,

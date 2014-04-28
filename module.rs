@@ -1,5 +1,6 @@
 use std::fmt;
 use collections::HashMap;
+use std::iter::range_step;
 pub use std::default::Default;
 pub use lexer::{Location, Located};
 
@@ -147,6 +148,41 @@ impl Type {
         }
     }
 }
+
+pub fn tuple_type(size: uint) -> (~str, Type) {
+    let mut var_list = Vec::new();
+    for i in range(0, size) {
+        var_list.push(Generic(Type::new_var_kind(i as int, star_kind.clone()).var().clone()));
+    }
+    let mut ident = StrBuf::from_char(1, '(');
+    for _ in range(1, size) {
+        ident.push_char(',');
+    }
+    ident.push_char(')');
+    let result = ident.into_owned();
+    let mut typ = Type::new_op(result.clone(), var_list.move_iter().collect());
+    for i in range_step(size as int - 1, -1, -1) {
+        typ = Type::new_op(~"->", ~[Generic(Type::new_var(i).var().clone()), typ]);
+    }
+    (result, typ)
+}
+
+pub fn list_type(typ: Type) -> Type {
+    TypeApplication(~Type::new_op(~"[]", ~[]), ~typ)
+}
+
+pub fn char_type() -> Type {
+    Type::new_op(~"Char", ~[])
+}
+
+pub fn function_type(func : &Type, arg : &Type) -> Type {
+    Type::new_op(~"->", ~[func.clone(), arg.clone()])
+}
+
+pub fn function_type_(func : Type, arg : Type) -> Type {
+    Type::new_op(~"->", ~[func, arg])
+}
+
 
 #[deriving(Clone, Eq, TotalEq, Hash)]
 pub struct Constraint {

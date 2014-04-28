@@ -1,5 +1,6 @@
 use core::*;
-use typecheck::{Types, TypeEnvironment, function_type};
+use module::function_type;
+use typecheck::{Types, TypeEnvironment};
 use scoped_map::ScopedMap;
 use std::iter::range_step;
 use std::default::Default;
@@ -50,6 +51,7 @@ pub enum Instruction {
     JumpFalse(uint),
     PushDictionary(uint),
     PushDictionaryMember(uint),
+    PushPrimitive(uint)
 }
 enum Var<'a> {
     StackVariable(uint),
@@ -497,7 +499,15 @@ impl <'a> Compiler<'a> {
                 //When compiling a variable which has constraints a new instance dictionary
                 //might be created which is returned here and added to the assembly
                 let maybe_new_dict = match self.find(&name.name) {
-                    None => fail!("Error: Undefined variable {}", *name),
+                    None => {
+                        if name.as_slice() == "error" {
+                            instructions.push(PushPrimitive(0));
+                            None
+                        }
+                        else {
+                            fail!("Error: Undefined variable {}", *name);
+                        }
+                    }
                     Some(var) => {
                         match var {
                             StackVariable(index) => { instructions.push(Push(index)); None }
@@ -505,9 +515,6 @@ impl <'a> Compiler<'a> {
                             ConstructorVariable(tag, arity) => { instructions.push(Pack(tag, arity)); None }
                             ClassVariable(typ, var) => self.compile_instance_variable(expr.get_type(), instructions, &name.name, typ, var),
                             ConstraintVariable(index, _, constraints) => {
-                                if constraints.len() == 0 {
-                                    println!("{} {}", name, expr);
-                                }
                                 let x = self.compile_with_constraints(&name.name, expr.get_type(), constraints, instructions);
                                 instructions.push(PushGlobal(index));
                                 instructions.push(Mkap);
@@ -664,7 +671,6 @@ impl <'a> Compiler<'a> {
                         None
                     }
                     Some(ConstraintVariable(index, _function_type, constraints)) => {
-                println!("{} {}", name, actual_type);
                         let dict = self.compile_with_constraints(&instance_fn_name, actual_type, constraints, instructions);
                         instructions.push(PushGlobal(index));
                         instructions.push(Mkap);
@@ -675,7 +681,6 @@ impl <'a> Compiler<'a> {
             }
             None => {
                 let constraints = self.type_env.find_constraints(actual_type);
-                println!("{} {}", name, actual_type);
                 self.compile_with_constraints(name, actual_type, constraints, instructions)
             }
         }
