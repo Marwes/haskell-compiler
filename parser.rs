@@ -979,7 +979,9 @@ fn applicationError(t :&Token) -> bool
 		&& t.token != FLOAT
 		&& t.token != OPERATOR
 		&& t.token != SEMICOLON
-		&& t.token != COMMA;
+		&& t.token != COMMA
+        && t.token != CHAR
+        && t.token != STRING;
 }
 
 
