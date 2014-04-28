@@ -505,6 +505,9 @@ impl <'a> Compiler<'a> {
                             ConstructorVariable(tag, arity) => { instructions.push(Pack(tag, arity)); None }
                             ClassVariable(typ, var) => self.compile_instance_variable(expr.get_type(), instructions, &name.name, typ, var),
                             ConstraintVariable(index, _, constraints) => {
+                                if constraints.len() == 0 {
+                                    println!("{} {}", name, expr);
+                                }
                                 let x = self.compile_with_constraints(&name.name, expr.get_type(), constraints, instructions);
                                 instructions.push(PushGlobal(index));
                                 instructions.push(Mkap);
@@ -661,6 +664,7 @@ impl <'a> Compiler<'a> {
                         None
                     }
                     Some(ConstraintVariable(index, _function_type, constraints)) => {
+                println!("{} {}", name, actual_type);
                         let dict = self.compile_with_constraints(&instance_fn_name, actual_type, constraints, instructions);
                         instructions.push(PushGlobal(index));
                         instructions.push(Mkap);
@@ -671,6 +675,7 @@ impl <'a> Compiler<'a> {
             }
             None => {
                 let constraints = self.type_env.find_constraints(actual_type);
+                println!("{} {}", name, actual_type);
                 self.compile_with_constraints(name, actual_type, constraints, instructions)
             }
         }
@@ -1055,6 +1060,32 @@ fn compile_prelude() {
     let sc = &assembly.superCombinators[0];
     let id_index = prelude.superCombinators.iter().position(|sc| sc.name.equiv(& &"id")).unwrap();
     assert_eq!(sc.instructions, ~[PushInt(0), PushInt(2), Add, PushGlobal(id_index), Mkap, Eval, Update(0), Unwind]);
+}
+
+#[test]
+fn generics_do_not_propagate() {
+    //Test that the type of 'i' does not get overwritten by the use inside the let binding
+    //after typechecking the let binding, retrieving the type for 'i' the second time should
+    //not make the typechecker instantiate a new variable but keep using the original one
+    //This is something the typechecker should notice but for now the compiler will have to do it
+    compile(
+r"
+class Num a where
+    fromInteger :: Int -> a
+instance Num Int where
+    fromInteger x = x
+class Integral a where
+    rem :: a -> a -> a
+
+instance Integral Int where
+    rem x y = primIntRemainder x y
+
+showInt :: Int -> [Char]
+showInt i =
+    let
+        i2 = i `rem` 10
+    in showInt (i `rem` 7)
+");
 }
 
 }

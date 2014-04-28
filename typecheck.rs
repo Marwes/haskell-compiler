@@ -1,7 +1,7 @@
 use collections::HashMap;
 use std::iter::range_step;
 use std::mem::swap;
-use module::{TypeVariable, TypeOperator, TypeApplication, Identifier, Number, Rational, String, Char, Apply, Lambda, Let, Case, TypedExpr, Module, Constraint, Pattern, IdentifierPattern, NumberPattern, ConstructorPattern, Binding, Class, TypeDeclaration, star_kind};
+use module::*;
 use graph::{Graph, VertexIndex, strongly_connected_components};
 
 use renamer::*;
@@ -84,7 +84,6 @@ pub struct TypeEnvironment<'a> {
     constraints: HashMap<TypeVariable, Vec<~str>>,
     instances: Vec<(~str, Type)>,
     variableIndex : int,
-    non_generic: Vec<Type>
 }
 
 #[deriving(Clone)]
@@ -164,7 +163,7 @@ fn add_primitives(globals: &mut HashMap<Name, Type>, typename: &str) {
 fn create_tuple_type(size: uint) -> (~str, Type) {
     let mut var_list = Vec::new();
     for i in range(0, size) {
-        var_list.push(Type::new_var_kind(i as int, star_kind.clone()));
+        var_list.push(Generic(Type::new_var_kind(i as int, star_kind.clone()).var().clone()));
     }
     let mut ident = StrBuf::from_char(1, '(');
     for _ in range(1, size) {
@@ -174,7 +173,7 @@ fn create_tuple_type(size: uint) -> (~str, Type) {
     let result = ident.into_owned();
     let mut typ = Type::new_op(result.clone(), var_list.move_iter().collect());
     for i in range_step(size as int - 1, -1, -1) {
-        typ = Type::new_op(~"->", ~[Type::new_var(i), typ]);
+        typ = Type::new_op(~"->", ~[Generic(Type::new_var(i).var().clone()), typ]);
     }
     (result, typ)
 }
@@ -188,7 +187,7 @@ impl <'a> TypeEnvironment<'a> {
         add_primitives(&mut globals, &"Double");
         insertTo(&mut globals, ~"primIntToDouble", function_type(&Type::new_op(~"Int", ~[]), &Type::new_op(~"Double", ~[])));
         insertTo(&mut globals, ~"primDoubleToInt", function_type(&Type::new_op(~"Double", ~[]), &Type::new_op(~"Int", ~[])));
-        let var = Type::new_var_kind(-10, star_kind.clone());
+        let var = Generic(Type::new_var_kind(-10, star_kind.clone()).var().clone());
         let list = Type::new_op(~"[]", ~[var.clone()]);
         insertTo(&mut globals, ~"[]", list.clone());
         insertTo(&mut globals, ~":", function_type(&var, &function_type(&list, &list)));
@@ -202,7 +201,6 @@ impl <'a> TypeEnvironment<'a> {
             constraints: HashMap::new(),
             instances: Vec::new(),
             variableIndex : 0 ,
-            non_generic: Vec::new()
         }
     }
 
@@ -223,10 +221,12 @@ impl <'a> TypeEnvironment<'a> {
     pub fn typecheck_module(&mut self, module: &mut Module<Name>) {
         for data_def in module.dataDefinitions.mut_iter() {
             let mut subs = Substitution { subs: HashMap::new(), constraints: HashMap::new() };
-            freshen(self, &mut subs, &mut data_def.typ);
+            freshen_all(self, &mut subs, &mut data_def.typ);
             for constructor in data_def.constructors.mut_iter() {
                 replace(&mut self.constraints, &mut constructor.typ, &subs);
-                self.namedTypes.insert(constructor.name.clone(), constructor.typ.clone());
+                let mut typ = constructor.typ.clone();
+                quantify(0, &mut typ);
+                self.namedTypes.insert(constructor.name.clone(), typ);
             }
         }
         for class in module.classes.mut_iter() {
@@ -248,7 +248,9 @@ impl <'a> TypeEnvironment<'a> {
                     vec_context.push(c);
                     type_decl.context = vec_context.move_iter().collect();
                 }
-                self.namedTypes.insert(Name { name: type_decl.name.clone(), uid: 0 }, type_decl.typ.clone());
+                let mut t = type_decl.typ.clone();
+                quantify(0, &mut t);
+                self.namedTypes.insert(Name { name: type_decl.name.clone(), uid: 0 }, t);
             }
         }
         for instance in module.instances.mut_iter() {
@@ -260,7 +262,7 @@ impl <'a> TypeEnvironment<'a> {
                     let new = subs.subs.find_or_insert(constraint.variables[0].clone(), self.new_var());
                     constraint.variables[0] = new.var().clone();
                 }
-                freshen(self, &mut subs, &mut instance.typ);
+                freshen_all(self, &mut subs, &mut instance.typ);
             }
             for binding in instance.bindings.mut_iter() {
                 let decl = class.declarations.iter().find(|decl| binding.name.as_slice().ends_with(decl.name))
@@ -376,6 +378,18 @@ impl <'a> TypeEnvironment<'a> {
                 self.find_specialized(constraints, *lhs1, *lhs2);
                 self.find_specialized(constraints, *rhs1, *rhs2);
             }
+            (_, &Generic(ref var)) => {
+                match self.constraints.find(var) {
+                    Some(cons) => {
+                        for c in cons.iter() {
+                            if constraints.iter().find(|x| x.ref0() == c) == None {
+                                constraints.push((c.clone(), actual_type.clone()));
+                            }
+                        }
+                    }
+                    None => ()
+                }
+            }
             _ => ()
         }
     }
@@ -387,7 +401,7 @@ impl <'a> TypeEnvironment<'a> {
             constraint.variables[0] = new.var().clone();
         }
         let mut subs = Substitution { subs: mapping, constraints: HashMap::new() };
-        freshen(self, &mut subs, &mut decl.typ);
+        freshen_all(self, &mut subs, &mut decl.typ);
     }
     fn freshen_declaration(&mut self, decl: &mut TypeDeclaration) {
         let mapping = HashMap::new();
@@ -516,12 +530,7 @@ impl <'a> TypeEnvironment<'a> {
 
                 {
                     self.namedTypes.insert(arg.clone(), argType.clone());
-                    let non_generics = self.non_generic.len();
-                    self.non_generic.push(argType.clone());
                     self.typecheck(*body, subs);
-                    while non_generics < self.non_generic.len() {
-                        self.non_generic.pop();
-                    }
                 }
 
                 replace(&mut self.constraints, &mut expr.typ, subs);
@@ -568,7 +577,6 @@ impl <'a> TypeEnvironment<'a> {
                     replace(&mut self.constraints, &mut typ, subs);
                 }
                 self.namedTypes.insert(ident.clone(), typ.clone());
-                self.non_generic.push(typ);
             }
             &NumberPattern(_) => {
                 let mut typ = Type::new_op(~"Int", ~[]);
@@ -602,6 +610,7 @@ impl <'a> TypeEnvironment<'a> {
     }
 
     pub fn typecheck_mutually_recursive_bindings(&mut self, subs: &mut Substitution, bindings: &mut Bindings) {
+        let start_var_index = self.variableIndex + 1;
         
         let graph = build_graph(bindings);
         let groups = strongly_connected_components(&graph);
@@ -623,7 +632,6 @@ impl <'a> TypeEnvironment<'a> {
                     let bindIndex = graph.get_vertex(*index).value;
                     let bind = bindings.get_mut(bindIndex);
                     debug!("Begin typecheck {} :: {}", bind.name, bind.expression.typ);
-                    self.non_generic.push(bind.expression.typ.clone());
                     let type_var = bind.expression.typ.var().clone();
                     self.typecheck(&mut bind.expression, subs);
                     unify_location(self, subs, &bind.expression.location, &mut bind.typeDecl.typ, &mut bind.expression.typ);
@@ -637,10 +645,11 @@ impl <'a> TypeEnvironment<'a> {
             for index in group.iter() {
                 let bindIndex = graph.get_vertex(*index).value;
                 let bind = bindings.get_mut(bindIndex);
-                self.non_generic.pop();
                 self.substitute(subs, &mut bind.expression);
                 bind.typeDecl.typ = bind.expression.typ.clone();
                 bind.typeDecl.context = self.find_constraints(&bind.typeDecl.typ);
+                let typ = self.namedTypes.get_mut(&bind.name);
+                quantify(start_var_index, typ);
             }
         }
     }
@@ -657,13 +666,24 @@ impl <'a> TypeEnvironment<'a> {
         }
     }
 
-    fn is_generic(&'a self, var: &TypeVariable) -> bool {
-        !self.non_generic.iter().any(|t| {
-            let typ = t;
-            occurs(var, typ)
-        })
+}
+
+fn quantify(start_var_index: int, typ: &mut Type) {
+    let x = match typ {
+        &TypeVariable(ref id) if id.id > start_var_index => Some(id.clone()),
+        &TypeApplication(ref mut lhs, ref mut rhs) => {
+            quantify(start_var_index, *lhs);
+            quantify(start_var_index, *rhs);
+            None
+        }
+        _ => None
+    };
+    match x {
+        Some(var) => *typ = Generic(var),
+        None => ()
     }
 }
+
 
 fn replace_var(typ: &mut Type, var: &TypeVariable, replacement: &Type) {
     let new = match typ {
@@ -681,6 +701,7 @@ fn replace_var(typ: &mut Type, var: &TypeVariable, replacement: &Type) {
             replace_var(*rhs, var, replacement);
             None
         }
+        &Generic(_) => fail!("replace_var called on Generic")
     };
     match new {
         Some(x) => {
@@ -761,6 +782,7 @@ fn replace(constraints: &mut HashMap<TypeVariable, Vec<~str>>, old : &mut Type, 
             replace(constraints, *rhs, subs);
             None
         }
+        &Generic(_) => None, //fail!("replace called on Generic")
     };
     match replaced {
         Some(x) => {
@@ -783,15 +805,52 @@ fn replace(constraints: &mut HashMap<TypeVariable, Vec<~str>>, old : &mut Type, 
 fn occurs(type_var: &TypeVariable, inType: &Type) -> bool {
     match inType {
         &TypeVariable(ref var) => type_var.id == var.id,
-        &TypeOperator(_) => false,
-        &TypeApplication(ref lhs, ref rhs) => occurs(type_var, *lhs) || occurs(type_var, *rhs)
+        &TypeApplication(ref lhs, ref rhs) => occurs(type_var, *lhs) || occurs(type_var, *rhs),
+        _ => false
     }
 }
 
 fn freshen(env: &mut TypeEnvironment, subs: &mut Substitution, typ: &mut Type) {
     let result = match typ {
+        &Generic(ref id) => {
+            let new = env.new_var();
+            let maybe_constraints = match env.constraints.find(id) {
+                Some(constraints) => Some(constraints.clone()),
+                None => None
+            };
+            match (maybe_constraints, new.clone()) {
+                (Some(c), TypeVariable(newid)) => {
+                    env.constraints.insert(newid, c);
+                }
+                _ => ()
+            }
+            Some(subs.subs.find_or_insert(id.clone(), new.clone()).clone())
+        }
+        &TypeApplication(ref mut lhs, ref mut rhs) => {
+            freshen(env, subs, *lhs);
+            freshen(env, subs, *rhs);
+            None
+        }
+        _ => None
+    };
+    match result {
+        Some(x) => *typ = x,
+        None => ()
+    }
+}
+fn freshen_all(env: &mut TypeEnvironment, subs: &mut Substitution, typ: &mut Type) {
+    let result = match typ {
         &TypeVariable(ref id) => {
-            if env.is_generic(id) {
+            let t = match subs.subs.find(id) {
+                Some(var) => Some(var.clone()),
+                _ => {
+                    None
+                }
+            };
+            if t.is_some() {
+                t
+            }
+            else {
                 let new = env.new_var();
                 let maybe_constraints = match env.constraints.find(id) {
                     Some(constraints) => Some(constraints.clone()),
@@ -805,13 +864,10 @@ fn freshen(env: &mut TypeEnvironment, subs: &mut Substitution, typ: &mut Type) {
                 }
                 Some(subs.subs.find_or_insert(id.clone(), new.clone()).clone())
             }
-            else {
-                None
-            }
         }
         &TypeApplication(ref mut lhs, ref mut rhs) => {
-            freshen(env, subs, *lhs);
-            freshen(env, subs, *rhs);
+            freshen_all(env, subs, *lhs);
+            freshen_all(env, subs, *rhs);
             None
         }
         _ => None
@@ -993,6 +1049,7 @@ fn each_type_(typ: &Type, var_fn: &|&TypeVariable|, op_fn: &|&TypeOperator|) {
             each_type_(*lhs, var_fn, op_fn);
             each_type_(*rhs, var_fn, op_fn);
         }
+        _ => ()
     }
 }
 
@@ -1439,6 +1496,5 @@ r"
 test :: [Int] -> Int -> Int
 test x y = primIntAdd x y");
 }
-
 
 }

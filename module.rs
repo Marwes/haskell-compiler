@@ -69,7 +69,8 @@ pub struct TypeVariable {
 pub enum Type {
     TypeVariable(TypeVariable),
     TypeOperator(TypeOperator),
-    TypeApplication(~Type, ~Type)
+    TypeApplication(~Type, ~Type),
+    Generic(TypeVariable)
 }
 
 impl Type {
@@ -134,7 +135,8 @@ impl Type {
                         kind
                     }
                     _ => fail!("Type application must have a kind of KindFunction, {}", self)
-                }
+                },
+            &Generic(_) => fail!("Generic has no kind")
         }
     }
     pub fn mut_kind<'a>(&'a mut self) -> &'a mut Kind {
@@ -205,6 +207,7 @@ impl fmt::Show for Type {
         match self {
             &TypeVariable(ref var) => write!(f.buf, "{}", *var),
             &TypeOperator(ref op) => write!(f.buf, "{}", *op),
+            &Generic(ref var) => write!(f.buf, "\\#{}", *var),
             &TypeApplication(ref lhs, ref rhs) => {
                 let l: &Type = *lhs;
                 let is_list = match l {
