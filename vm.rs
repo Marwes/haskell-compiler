@@ -284,7 +284,7 @@ impl <'a> VM<'a> {
                             i -= 1;
                         }
                         PrimitiveFunction(arity, func) => {
-                            unwind(arity, stack, |new_stack| func(new_stack.as_slice()));
+                            unwind(arity, stack, |new_stack| func(self, new_stack.as_slice()));
                             i -= 1;
                         }
                         Indirection(node) => {
@@ -454,7 +454,7 @@ pub fn execute_main<T : Iterator<char>>(iterator: T) -> Option<VMResult> {
 
 mod primitive {
 
-    use vm::Node;
+    use vm::{VM, Node};
 
     pub fn get_primitive(i: uint) -> (uint, PrimFun) {
         match i {
@@ -463,10 +463,13 @@ mod primitive {
         }
     }
 
-    pub type PrimFun = extern "Rust" fn <'a>(&[Node<'a>]) -> Node<'a>;
+    pub type PrimFun = extern "Rust" fn <'a>(&'a VM<'a>, &[Node<'a>]) -> Node<'a>;
 
-    fn error<'a>(stack: &[Node<'a>]) -> Node<'a> {
-        fail!("error: {}", stack[0])
+    fn error<'a>(vm: &'a VM<'a>, stack: &[Node<'a>]) -> Node<'a> {
+        let mut vec = Vec::new();
+        vec.push(stack[0].clone());
+        let node = vm.deepseq(vec, 123);
+        fail!("error: {}", node)
     }
 
 }
