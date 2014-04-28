@@ -63,8 +63,8 @@ fn main() {
             .find(|sc| sc.name == Name { name: "main".to_owned(), uid: 0 })
             .map(|x| x.instructions.clone())
             .expect("Expected main function");
-        vm.add_assembly(assembly);
-        let result = vm.evaluate(instructions, 0);//TODO 0 is not necessarily correct
+        let assembly_index = vm.add_assembly(assembly);
+        let result = vm.evaluate(instructions, assembly_index);//TODO 0 is not necessarily correct
         println!("{}", result);
     }
     else if args.len() == 3 && "-l" == args[1] {

@@ -123,7 +123,7 @@ impl <'a> VM<'a> {
     }
 
     ///Adds an assembly to the VM, adding entries to the global table as necessary
-    pub fn add_assembly(&mut self, assembly: Assembly) {
+    pub fn add_assembly(&mut self, assembly: Assembly) -> uint {
         self.assembly.push(assembly);
         let assembly_index = self.assembly.len() - 1;
         let mut index = 0;
@@ -131,6 +131,7 @@ impl <'a> VM<'a> {
             self.globals.push((assembly_index, index));
             index += 1;
         }
+        assembly_index
     }
 
     pub fn evaluate(&'a self, code: &[Instruction], assembly_id: uint) -> Node_<'a> {
