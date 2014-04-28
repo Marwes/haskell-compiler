@@ -242,6 +242,33 @@ impl <'a> VM<'a> {
                     *stack.get_mut(index) = Node::new(Indirection(stack.last().unwrap().clone()));
                 }
                 &Unwind => {
+                    fn unwind<'a>(arity: uint, stack: &mut Vec<Node<'a>>, f: |&mut Vec<Node<'a>>| -> Node<'a>) {
+                        if stack.len() - 1 < arity {
+                            while stack.len() > 1 {
+                                stack.pop();
+                            }
+                        }
+                        else {
+                            for j in range(stack.len() - arity - 1, stack.len() - 1) {
+                                *stack.get_mut(j) = match stack.get(j).borrow() {
+                                    &Application(_, ref arg) => arg.clone(),
+                                    _ => fail!("Expected Application")
+                                };
+                            }
+                            let value = {
+                                let mut new_stack = Vec::new();
+                                for i in range(0, arity) {
+                                    let index = stack.len() - i - 2;
+                                    new_stack.push(stack.get(index).clone());
+                                }
+                                f(&mut new_stack)
+                            };
+                            for _ in range(0, arity + 1) {
+                                stack.pop();
+                            }
+                            stack.push(value);
+                        }
+                    }
                     let x = (*stack.last().unwrap().borrow()).clone();
                     debug!("Unwinding {}", x);
                     match x {
@@ -250,72 +277,15 @@ impl <'a> VM<'a> {
                             i -= 1;//Redo the unwind instruction
                         }
                         Combinator(comb) => {
-                            if stack.len() - 1 < comb.arity as uint {
-                                while stack.len() > 1 {
-                                    stack.pop();
-                                }
-                            }
-                            else {
-                                for j in range(stack.len() - (comb.arity as uint) - 1, stack.len() - 1) {
-                                    *stack.get_mut(j) = match stack.get(j).borrow() {
-                                        &Application(_, ref arg) => arg.clone(),
-                                        _ => fail!("Expected Application")
-                                    };
-                                }
-                                let mut newStack = Vec::new();
-                                for i in range(0, comb.arity as uint) {
-                                    let index = stack.len() - i - 2;
-                                    newStack.push(stack.get(index).clone());
-                                }
-                                
-                                debug!("Called {}", comb.name);
-                                for j in range(0, newStack.len()) {
-                                    debug!(" {}  {}", j, newStack.get(j).borrow());
-                                }
-                                self.execute(&mut newStack, comb.instructions, comb.assembly_id);
-                                debug!("Returned {}", comb.name);
-                                for j in range(0, newStack.len()) {
-                                    debug!(" {}  {}", j, newStack.get(j).borrow());
-                                }
-                                assert_eq!(newStack.len(), 1);
-                                for _ in range(0, comb.arity + 1) {
-                                    stack.pop();
-                                }
-                                stack.push(newStack.pop().unwrap());
-                                i -= 1;
-                            }
+                            unwind(comb.arity, stack, |new_stack| {
+                                self.execute(new_stack, comb.instructions, comb.assembly_id);
+                                new_stack.pop().unwrap()
+                            });
+                            i -= 1;
                         }
                         PrimitiveFunction(arity, func) => {
-                            if stack.len() - 1 < arity {
-                                while stack.len() > 1 {
-                                    stack.pop();
-                                }
-                            }
-                            else {
-                                for j in range(stack.len() - arity - 1, stack.len() - 1) {
-                                    *stack.get_mut(j) = match stack.get(j).borrow() {
-                                        &Application(_, ref arg) => arg.clone(),
-                                        _ => fail!("Expected Application")
-                                    };
-                                }
-                                let value = {
-                                    let mut newStack = Vec::new();
-                                    for i in range(0, arity) {
-                                        let index = stack.len() - i - 2;
-                                        newStack.push(stack.get(index).clone());
-                                    }
-                                    debug!("Called <extern function>");
-                                    for (j, elem) in newStack.iter().enumerate() {
-                                        debug!(" {}  {}", j, elem.borrow());
-                                    }
-                                    func(newStack.as_slice())
-                                };
-                                for _ in range(0, arity + 1) {
-                                    stack.pop();
-                                }
-                                stack.push(value);
-                                i -= 1;
-                            }
+                            unwind(arity, stack, |new_stack| func(new_stack.as_slice()));
+                            i -= 1;
                         }
                         Indirection(node) => {
                             *stack.mut_last().unwrap() = node;
