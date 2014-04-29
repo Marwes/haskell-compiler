@@ -1,5 +1,6 @@
 use std::fmt;
 use std::rc::Rc;
+use std::cell::{Ref, RefCell};
 use std::path::Path;
 use std::io::File;
 use typecheck::TypeEnvironment;
@@ -39,15 +40,15 @@ impl <'a> Clone for Node_<'a> {
 
 #[deriving(Clone)]
 struct Node<'a> {
-    node: Rc<Node_<'a>>
+    node: Rc<RefCell<Node_<'a>>>
 }
 
 impl <'a> Node<'a> {
     fn new(n : Node_<'a>) -> Node<'a> {
-        Node { node: Rc::new(n) }
+        Node { node: Rc::new(RefCell::new(n)) }
     }
-    fn borrow<'b>(&'b self) -> &'b Node_<'a> {
-        &*self.node
+    fn borrow<'b>(&'b self) -> Ref<'b, Node_<'a>> {
+        (*self.node).borrow()
     }
 }
 impl <'a> fmt::Show for Node<'a> {
@@ -65,32 +66,32 @@ impl <'a> fmt::Show for Node_<'a> {
             &Combinator(ref sc) => write!(f.buf, "{}", sc.name),
             &Indirection(ref n) => write!(f.buf, "(~> {})", *n),
             &Constructor(ref tag, ref args) => {
-                let mut cons = args;
+                let cons = args;
                 if cons.len() > 0 {
-                    match cons.get(0).borrow() {
-                        &Char(_) => {
-                            try!(write!(f.buf, "\""));
-                            //Print a string
-                            loop {
-                                if cons.len() < 2 {
-                                    break;
+                    match *cons.get(0).borrow() {
+                        Char(_) => {
+                            fn print_string<'a>(f: &mut fmt::Formatter, cons: &Vec<Node<'a>>) -> fmt::Result {
+                                if cons.len() >= 2 {
+                                    match *cons.get(0).borrow() {
+                                        Char(c) =>  { try!(write!(f.buf, "{}", c)); },
+                                        _ => ()
+                                    }
+                                    match *cons.get(1).borrow() {
+                                        Constructor(_, ref args2) => return print_string(f, args2),
+                                        _ => ()
+                                    }
                                 }
-                                match cons.get(0).borrow() {
-                                    &Char(c) =>  { try!(write!(f.buf, "{}", c)); },
-                                    _ => break
-                                }
-                                match cons.get(1).borrow() {
-                                    &Constructor(_, ref args2) => cons = args2,
-                                    _ => break
-                                }
+                                Ok(())
                             }
+                            try!(write!(f.buf, "\""));
+                            print_string(f, cons);
                             write!(f.buf, "\"")
                         }
                         _ => {
                             //Print a normal constructor
                             try!(write!(f.buf, "\\{{}", *tag));
                             for arg in args.iter() {
-                                try!(write!(f.buf, " {}",arg.borrow()));
+                                try!(write!(f.buf, " {}", *arg.borrow()));
                             }
                             write!(f.buf, "\\}")
                         }
@@ -100,7 +101,7 @@ impl <'a> fmt::Show for Node_<'a> {
                     //Print a normal constructor
                     try!(write!(f.buf, "\\{{}", *tag));
                     for arg in args.iter() {
-                        try!(write!(f.buf, " {}",arg.borrow()));
+                        try!(write!(f.buf, " {}", *arg.borrow()));
                     }
                     write!(f.buf, "\\}")
                 }
@@ -142,8 +143,8 @@ impl <'a> VM<'a> {
     fn deepseq(&'a self, mut stack: Vec<Node<'a>>, assembly_id: uint) -> Node_<'a> {
         static evalCode : &'static [Instruction] = &[Eval];
         self.execute(&mut stack, evalCode, assembly_id);
-        match stack.get(0).borrow() {
-            &Constructor(tag, ref vals) => {
+        match *stack.get(0).borrow() {
+            Constructor(tag, ref vals) => {
                 let mut ret = Vec::new();
                 for v in vals.iter() {
                     let s = vec!(v.clone());
@@ -160,7 +161,7 @@ impl <'a> VM<'a> {
         debug!("----------------------------");
         debug!("Entering frame with stack");
         for x in stack.iter() {
-            debug!("{}", x.borrow());
+            debug!("{}", *x.borrow());
         }
         debug!("");
         let mut i = 0;
@@ -189,15 +190,15 @@ impl <'a> VM<'a> {
                 &DoubleGE => primitive_float(stack, |l, r| { if l >= r { Constructor(0, Vec::new()) } else { Constructor(1, Vec::new()) } }),
                 &IntToDouble => {
                     let top = stack.pop().unwrap();
-                    stack.push(match top.borrow() {
-                        &Int(i) => Node::new(Float(i as f64)),
+                    stack.push(match *top.borrow() {
+                        Int(i) => Node::new(Float(i as f64)),
                         _ => fail!("Excpected Int in Int -> Double cast")
                     });
                 }
                 &DoubleToInt => {
                     let top = stack.pop().unwrap();
-                    stack.push(match top.borrow() {
-                        &Float(f) => Node::new(Int(f as int)),
+                    stack.push(match *top.borrow() {
+                        Float(f) => Node::new(Int(f as int)),
                         _ => fail!("Excpected Double in Double -> Int cast")
                     });
                 }
@@ -206,9 +207,9 @@ impl <'a> VM<'a> {
                 &PushChar(value) => { stack.push(Node::new(Char(value))); }
                 &Push(index) => {
                     let x = stack.get(index).clone();
-                    debug!("Pushed {}", x.borrow());
+                    debug!("Pushed {}", *x.borrow());
                     for j in range(0, stack.len()) {
-                        debug!(" {}  {}", j, stack.get(j).borrow());
+                        debug!(" {}  {}", j, *stack.get(j).borrow());
                     }
                     stack.push(x);
                 }
@@ -225,7 +226,7 @@ impl <'a> VM<'a> {
                     assert!(stack.len() >= 2);
                     let func = stack.pop().unwrap();
                     let arg = stack.pop().unwrap();
-                    debug!("Mkap {} {}", func.borrow(), arg.borrow());
+                    debug!("Mkap {} {}", *func.borrow(), *arg.borrow());
                     stack.push(Node::new(Application(func, arg)));
                 }
                 &Eval => {
@@ -251,8 +252,8 @@ impl <'a> VM<'a> {
                         }
                         else {
                             for j in range(stack.len() - arity - 1, stack.len() - 1) {
-                                *stack.get_mut(j) = match stack.get(j).borrow() {
-                                    &Application(_, ref arg) => arg.clone(),
+                                *stack.get_mut(j) = match *stack.get(j).borrow() {
+                                    Application(_, ref arg) => arg.clone(),
                                     _ => fail!("Expected Application")
                                 };
                             }
@@ -303,8 +304,8 @@ impl <'a> VM<'a> {
                     stack.push(top);
                 }
                 &Split(_) => {
-                    match stack.pop().unwrap().borrow() {
-                        &Constructor(_, ref fields) => {
+                    match *stack.pop().unwrap().borrow() {
+                        Constructor(_, ref fields) => {
                             for field in fields.iter() {
                                 stack.push(field.clone());
                             }
@@ -320,16 +321,16 @@ impl <'a> VM<'a> {
                     stack.push(Node::new(Constructor(tag, args)));
                 }
                 &JumpFalse(address) => {
-                    match stack.last().unwrap().borrow() {
-                        &Constructor(0, _) => (),
-                        &Constructor(1, _) => i = address - 1,
+                    match *stack.last().unwrap().borrow() {
+                        Constructor(0, _) => (),
+                        Constructor(1, _) => i = address - 1,
                         _ => ()
                     }
                     stack.pop();
                 }
                 &CaseJump(jump_tag) => {
-                    let jumped = match stack.last().unwrap().borrow() {
-                        &Constructor(tag, _) => {
+                    let jumped = match *stack.last().unwrap().borrow() {
+                        Constructor(tag, _) => {
                             if jump_tag == tag as uint {
                                 i += 1;//Skip the jump instruction ie continue to the next test
                                 true
@@ -338,7 +339,7 @@ impl <'a> VM<'a> {
                                 false
                             }
                         }
-                        x => fail!("Expected constructor when executing CaseJump, got {}", x),
+                        ref x => fail!("Expected constructor when executing CaseJump, got {}", *x),
                     };
                     if !jumped {
                         stack.pop();
@@ -354,9 +355,10 @@ impl <'a> VM<'a> {
                 }
                 &PushDictionaryMember(index) => {
                     let sc = {
-                        let dict = match stack.get(0).borrow() {
-                            &Dictionary(ref x) => x,
-                            x => fail!("Attempted to retrieve {} as dictionary", x)
+                        let x = stack.get(0).borrow();
+                        let dict = match *x {
+                            Dictionary(ref x) => x,
+                            ref x => fail!("Attempted to retrieve {} as dictionary", *x)
                         };
                         let gi = dict[index];
                         let &(assembly_index, i) = self.globals.get(gi);
@@ -376,7 +378,7 @@ impl <'a> VM<'a> {
 fn primitive_int(stack: &mut Vec<Node>, f: |int, int| -> Node_) {
     let l = stack.pop().unwrap();
     let r = stack.pop().unwrap();
-    match (l.borrow(), r.borrow()) {
+    match (&*l.borrow(), &*r.borrow()) {
         (&Int(lhs), &Int(rhs)) => stack.push(Node::new(f(lhs, rhs))),
         (lhs, rhs) => fail!("Expected fully evaluted numbers in primitive instruction\n LHS: {}\nRHS: {} ", lhs, rhs)
     }
@@ -384,7 +386,7 @@ fn primitive_int(stack: &mut Vec<Node>, f: |int, int| -> Node_) {
 fn primitive_float(stack: &mut Vec<Node>, f: |f64, f64| -> Node_) {
     let l = stack.pop().unwrap();
     let r = stack.pop().unwrap();
-    match (l.borrow(), r.borrow()) {
+    match (&*l.borrow(), &*r.borrow()) {
         (&Float(lhs), &Float(rhs)) => stack.push(Node::new(f(lhs, rhs))),
         (lhs, rhs) => fail!("Expected fully evaluted numbers in primitive instruction\n LHS: {}\nRHS: {} ", lhs, rhs)
     }
@@ -423,7 +425,7 @@ fn extract_result(node: Node_) -> Option<VMResult> {
         Constructor(tag, fields) => {
             let mut result = Vec::new();
             for field in fields.iter() {
-                match extract_result(field.borrow().clone()) {
+                match extract_result((*field.borrow()).clone()) {
                     Some(x) => result.push(x),
                     None => return None
                 }
@@ -455,11 +457,13 @@ pub fn execute_main<T : Iterator<char>>(iterator: T) -> Option<VMResult> {
 
 mod primitive {
 
-    use vm::{VM, Node};
+    use vm::{VM, Node, Int};
+    use compiler::{Instruction, Eval};
 
     pub fn get_primitive(i: uint) -> (uint, PrimFun) {
         match i {
             0 => (1, error),
+            1 => (2, seq),
             _ => fail!("undefined primitive")
         }
     }
@@ -471,6 +475,13 @@ mod primitive {
         vec.push(stack[0].clone());
         let node = vm.deepseq(vec, 123);
         fail!("error: {}", node)
+    }
+    fn seq<'a>(vm: &'a VM<'a>, stack: &[Node<'a>]) -> Node<'a> {
+        static evalCode : &'static [Instruction] = &[Eval];
+        let mut temp = Vec::new();
+        temp.push(stack[0].clone());
+        vm.execute(&mut temp, evalCode, 123);
+        stack[1].clone()
     }
 
 }
