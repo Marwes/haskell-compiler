@@ -168,7 +168,7 @@ pub fn tuple_type(size: uint) -> (~str, Type) {
 }
 
 pub fn list_type(typ: Type) -> Type {
-    TypeApplication(~Type::new_op(~"[]", ~[]), ~typ)
+    Type::new_op(~"[]", ~[typ])
 }
 
 pub fn char_type() -> Type {
@@ -277,11 +277,15 @@ impl fmt::Show for Type {
                         }
                         _ => false
                     };
+                    let x = match l {
+                        &TypeApplication(_, ref x) => x,
+                        _ => fail!()
+                    };
                     if is_lhs_func {
                         write!(f.buf, "({}) -> {}", lhs, rhs)
                     }
                     else {
-                        write!(f.buf, "{} -> {}", lhs, rhs)
+                        write!(f.buf, "{} -> {}", *x, rhs)
                     }
                 }
                 else {

@@ -1,6 +1,6 @@
 use std::fmt;
 use std::rc::Rc;
-use std::cell::{Ref, RefCell};
+use std::cell::{Ref, RefMut, RefCell};
 use std::path::Path;
 use std::io::File;
 use typecheck::TypeEnvironment;
@@ -49,6 +49,9 @@ impl <'a> Node<'a> {
     }
     fn borrow<'b>(&'b self) -> Ref<'b, Node_<'a>> {
         (*self.node).borrow()
+    }
+    fn borrow_mut<'b>(&'b self) -> RefMut<'b, Node_<'a>> {
+        (*self.node).borrow_mut()
     }
 }
 impl <'a> fmt::Show for Node<'a> {
@@ -247,7 +250,7 @@ impl <'a> VM<'a> {
                     *stack.get_mut(index) = Node::new(Indirection(stack.last().unwrap().clone()));
                 }
                 &Unwind => {
-                    fn unwind<'a>(arity: uint, stack: &mut Vec<Node<'a>>, f: |&mut Vec<Node<'a>>| -> Node<'a>) {
+                    fn unwind<'a>(i_ptr: &mut uint, arity: uint, stack: &mut Vec<Node<'a>>, f: |&mut Vec<Node<'a>>| -> Node<'a>) {
                         if stack.len() - 1 < arity {
                             while stack.len() > 1 {
                                 stack.pop();
@@ -272,6 +275,7 @@ impl <'a> VM<'a> {
                                 stack.pop();
                             }
                             stack.push(value);
+                            *i_ptr -= 1;
                         }
                     }
                     let x = (*stack.last().unwrap().borrow()).clone();
@@ -282,15 +286,13 @@ impl <'a> VM<'a> {
                             i -= 1;//Redo the unwind instruction
                         }
                         Combinator(comb) => {
-                            unwind(comb.arity, stack, |new_stack| {
+                            unwind(&mut i, comb.arity, stack, |new_stack| {
                                 self.execute(new_stack, comb.instructions, comb.assembly_id);
                                 new_stack.pop().unwrap()
                             });
-                            i -= 1;
                         }
                         PrimitiveFunction(arity, func) => {
-                            unwind(arity, stack, |new_stack| func(self, new_stack.as_slice()));
-                            i -= 1;
+                            unwind(&mut i, arity, stack, |new_stack| func(self, new_stack.as_slice()));
                         }
                         Indirection(node) => {
                             *stack.mut_last().unwrap() = node;
@@ -460,13 +462,17 @@ pub fn execute_main<T : Iterator<char>>(iterator: T) -> Option<VMResult> {
 
 mod primitive {
 
-    use vm::{VM, Node};
+    use std::io::fs::File;
+    use vm::{VM, Node, Node_, Application, Constructor, PrimitiveFunction, Char};
     use compiler::{Instruction, Eval};
 
     pub fn get_primitive(i: uint) -> (uint, PrimFun) {
         match i {
             0 => (1, error),
             1 => (2, seq),
+            2 => (2, readFile),
+            3 => (3, io_bind),
+            4 => (2, io_return),
             _ => fail!("undefined primitive")
         }
     }
@@ -479,14 +485,93 @@ mod primitive {
         let node = vm.deepseq(vec, 123);
         fail!("error: {}", node)
     }
+    fn eval<'a>(vm: &'a VM<'a>, node: Node<'a>) -> Node<'a> {
+        static evalCode : &'static [Instruction] = &[Eval];
+        let mut temp = Vec::new();
+        temp.push(node);
+        vm.execute(&mut temp, evalCode, 123);
+        temp.pop().unwrap()
+    }
     fn seq<'a>(vm: &'a VM<'a>, stack: &[Node<'a>]) -> Node<'a> {
+        eval(vm, stack[0].clone());
+        stack[1].clone()
+    }
+    fn io_bind<'a>(vm: &'a VM<'a>, stack: &[Node<'a>]) -> Node<'a> {
+        //IO a -> (a -> IO b) -> IO b
+        //IO a = (RealWorld -> (a, RealWorld)
+        //((RealWorld -> (a, RealWorld)) -> (a -> RealWorld -> (b, RealWorld)) -> RealWorld -> (b, RealWorld)
+        //             0                                      1                        2 
+        //(a, RealWorld)
+        let aw = Node::new(Application(stack[0].clone(), stack[2].clone()));
+        let p = Node::new(PrimitiveFunction(2, pass));
+        Node::new(Application(Node::new(Application(p, aw)), stack[1].clone()))
+    }
+    fn pass<'a>(vm: &'a VM<'a>, stack: &[Node<'a>]) -> Node<'a> {
+        //(a, RealWorld) -> (a -> RealWorld -> (b, RealWorld)) -> (b, RealWorld)
+        eval(vm, stack[0].clone());
+        let aw = stack[0].borrow();
+        let (a, rw) = match *aw {
+            Constructor(_, ref args) => (args.get(0), args.get(1)),
+            _ => fail!("pass exepected constructor")
+        };
+        Node::new(Application(Node::new(Application(stack[1].clone(), a.clone())), rw.clone()))
+    }
+    fn io_return<'a>(vm: &'a VM<'a>, stack: &[Node<'a>]) -> Node<'a> {
+        //a -> RealWorld -> (a, RealWorld)
+        Node::new(Constructor(0, vec!(stack[0].clone(), stack[1].clone())))
+    }
+    fn readFile<'a>(vm: &'a VM<'a>, stack: &[Node<'a>]) -> Node<'a> {
         static evalCode : &'static [Instruction] = &[Eval];
         let mut temp = Vec::new();
         temp.push(stack[0].clone());
-        vm.execute(&mut temp, evalCode, 123);
-        stack[1].clone()
+        let node_filename = vm.deepseq(temp, 123);
+        let filename = get_string(&node_filename);
+        let mut file = match File::open(&Path::new(filename)) {
+            Ok(f) => f,
+            Err(err) => fail!("error: readFile -> {}", err)
+        };
+        let (begin, _end) = match file.read_to_str() {
+            Ok(s) => create_string(s),
+            Err(err) => fail!("error: readFile -> {}", err)
+        };
+        //Return (String, RealWorld)
+        Node::new(Constructor(0, vec!(begin, stack[1].clone())))
     }
-
+    fn get_string<'a>(node: &Node_<'a>) -> ~str {
+        fn get_string_<'a>(buffer: &mut StrBuf, node: &Node_<'a>) {
+            match *node {
+                Constructor(_, ref args) => {
+                    if args.len() == 2 {
+                        match *args.get(0).borrow() {
+                            Char(c) => buffer.push_char(c),
+                            _ => fail!("Unevaluated char")
+                        }
+                        get_string_(buffer, &*args.get(1).borrow());
+                    }
+                }
+                _ => fail!("Unevaluated list")
+            }
+        }
+        let mut buffer = StrBuf::new();
+        get_string_(&mut buffer, node);
+        buffer.into_owned()
+    }
+    fn create_string<'a>(s: &str) -> (Node<'a>, Node<'a>) {
+        let mut node = Node::new(Constructor(0, vec!()));
+        let first = node.clone();
+        for c in s.chars() {
+            node = match *node.borrow_mut().deref_mut() {
+                Constructor(ref mut tag, ref mut args) => {
+                    *tag = 1;
+                    args.push(Node::new(Char(c)));
+                    args.push(Node::new(Constructor(0, Vec::new())));
+                    args.get(1).clone()
+                }
+                _ => fail!()
+            };
+        }
+        (first, node)
+    }
 }
 
 #[cfg(test)]

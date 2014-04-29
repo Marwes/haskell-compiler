@@ -191,17 +191,17 @@ instance Functor [] where
     fmap = map
 
 class Monad m where
-    (>>=) :: (a -> m b) -> m a -> m b
+    (>>=) :: m a -> (a -> m b) -> m b
     return :: a -> m a
 
 instance Monad Maybe where
-    (>>=) f x = case x of
+    (>>=) x f = case x of
         Just y -> f y
         Nothing -> Nothing
     return x = Just x
 
 instance Monad [] where
-    (>>=) f xs = concat (map f xs)
+    (>>=) xs f = concat (map f xs)
     return x = [x]
 
 class Enum a where
@@ -376,3 +376,14 @@ instance Show a => Show (Maybe a) where
     show x = case x of
         Just y -> "Just (" ++ show y ++ ")"
         Nothing -> "Nothing"
+
+data RealWorld = RealWorld
+
+data IO a = IO
+
+instance Monad IO where
+    (>>=) x f = io_bind x f
+    return = io_return
+
+
+

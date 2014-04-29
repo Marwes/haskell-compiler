@@ -248,6 +248,12 @@ impl <'a> TypeEnvironment<'a> {
                     let new = subs.subs.find_or_insert(constraint.variables[0].clone(), self.new_var());
                     constraint.variables[0] = new.var().clone();
                 }
+                match instance.typ {
+                    TypeOperator(ref mut op) if op.name.as_slice() == "IO" => {
+                        op.kind = KindFunction(~StarKind, ~StarKind);
+                    }
+                    _ => ()
+                }
                 freshen_all(self, &mut subs, &mut instance.typ);
             }
             for binding in instance.bindings.mut_iter() {

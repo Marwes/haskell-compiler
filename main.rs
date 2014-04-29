@@ -8,9 +8,11 @@ extern crate collections;
 #[cfg(not(test))]
 use std::io::File;
 #[cfg(not(test))]
+use module::{Type, TypeApplication, TypeOperator};
+#[cfg(not(test))]
 use parser::Parser;
 #[cfg(not(test))]
-use compiler::{Compiler};
+use compiler::{Compiler, Instruction, PushInt, Mkap, Eval, Split};
 #[cfg(not(test))]
 use typecheck::{Types, TypeEnvironment};
 #[cfg(not(test))]
@@ -37,6 +39,17 @@ mod lambda_lift;
 mod renamer;
 mod primitive;
 
+fn is_io(typ: &Type) -> bool {
+    match *typ {
+        TypeApplication(ref lhs, _) => 
+            match **lhs {
+                TypeOperator(ref op) => op.name.as_slice() == "IO",
+                _ => false
+            },
+        _ => false
+    }
+}
+
 #[cfg(not(test))]
 fn main() {
     let args = std::os::args();
@@ -61,7 +74,22 @@ fn main() {
         vm.add_assembly(prelude);
         let instructions = assembly.superCombinators.iter()
             .find(|sc| sc.name == Name { name: "main".to_owned(), uid: 0 })
-            .map(|x| x.instructions.clone())
+            .map(|sc| {
+                if is_io(&sc.type_declaration.typ) {
+                    //If the expression we compiled is IO we need to add an extra argument
+                    //'RealWorld' which can be any dumb value (42 here), len - 3 is used because
+                    //it is currently 3 instructions Eval, Update(0), Unwind at the end of each instruction list
+                    //to finish the expression
+                    let mut vec: Vec<Instruction> = sc.instructions.iter().map(|x| x.clone()).collect();
+                    let len = vec.len();
+                    vec.insert(len - 3, Mkap);
+                    vec.insert(0, PushInt(42));//Realworld
+                    vec.move_iter().collect()
+                }
+                else {
+                    sc.instructions.clone()
+                }
+            })
             .expect("Expected main function");
         let assembly_index = vm.add_assembly(assembly);
         let result = vm.evaluate(instructions, assembly_index);//TODO 0 is not necessarily correct
