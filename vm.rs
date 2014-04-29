@@ -84,7 +84,7 @@ impl <'a> fmt::Show for Node_<'a> {
                                 Ok(())
                             }
                             try!(write!(f.buf, "\""));
-                            print_string(f, cons);
+                            try!(print_string(f, cons));
                             write!(f.buf, "\"")
                         }
                         _ => {
@@ -231,9 +231,12 @@ impl <'a> VM<'a> {
                 }
                 &Eval => {
                     static unwindCode : &'static [Instruction] = &[Unwind];
-                    let mut newStack = vec!(stack.pop().unwrap());
+                    let old = stack.pop().unwrap();
+                    let mut newStack = vec!(old.clone());
                     self.execute(&mut newStack, unwindCode, assembly_id);
                     stack.push(newStack.pop().unwrap());
+                    let new = stack.last().unwrap().borrow().clone();
+                    *(*old.node).borrow_mut() = new;
                 }
                 &Pop(num) => {
                     for _ in range(0, num) {
@@ -457,7 +460,7 @@ pub fn execute_main<T : Iterator<char>>(iterator: T) -> Option<VMResult> {
 
 mod primitive {
 
-    use vm::{VM, Node, Int};
+    use vm::{VM, Node};
     use compiler::{Instruction, Eval};
 
     pub fn get_primitive(i: uint) -> (uint, PrimFun) {
