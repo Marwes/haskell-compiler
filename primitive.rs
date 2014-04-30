@@ -4,6 +4,9 @@ use typecheck::function_type_;
 fn io(typ: Type) -> Type {
     Type::new_op("IO".to_owned(), ~[typ])
 }
+fn unit() -> Type {
+    Type::new_op("()".to_owned(), ~[])
+}
 
 pub fn primitives() -> ~[(&'static str, Type)] {
     let var = Generic(TypeVariable { id: 0, kind: StarKind } );
@@ -15,6 +18,7 @@ pub fn primitives() -> ~[(&'static str, Type)] {
                   function_type_(function_type_(var.clone(), io(var2.clone())),
                                  io(var2.clone())))),
       ("io_return", function_type_(var.clone(), io(var.clone()))),
+      ("putStrLn", function_type_(list_type(char_type()), io(unit()))),
     ]
 }
 

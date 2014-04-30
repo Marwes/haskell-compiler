@@ -473,6 +473,7 @@ mod primitive {
             2 => (2, readFile),
             3 => (3, io_bind),
             4 => (2, io_return),
+            5 => (2, putStrLn),
             _ => fail!("undefined primitive")
         }
     }
@@ -521,7 +522,6 @@ mod primitive {
         Node::new(Constructor(0, vec!(stack[0].clone(), stack[1].clone())))
     }
     fn readFile<'a>(vm: &'a VM<'a>, stack: &[Node<'a>]) -> Node<'a> {
-        static evalCode : &'static [Instruction] = &[Eval];
         let mut temp = Vec::new();
         temp.push(stack[0].clone());
         let node_filename = vm.deepseq(temp, 123);
@@ -536,6 +536,15 @@ mod primitive {
         };
         //Return (String, RealWorld)
         Node::new(Constructor(0, vec!(begin, stack[1].clone())))
+    }
+
+    fn putStrLn<'a>(vm: &'a VM<'a>, stack: &[Node<'a>]) -> Node<'a> {
+        let mut temp = Vec::new();
+        temp.push(stack[0].clone());
+        let msg_node = vm.deepseq(temp, 123);
+        let msg = get_string(&msg_node);
+        println!("{}", msg);
+        Node::new(Constructor(0, vec!(Node::new(Constructor(0, vec!())), stack[1].clone())))
     }
     fn get_string<'a>(node: &Node_<'a>) -> ~str {
         fn get_string_<'a>(buffer: &mut StrBuf, node: &Node_<'a>) {
