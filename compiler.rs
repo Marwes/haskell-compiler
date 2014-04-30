@@ -215,7 +215,7 @@ impl Types for Module<Id> {
                 &TypeApplication(ref op, ref t) => {
                     if classname == extract_applied_type(*op).op().name && extract_applied_type(*t).op().name == extract_applied_type(typ).op().name {
                         let c : &[Constraint] = *constraints;
-                        let o : &Type = *op;
+                        let o : &Type = *t;
                         return Some((c, o));
                     }
                 }
@@ -281,7 +281,7 @@ impl Types for Assembly {
                 &TypeApplication(ref op, ref t) => {
                     if classname == extract_applied_type(*op).op().name && extract_applied_type(*t).op().name == extract_applied_type(typ).op().name {
                         let c : &[Constraint] = *constraints;
-                        let o : &Type = *op;
+                        let o : &Type = *t;
                         return Some((c, o));
                     }
                 }

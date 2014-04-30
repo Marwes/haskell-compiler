@@ -388,5 +388,6 @@ instance Monad IO where
     (>>=) x f = io_bind x f
     return = io_return
 
+test = show (Just True)
 
 

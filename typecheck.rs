@@ -56,8 +56,15 @@ impl Types for Module<Name> {
     }
 
     fn find_instance<'a>(&'a self, classname: &str, typ: &Type) -> Option<(&'a [Constraint], &'a Type)> {
+        //Use this to get the constructor name, ie,  extract_applied_type(Either a b) == Either
+        fn extract_applied_type<'a>(typ: &'a Type) -> &'a Type {
+            match typ {
+                &TypeApplication(ref lhs, _) => extract_applied_type(*lhs),
+                _ => typ
+            }
+        }
         for instance in self.instances.iter() {
-            if classname == instance.classname && &instance.typ == typ {//test name
+            if classname == instance.classname && extract_applied_type(&instance.typ) == extract_applied_type(typ) {//test name
                 let c : &[Constraint] = instance.constraints;
                 return Some((c, &instance.typ));
             }
@@ -82,7 +89,7 @@ pub struct TypeEnvironment<'a> {
     assemblies: Vec<&'a Types>,
     namedTypes : HashMap<Name, Type>,
     constraints: HashMap<TypeVariable, Vec<~str>>,
-    instances: Vec<(~str, Type)>,
+    instances: Vec<(~[Constraint], ~str, Type)>,
     variableIndex : int,
 }
 
@@ -290,7 +297,7 @@ impl <'a> TypeEnvironment<'a> {
                         .push(constraint.class.clone());
                 }
             }
-            self.instances.push((instance.classname.clone(), instance.typ.clone()));
+            self.instances.push((instance.constraints.clone(), instance.classname.clone(), instance.typ.clone()));
         }
         
         for type_decl in module.typeDeclarations.mut_iter() {
@@ -385,10 +392,6 @@ impl <'a> TypeEnvironment<'a> {
                 self.find_specialized(constraints, *rhs1, *rhs2);
             }
             (_, &Generic(ref var)) => {
-                for k in self.constraints.iter() {
-                    println!("{} {}", k.ref0().kind, k);
-                }
-                println!("---- {} {} {}", var, var.kind, self.constraints.find(var));
                 match self.constraints.find(var) {
                     Some(cons) => {
                         for c in cons.iter() {
@@ -452,9 +455,11 @@ impl <'a> TypeEnvironment<'a> {
 
     ///Returns whether the type 'op' has an instance for 'class'
     fn has_instance(&self, class: &str, searched_type: &Type) -> bool {
-        for &(ref name, ref typ) in self.instances.iter() {
-            if class == *name && typ == searched_type {
-                return true;
+        for &(ref constraints, ref name, ref typ) in self.instances.iter() {
+            if class == *name {
+                if self.check_instance_constraints(*constraints, typ, searched_type) {
+                    return true;
+                }
             }
         }
         
@@ -479,7 +484,9 @@ impl <'a> TypeEnvironment<'a> {
                     None => false//?
                 }
             }
-            _ => true
+            (&TypeOperator(ref l), &TypeOperator(ref r)) => l == r,
+            (_, &TypeVariable(ref var)) => true,
+            _ => false
         }
     }
     fn new_var_kind(&mut self, kind: Kind) -> Type {
@@ -827,12 +834,6 @@ fn freshen(env: &mut TypeEnvironment, subs: &mut Substitution, typ: &mut Type) {
     let result = match typ {
         &Generic(ref id) => {
             let new = env.new_var_kind(id.kind.clone());
-            if new.var().id == 241 {
-                println!("{}", id);
-                for (k, v) in env.constraints.iter() {
-                    println!("{} -->> {}", k, v);
-                }
-            }
             let maybe_constraints = match env.constraints.find(id) {
                 Some(constraints) => Some(constraints.clone()),
                 None => None
