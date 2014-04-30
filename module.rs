@@ -79,6 +79,13 @@ impl Type {
     pub fn new_var(id : int) -> Type {
         TypeVariable(TypeVariable { id : id, kind: unknown_kind.clone() })
     }
+    pub fn new_var_args(id: int, types : ~[Type]) -> Type {
+        let mut result = TypeVariable(TypeVariable { id : id, kind: Kind::new(types.len() as int + 1) });
+        for typ in types.move_iter() {
+            result = TypeApplication(~result, ~typ);
+        }
+        result
+    }
     pub fn new_var_kind(id : int, kind: Kind) -> Type {
         TypeVariable(TypeVariable { id : id, kind: kind })
     }

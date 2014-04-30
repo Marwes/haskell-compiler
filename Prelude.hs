@@ -194,6 +194,9 @@ class Monad m where
     (>>=) :: m a -> (a -> m b) -> m b
     return :: a -> m a
 
+(>>) :: Monad m => m a -> m b -> m b
+(>>) x y = x >>= \_ -> y
+
 instance Monad Maybe where
     (>>=) x f = case x of
         Just y -> f y

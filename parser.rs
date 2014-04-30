@@ -822,7 +822,7 @@ fn parse_type_(&mut self, variableIndex: &mut int, typeVariableMapping : &mut Ha
 			else {
                 let t = typeVariableMapping.find_or_insert(token.value, *variableIndex);
                 *variableIndex += 1;
-                apply_type(Type::new_var(*t), typeArguments.move_iter().collect())
+                Type::new_var_args(*t, typeArguments.move_iter().collect())
 			};
 			self.parse_return_type(thisType, variableIndex, typeVariableMapping)
 		}

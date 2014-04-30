@@ -217,15 +217,29 @@ impl <'a> TypeEnvironment<'a> {
         }
         for class in module.classes.mut_iter() {
             //Instantiate a new variable and replace all occurances of the class variable with this
-            let replaced = class.variable.clone();
+            let mut replaced = class.variable.clone();
             let new = self.new_var();
             class.variable = new.var().clone();
-            self.constraints.insert(class.variable.clone(), vec![class.name.clone()]);
-
+            let mut var_kind = None;
             for type_decl in class.declarations.mut_iter() {
+                var_kind = match find_kind(&replaced, var_kind, &type_decl.typ) {
+                    Ok(k) => k,
+                    Err(msg) => fail!("{}", msg)
+                };
+                //If we found the variable, update it immediatly since the kind of th variable
+                //matters when looking for constraints, etc
+                match var_kind {
+                    Some(ref k) => {
+                        replaced.kind.clone_from(k);
+                        class.variable.kind.clone_from(k);
+                        self.constraints.insert(class.variable.clone(), vec![class.name.clone()]);
+                    }
+                    None => ()
+                }
+                
                 let c = Constraint { class: class.name.clone(), variables: ~[class.variable.clone()] };
                 let mut mapping = HashMap::new();
-                mapping.insert(replaced.clone(), new.clone());
+                mapping.insert(replaced.clone(), TypeVariable(class.variable.clone()));
                 self.freshen_declaration2(type_decl, mapping);
                 {//Workaround to add the class's constraints directyly to the declaration
                     let mut context = ~[];
@@ -245,7 +259,7 @@ impl <'a> TypeEnvironment<'a> {
             {
                 let mut subs = Substitution { subs: HashMap::new(), constraints: HashMap::new() };
                 for constraint in instance.constraints.mut_iter() {
-                    let new = subs.subs.find_or_insert(constraint.variables[0].clone(), self.new_var());
+                    let new = subs.subs.find_or_insert(constraint.variables[0].clone(), self.new_var_kind(constraint.variables[0].kind.clone()));
                     constraint.variables[0] = new.var().clone();
                 }
                 match instance.typ {
@@ -371,6 +385,10 @@ impl <'a> TypeEnvironment<'a> {
                 self.find_specialized(constraints, *rhs1, *rhs2);
             }
             (_, &Generic(ref var)) => {
+                for k in self.constraints.iter() {
+                    println!("{} {}", k.ref0().kind, k);
+                }
+                println!("---- {} {} {}", var, var.kind, self.constraints.find(var));
                 match self.constraints.find(var) {
                     Some(cons) => {
                         for c in cons.iter() {
@@ -389,7 +407,7 @@ impl <'a> TypeEnvironment<'a> {
     fn freshen_declaration2(&mut self, decl: &mut TypeDeclaration, mut mapping: HashMap<TypeVariable, Type>) {
         for constraint in decl.context.mut_iter() {
             let old = constraint.variables[0].clone();
-            let new = mapping.find_or_insert(old.clone(), self.new_var());
+            let new = mapping.find_or_insert(old.clone(), self.new_var_kind(old.kind.clone()));
             constraint.variables[0] = new.var().clone();
         }
         let mut subs = Substitution { subs: mapping, constraints: HashMap::new() };
@@ -464,10 +482,13 @@ impl <'a> TypeEnvironment<'a> {
             _ => true
         }
     }
+    fn new_var_kind(&mut self, kind: Kind) -> Type {
+        self.variableIndex += 1;
+        Type::new_var_kind(self.variableIndex, kind)
+    }
 
     fn new_var(&mut self) -> Type {
-        self.variableIndex += 1;
-        Type::new_var(self.variableIndex)
+        self.new_var_kind(StarKind)
     }
 
     fn typecheck(&mut self, expr : &mut TypedExpr<Name>, subs: &mut Substitution) {
@@ -805,7 +826,13 @@ fn occurs(type_var: &TypeVariable, inType: &Type) -> bool {
 fn freshen(env: &mut TypeEnvironment, subs: &mut Substitution, typ: &mut Type) {
     let result = match typ {
         &Generic(ref id) => {
-            let new = env.new_var();
+            let new = env.new_var_kind(id.kind.clone());
+            if new.var().id == 241 {
+                println!("{}", id);
+                for (k, v) in env.constraints.iter() {
+                    println!("{} -->> {}", k, v);
+                }
+            }
             let maybe_constraints = match env.constraints.find(id) {
                 Some(constraints) => Some(constraints.clone()),
                 None => None
@@ -843,7 +870,7 @@ fn freshen_all(env: &mut TypeEnvironment, subs: &mut Substitution, typ: &mut Typ
                 t
             }
             else {
-                let new = env.new_var();
+                let new = env.new_var_kind(id.kind.clone());
                 let maybe_constraints = match env.constraints.find(id) {
                     Some(constraints) => Some(constraints.clone()),
                     None => None
@@ -865,7 +892,14 @@ fn freshen_all(env: &mut TypeEnvironment, subs: &mut Substitution, typ: &mut Typ
         _ => None
     };
     match result {
-        Some(x) => *typ = x,
+        Some(mut x) => {
+            let k = x.kind().clone();
+            match x {
+                TypeVariable(ref mut v) => v.kind = k,
+                _ => ()
+            }
+            *typ = x;
+        }
         None => ()
     }
 }
@@ -1042,6 +1076,34 @@ fn each_type_(typ: &Type, var_fn: &|&TypeVariable|, op_fn: &|&TypeOperator|) {
             each_type_(*rhs, var_fn, op_fn);
         }
         _ => ()
+    }
+}
+
+///Finds the kind for the variable test and makes sure that all occurences of the variable
+///has the same kind in 'typ'
+///'expected' should be None if the kinds is currently unknown, otherwise the expected kind
+fn find_kind(test: &TypeVariable, expected: Option<Kind>, typ: &Type) -> Result<Option<Kind>, ~str> {
+    match *typ {
+        TypeVariable(ref var) if test.id == var.id => {
+            match expected {
+                Some(k) => {
+                    if k != var.kind {
+                        Err("Kinds do not match".to_owned())
+                    }
+                    else {
+                        Ok(Some(k))
+                    }
+                }
+                None => Ok(Some(var.kind.clone()))
+            }
+        }
+        TypeApplication(ref lhs, ref rhs) => {
+            find_kind(test, expected, *lhs)
+                .and_then(|result| {
+                    find_kind(test, result, *rhs)
+                })
+        }
+        _ => Ok(expected)
     }
 }
 

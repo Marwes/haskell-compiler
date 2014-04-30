@@ -286,6 +286,7 @@ impl <'a> VM<'a> {
                             i -= 1;//Redo the unwind instruction
                         }
                         Combinator(comb) => {
+                            debug!(">>> Call {}", comb.name);
                             unwind(&mut i, comb.arity, stack, |new_stack| {
                                 self.execute(new_stack, comb.instructions, comb.assembly_id);
                                 new_stack.pop().unwrap()
