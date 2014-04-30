@@ -38,7 +38,9 @@ mod core;
 mod lambda_lift;
 mod renamer;
 mod primitive;
+mod interner;
 
+#[cfg(not(test))]
 fn is_io(typ: &Type) -> bool {
     match *typ {
         TypeApplication(ref lhs, _) => 
