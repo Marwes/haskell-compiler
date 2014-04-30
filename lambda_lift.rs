@@ -8,11 +8,17 @@ pub fn do_lambda_lift(module: Module<TypeAndStr>) -> Module<Id> {
     lift_lambdas(abstract_module(module))
 }
 
+struct FreeVariables {
+    uid: uint
+}
+
+impl FreeVariables {
+
 //Walks through an expression and notes all the free variables and for each lambda, adds the
 //free variables to its arguments and performs an immediate application
 //@variables All the local variables in scope, values are how many of the name there exists
 //@free_vars The free variables for the returned expression
-fn free_variables(variables: &mut HashMap<Name, int>, free_vars: &mut HashMap<Name, TypeAndStr>, expr: Expr<TypeAndStr>) -> Expr<TypeAndStr> {
+fn free_variables(&mut self, variables: &mut HashMap<Name, int>, free_vars: &mut HashMap<Name, TypeAndStr>, expr: Expr<TypeAndStr>) -> Expr<TypeAndStr> {
     match expr {
         Identifier(i) => {
             //If the identifier is a local, add it to the free variables
@@ -22,13 +28,13 @@ fn free_variables(variables: &mut HashMap<Name, int>, free_vars: &mut HashMap<Na
             Identifier(i)
         }
         Apply(func, arg) => {
-            let f = ~free_variables(variables, free_vars, *func);
-            let a = ~free_variables(variables, free_vars, *arg);
+            let f = ~self.free_variables(variables, free_vars, *func);
+            let a = ~self.free_variables(variables, free_vars, *arg);
             Apply(f, a)
         }
         Lambda(arg, body) => {
             variables.insert_or_update_with(arg.name.clone(), 1, |_, v| *v += 1);
-            let b = free_variables(variables, free_vars, *body);
+            let b = self.free_variables(variables, free_vars, *body);
             *variables.get_mut(&arg.name) -= 1;
             free_vars.remove(&arg.name);//arg was not actually a free variable
             Lambda(arg, ~b)
@@ -41,17 +47,17 @@ fn free_variables(variables: &mut HashMap<Name, int>, free_vars: &mut HashMap<Na
             let new_bindings: ~[Binding<TypeAndStr>] = bindings.move_iter().map(
                 |Binding { name: name, expression: bind_expr }| {
                 free_vars2.clear();
-                let e = free_variables(variables, &mut free_vars2, bind_expr);
+                let e = self.free_variables(variables, &mut free_vars2, bind_expr);
                 //free_vars2 is the free variables for this binding
                 for (k, v) in free_vars2.iter() {
                     free_vars.insert(k.clone(), v.clone());
                 }
                 Binding{
                     name: name,
-                    expression: abstract(&free_vars2, e)
+                    expression: self.abstract(&free_vars2, e)
                 }
             }).collect();
-            let e = ~free_variables(variables, free_vars, *expr);
+            let e = ~self.free_variables(variables, free_vars, *expr);
             for bind in new_bindings.iter() {
                 *variables.get_mut(&bind.name.name) -= 1;
                 free_vars.remove(&bind.name.name);
@@ -65,7 +71,7 @@ fn free_variables(variables: &mut HashMap<Name, int>, free_vars: &mut HashMap<Na
     }
 }
 
-fn abstract(free_vars: &HashMap<Name, TypeAndStr>, input_expr: Expr<TypeAndStr>) -> Expr<TypeAndStr> {
+fn abstract(&mut self, free_vars: &HashMap<Name, TypeAndStr>, input_expr: Expr<TypeAndStr>) -> Expr<TypeAndStr> {
     if free_vars.len() == 0 {
         input_expr
     }
@@ -77,17 +83,19 @@ fn abstract(free_vars: &HashMap<Name, TypeAndStr>, input_expr: Expr<TypeAndStr>)
                 rhs = Lambda(var.clone(), ~rhs);
                 typ = function_type_(var.get_type().clone(), typ);
             }
+            self.uid += 1;
             let bind = Binding {
-                name: Id::new(Name {name: "sc".to_owned(), uid: 0 }, typ.clone(), ~[]),
+                name: Id::new(Name {name: "#sc".to_owned(), uid: self.uid }, typ.clone(), ~[]),
                 expression: rhs
             };
-            Let(~[bind], ~Identifier(Id::new(Name { name: "sc".to_owned(), uid: 0 }, typ.clone(), ~[])))
+            Let(~[bind], ~Identifier(Id::new(Name { name: "#sc".to_owned(), uid: self.uid }, typ.clone(), ~[])))
         };
         for (_, var) in free_vars.iter() {
             e = Apply(~e, ~Identifier(var.clone()));
         }
         e
     }
+}
 }
 
 fn lift_lambdas_expr<T>(expr: Expr<T>, out_lambdas: &mut Vec<Binding<T>>) -> Expr<T> {
@@ -147,13 +155,14 @@ pub fn lift_lambdas<T: ::std::fmt::Show>(module: Module<T>) -> Module<T> {
 }
 
 pub fn abstract_module(module: Module<TypeAndStr>) -> Module<TypeAndStr> {
+    let mut this = FreeVariables { uid: 1 };
     each_binding(module,
         |name| name,
         |bind| {
             let Binding { name: name, expression: bind_expr } = bind;
             let mut variables = HashMap::new();
             let mut free_vars = HashMap::new();
-            let e = free_variables(&mut variables, &mut free_vars, bind_expr);
+            let e = this.free_variables(&mut variables, &mut free_vars, bind_expr);
             Binding { name: name, expression: e }
         })
 }
