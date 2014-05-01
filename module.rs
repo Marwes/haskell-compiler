@@ -190,6 +190,13 @@ pub fn function_type_(func : Type, arg : Type) -> Type {
     Type::new_op(~"->", ~[func, arg])
 }
 
+pub fn io(typ: Type) -> Type {
+    Type::new_op("IO".to_owned(), ~[typ])
+}
+pub fn unit() -> Type {
+    Type::new_op("()".to_owned(), ~[])
+}
+
 
 #[deriving(Clone, Eq, TotalEq, Hash)]
 pub struct Constraint {

@@ -1,13 +1,6 @@
 use module::*;
 use typecheck::function_type_;
 
-fn io(typ: Type) -> Type {
-    Type::new_op("IO".to_owned(), ~[typ])
-}
-fn unit() -> Type {
-    Type::new_op("()".to_owned(), ~[])
-}
-
 pub fn primitives() -> ~[(&'static str, Type)] {
     let var = Generic(TypeVariable { id: 0, kind: StarKind } );
     let var2 = Generic(TypeVariable { id: 1, kind: StarKind } );

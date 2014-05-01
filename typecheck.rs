@@ -552,7 +552,6 @@ impl <'a> TypeEnvironment<'a> {
                     self.namedTypes.insert(arg.clone(), argType.clone());
                     self.typecheck(*body, subs);
                 }
-
                 replace(&mut self.constraints, &mut expr.typ, subs);
                 with_arg_return(&mut expr.typ, |_, return_type| {
                     *return_type = body.typ.clone();
@@ -583,6 +582,36 @@ impl <'a> TypeEnvironment<'a> {
                 replace(&mut self.constraints, &mut alts[0].expression.typ, subs);
                 replace(&mut self.constraints, &mut case_expr.typ, subs);
                 expr.typ = alt0_;
+            }
+            &Do(ref mut bindings, ref mut last_expr) => {
+                let mut previous = self.new_var_kind(KindFunction(~StarKind, ~StarKind));
+                self.constraints.insert(previous.var().clone(), vec!(~"Monad"));
+                previous = TypeApplication(~previous, ~self.new_var());
+                for bind in bindings.mut_iter() {
+                    match *bind {
+                        DoExpr(ref mut e) => {
+                            self.typecheck(e, subs);
+                            unify_location(self, subs, &e.location, &mut e.typ, &mut previous);
+                        }
+                        DoLet(ref mut bindings) => {
+                            self.typecheck_mutually_recursive_bindings(subs, &mut BindingsWrapper { value: *bindings });
+                            self.apply(subs);
+                        }
+                        DoBind(ref mut pattern, ref mut e) => {
+                            self.typecheck(e, subs);
+                            self.typecheck_pattern(&pattern.location, subs, &pattern.node, &mut e.typ);
+                        }
+                    }
+                    match previous {
+                        TypeApplication(ref mut monad, ref mut typ) => {
+                            **typ = self.new_var();
+                        }
+                        _ => fail!()
+                    }
+                }
+                self.typecheck(*last_expr, subs);
+                unify_location(self, subs, &last_expr.location, &mut last_expr.typ, &mut previous);
+                expr.typ.clone_from(&last_expr.typ);
             }
         };
     }
@@ -1010,6 +1039,19 @@ fn unify(env: &mut TypeEnvironment, subs: &mut Substitution, lhs: Type, rhs: Typ
                     }
                 }
                 Err(e) => Err(e)
+            }
+        }
+        (TypeVariable(lhs), TypeVariable(rhs)) => {
+            //If both are variables we choose that they younger variable is replaced by the oldest
+            //This is because when doing the quantifying, only variables that are created during
+            //the inference of mutually recursive bindings should be quantified, but if a newly
+            //created variable is unified with one from an outer scope we need to prefer the older
+            //so that the variable does not get quantified
+            if lhs.id > rhs.id {
+                bind_variable(env, subs, lhs, TypeVariable(rhs))
+            }
+            else {
+                bind_variable(env, subs, rhs, TypeVariable(lhs))
             }
         }
         (TypeVariable(var), rhs) => { bind_variable(env, subs, var, rhs) }
@@ -1507,6 +1549,68 @@ test x y = primIntAdd (test x) y";
 
     assert_eq!(module.bindings[0].typeDecl.typ, module.typeDeclarations[0].typ);
 }
+
+#[test]
+fn do_expr_simple() {
+    
+    let prelude = {
+        let path = &Path::new("Prelude.hs");
+        let contents = File::open(path).read_to_str().unwrap();
+        do_typecheck(contents)
+    };
+
+    let file = 
+r"
+test x = do
+    let y = reverse x
+    putStrLn y
+";
+    let module = do_typecheck_with(file, [&prelude as &Types]);
+
+    assert_eq!(module.bindings[0].expression.typ, function_type_(list_type(char_type()), io(unit())));
+}
+
+#[test]
+fn do_expr_pattern() {
+    
+    let prelude = {
+        let path = &Path::new("Prelude.hs");
+        let contents = File::open(path).read_to_str().unwrap();
+        do_typecheck(contents)
+    };
+
+    let file = 
+r"
+test x = do
+    : y ys <- x
+    return y
+";
+    let module = do_typecheck_with(file, [&prelude as &Types]);
+
+    let var = Type::new_var(0);
+    let t = function_type_(list_type(var.clone()), Type::new_var_args(2, ~[var.clone()]));
+    assert_eq!(module.bindings[0].expression.typ, t);
+    assert_eq!(module.bindings[0].typeDecl.context[0].class.as_slice(), "Monad");
+}
+#[test]
+#[should_fail]
+fn do_expr_wrong_monad() {
+    
+    let prelude = {
+        let path = &Path::new("Prelude.hs");
+        let contents = File::open(path).read_to_str().unwrap();
+        do_typecheck(contents)
+    };
+
+    let file = 
+r"
+test x = do
+    putStrLn x
+    reverse [primIntAdd 0 0, 1, 2]";
+    do_typecheck_with(file, [&prelude as &Types]);
+}
+
+
 
 fn do_typecheck(input: &str) -> Module<Name> {
     do_typecheck_with(input, [])

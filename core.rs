@@ -297,6 +297,7 @@ pub mod translate {
                 }).collect();
                 Case(~translate_expr(*expr), a)
             }
+            _ => fail!("Translation not implemented")
         }
     }
 
