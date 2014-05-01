@@ -76,6 +76,20 @@ impl Renamer {
                 }).collect();
                 Case(~self.rename(*expr), a)
             }
+            Do(bindings, expr) => {
+                let bs = bindings.move_iter().map(|bind| {
+                    match bind {
+                        DoExpr(expr) => DoExpr(self.rename(expr)),
+                        DoLet(bs) => DoLet(self.rename_bindings(bs)),
+                        DoBind(pattern, expr) => {
+                            let Located { location: location, node: node } = pattern;
+                            let loc = Located { location: location, node: self.rename_pattern(node) };
+                            DoBind(loc, self.rename(expr))
+                        }
+                    }
+                }).collect();
+                Do(bs, ~self.rename(*expr))
+            }
         };
         let mut t = TypedExpr::with_location(e, location);
         t.typ = typ;
