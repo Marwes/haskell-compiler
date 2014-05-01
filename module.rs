@@ -402,6 +402,13 @@ pub enum Pattern<Ident = ~str> {
 }
 
 #[deriving(Eq)]
+pub enum DoBinding<Ident = ~str> {
+    DoLet(~[Binding<Ident>]),
+    DoBind(Located<Pattern<Ident>>, TypedExpr<Ident>),
+    DoExpr(TypedExpr<Ident>)
+}
+
+#[deriving(Eq)]
 pub enum Expr<Ident = ~str> {
     Identifier(Ident),
     Apply(~TypedExpr<Ident>, ~TypedExpr<Ident>),
@@ -411,7 +418,8 @@ pub enum Expr<Ident = ~str> {
     Char(char),
     Lambda(Ident, ~TypedExpr<Ident>),
     Let(~[Binding<Ident>], ~TypedExpr<Ident>),
-    Case(~TypedExpr<Ident>, ~[Alternative<Ident>])
+    Case(~TypedExpr<Ident>, ~[Alternative<Ident>]),
+    Do(~[DoBinding<Ident>], ~TypedExpr<Ident>)
 }
 
 impl fmt::Show for Expr {
@@ -438,6 +446,7 @@ impl fmt::Show for Expr {
                 }
                 write!(f.buf, "\\}\n")
             }
+            _ => fail!("Show not implemented for expr")
         }
     }
 }
