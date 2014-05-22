@@ -1,5 +1,5 @@
 use std::fmt;
-pub use module::{Type, TypeApplication, TypeOperator, TypeVariable, IdentifierPattern, ConstructorPattern, NumberPattern, Constraint, Class, DataDefinition, TypeDeclaration};
+pub use module::{Type, TypeApplication, TypeOperator, TypeVariable, IdentifierPattern, ConstructorPattern, WildCardPattern, NumberPattern, Constraint, Class, DataDefinition, TypeDeclaration, function_type_};
 use module;
 pub use renamer::Name;
 
@@ -224,8 +224,9 @@ pub fn walk_pattern<Ident>(visitor: &mut Visitor<Ident>, pattern: &Pattern<Ident
 }
 
 pub mod translate {
-    use core::*;
     use module;
+    use module::{function_type_, char_type, list_type};
+    use core::*;
         
     pub fn translate_module(module: module::Module<Name>) -> Module<Id<Name>> {
         let module::Module { name : _name,
@@ -297,8 +298,66 @@ pub mod translate {
                 }).collect();
                 Case(~translate_expr(*expr), a)
             }
-            _ => fail!("Translation not implemented")
+            module::Do(bindings, expr) => {
+                let mut result = translate_expr(*expr);
+                for bind in bindings.move_iter().rev() {
+                    result = match bind {
+                        module::DoExpr(e) => {
+                            let x = do_bind2_id(e.typ.clone(), result.get_type().clone());
+                            Apply(~Apply(~x, ~translate_expr(e)), ~result)
+                        }
+                        module::DoBind(pattern, e) => {
+                            do_bind_translate(pattern.node, translate_expr(e), result)
+                        }
+                        module::DoLet(bs) => {
+                            Let(bs.move_iter().map(translate_binding).collect(), ~result)
+                        }
+                    };
+                }
+                result
+            }
         }
+    }
+
+    fn do_bind2_id(m_a: Type, m_b: Type) -> Expr<Id<Name>> {
+        let c = match *m_a.appl() {
+            TypeVariable(ref var) => ~[Constraint { class: "Monad".to_owned(), variables: ~[var.clone()] }],
+            _ => ~[]
+        };
+        let typ = function_type_(m_a, function_type_(m_b.clone(), m_b));
+        Identifier(Id::new(Name { name: ">>".to_owned(), uid: 0}, typ, c))
+    }
+    fn do_bind_translate(pattern: Pattern<Name>, expr: Expr<Id<Name>>, result: Expr<Id<Name>>) -> Expr<Id<Name>> {
+        //do {p <- e; stmts} 	=
+        //    let ok p = do {stmts}
+		//        ok _ = fail "..."
+		//    in e >>= ok
+        let m_a = expr.get_type().clone();
+        let a = m_a.appr().clone();
+        let m_b = result.get_type().clone();
+                debug!("m_a {}", m_a);
+        let c = match *m_a.appl() {
+            TypeVariable(ref var) => ~[Constraint { class: "Monad".to_owned(), variables: ~[var.clone()] }],
+            _ => ~[]
+        };
+        let arg2_type = function_type_(a.clone(), m_b.clone());
+        let bind_typ = function_type_(m_a, function_type_(arg2_type.clone(), m_b.clone()));
+        let bind_ident = Identifier(Id::new(Name { name: ">>=".to_owned(), uid: 0}, bind_typ, c.clone()));
+
+        //Create ok binding
+        let func_ident = Id::new(
+            Name { name: "#ok".to_owned(), uid: 0 },
+            arg2_type.clone(),
+            c.clone()
+        );//TODO unique id
+        let var = Id::new(Name { name: "p".to_owned(), uid: 0 }, function_type_(a, m_b.clone()), c.clone());//Constraints for a
+        let fail_ident = Identifier(Id::new(Name { name: "fail".to_owned(), uid: 0 }, function_type_(list_type(char_type()), m_b), c));
+        let func = Lambda(var.clone(), ~Case(~Identifier(var), 
+            ~[Alternative { pattern: translate_pattern(pattern), expression: result }
+            , Alternative { pattern: WildCardPattern, expression: Apply(~fail_ident, ~string(~"Unmatched pattern in let")) } ]));
+        let bind = Binding { name: func_ident.clone(), expression: func };
+        
+        Let(~[bind], ~mkApply(bind_ident, ~[expr, Identifier(func_ident)]))
     }
 
     fn translate_binding(binding : module::Binding<Name>) -> Binding<Id<Name>> {
@@ -312,7 +371,19 @@ pub mod translate {
             IdentifierPattern(i) => IdentifierPattern(Id::new(i, Type::new_var(0), ~[])),
             NumberPattern(n) => NumberPattern(n),
             ConstructorPattern(name, patterns) =>
-                ConstructorPattern(Id::new(name, Type::new_var(0), ~[]), patterns.move_iter().map(translate_pattern).collect())
+                ConstructorPattern(Id::new(name, Type::new_var(0), ~[]), patterns.move_iter().map(translate_pattern).collect()),
+            WildCardPattern => WildCardPattern
         }
+    }
+
+    fn string(s: ~str) -> Expr<Id<Name>> {
+        Literal(Literal { typ: list_type(char_type()), value: String(s) })
+    }
+    fn mkApply(func: Expr<Id<Name>>, args: ~[Expr<Id<Name>>]) -> Expr<Id<Name>> {
+        let mut result = func;
+        for arg in args.move_iter() {
+            result = Apply(~result, ~arg);
+        }
+        result
     }
 }

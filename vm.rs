@@ -775,4 +775,34 @@ fn instance_super_class() {
     assert_eq!(result, Some(ConstructorResult(1, Vec::new())));
 }
 
+#[test]
+fn monad_do() {
+    let prelude = compile_file("Prelude.hs");
+
+    let mut type_env = TypeEnvironment::new();
+    let assembly = compile_with_type_env(&mut type_env, [&prelude],
+"
+test :: Maybe Int -> Maybe Int -> Maybe Int
+test x y = do
+    x1 <- x
+    y
+    return (x1 + 1)
+
+main = test (Just 4) (Just 6)");
+
+    let mut vm = VM::new();
+    vm.add_assembly(prelude);
+    vm.add_assembly(assembly);
+    let x = vm.assembly.iter().flat_map(|a| a.superCombinators.iter()).find(|sc| sc.name.name == ~"main");
+    let result = match x {
+        Some(sc) => {
+            assert!(sc.arity == 0);
+            let result = vm.evaluate(sc.instructions, sc.assembly_id);
+            extract_result(result)
+        }
+        None => None
+    };
+    assert_eq!(result, Some(ConstructorResult(0, vec!(IntResult(5)))));
+}
+
 }

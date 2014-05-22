@@ -103,7 +103,8 @@ impl Renamer {
                 let ps2 = ps.move_iter().map(|p| self.rename_pattern(p)).collect();
                 ConstructorPattern(Name { name: s, uid: 0}, ps2)
             }
-            IdentifierPattern(s) => IdentifierPattern(self.make_unique(s))
+            IdentifierPattern(s) => IdentifierPattern(self.make_unique(s)),
+            WildCardPattern => WildCardPattern
         }
     }
     fn get_name(&self, s: ~str) -> Name {

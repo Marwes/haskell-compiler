@@ -270,7 +270,7 @@ impl <'a> TypeEnvironment<'a> {
                     constraint.variables[0] = new.var().clone();
                 }
                 match instance.typ {
-                    TypeOperator(ref mut op) if op.name.as_slice() == "IO" => {
+                    TypeOperator(ref mut op) if op.name.as_slice() == "IO" || op.name.as_slice() == "Maybe" => {
                         op.kind = KindFunction(~StarKind, ~StarKind);
                     }
                     _ => ()
@@ -360,18 +360,13 @@ impl <'a> TypeEnvironment<'a> {
     }
     
     ///Searches through a type, comparing it with the type on the identifier, returning all the specialized constraints
-    pub fn find_specialized_instances(&self, name: &Name, actual_type: &Type) -> ~[(~str, Type)] {
-        match self.find(name) {
-            Some(typ) => {
-                let mut constraints = Vec::new();
-                self.find_specialized(&mut constraints, actual_type, typ);
-                if constraints.len() == 0 {
-                    fail!("Could not find the specialized instance between {} <-> {}", typ, actual_type);
-                }
-                constraints.move_iter().collect()
-            }
-            None => fail!("Could not find '{}' in type environment", name)
+    pub fn find_specialized_instances(&self, typ: &Type, actual_type: &Type) -> ~[(~str, Type)] {
+        let mut constraints = Vec::new();
+        self.find_specialized(&mut constraints, actual_type, typ);
+        if constraints.len() == 0 {
+            fail!("Could not find the specialized instance between {} <-> {}", typ, actual_type);
         }
+        constraints.move_iter().collect()
     }
     fn find_specialized(&self, constraints: &mut Vec<(~str, Type)>, actual_type: &Type, typ: &Type) {
         match (actual_type, typ) {
@@ -449,6 +444,20 @@ impl <'a> TypeEnvironment<'a> {
                 }
             }
             &Lambda(_, ref mut body) => self.substitute(subs, *body),
+            &Do(ref mut binds, ref mut expr) => {
+                for bind in binds.mut_iter() {
+                    match *bind {
+                        DoExpr(ref mut expr) => self.substitute(subs, expr),
+                        DoBind(_, ref mut expr) => self.substitute(subs, expr),
+                        DoLet(ref mut bindings) => {
+                            for bind in bindings.mut_iter() {
+                                self.substitute(subs, &mut bind.expression);
+                            }
+                        }
+                    }
+                }
+                self.substitute(subs, *expr);
+            }
             _ => ()
         }
     }
@@ -599,11 +608,16 @@ impl <'a> TypeEnvironment<'a> {
                         }
                         DoBind(ref mut pattern, ref mut e) => {
                             self.typecheck(e, subs);
-                            self.typecheck_pattern(&pattern.location, subs, &pattern.node, &mut e.typ);
+                            unify_location(self, subs, &e.location, &mut e.typ, &mut previous);
+                            let inner_type = match e.typ {
+                                TypeApplication(_, ref mut t) => t,
+                                _ => fail!("Not a monadic type: {}", e.typ)
+                            };
+                            self.typecheck_pattern(&pattern.location, subs, &pattern.node, *inner_type);
                         }
                     }
                     match previous {
-                        TypeApplication(ref mut monad, ref mut typ) => {
+                        TypeApplication(ref mut _monad, ref mut typ) => {
                             **typ = self.new_var();
                         }
                         _ => fail!()
@@ -644,6 +658,9 @@ impl <'a> TypeEnvironment<'a> {
                 replace(&mut self.constraints, &mut t, subs);
                 self.apply(subs);
                 self.pattern_rec(0, location, subs, *patterns, &mut t);
+            }
+            &WildCardPattern => {
+                fail!("Wildcard pattern not implemented in typechecking")
             }
         }
     }
@@ -1588,7 +1605,7 @@ test x = do
     let module = do_typecheck_with(file, [&prelude as &Types]);
 
     let var = Type::new_var(0);
-    let t = function_type_(list_type(var.clone()), Type::new_var_args(2, ~[var.clone()]));
+    let t = function_type_(Type::new_var_args(2, ~[list_type(var.clone())]), Type::new_var_args(2, ~[var.clone()]));
     assert_eq!(module.bindings[0].expression.typ, t);
     assert_eq!(module.bindings[0].typeDecl.context[0].class.as_slice(), "Monad");
 }
