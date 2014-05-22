@@ -416,7 +416,6 @@ impl <'a> Compiler<'a> {
                 this.newStackVar(Name { name: ~"$dict", uid: 0 });
             }
             debug!("{} {}\n {}", bind.name, dict_arg, bind.expression);
-            print!("{} -> ", bind.name);
             let arity = this.compile_lambda_binding(&bind.expression, &mut instructions);
             comb.arity = arity + dict_arg;
             instructions.push(Update(0));
@@ -434,11 +433,9 @@ impl <'a> Compiler<'a> {
         match expr {
             &Lambda(ref ident, ref body) => {
                 self.newStackVar(ident.name.clone());
-                print!("{} ", ident.name);
                 1 + self.compile_lambda_binding(*body, instructions)
             }
             _ => {
-                println!("");
                 self.compile(expr, instructions, true);
                 0
             }
