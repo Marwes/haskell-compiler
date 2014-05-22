@@ -516,7 +516,7 @@ impl <'a> TypeEnvironment<'a> {
                 }
             }
             (&TypeOperator(ref l), &TypeOperator(ref r)) => l.name == r.name,
-            (_, &TypeVariable(ref var)) => true,
+            (_, &TypeVariable(_)) => true,
             _ => false
         }
     }

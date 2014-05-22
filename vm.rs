@@ -498,7 +498,7 @@ mod primitive {
         eval(vm, stack[0].clone());
         stack[1].clone()
     }
-    fn io_bind<'a>(vm: &'a VM<'a>, stack: &[Node<'a>]) -> Node<'a> {
+    fn io_bind<'a>(_vm: &'a VM<'a>, stack: &[Node<'a>]) -> Node<'a> {
         //IO a -> (a -> IO b) -> IO b
         //IO a = (RealWorld -> (a, RealWorld)
         //((RealWorld -> (a, RealWorld)) -> (a -> RealWorld -> (b, RealWorld)) -> RealWorld -> (b, RealWorld)
@@ -518,7 +518,7 @@ mod primitive {
         };
         Node::new(Application(Node::new(Application(stack[1].clone(), a.clone())), rw.clone()))
     }
-    fn io_return<'a>(vm: &'a VM<'a>, stack: &[Node<'a>]) -> Node<'a> {
+    fn io_return<'a>(_vm: &'a VM<'a>, stack: &[Node<'a>]) -> Node<'a> {
         //a -> RealWorld -> (a, RealWorld)
         Node::new(Constructor(0, vec!(stack[0].clone(), stack[1].clone())))
     }

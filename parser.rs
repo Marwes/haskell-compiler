@@ -1004,13 +1004,6 @@ fn newTuple(arguments : ~[TypedExpr]) -> TypedExpr {
 	makeApplication(name, arguments.move_iter())
 }
 
-fn apply_type(mut typ: Type, args: ~[Type]) -> Type {
-    for arg in args.move_iter() {
-        typ = TypeApplication(~typ, ~arg);
-    }
-    typ
-}
-
 fn letExpressionEndError(t : &Token) -> bool {
 	t.token != IN
 }
