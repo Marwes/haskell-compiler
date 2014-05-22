@@ -190,6 +190,13 @@ pub fn function_type_(func : Type, arg : Type) -> Type {
     Type::new_op(~"->", ~[func, arg])
 }
 
+pub fn io(typ: Type) -> Type {
+    Type::new_op("IO".to_owned(), ~[typ])
+}
+pub fn unit() -> Type {
+    Type::new_op("()".to_owned(), ~[])
+}
+
 
 #[deriving(Clone, Eq, TotalEq, Hash)]
 pub struct Constraint {
@@ -373,7 +380,7 @@ impl <T: Eq> Eq for TypedExpr<T> {
     }
 }
 
-impl fmt::Show for TypedExpr {
+impl <T: fmt::Show> fmt::Show for TypedExpr<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f.buf, "{}", self.expr)
     }
@@ -398,7 +405,15 @@ pub struct Alternative<Ident = ~str> {
 pub enum Pattern<Ident = ~str> {
     NumberPattern(int),
     IdentifierPattern(Ident),
-    ConstructorPattern(Ident, ~[Pattern<Ident>])
+    ConstructorPattern(Ident, ~[Pattern<Ident>]),
+    WildCardPattern
+}
+
+#[deriving(Eq)]
+pub enum DoBinding<Ident = ~str> {
+    DoLet(~[Binding<Ident>]),
+    DoBind(Located<Pattern<Ident>>, TypedExpr<Ident>),
+    DoExpr(TypedExpr<Ident>)
 }
 
 #[deriving(Eq)]
@@ -411,10 +426,11 @@ pub enum Expr<Ident = ~str> {
     Char(char),
     Lambda(Ident, ~TypedExpr<Ident>),
     Let(~[Binding<Ident>], ~TypedExpr<Ident>),
-    Case(~TypedExpr<Ident>, ~[Alternative<Ident>])
+    Case(~TypedExpr<Ident>, ~[Alternative<Ident>]),
+    Do(~[DoBinding<Ident>], ~TypedExpr<Ident>)
 }
 
-impl fmt::Show for Expr {
+impl <T: fmt::Show> fmt::Show for Expr<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             &Identifier(ref s) => write!(f.buf, "{}", *s),
@@ -438,6 +454,7 @@ impl fmt::Show for Expr {
                 }
                 write!(f.buf, "\\}\n")
             }
+            _ => write!(f.buf, "...")
         }
     }
 }
@@ -453,6 +470,7 @@ impl <T: fmt::Show> fmt::Show for Pattern<T> {
                 }
                 write!(f.buf, ")")
             }
+            &WildCardPattern => write!(f.buf, "_")
         }
     }
 }

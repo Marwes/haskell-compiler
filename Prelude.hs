@@ -193,6 +193,7 @@ instance Functor [] where
 class Monad m where
     (>>=) :: m a -> (a -> m b) -> m b
     return :: a -> m a
+    fail :: [Char] -> m a
 
 (>>) :: Monad m => m a -> m b -> m b
 (>>) x y = x >>= \_ -> y
@@ -202,10 +203,12 @@ instance Monad Maybe where
         Just y -> f y
         Nothing -> Nothing
     return x = Just x
+    fail x = error x
 
 instance Monad [] where
     (>>=) xs f = concat (map f xs)
     return x = [x]
+    fail x = error x
 
 class Enum a where
     succ :: a -> a
@@ -387,6 +390,8 @@ data IO a = IO
 instance Monad IO where
     (>>=) x f = io_bind x f
     return = io_return
+    fail x = error x
 
+test = show (Just True)
 
 

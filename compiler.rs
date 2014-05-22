@@ -1,6 +1,6 @@
 use core::*;
 use module::function_type;
-use typecheck::{Types, TypeEnvironment};
+use typecheck::{Types, DataTypes, TypeEnvironment};
 use scoped_map::ScopedMap;
 use std::iter::range_step;
 use std::default::Default;
@@ -213,9 +213,21 @@ impl Types for Module<Id> {
         for &(ref constraints, ref op) in self.instances.iter() {
             match op {
                 &TypeApplication(ref op, ref t) => {
-                    if classname == extract_applied_type(*op).op().name && extract_applied_type(*t).op().name == extract_applied_type(typ).op().name {
+                    let x = match extract_applied_type(*op) {
+                        &TypeOperator(ref x) => x,
+                        _ => fail!()
+                    };
+                    let y = match extract_applied_type(*t) {
+                        &TypeOperator(ref x) => x,
+                        _ => fail!()
+                    };
+                    let z = match extract_applied_type(typ) {
+                        &TypeOperator(ref x) => x,
+                        _ => fail!()
+                    };
+                    if classname == x.name && y.name == z.name {
                         let c : &[Constraint] = *constraints;
-                        let o : &Type = *op;
+                        let o : &Type = *t;
                         return Some((c, o));
                     }
                 }
@@ -279,9 +291,21 @@ impl Types for Assembly {
         for &(ref constraints, ref op) in self.instances.iter() {
             match op {
                 &TypeApplication(ref op, ref t) => {
-                    if classname == extract_applied_type(*op).op().name && extract_applied_type(*t).op().name == extract_applied_type(typ).op().name {
+                    let x = match extract_applied_type(*op) {
+                        &TypeOperator(ref x) => x,
+                        _ => fail!()
+                    };
+                    let y = match extract_applied_type(*t) {
+                        &TypeOperator(ref x) => x,
+                        _ => fail!()
+                    };
+                    let z = match extract_applied_type(typ) {
+                        &TypeOperator(ref x) => x,
+                        _ => fail!()
+                    };
+                    if classname == x.name && y.name == z.name {
                         let c : &[Constraint] = *constraints;
-                        let o : &Type = *op;
+                        let o : &Type = *t;
                         return Some((c, o));
                     }
                 }
@@ -300,6 +324,17 @@ impl Types for Assembly {
                 func(decl.context);
             }
         }
+    }
+}
+
+impl DataTypes for Assembly {
+    fn find_data_type<'a>(&'a self, name: &str) -> Option<&'a DataDefinition<Name>> {
+        for data in self.data_definitions.iter() {
+            if name == extract_applied_type(&data.typ).op().name {
+                return Some(data);
+            }
+        }
+        None
     }
 }
 
@@ -380,7 +415,8 @@ impl <'a> Compiler<'a> {
             if dict_arg == 1 {
                 this.newStackVar(Name { name: ~"$dict", uid: 0 });
             }
-            debug!("{}\n {}", bind.name, bind.expression);
+            debug!("{} {}\n {}", bind.name, dict_arg, bind.expression);
+            print!("{} -> ", bind.name);
             let arity = this.compile_lambda_binding(&bind.expression, &mut instructions);
             comb.arity = arity + dict_arg;
             instructions.push(Update(0));
@@ -398,9 +434,11 @@ impl <'a> Compiler<'a> {
         match expr {
             &Lambda(ref ident, ref body) => {
                 self.newStackVar(ident.name.clone());
+                print!("{} ", ident.name);
                 1 + self.compile_lambda_binding(*body, instructions)
             }
             _ => {
+                println!("");
                 self.compile(expr, instructions, true);
                 0
             }
@@ -514,8 +552,8 @@ impl <'a> Compiler<'a> {
                             ConstructorVariable(tag, arity) => { instructions.push(Pack(tag, arity)); None }
                             PrimitiveVariable(index) => { instructions.push(PushPrimitive(index)); None }
                             ClassVariable(typ, var) => self.compile_instance_variable(expr.get_type(), instructions, &name.name, typ, var),
-                            ConstraintVariable(index, _, constraints) => {
-                                let x = self.compile_with_constraints(&name.name, expr.get_type(), constraints, instructions);
+                            ConstraintVariable(index, bind_type, constraints) => {
+                                let x = self.compile_with_constraints(&name.name, expr.get_type(), bind_type, constraints, instructions);
                                 instructions.push(PushGlobal(index));
                                 instructions.push(Mkap);
                                 x
@@ -622,6 +660,12 @@ impl <'a> Compiler<'a> {
                     self.scope(|this| {
                         let pattern_start = instructions.len() as int;
                         let mut branches = Vec::new();
+                        //If it is only an identifier we do nothing in the pattern, but we still allocate a variable
+                        //Thus we decrease the stack size first so the result is no change after the allocation
+                        match alt.pattern {
+                            IdentifierPattern(_) => this.stackSize -= 1,
+                            _ => ()
+                        }
                         let stack_increase = this.compile_pattern(&alt.pattern, &mut branches, instructions, this.stackSize - 1, 0);
                         let pattern_end = instructions.len() as int;
 
@@ -670,8 +714,8 @@ impl <'a> Compiler<'a> {
                         instructions.push(PushGlobal(index));
                         None
                     }
-                    Some(ConstraintVariable(index, _function_type, constraints)) => {
-                        let dict = self.compile_with_constraints(&instance_fn_name, actual_type, constraints, instructions);
+                    Some(ConstraintVariable(index, function_type, constraints)) => {
+                        let dict = self.compile_with_constraints(&instance_fn_name, actual_type, function_type, constraints, instructions);
                         instructions.push(PushGlobal(index));
                         instructions.push(Mkap);
                         dict
@@ -681,13 +725,13 @@ impl <'a> Compiler<'a> {
             }
             None => {
                 let constraints = self.type_env.find_constraints(actual_type);
-                self.compile_with_constraints(name, actual_type, constraints, instructions)
+                self.compile_with_constraints(name, actual_type, typ, constraints, instructions)
             }
         }
     }
 
     ///Compile the loading of a variable which has constraints and will thus need to load a dictionary with functions as well
-    fn compile_with_constraints(&self, name: &Name, typ: &Type, constraints: &[Constraint], instructions: &mut Vec<Instruction>) -> Option<(~[(~str, Type)], ~[uint])> {
+    fn compile_with_constraints(&self, name: &Name, actual_type: &Type, function_type: &Type, constraints: &[Constraint], instructions: &mut Vec<Instruction>) -> Option<(~[(~str, Type)], ~[uint])> {
         match self.find(&Name { name: "$dict".to_owned(), uid: 0}) {
             Some(StackVariable(_)) => {
                 //Push dictionary or member of dictionary
@@ -700,7 +744,7 @@ impl <'a> Compiler<'a> {
             _ => {
                 //get dictionary index
                 //push dictionary
-                let dictionary_key = self.type_env.find_specialized_instances(name, typ);
+                let dictionary_key = self.type_env.find_specialized_instances(function_type, actual_type);
                 let (index, dict) = self.find_dictionary_index(dictionary_key);
                 instructions.push(PushDictionary(index));
                 dict
@@ -756,7 +800,11 @@ impl <'a> Compiler<'a> {
                 Some(class) => {
                     assert!(class.declarations.len() > 0);
                     for decl in class.declarations.iter() {
-                        let f = "#" + extract_applied_type(typ).op().name + decl.name;
+                        let x = match extract_applied_type(typ) {
+                            &TypeOperator(ref x) => x,
+                            _ => fail!("{}", typ)
+                        };
+                        let f = "#" + x.name + decl.name;
                         let name = Name { name: f, uid: 0 };
                         match self.find(&name) {
                             Some(GlobalVariable(index)) => {
@@ -870,6 +918,10 @@ impl <'a> Compiler<'a> {
             }
             &IdentifierPattern(ref ident) => {
                 self.newStackVar(ident.name.clone());
+                0
+            }
+            &WildCardPattern => {
+                self.stackSize += 1;
                 0
             }
         }

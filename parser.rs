@@ -259,15 +259,8 @@ fn subExpression(&mut self, parseError : |&Token| -> bool) -> Option<TypedExpr> 
 	    LBRACKET => Some(self.parseList()),
 	    LET =>
 		{
-			self.requireNext(LBRACE);
+			let binds = self.let_bindings();
 
-			let binds = self.sepBy1(|this| this.binding(), SEMICOLON);
-
-			let rBracket = self.lexer.current().token;
-			if (rBracket != RBRACE)
-			{
-				fail!(ParseError(&self.lexer, RBRACE));
-			}
 			let inToken = self.lexer.next(letExpressionEndError).token;
 			if (inToken != IN) {
 				fail!(ParseError(&self.lexer, IN));
@@ -314,6 +307,22 @@ fn subExpression(&mut self, parseError : |&Token| -> bool) -> Option<TypedExpr> 
             }
             Some(makeLambda(args.move_iter(), self.expression_()))
         }
+        DO => {
+            let location = self.lexer.current().location;
+            self.requireNext(LBRACE);
+            let bindings = self.sepBy1(|this| this.do_binding(), SEMICOLON);
+            self.lexer.backtrack();
+            self.requireNext(RBRACE);
+            if bindings.len() == 0 {
+                fail!("{}: Parse error: Empty do", self.lexer.current().location);
+            }
+            let mut bs: Vec<DoBinding> = bindings.move_iter().collect();
+            let expr = match bs.pop().unwrap() {
+                DoExpr(e) => e,
+                _ => fail!("{}: Parse error: Last binding in do must be an expression", self.lexer.current().location)
+            };
+            Some(TypedExpr::with_location(Do(bs.move_iter().collect(), ~expr), location))
+        }
         NAME => {
             let token = self.lexer.current();
             Some(TypedExpr::with_location(Identifier(token.value.clone()), token.location))
@@ -339,6 +348,47 @@ fn subExpression(&mut self, parseError : |&Token| -> bool) -> Option<TypedExpr> 
             None
         }
     }
+}
+
+fn do_binding(&mut self) -> DoBinding {
+    if self.lexer.next_().token == LET {
+        return DoLet(self.let_bindings());
+    }
+    debug!("Do binding {}", self.lexer.current());
+    self.lexer.backtrack();
+    let mut lookahead = 0;
+    loop {
+        lookahead += 1;
+        match self.lexer.next_().token {
+            SEMICOLON | RBRACE => {
+                for _ in range(0, lookahead) { self.lexer.backtrack(); }
+                return DoExpr(self.expression_());
+            }
+            LARROW => {
+                for _ in range(0, lookahead) { self.lexer.backtrack(); }
+                let loc = self.lexer.current().location;
+                let p = Located { location: loc, node: self.pattern() };
+                self.lexer.next_();//Skip <-
+                return DoBind(p, self.expression_());
+            }
+            EOF => { fail!("Unexpected EOF") }
+            _ => { debug!("Lookahead {}", self.lexer.current()); }
+        }
+    }
+}
+
+fn let_bindings(&mut self) -> ~[Binding] {
+
+    self.requireNext(LBRACE);
+
+    let binds = self.sepBy1(|this| this.binding(), SEMICOLON);
+
+    let rBracket = self.lexer.current().token;
+    if (rBracket != RBRACE)
+    {
+        fail!(ParseError(&self.lexer, RBRACE));
+    }
+    binds
 }
 
 fn alternative(&mut self) -> Alternative {
@@ -592,7 +642,7 @@ fn pattern(&mut self) -> Pattern {
 			}
 			ConstructorPattern(tuple_name(tupleArgs.len()), tupleArgs)
 		}
-	    _ => { fail!("Error parsing pattern") }
+	    _ => { fail!("Error parsing pattern at token {}", self.lexer.current()) }
 	}
 }
 
@@ -954,13 +1004,6 @@ fn newTuple(arguments : ~[TypedExpr]) -> TypedExpr {
 	makeApplication(name, arguments.move_iter())
 }
 
-fn apply_type(mut typ: Type, args: ~[Type]) -> Type {
-    for arg in args.move_iter() {
-        typ = TypeApplication(~typ, ~arg);
-    }
-    typ
-}
-
 fn letExpressionEndError(t : &Token) -> bool {
 	t.token != IN
 }
@@ -1164,6 +1207,22 @@ instance Eq a => Eq [a] where
     assert_eq!(module.instances[0].classname, ~"Eq");
     assert_eq!(module.instances[0].constraints[0].class, ~"Eq");
     assert_eq!(module.instances[0].typ, Type::new_op(~"[]", ~[Type::new_var(0)]));
+}
+#[test]
+fn parse_do_expr() {
+    let mut parser = Parser::new(
+r"main = do
+    putStrLn test
+    s <- getContents
+    return s
+".chars());
+    let module = parser.module();
+
+    let b = TypedExpr::new(Do(~[
+        DoExpr(apply(identifier("putStrLn".to_owned()), identifier("test".to_owned()))),
+        DoBind(Located { location: Location::eof(), node: IdentifierPattern("s".to_owned()) }, identifier("getContents".to_owned()))
+        ], ~apply(identifier("return".to_owned()), identifier("s".to_owned()))));
+    assert_eq!(module.bindings[0].expression, b);
 }
 
 #[test]

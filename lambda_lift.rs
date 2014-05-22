@@ -12,6 +12,19 @@ struct FreeVariables {
     uid: uint
 }
 
+fn each_pattern_variables(pattern: &Pattern<Id>, f: &|&Name|) {
+    match *pattern {
+        IdentifierPattern(ref ident) => (*f)(&ident.name),
+        ConstructorPattern(_, ref patterns) => {
+            for p in patterns.iter() {
+                each_pattern_variables(p, f);
+            }
+        }
+        _ => ()
+    }
+}
+
+
 impl FreeVariables {
 
 //Walks through an expression and notes all the free variables and for each lambda, adds the
@@ -65,7 +78,19 @@ fn free_variables(&mut self, variables: &mut HashMap<Name, int>, free_vars: &mut
             Let(new_bindings, e)
         }
         Case(expr, alts) => {
-            Case(expr, alts)
+            let e = self.free_variables(variables, free_vars, *expr);
+            let a = alts.move_iter().map(|Alternative { pattern: pattern, expression: expression }| {
+                each_pattern_variables(&pattern, &|name| {
+                    variables.insert_or_update_with(name.clone(), 1, |_, v| *v += 1);
+                });
+                let e = self.free_variables(variables, free_vars, expression);
+                each_pattern_variables(&pattern, &|name| {
+                    *variables.get_mut(name) -= 1;
+                    free_vars.remove(name);//arg was not actually a free variable
+                });
+                Alternative { pattern: pattern, expression: e }
+            }).collect();
+            Case(~e, a)
         }
         e => e
     }

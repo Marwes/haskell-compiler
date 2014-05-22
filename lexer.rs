@@ -30,9 +30,11 @@ pub enum TokenEnum {
 	CASE,
 	OF,
 	ARROW,
+    LARROW,
 	TYPEDECL,
 	DATA,
-    LAMBDA
+    LAMBDA,
+    DO
 }
 
 #[deriving(Clone, Eq)]
@@ -104,6 +106,7 @@ fn name_or_keyword(tok : &str) -> TokenEnum {
         "of" => OF,
         "->" => ARROW,
         "data" => DATA,
+        "do" => DO,
         _ => NAME
     }
 }
@@ -284,7 +287,7 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
         if newTok != LBRACE {
             match self.tokens.back() {
                 Some(tok) => {
-                    if tok.token == LET || tok.token == WHERE || tok.token == OF {
+                    if tok.token == LET || tok.token == WHERE || tok.token == OF || tok.token == DO {
                         let loc = self.unprocessedTokens.get(self.unprocessedTokens.len() - 1).location;
                         let indentstart = Token { token : INDENTSTART, value : ~"{n}", location : loc };
                         self.unprocessedTokens.push(indentstart);
@@ -443,6 +446,7 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
             let tok = match result.as_slice() {
                 "="  => EQUALSSIGN,
                 "->" => ARROW,
+                "<-" => LARROW,
                 "::" => TYPEDECL,
                 _    => OPERATOR
             };
