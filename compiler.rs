@@ -1,6 +1,6 @@
 use core::*;
 use module::function_type;
-use typecheck::{Types, TypeEnvironment};
+use typecheck::{Types, DataTypes, TypeEnvironment};
 use scoped_map::ScopedMap;
 use std::iter::range_step;
 use std::default::Default;
@@ -324,6 +324,17 @@ impl Types for Assembly {
                 func(decl.context);
             }
         }
+    }
+}
+
+impl DataTypes for Assembly {
+    fn find_data_type<'a>(&'a self, name: &str) -> Option<&'a DataDefinition<Name>> {
+        for data in self.data_definitions.iter() {
+            if name == extract_applied_type(&data.typ).op().name {
+                return Some(data);
+            }
+        }
+        None
     }
 }
 

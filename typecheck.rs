@@ -26,6 +26,18 @@ pub trait Types {
     fn each_constraint_list(&self, |&[Constraint]|);
 }
 
+pub trait DataTypes : Types {
+    fn find_data_type<'a>(&'a self, name: &str) -> Option<&'a DataDefinition<Name>>;
+}
+
+//Use this to get the constructor name, ie,  extract_applied_type(Either a b) == Either
+fn extract_applied_type<'a>(typ: &'a Type) -> &'a Type {
+    match typ {
+        &TypeApplication(ref lhs, _) => extract_applied_type(*lhs),
+        _ => typ
+    }
+}
+
 impl Types for Module<Name> {
     fn find_type<'a>(&'a self, name: &Name) -> Option<&'a Type> {
         for bind in self.bindings.iter() {
@@ -56,13 +68,6 @@ impl Types for Module<Name> {
     }
 
     fn find_instance<'a>(&'a self, classname: &str, typ: &Type) -> Option<(&'a [Constraint], &'a Type)> {
-        //Use this to get the constructor name, ie,  extract_applied_type(Either a b) == Either
-        fn extract_applied_type<'a>(typ: &'a Type) -> &'a Type {
-            match typ {
-                &TypeApplication(ref lhs, _) => extract_applied_type(*lhs),
-                _ => typ
-            }
-        }
         for instance in self.instances.iter() {
             if classname == instance.classname && extract_applied_type(&instance.typ) == extract_applied_type(typ) {//test name
                 let c : &[Constraint] = instance.constraints;
@@ -85,8 +90,19 @@ impl Types for Module<Name> {
     }
 }
 
+impl DataTypes for Module<Name> {
+    fn find_data_type<'a>(&'a self, name: &str) -> Option<&'a DataDefinition<Name>> {
+        for data in self.dataDefinitions.iter() {
+            if name == extract_applied_type(&data.typ).op().name {
+                return Some(data);
+            }
+        }
+        None
+    }
+}
+
 pub struct TypeEnvironment<'a> {
-    assemblies: Vec<&'a Types>,
+    assemblies: Vec<&'a DataTypes>,
     namedTypes : HashMap<Name, Type>,
     constraints: HashMap<TypeVariable, Vec<~str>>,
     instances: Vec<(~[Constraint], ~str, Type)>,
@@ -197,7 +213,7 @@ impl <'a> TypeEnvironment<'a> {
         }
     }
 
-    pub fn add_types(&'a mut self, types: &'a Types) {
+    pub fn add_types(&'a mut self, types: &'a DataTypes) {
         let mut max_id = 0;
         types.each_constraint_list(|context| {
             for constraint in context.iter() {
@@ -260,6 +276,7 @@ impl <'a> TypeEnvironment<'a> {
                 self.namedTypes.insert(Name { name: type_decl.name.clone(), uid: 0 }, t);
             }
         }
+        let data_definitions = module.dataDefinitions.clone();
         for instance in module.instances.mut_iter() {
             let class = module.classes.iter().find(|class| class.name == instance.classname)
                 .expect(format!("Could not find class {}", instance.classname));
@@ -270,8 +287,13 @@ impl <'a> TypeEnvironment<'a> {
                     constraint.variables[0] = new.var().clone();
                 }
                 match instance.typ {
-                    TypeOperator(ref mut op) if op.name.as_slice() == "IO" || op.name.as_slice() == "Maybe" => {
-                        op.kind = KindFunction(~StarKind, ~StarKind);
+                    TypeOperator(ref mut op) => {
+                        let maybe_data = self.assemblies.iter().filter_map(|a| a.find_data_type(op.name))
+                            .next();
+                        op.kind = maybe_data
+                            .or_else(|| data_definitions.iter().find(|data| op.name == extract_applied_type(&data.typ).op().name))
+                            .map(|data| extract_applied_type(&data.typ).kind().clone())
+                            .unwrap_or_else(|| if "[]" == op.name { KindFunction(~StarKind, ~StarKind) } else { StarKind });
                     }
                     _ => ()
                 }
@@ -1541,7 +1563,7 @@ fn typecheck_import() {
 r"
 test1 = map not [True, False]
 test2 = id (primIntAdd 2 0)";
-    let module = do_typecheck_with(file, [&prelude as &Types]);
+    let module = do_typecheck_with(file, [&prelude as &DataTypes]);
 
     assert_eq!(module.bindings[0].name.as_slice(), "test1");
     assert_eq!(module.bindings[0].expression.typ, Type::new_op(~"[]", ~[Type::new_op(~"Bool", ~[])]));
@@ -1582,7 +1604,7 @@ test x = do
     let y = reverse x
     putStrLn y
 ";
-    let module = do_typecheck_with(file, [&prelude as &Types]);
+    let module = do_typecheck_with(file, [&prelude as &DataTypes]);
 
     assert_eq!(module.bindings[0].expression.typ, function_type_(list_type(char_type()), io(unit())));
 }
@@ -1602,7 +1624,7 @@ test x = do
     : y ys <- x
     return y
 ";
-    let module = do_typecheck_with(file, [&prelude as &Types]);
+    let module = do_typecheck_with(file, [&prelude as &DataTypes]);
 
     let var = Type::new_var(0);
     let t = function_type_(Type::new_var_args(2, ~[list_type(var.clone())]), Type::new_var_args(2, ~[var.clone()]));
@@ -1624,7 +1646,7 @@ r"
 test x = do
     putStrLn x
     reverse [primIntAdd 0 0, 1, 2]";
-    do_typecheck_with(file, [&prelude as &Types]);
+    do_typecheck_with(file, [&prelude as &DataTypes]);
 }
 
 
@@ -1632,7 +1654,7 @@ test x = do
 fn do_typecheck(input: &str) -> Module<Name> {
     do_typecheck_with(input, [])
 }
-fn do_typecheck_with(input: &str, types: &[&Types]) -> Module<Name> {
+fn do_typecheck_with(input: &str, types: &[&DataTypes]) -> Module<Name> {
     let mut parser = Parser::new(input.chars());
     let mut module = rename_module(parser.module());
     let mut env = TypeEnvironment::new();
