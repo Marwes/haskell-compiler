@@ -4,6 +4,7 @@ use typecheck::{Types, DataTypes, TypeEnvironment};
 use scoped_map::ScopedMap;
 use std::iter::range_step;
 use std::default::Default;
+use std::vec::FromVec;
 
 use core::translate::{translate_module};
 use lambda_lift::do_lambda_lift;
@@ -86,7 +87,7 @@ pub struct SuperCombinator {
 }
 impl SuperCombinator {
     fn new() -> SuperCombinator {
-        SuperCombinator { arity : 0, name: Name { name: ~"", uid: 0}, instructions : ~[], type_declaration: Default::default(), constraints: ~[], assembly_id: 0 }
+        SuperCombinator { arity : 0, name: Name { name: "".to_owned(), uid: 0}, instructions : ~[], type_declaration: Default::default(), constraints: ~[], assembly_id: 0 }
     }
 }
 
@@ -390,12 +391,12 @@ impl <'a> Compiler<'a> {
         }
         self.module = None;
         Assembly {
-            superCombinators: superCombinators.move_iter().collect(),
-            instance_dictionaries: instance_dictionaries.move_iter().collect(),
+            superCombinators: FromVec::from_vec(superCombinators),
+            instance_dictionaries: FromVec::from_vec(instance_dictionaries),
             offset: self.assemblies.iter().flat_map(|assembly| assembly.superCombinators.iter()).len(),
             classes: module.classes.clone(),
-            instances: module.instances.iter().map(|x| x.clone()).collect(),
-            data_definitions: data_definitions.move_iter().collect()
+            instances: FromVec::<(~[Constraint], Type)>::from_vec(module.instances.iter().map(|x| x.clone()).collect()),
+            data_definitions: FromVec::from_vec(data_definitions)
         }
     }
 
@@ -413,7 +414,7 @@ impl <'a> Compiler<'a> {
         let mut instructions = Vec::new();
         self.scope(|this| {
             if dict_arg == 1 {
-                this.newStackVar(Name { name: ~"$dict", uid: 0 });
+                this.newStackVar(Name { name: "$dict".to_owned(), uid: 0 });
             }
             debug!("{} {}\n {}", bind.name, dict_arg, bind.expression);
             print!("{} -> ", bind.name);
@@ -425,7 +426,7 @@ impl <'a> Compiler<'a> {
             }
             instructions.push(Unwind);
         });
-        comb.instructions = instructions.move_iter().collect();
+        comb.instructions = FromVec::from_vec(instructions);
         debug!("{} compiled as:\n{}", bind.name, comb.instructions);
         comb
     }
@@ -480,8 +481,8 @@ impl <'a> Compiler<'a> {
                 return Some(ConstructorVariable(0, (identifier.len() - 1) as u16));
             }
             match identifier {
-                &"[]" => Some(ConstructorVariable(0, 0)),
-                &":" => Some(ConstructorVariable(1, 2)),
+                "[]" => Some(ConstructorVariable(0, 0)),
+                ":" => Some(ConstructorVariable(1, 2)),
                 _ => None
             }
         })
@@ -504,8 +505,8 @@ impl <'a> Compiler<'a> {
                 return Some((0, (identifier.len() - 1) as u16));
             }
             match identifier {
-                &"[]" => Some((0, 0)),
-                &":" => Some((1, 2)),
+                "[]" => Some((0, 0)),
+                ":" => Some((1, 2)),
                 _ => None
             }
         })
@@ -572,44 +573,44 @@ impl <'a> Compiler<'a> {
             &Literal(ref literal) => {
                 match &literal.value {
                     &Integral(i) => {
-                        if literal.typ == Type::new_op(~"Int", ~[]) {
+                        if literal.typ == Type::new_op("Int".to_owned(), ~[]) {
                             instructions.push(PushInt(i));
                         }
-                        else if literal.typ == Type::new_op(~"Double", ~[]) {
+                        else if literal.typ == Type::new_op("Double".to_owned(), ~[]) {
                             instructions.push(PushFloat(i as f64));
                         }
                         else {
                             let fromInteger = Identifier(Id {
-                                name: Name { name: ~"fromInteger", uid: 999999 }, 
-                                typ: function_type(&Type::new_op(~"Int", ~[]), &literal.typ),
+                                name: Name { name: "fromInteger".to_owned(), uid: 999999 }, 
+                                typ: function_type(&Type::new_op("Int".to_owned(), ~[]), &literal.typ),
                                 constraints: ~[]
                             });
-                            let number = Literal(Literal { typ: Type::new_op(~"Double", ~[]), value: Integral(i) });
-                            let apply = Apply(~fromInteger, ~number);
+                            let number = Literal(Literal { typ: Type::new_op("Double".to_owned(), ~[]), value: Integral(i) });
+                            let apply = Apply(box fromInteger, box number);
                             self.compile(&apply, instructions, strict);
                         }
                     }
                     &Fractional(f) => {
-                        if literal.typ == Type::new_op(~"Double", ~[]) {
+                        if literal.typ == Type::new_op("Double".to_owned(), ~[]) {
                             instructions.push(PushFloat(f));
                         }
                         else {
                             let fromRational = Identifier(Id {
-                                name: Name { name: ~"fromRational", uid: 999999 }, 
-                                typ: function_type(&Type::new_op(~"Double", ~[]), &literal.typ),
+                                name: Name { name: "fromRational".to_owned(), uid: 999999 }, 
+                                typ: function_type(&Type::new_op("Double".to_owned(), ~[]), &literal.typ),
                                 constraints: ~[]
                             });
                             let number = Literal(Literal {
-                                typ: Type::new_op(~"Double", ~[]),
+                                typ: Type::new_op("Double".to_owned(), ~[]),
                                 value: Fractional(f)
                             });
-                            let apply = Apply(~fromRational, ~number);
+                            let apply = Apply(box fromRational, box number);
                             self.compile(&apply, instructions, strict);
                         }
                     }
                     &String(ref s) => {
                         instructions.push(Pack(0, 0));
-                        for c in s.chars_rev() {
+                        for c in s.chars().rev() {
                             instructions.push(PushChar(c));
                             instructions.push(Pack(1, 2));
                         }
@@ -817,7 +818,7 @@ impl <'a> Compiler<'a> {
                 None => fail!("Could not find class '{}'", *class_name)
             }
         }
-        (dict_len, Some((constraints.to_owned(), function_indexes.move_iter().collect())))
+        (dict_len, Some((constraints.to_owned(), FromVec::from_vec(function_indexes))))
     }
 
     ///Attempt to compile a binary primitive, returning true if it succeded
@@ -1086,7 +1087,7 @@ main = test (primIntAdd 6 0)";
     let assembly = compile(file);
 
     let main = &assembly.superCombinators[1];
-    assert_eq!(main.name.name, ~"main");
+    assert_eq!(main.name.name, "main".to_owned());
     assert_eq!(main.instructions, ~[PushInt(0), PushInt(6), Add, PushGlobal(0), Mkap, Eval, Update(0), Unwind]);
 }
 
@@ -1103,7 +1104,7 @@ main x = primIntAdd (test x) 6";
     let assembly = compile(file);
 
     let main = assembly.superCombinators[1];
-    assert_eq!(main.name.name, ~"main");
+    assert_eq!(main.name.name, "main".to_owned());
     assert_eq!(main.instructions, ~[PushInt(6), Push(1), PushDictionaryMember(0), Mkap, Eval, Add, Update(0), Pop(2), Unwind]);
 }
 
@@ -1115,7 +1116,7 @@ fn compile_prelude() {
     let assembly = compile_with_type_env(&mut type_env, [&prelude], r"main = id (primIntAdd 2 0)");
 
     let sc = &assembly.superCombinators[0];
-    let id_index = prelude.superCombinators.iter().position(|sc| sc.name.equiv(& &"id")).unwrap();
+    let id_index = prelude.superCombinators.iter().position(|sc| sc.name.equiv(&"id")).unwrap();
     assert_eq!(sc.instructions, ~[PushInt(0), PushInt(2), Add, PushGlobal(id_index), Mkap, Eval, Update(0), Unwind]);
 }
 

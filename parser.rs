@@ -1,4 +1,5 @@
 use std::mem::{swap};
+use std::vec::FromVec;
 use collections::HashMap;
 use lexer::*;
 use module::*;
@@ -32,7 +33,7 @@ pub fn module(&mut self) -> Module {
 	    }
         LBRACE => {
 		    //No module declaration was found so default to Main
-		    ~"Main"
+		    "Main".to_owned()
 	    }
         _ => fail!(ParseError(&self.lexer, LBRACE))
     };
@@ -123,11 +124,11 @@ pub fn module(&mut self) -> Module {
 	}
     Module {
         name : modulename,
-        bindings : bindings.move_iter().collect(),
-        typeDeclarations : typeDeclarations.move_iter().collect(),
-        classes : classes.move_iter().collect(),
-        instances : instances.move_iter().collect(),
-        dataDefinitions : dataDefinitions.move_iter().collect() }
+        bindings : FromVec::from_vec(bindings),
+        typeDeclarations : FromVec::from_vec(typeDeclarations),
+        classes : FromVec::from_vec(classes),
+        instances : FromVec::from_vec(instances),
+        dataDefinitions : FromVec::from_vec(dataDefinitions) }
 }
 
 fn class(&mut self) -> Class {
@@ -209,26 +210,26 @@ fn parseList(&mut self) -> TypedExpr {
     self.requireNext(RBRACKET);
 
 	if expressions.len() == 0 {
-		return TypedExpr::new(Identifier(~"[]"));
+		return TypedExpr::new(Identifier("[]".to_owned()));
 	}
 
 	let mut application;
 	{
-		let mut arguments = ~[TypedExpr::new(Number(0)), TypedExpr::new(Number(0))];//Must be 2 in length
+		let mut arguments = box [TypedExpr::new(Number(0)), TypedExpr::new(Number(0))];//Must be 2 in length
 		swap(&mut arguments[0], expressions.mut_last().unwrap());
 		expressions.pop();
-		arguments[1] = TypedExpr::new(Identifier(~"[]"));
+		arguments[1] = TypedExpr::new(Identifier("[]".to_owned()));
 
-		application = makeApplication(TypedExpr::new(Identifier(~":")), arguments.move_iter());
+		application = makeApplication(TypedExpr::new(Identifier(":".to_owned())), arguments.move_iter());
 	}
 	while (expressions.len() > 0)
 	{
-		let mut arguments = ~[TypedExpr::new(Number(0)), TypedExpr::new(Number(0))];//Must be 2 in length
+		let mut arguments = box [TypedExpr::new(Number(0)), TypedExpr::new(Number(0))];//Must be 2 in length
 		swap(&mut arguments[0], expressions.mut_last().unwrap());
 		expressions.pop();
 		arguments[1] = application;
 
-		application = makeApplication(TypedExpr::new(Identifier(~":")), arguments.move_iter());
+		application = makeApplication(TypedExpr::new(Identifier(":".to_owned())), arguments.move_iter());
 	}
     application
 }
@@ -267,7 +268,7 @@ fn subExpression(&mut self, parseError : |&Token| -> bool) -> Option<TypedExpr> 
             }
 			match self.expression() {
                 Some(e) => {
-                    Some(TypedExpr::new(Let(binds, ~e)))
+                    Some(TypedExpr::new(Let(binds, box e)))
                 }
                 None => None
             }
@@ -287,7 +288,7 @@ fn subExpression(&mut self, parseError : |&Token| -> bool) -> Option<TypedExpr> 
 				fail!(ParseError(&self.lexer, RBRACE));
 			}
 			match expr {
-                Some(e) => Some(TypedExpr::with_location(Case(~e, alts), location)),
+                Some(e) => Some(TypedExpr::with_location(Case(box e, alts), location)),
                 None => None
             }
 		}
@@ -321,7 +322,7 @@ fn subExpression(&mut self, parseError : |&Token| -> bool) -> Option<TypedExpr> 
                 DoExpr(e) => e,
                 _ => fail!("{}: Parse error: Last binding in do must be an expression", self.lexer.current().location)
             };
-            Some(TypedExpr::with_location(Do(bs.move_iter().collect(), ~expr), location))
+            Some(TypedExpr::with_location(Do(FromVec::from_vec(bs), box expr), location))
         }
         NAME => {
             let token = self.lexer.current();
@@ -425,28 +426,28 @@ fn parseOperatorExpression(&mut self, inL : Option<TypedExpr>, minPrecedence : i
         };
         lhs = match (lhs, rhs) {
             (Some(lhs), Some(rhs)) => {
-                let args = ~[lhs, rhs];
+                let args = box [lhs, rhs];
                 Some(makeApplication(name, args.move_iter()))
             }
             (Some(lhs), None) => {
-                Some(TypedExpr::with_location(Apply(~name, ~lhs), loc))
+                Some(TypedExpr::with_location(Apply(box name, box lhs), loc))
             }
             (None, Some(rhs)) => {
-                if (op.value == ~"-")
+                if (op.value == "-".to_owned())
                 {
                     match name.expr {
-                        Identifier(ref mut n) => *n = ~"negate",
+                        Identifier(ref mut n) => *n = "negate".to_owned(),
                         _ => fail!("WTF")
                     }
-                    let args = ~[rhs];
+                    let args = box [rhs];
                     Some(makeApplication(name, args.move_iter()))
                 }
                 else
                 {
-                    let args = ~[TypedExpr::with_location(Identifier(~"#"), loc), rhs];
+                    let args = ~[TypedExpr::with_location(Identifier("#".to_owned()), loc), rhs];
                     let mut apply = makeApplication(name, args.move_iter());
                     apply.location = loc;
-                    let params = ~[~"#"];
+                    let params = box ["#".to_owned()];
                     Some(makeLambda(params.move_iter(), apply))
                 }
             }
@@ -540,7 +541,7 @@ fn binding(&mut self) -> Binding {
 		let lambda = makeLambda(arguments.move_iter(), self.expression_());
 		Binding { name : name.clone(),
             typeDecl : TypeDeclaration {
-                context : ~[],
+                context : box [],
                 typ : Type::new_var(-1),
                 name : name
             },
@@ -553,7 +554,7 @@ fn binding(&mut self) -> Binding {
 		Binding {
             name : name.clone(),
             typeDecl : TypeDeclaration {
-                context : ~[],
+                context : box [],
                 typ : Type::new_var(-1),
                 name : name
             },
@@ -582,7 +583,7 @@ fn patternParameter(&mut self) -> ~[Pattern] {
 						fail!(ParseError(&self.lexer, RPARENS));
 					}
 					tupleArgs.unshift(pat);
-					parameters.push(ConstructorPattern(tuple_name(tupleArgs.len()), tupleArgs.move_iter().collect()));
+					parameters.push(ConstructorPattern(tuple_name(tupleArgs.len()), FromVec::from_vec(tupleArgs)));
 				}
 				else {
                     //TODO?
@@ -592,13 +593,13 @@ fn patternParameter(&mut self) -> ~[Pattern] {
                 if self.lexer.next_().token != RBRACKET {
                     fail!(ParseError(&self.lexer, RBRACKET));
                 }
-                parameters.push(ConstructorPattern(~"[]", ~[]));
+                parameters.push(ConstructorPattern("[]".to_owned(), box []));
             }
 		    _ => { break; }
 		}
 	}
 	self.lexer.backtrack();
-	return parameters.move_iter().collect();
+	return FromVec::from_vec(parameters);
 }
 
 fn located_pattern(&mut self) -> Located<Pattern> {
@@ -617,12 +618,12 @@ fn pattern(&mut self) -> Pattern {
 			{
 				fail!(ParseError(&self.lexer, RBRACKET));
 			}
-			ConstructorPattern(~"[]", ~[])
+			ConstructorPattern("[]".to_owned(), box [])
 		}
 	    NAME | OPERATOR =>
 		{
 			let patterns = self.patternParameter();
-			if (name.char_at(0).is_uppercase() || name == ~":")
+			if (name.char_at(0).is_uppercase() || name == ":".to_owned())
 			{
 				ConstructorPattern(name, patterns)
 			}
@@ -693,22 +694,22 @@ fn constrained_type(&mut self, typeVariableMapping : &mut HashMap<~str, int>) ->
     }
     else {
         self.lexer.backtrack();
-        ~[self.parse_type_(&mut variableIndex, typeVariableMapping)]
+        box [self.parse_type_(&mut variableIndex, typeVariableMapping)]
     };
     let maybeContextArrow = self.lexer.next_().token;
     //If there is => arrow we proceed to parse the type
-    let typ = if (maybeContextArrow == OPERATOR && self.lexer.current().value == ~"=>") {
+    let typ = if (maybeContextArrow == OPERATOR && self.lexer.current().value == "=>".to_owned()) {
         self.parse_type_(&mut variableIndex, typeVariableMapping)
     }
     else if maybeContextArrow == ARROW {
 	    self.lexer.backtrack();
-        let mut args = ~[];
+        let mut args = box [];
         swap(&mut args, &mut maybeConstraints);
         self.parse_return_type(tupleType(args), &mut variableIndex, typeVariableMapping)
     }
     else {//If no => was found, translate the constraint list into a type
 	    self.lexer.backtrack();
-        let mut args = ~[];
+        let mut args = box [];
         swap(&mut args, &mut maybeConstraints);
         tupleType(args)
     };
@@ -728,7 +729,7 @@ fn constructorType(&mut self, arity : &mut int, dataDef: &DataDefinition, mappin
             }
 		}
 		else {
-			Type::new_op(self.lexer.current().value.clone(), ~[])
+			Type::new_op(self.lexer.current().value.clone(), box [])
         };
         function_type(&arg, &self.constructorType(arity, dataDef, mapping))
 	}
@@ -750,14 +751,14 @@ fn dataDefinition(&mut self) -> DataDefinition {
 	let dataName = self.requireNext(NAME).value.clone();
 
 	let mut definition = DataDefinition {
-        constructors : ~[],
+        constructors : box [],
         typ : Type::new_var(0),
         parameters : HashMap::new()
     };
     let mut typ = TypeOperator(TypeOperator { name: dataName, kind: star_kind.clone() });
 	while self.lexer.next_().token == NAME {
         //TODO use new variables isntead of only  -1
-		typ = TypeApplication(~typ, ~Type::new_var(-1));
+		typ = TypeApplication(box typ, box Type::new_var(-1));
 		definition.parameters.insert(self.lexer.current().value.clone(), -1);
 	}
     definition.typ = typ;
@@ -769,7 +770,7 @@ fn dataDefinition(&mut self) -> DataDefinition {
 		fail!(ParseError(&self.lexer, EQUALSSIGN));
 	}
 	definition.constructors = self.sepBy1_func(|this| this.constructor(&definition),
-		|t : &Token| t.token == OPERATOR && t.value == ~"|");
+		|t : &Token| t.token == OPERATOR && t.value == "|".to_owned());
 	for ii in range(0, definition.constructors.len())
 	{
 		definition.constructors[ii].tag = ii as int;
@@ -805,7 +806,7 @@ fn sub_type(&mut self, variableIndex: &mut int, typeVariableMapping: &mut HashMa
 	    NAME =>
 		{
 			if (token.value.char_at(0).is_uppercase()) {
-				Some(Type::new_op(token.value, ~[]))
+				Some(Type::new_op(token.value, box []))
 			}
 			else {
                 let t = typeVariableMapping.find_or_insert(token.value, *variableIndex);
@@ -823,14 +824,14 @@ fn parse_type_(&mut self, variableIndex: &mut int, typeVariableMapping : &mut Ha
 	    LBRACKET =>
 		{
             if self.lexer.next_().token == RBRACKET {
-                let listType = Type::new_op_kind(~"[]", ~[], Kind::new(2));
+                let listType = Type::new_op_kind("[]".to_owned(), box [], Kind::new(2));
                 self.parse_return_type(listType, variableIndex, typeVariableMapping)
             }
             else {
                 self.lexer.backtrack();
                 let t = self.parse_type_(variableIndex, typeVariableMapping);
                 self.requireNext(RBRACKET);
-                let listType = Type::new_op(~"[]", ~[t]);
+                let listType = Type::new_op("[]".to_owned(), box [t]);
                 
                 self.parse_return_type(listType, variableIndex, typeVariableMapping)
             }
@@ -841,12 +842,14 @@ fn parse_type_(&mut self, variableIndex: &mut int, typeVariableMapping : &mut Ha
 			let maybeComma = self.lexer.next_().token;
 			if (maybeComma == COMMA)
 			{
-				let mut tupleArgs: Vec<Type> = self.sepBy1(|this| this.parse_type_(variableIndex, typeVariableMapping), COMMA).move_iter().collect();
+				let mut tupleArgs: Vec<Type> = self.sepBy1(|this| this.parse_type_(variableIndex, typeVariableMapping), COMMA)
+                    .move_iter()
+                    .collect();
 				tupleArgs.unshift(t);
                 self.lexer.backtrack();
                 self.requireNext(RPARENS);
 
-                self.parse_return_type(tupleType(tupleArgs.move_iter().collect()), variableIndex, typeVariableMapping)
+                self.parse_return_type(tupleType(FromVec::from_vec(tupleArgs)), variableIndex, typeVariableMapping)
 			}
 			else if (maybeComma == RPARENS)
 			{
@@ -867,12 +870,12 @@ fn parse_type_(&mut self, variableIndex: &mut int, typeVariableMapping : &mut Ha
             }
 
 			let thisType = if (token.value.char_at(0).is_uppercase()) {
-				Type::new_op(token.value, typeArguments.move_iter().collect())
+				Type::new_op(token.value, FromVec::from_vec(typeArguments))
 			}
 			else {
                 let t = typeVariableMapping.find_or_insert(token.value, *variableIndex);
                 *variableIndex += 1;
-                Type::new_var_args(*t, typeArguments.move_iter().collect())
+                Type::new_var_args(*t, FromVec::from_vec(typeArguments))
 			};
 			self.parse_return_type(thisType, variableIndex, typeVariableMapping)
 		}
@@ -904,7 +907,7 @@ fn sepBy1_func<T>(&mut self, f : |&mut Parser<Iter>| -> T, sep : |&Token| -> boo
             break;
         }
     }
-    result.move_iter().collect()
+    FromVec::from_vec(result)
 }
 }//end impl Parser
 
@@ -925,14 +928,14 @@ fn precedence(s : &str) -> int {
     }
 }
 fn make_constraints(types: ~[Type]) -> ~[Constraint] {
-    types.move_iter().map(|typ| {
+    FromVec::<Constraint>::from_vec(types.move_iter().map(|typ| {
         match typ {
             TypeApplication(lhs, rhs) => {
-                Constraint { class: lhs.op().name.clone(), variables: ~[rhs.var().clone()] }
+                Constraint { class: lhs.op().name.clone(), variables: box [rhs.var().clone()] }
             }
             _ => fail!("Parse error in constraint, non applied type")
         }
-    }).collect()
+    }).collect())
 }
 
 
@@ -985,7 +988,7 @@ fn makeApplication<I: Iterator<TypedExpr>>(f : TypedExpr, mut args : I) -> Typed
     let mut func = f;
 	for a in args {
         let loc = func.location.clone();
-		func = TypedExpr::with_location(Apply(~func, ~a), loc);
+		func = TypedExpr::with_location(Apply(box func, box a), loc);
 	}
     func
 }
@@ -993,7 +996,7 @@ fn makeLambda<Iter: DoubleEndedIterator<~str>>(args : Iter, body : TypedExpr) ->
 	let mut body = body;
 	for a in args.rev() {
         let loc = body.location.clone();
-		body = TypedExpr::with_location(Lambda(a, ~body), loc);
+		body = TypedExpr::with_location(Lambda(a, box body), loc);
 	}
     body
 }
@@ -1082,15 +1085,15 @@ fn simple()
 {
     let mut parser = Parser::new("2 + 3".chars());
     let expr = parser.expression_();
-    assert_eq!(expr, apply(apply(identifier(~"+"), number(2)), number(3)));
+    assert_eq!(expr, apply(apply(identifier("+".to_owned()), number(2)), number(3)));
 }
 #[test]
 fn binding()
 {
     let mut parser = Parser::new("test x = x + 3".chars());
     let bind = parser.binding();
-    assert_eq!(bind.expression, lambda(~"x", apply(apply(identifier(~"+"), identifier(~"x")), number(3))));
-    assert_eq!(bind.name, ~"test");
+    assert_eq!(bind.expression, lambda("x".to_owned(), apply(apply(identifier("+".to_owned()), identifier("x".to_owned())), number(3))));
+    assert_eq!(bind.name, "test".to_owned());
 }
 
 #[test]
@@ -1099,7 +1102,7 @@ fn double()
     let mut parser = Parser::new("test = 3.14".chars());
     let bind = parser.binding();
     assert_eq!(bind.expression, rational(3.14));
-    assert_eq!(bind.name, ~"test");
+    assert_eq!(bind.name, "test".to_owned());
 }
 
 #[test]
@@ -1110,10 +1113,10 @@ let
     test = add 3 2
 in test - 2".chars());
     let expr = parser.expression_();
-    let mut bind = Binding { arity: 0, name: ~"test", typeDecl:Default::default(),
-        expression: apply(apply(identifier(~"add"), number(3)), number(2)) };
-    bind.typeDecl.name = ~"test";
-    assert_eq!(expr, let_(~[bind], apply(apply(identifier(~"-"), identifier(~"test")), number(2))));
+    let mut bind = Binding { arity: 0, name: "test".to_owned(), typeDecl:Default::default(),
+        expression: apply(apply(identifier("add".to_owned()), number(3)), number(2)) };
+    bind.typeDecl.name = "test".to_owned();
+    assert_eq!(expr, let_(box [bind], apply(apply(identifier("-".to_owned()), identifier("test".to_owned())), number(2))));
 }
 
 #[test]
@@ -1127,13 +1130,13 @@ r"case [] of
     let alt = Alternative {
         pattern: Located {
             location: Location::eof(),
-            node: ConstructorPattern(~":", ~[IdentifierPattern(~"x"), IdentifierPattern(~"xs")])
+            node: ConstructorPattern(":".to_owned(), box [IdentifierPattern("x".to_owned()), IdentifierPattern("xs".to_owned())])
         },
-        expression: identifier(~"x") };
+        expression: identifier("x".to_owned()) };
     let alt2 = Alternative {
-        pattern: Located { location: Location::eof(), node: ConstructorPattern(~"[]", ~[]) },
+        pattern: Located { location: Location::eof(), node: ConstructorPattern("[]".to_owned(), box []) },
         expression: number(2) };
-    assert_eq!(expression, case(identifier(~"[]"), ~[alt, alt2]));
+    assert_eq!(expression, case(identifier("[]".to_owned()), box [alt, alt2]));
 }
 
 #[test]
@@ -1146,7 +1149,7 @@ r"(.) :: (b -> c) -> (a -> b) -> (a -> c)".chars());
     let c = &Type::new_var(2);
     let f = function_type(&function_type(b, c), &function_type(&function_type(a, b), &function_type(a, c)));
 
-    assert_eq!(typeDecl.name, ~".");
+    assert_eq!(typeDecl.name, ".".to_owned());
     assert_eq!(typeDecl.typ, f);
 }
 #[test]
@@ -1155,9 +1158,9 @@ fn parse_data() {
 r"data Bool = True | False".chars());
     let data = parser.dataDefinition();
 
-    let b = Type::new_op(~"Bool", ~[]);
-    let t = Constructor { name: ~"True", tag:0, arity:0, typ: b.clone() };
-    let f = Constructor { name: ~"False", tag:1, arity:0, typ: b.clone() };
+    let b = Type::new_op("Bool".to_owned(), box []);
+    let t = Constructor { name: "True".to_owned(), tag:0, arity:0, typ: b.clone() };
+    let f = Constructor { name: "False".to_owned(), tag:1, arity:0, typ: b.clone() };
     assert_eq!(data.typ, b);
     assert_eq!(data.constructors[0], t);
     assert_eq!(data.constructors[1], f);
@@ -1169,9 +1172,9 @@ fn parse_data_2() {
 r"data List a = Cons a (List a) | Nil".chars());
     let data = parser.dataDefinition();
 
-    let list = Type::new_op(~"List", ~[Type::new_var(0)]);
-    let cons = Constructor { name: ~"Cons", tag:0, arity:2, typ: function_type(&Type::new_var(0), &function_type(&list, &list))};
-    let nil = Constructor { name: ~"Nil", tag:1, arity:0, typ: list.clone() };
+    let list = Type::new_op("List".to_owned(), box [Type::new_var(0)]);
+    let cons = Constructor { name: "Cons".to_owned(), tag:0, arity:2, typ: function_type(&Type::new_var(0), &function_type(&list, &list))};
+    let nil = Constructor { name: "Nil".to_owned(), tag:1, arity:0, typ: list.clone() };
     assert_eq!(data.typ, list);
     assert_eq!(data.constructors[0], cons);
     assert_eq!(data.constructors[1], nil);
@@ -1183,14 +1186,14 @@ fn parse_tuple() {
 r"(1, x)".chars());
     let expr = parser.expression_();
 
-    assert_eq!(expr, apply(apply(identifier(~"(,)"), number(1)), identifier(~"x")));
+    assert_eq!(expr, apply(apply(identifier("(,)".to_owned()), number(1)), identifier("x".to_owned())));
 }
 
 #[test]
 fn test_operators() {
     let mut parser = Parser::new("1 : 2 : []".chars());
     let expr = parser.expression_();
-    assert_eq!(expr, apply(apply(identifier(~":"), number(1)), apply(apply(identifier(~":"), number(2)), identifier(~"[]"))));
+    assert_eq!(expr, apply(apply(identifier(":".to_owned()), number(1)), apply(apply(identifier(":".to_owned()), number(2)), identifier("[]".to_owned()))));
 }
 
 #[test]
@@ -1203,10 +1206,10 @@ instance Eq a => Eq [a] where
     (==) xs ys = undefined".chars());
     let module = parser.module();
 
-    assert_eq!(module.classes[0].name, ~"Eq");
-    assert_eq!(module.instances[0].classname, ~"Eq");
-    assert_eq!(module.instances[0].constraints[0].class, ~"Eq");
-    assert_eq!(module.instances[0].typ, Type::new_op(~"[]", ~[Type::new_var(0)]));
+    assert_eq!(module.classes[0].name, "Eq".to_owned());
+    assert_eq!(module.instances[0].classname, "Eq".to_owned());
+    assert_eq!(module.instances[0].constraints[0].class, "Eq".to_owned());
+    assert_eq!(module.instances[0].typ, Type::new_op("[]".to_owned(), box [Type::new_var(0)]));
 }
 #[test]
 fn parse_do_expr() {
@@ -1218,10 +1221,10 @@ r"main = do
 ".chars());
     let module = parser.module();
 
-    let b = TypedExpr::new(Do(~[
+    let b = TypedExpr::new(Do(box [
         DoExpr(apply(identifier("putStrLn".to_owned()), identifier("test".to_owned()))),
         DoBind(Located { location: Location::eof(), node: IdentifierPattern("s".to_owned()) }, identifier("getContents".to_owned()))
-        ], ~apply(identifier("return".to_owned()), identifier("s".to_owned()))));
+        ], box apply(identifier("return".to_owned()), identifier("s".to_owned()))));
     assert_eq!(module.bindings[0].expression, b);
 }
 
@@ -1232,9 +1235,9 @@ fn parse_prelude() {
     let mut parser = Parser::new(contents.chars());
     let module = parser.module();
 
-    assert!(module.bindings.iter().any(|bind| bind.name == ~"foldl"));
-    assert!(module.bindings.iter().any(|bind| bind.name == ~"id"));
-    assert!(module.classes.iter().any(|class| class.name == ~"Eq"));
+    assert!(module.bindings.iter().any(|bind| bind.name == "foldl".to_owned()));
+    assert!(module.bindings.iter().any(|bind| bind.name == "id".to_owned()));
+    assert!(module.classes.iter().any(|class| class.name == "Eq".to_owned()));
 }
 
 }

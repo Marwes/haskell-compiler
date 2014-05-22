@@ -1,6 +1,7 @@
 use std::fmt;
 use collections::HashMap;
 use std::iter::range_step;
+use std::vec::FromVec;
 pub use std::default::Default;
 pub use lexer::{Location, Located};
 
@@ -70,7 +71,7 @@ pub struct TypeVariable {
 pub enum Type {
     TypeVariable(TypeVariable),
     TypeOperator(TypeOperator),
-    TypeApplication(~Type, ~Type),
+    TypeApplication(Box<Type>, Box<Type>),
     Generic(TypeVariable)
 }
 
@@ -82,7 +83,7 @@ impl Type {
     pub fn new_var_args(id: int, types : ~[Type]) -> Type {
         let mut result = TypeVariable(TypeVariable { id : id, kind: Kind::new(types.len() as int + 1) });
         for typ in types.move_iter() {
-            result = TypeApplication(~result, ~typ);
+            result = TypeApplication(box result, box typ);
         }
         result
     }
@@ -92,14 +93,14 @@ impl Type {
     pub fn new_op(name : ~str, types : ~[Type]) -> Type {
         let mut result = TypeOperator(TypeOperator { name : name, kind: Kind::new(types.len() as int + 1) });
         for typ in types.move_iter() {
-            result = TypeApplication(~result, ~typ);
+            result = TypeApplication(box result, box typ);
         }
         result
     }
     pub fn new_op_kind(name : ~str, types : ~[Type], kind: Kind) -> Type {
         let mut result = TypeOperator(TypeOperator { name : name, kind: kind });
         for typ in types.move_iter() {
-            result = TypeApplication(~result, ~typ);
+            result = TypeApplication(box result, box typ);
         }
         result
     }
@@ -167,27 +168,27 @@ pub fn tuple_type(size: uint) -> (~str, Type) {
     }
     ident.push_char(')');
     let result = ident.into_owned();
-    let mut typ = Type::new_op(result.clone(), var_list.move_iter().collect());
+    let mut typ = Type::new_op(result.clone(), FromVec::from_vec(var_list));
     for i in range_step(size as int - 1, -1, -1) {
-        typ = Type::new_op(~"->", ~[Generic(Type::new_var(i).var().clone()), typ]);
+        typ = Type::new_op("->".to_owned(), ~[Generic(Type::new_var(i).var().clone()), typ]);
     }
     (result, typ)
 }
 
 pub fn list_type(typ: Type) -> Type {
-    Type::new_op(~"[]", ~[typ])
+    Type::new_op("[]".to_owned(), ~[typ])
 }
 
 pub fn char_type() -> Type {
-    Type::new_op(~"Char", ~[])
+    Type::new_op("Char".to_owned(), ~[])
 }
 
 pub fn function_type(func : &Type, arg : &Type) -> Type {
-    Type::new_op(~"->", ~[func.clone(), arg.clone()])
+    Type::new_op("->".to_owned(), ~[func.clone(), arg.clone()])
 }
 
 pub fn function_type_(func : Type, arg : Type) -> Type {
-    Type::new_op(~"->", ~[func, arg])
+    Type::new_op("->".to_owned(), ~[func, arg])
 }
 
 pub fn io(typ: Type) -> Type {
@@ -206,14 +207,14 @@ pub struct Constraint {
 
 #[deriving(Clone, Eq, TotalEq, Hash)]
 pub enum Kind {
-    KindFunction(~Kind, ~Kind),
+    KindFunction(Box<Kind>, Box<Kind>),
     StarKind
 }
 impl fmt::Show for Kind {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            &StarKind => write!(f.buf, "*"),
-            &KindFunction(ref lhs, ref rhs) => write!(f.buf, "({} -> {})", *lhs, *rhs)
+            &StarKind => write!(f, "*"),
+            &KindFunction(ref lhs, ref rhs) => write!(f, "({} -> {})", *lhs, *rhs)
         }
     }
 }
@@ -222,7 +223,7 @@ impl Kind {
     pub fn new(v: int) -> Kind {
         let mut kind = star_kind.clone();
         for _ in range(1, v) {
-            kind = KindFunction(~StarKind, ~kind);
+            kind = KindFunction(box StarKind, box kind);
         }
         kind
     }
@@ -243,21 +244,21 @@ impl Default for Type {
 }
 impl fmt::Show for TypeVariable {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f.buf, "{}", self.id)
+        write!(f, "{}", self.id)
     }
 }
 impl fmt::Show for TypeOperator {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f.buf, "{}", self.name)
+        write!(f, "{}", self.name)
     }
 }
 
 impl fmt::Show for Type {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            &TypeVariable(ref var) => write!(f.buf, "{}", *var),
-            &TypeOperator(ref op) => write!(f.buf, "{}", *op),
-            &Generic(ref var) => write!(f.buf, "\\#{}", *var),
+            &TypeVariable(ref var) => write!(f, "{}", *var),
+            &TypeOperator(ref op) => write!(f, "{}", *op),
+            &Generic(ref var) => write!(f, "\\#{}", *var),
             &TypeApplication(ref lhs, ref rhs) => {
                 let l: &Type = *lhs;
                 let is_list = match l {
@@ -296,25 +297,25 @@ impl fmt::Show for Type {
                         _ => fail!()
                     };
                     if is_lhs_func {
-                        write!(f.buf, "({}) -> {}", lhs, rhs)
+                        write!(f, "({}) -> {}", lhs, rhs)
                     }
                     else {
-                        write!(f.buf, "{} -> {}", *x, rhs)
+                        write!(f, "{} -> {}", *x, rhs)
                     }
                 }
                 else {
                     if is_list {
-                        try!(write!(f.buf, "["));
+                        try!(write!(f, "["));
                     }
                     else {
-                        try!(write!(f.buf, "({} ", lhs));
+                        try!(write!(f, "({} ", lhs));
                     }
-                    try!(write!(f.buf, "{}", rhs));
+                    try!(write!(f, "{}", rhs));
                     if is_list {
-                        write!(f.buf, "]")
+                        write!(f, "]")
                     }
                     else {
-                        write!(f.buf, ")")
+                        write!(f, ")")
                     }
                 }
             }
@@ -323,23 +324,23 @@ impl fmt::Show for Type {
 }
 impl fmt::Show for Constraint {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        try!(write!(f.buf, "{}", self.class));
+        try!(write!(f, "{}", self.class));
         for var in self.variables.iter() {
-            try!(write!(f.buf, " {}", *var));
+            try!(write!(f, " {}", *var));
         }
         Ok(())
     }
 }
 impl fmt::Show for TypeDeclaration {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        try!(write!(f.buf, "{} :: ", self.name));
+        try!(write!(f, "{} :: ", self.name));
         for constraint in self.context.iter() {
-            try!(write!(f.buf, "{} ", *constraint));
+            try!(write!(f, "{} ", *constraint));
         }
         if self.context.len() > 0 {
-            try!(write!(f.buf, "=> "));
+            try!(write!(f, "=> "));
         }
-        write!(f.buf, "{}", self.typ)
+        write!(f, "{}", self.typ)
     }
 }
 
@@ -382,7 +383,7 @@ impl <T: Eq> Eq for TypedExpr<T> {
 
 impl <T: fmt::Show> fmt::Show for TypedExpr<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f.buf, "{}", self.expr)
+        write!(f, "{}", self.expr)
     }
 }
 
@@ -419,58 +420,58 @@ pub enum DoBinding<Ident = ~str> {
 #[deriving(Eq)]
 pub enum Expr<Ident = ~str> {
     Identifier(Ident),
-    Apply(~TypedExpr<Ident>, ~TypedExpr<Ident>),
+    Apply(Box<TypedExpr<Ident>>, Box<TypedExpr<Ident>>),
     Number(int),
     Rational(f64),
     String(~str),
     Char(char),
-    Lambda(Ident, ~TypedExpr<Ident>),
-    Let(~[Binding<Ident>], ~TypedExpr<Ident>),
-    Case(~TypedExpr<Ident>, ~[Alternative<Ident>]),
-    Do(~[DoBinding<Ident>], ~TypedExpr<Ident>)
+    Lambda(Ident, Box<TypedExpr<Ident>>),
+    Let(~[Binding<Ident>], Box<TypedExpr<Ident>>),
+    Case(Box<TypedExpr<Ident>>, ~[Alternative<Ident>]),
+    Do(~[DoBinding<Ident>], Box<TypedExpr<Ident>>)
 }
 
 impl <T: fmt::Show> fmt::Show for Expr<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            &Identifier(ref s) => write!(f.buf, "{}", *s),
-            &Apply(ref func, ref arg) => write!(f.buf, "({} {})", *func, *arg),
-            &Number(num) => write!(f.buf, "{}", num),
-            &Rational(num) => write!(f.buf, "{}", num),
-            &String(ref s) => write!(f.buf, "\"{}\"", *s),
-            &Char(c) => write!(f.buf, "'{}'", c),
-            &Lambda(ref arg, ref body) => write!(f.buf, "({} -> {})", *arg, *body),
+            &Identifier(ref s) => write!(f, "{}", *s),
+            &Apply(ref func, ref arg) => write!(f, "({} {})", *func, *arg),
+            &Number(num) => write!(f, "{}", num),
+            &Rational(num) => write!(f, "{}", num),
+            &String(ref s) => write!(f, "\"{}\"", *s),
+            &Char(c) => write!(f, "'{}'", c),
+            &Lambda(ref arg, ref body) => write!(f, "({} -> {})", *arg, *body),
             &Let(ref bindings, ref body) => {
-                try!(write!(f.buf, "let \\{\n"));
+                try!(write!(f, "let \\{\n"));
                 for bind in bindings.iter() {
-                    try!(write!(f.buf, "; {} = {}\n", bind.name, bind.expression));
+                    try!(write!(f, "; {} = {}\n", bind.name, bind.expression));
                 }
-                write!(f.buf, "\\} in {}\n", *body)
+                write!(f, "\\} in {}\n", *body)
             }
             &Case(ref expr, ref alts) => {
-                try!(write!(f.buf, "case {} of \\{\n", *expr));
+                try!(write!(f, "case {} of \\{\n", *expr));
                 for alt in alts.iter() {
-                    try!(write!(f.buf, "; {} -> {}\n", alt.pattern.node, alt.expression));
+                    try!(write!(f, "; {} -> {}\n", alt.pattern.node, alt.expression));
                 }
-                write!(f.buf, "\\}\n")
+                write!(f, "\\}\n")
             }
-            _ => write!(f.buf, "...")
+            _ => write!(f, "...")
         }
     }
 }
 impl <T: fmt::Show> fmt::Show for Pattern<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            &IdentifierPattern(ref s) => write!(f.buf, "{}", s),
-            &NumberPattern(ref i) => write!(f.buf, "{}", i),
+            &IdentifierPattern(ref s) => write!(f, "{}", s),
+            &NumberPattern(ref i) => write!(f, "{}", i),
             &ConstructorPattern(ref name, ref patterns) => {
-                try!(write!(f.buf, "({}", name));
+                try!(write!(f, "({}", name));
                 for p in patterns.iter() {
-                    try!(write!(f.buf, "{} ", p));
+                    try!(write!(f, "{} ", p));
                 }
-                write!(f.buf, ")")
+                write!(f, ")")
             }
-            &WildCardPattern => write!(f.buf, "_")
+            &WildCardPattern => write!(f, "_")
         }
     }
 }

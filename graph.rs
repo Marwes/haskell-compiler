@@ -1,4 +1,5 @@
 use std::cmp::min;
+use std::vec::FromVec;
 
 #[deriving(Eq, Show)]
 pub struct VertexIndex(uint);
@@ -68,7 +69,9 @@ pub fn strongly_connected_components<T>(graph: &Graph<T>) -> ~[~[VertexIndex]] {
         }
     }
 
-    tarjan.connections.move_iter().map(|vec| vec.move_iter().collect()).collect()
+    FromVec::<~[VertexIndex]>::from_vec(tarjan.connections
+        .move_iter()
+        .map(|vec| -> ~[VertexIndex] FromVec::from_vec(vec)).collect())
 }
 
 struct TarjanComponents<'a, T>{

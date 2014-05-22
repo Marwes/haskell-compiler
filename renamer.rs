@@ -1,3 +1,4 @@
+use std::vec::FromVec;
 use module::*;
 use scoped_map::ScopedMap;
 
@@ -10,9 +11,6 @@ pub struct Name {
 impl Str for Name {
     fn as_slice<'a>(&'a self) -> &'a str {
         self.name.as_slice()
-    }
-    fn into_owned(self) -> ~str {
-        self.name
     }
 }
 
@@ -28,7 +26,7 @@ impl Renamer {
         for bind in bindings.iter() {
             self.make_unique(bind.name.clone());
         }
-        bindings.move_iter().map(|binding| {
+        FromVec::<Binding<Name>>::from_vec(bindings.move_iter().map(|binding| {
             let Binding { name: name, expression: expression, typeDecl: typeDecl, arity: arity  } = binding;
             let n = self.uniques.find(&name).map(|u| u.clone())
                 .expect(format!("Error: lambda_lift: Undefined variable {}", name));
@@ -38,7 +36,7 @@ impl Renamer {
                 typeDecl: typeDecl,
                 arity: arity
             }
-        }).collect()
+        }).collect())
     }
 
     fn rename(&mut self, input_expr: TypedExpr<~str>) -> TypedExpr<Name> {
@@ -49,22 +47,22 @@ impl Renamer {
             String(s) => String(s),
             Char(c) => Char(c),
             Identifier(i) => Identifier(self.get_name(i)),
-            Apply(func, arg) => Apply(~self.rename(*func), ~self.rename(*arg)),
+            Apply(func, arg) => Apply(box self.rename(*func), box self.rename(*arg)),
             Lambda(arg, body) => {
                 self.uniques.enter_scope();
-                let l = Lambda(self.make_unique(arg), ~self.rename(*body));
+                let l = Lambda(self.make_unique(arg), box self.rename(*body));
                 self.uniques.exit_scope();
                 l
             }
             Let(bindings, expr) => {
                 self.uniques.enter_scope();
                 let bs = self.rename_bindings(bindings);
-                let l = Let(bs, ~self.rename(*expr));
+                let l = Let(bs, box self.rename(*expr));
                 self.uniques.exit_scope();
                 l
             }
             Case(expr, alts) => {
-                let a = alts.move_iter().map(
+                let a: Vec<Alternative<Name>> = alts.move_iter().map(
                     |Alternative { pattern: Located { location: loc, node: pattern }, expression: expression }| {
                     self.uniques.enter_scope();
                     let a = Alternative {
@@ -74,10 +72,10 @@ impl Renamer {
                     self.uniques.exit_scope();
                     a
                 }).collect();
-                Case(~self.rename(*expr), a)
+                Case(box self.rename(*expr), FromVec::from_vec(a))
             }
             Do(bindings, expr) => {
-                let bs = bindings.move_iter().map(|bind| {
+                let bs: Vec<DoBinding<Name>> = bindings.move_iter().map(|bind| {
                     match bind {
                         DoExpr(expr) => DoExpr(self.rename(expr)),
                         DoLet(bs) => DoLet(self.rename_bindings(bs)),
@@ -88,7 +86,7 @@ impl Renamer {
                         }
                     }
                 }).collect();
-                Do(bs, ~self.rename(*expr))
+                Do(FromVec::from_vec(bs), box self.rename(*expr))
             }
         };
         let mut t = TypedExpr::with_location(e, location);
@@ -100,8 +98,8 @@ impl Renamer {
         match pattern {
             NumberPattern(i) => NumberPattern(i),
             ConstructorPattern(s, ps) => {
-                let ps2 = ps.move_iter().map(|p| self.rename_pattern(p)).collect();
-                ConstructorPattern(Name { name: s, uid: 0}, ps2)
+                let ps2: Vec<Pattern<Name>> = ps.move_iter().map(|p| self.rename_pattern(p)).collect();
+                ConstructorPattern(Name { name: s, uid: 0}, FromVec::from_vec(ps2))
             }
             IdentifierPattern(s) => IdentifierPattern(self.make_unique(s)),
             WildCardPattern => WildCardPattern
@@ -148,33 +146,35 @@ pub fn rename_module(module: Module<~str>) -> Module<Name> {
         instances: instances
     } = module;
 
-    let data_definitions2 = data_definitions.move_iter().map(|data| {
+    let data_definitions2 : Vec<DataDefinition<Name>> = data_definitions.move_iter().map(|data| {
         let DataDefinition {
             constructors : ctors,
             typ : typ,
             parameters : parameters
         } = data;
+        let c: Vec<Constructor<Name>> = ctors.move_iter().map(|ctor| {
+            let Constructor {
+                name : name,
+                typ : typ,
+                tag : tag,
+                arity : arity
+            } = ctor;
+            Constructor {
+                name : Name { name: name, uid: 0 },
+                typ : typ,
+                tag : tag,
+                arity : arity
+            }
+        }).collect();
+
         DataDefinition {
             typ : typ,
             parameters : parameters,
-            constructors : ctors.move_iter().map(|ctor| {
-                let Constructor {
-                    name : name,
-                    typ : typ,
-                    tag : tag,
-                    arity : arity
-                } = ctor;
-                Constructor {
-                    name : Name { name: name, uid: 0 },
-                    typ : typ,
-                    tag : tag,
-                    arity : arity
-                }
-            }).collect()
+            constructors : FromVec::from_vec(c)
         }
     }).collect();
     
-    let instances2 = instances.move_iter().map(|instance| {
+    let instances2: Vec<Instance<Name>> = instances.move_iter().map(|instance| {
         let Instance {
             bindings : bindings,
             constraints : constraints,
@@ -182,22 +182,22 @@ pub fn rename_module(module: Module<~str>) -> Module<Name> {
             classname : classname
         } = instance;
         Instance {
-            bindings : bindings.move_iter().map(|b| renamer.rename_binding(b)).collect(),
+            bindings : FromVec::<Binding<Name>>::from_vec(bindings.move_iter().map(|b| renamer.rename_binding(b)).collect()),
             constraints : constraints,
             typ : typ,
             classname : classname
         }
     }).collect();
     
-    let bindings2 : ~[Binding<Name>] = bindings.move_iter().map(|b| renamer.rename_binding(b)).collect();
+    let bindings2 : Vec<Binding<Name>> = bindings.move_iter().map(|b| renamer.rename_binding(b)).collect();
     
     Module {
         name: renamer.make_unique(name),
         classes : classes,
-        dataDefinitions: data_definitions2,
+        dataDefinitions: FromVec::from_vec(data_definitions2),
         typeDeclarations: typeDeclarations,
-        bindings : bindings2,
-        instances: instances2
+        bindings : FromVec::from_vec(bindings2),
+        instances: FromVec::from_vec(instances2)
     }
 }
 

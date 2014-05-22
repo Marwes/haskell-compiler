@@ -64,7 +64,7 @@ impl <T: Eq> Eq for Located<T> {
 
 impl fmt::Show for Location {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f.buf, "{}:{}", self.row, self.column)
+        write!(f, "{}:{}", self.row, self.column)
     }
 }
 
@@ -76,7 +76,7 @@ pub struct Token {
 }
 impl Token {
     fn eof() -> Token {
-        Token { token : EOF, value : ~"", location : Location { column : -1, row : -1, absolute : -1} }
+        Token { token : EOF, value : "".to_owned(), location : Location { column : -1, row : -1, absolute : -1} }
     }
 
     fn new(token : TokenEnum, value : ~str, loc : Location) -> Token {
@@ -151,10 +151,10 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
         let loc = self.unprocessedTokens.get(self.unprocessedTokens.len() - 1).location;
 
         if newTok != LBRACE && newTok != MODULE {
-            self.unprocessedTokens.push(Token::new(INDENTSTART, ~"{n}", loc));
+            self.unprocessedTokens.push(Token::new(INDENTSTART, "{n}".to_owned(), loc));
         }
         if newline {
-            self.unprocessedTokens.push(Token::new(INDENTLEVEL, ~"<n>", loc));
+            self.unprocessedTokens.push(Token::new(INDENTLEVEL, "<n>".to_owned(), loc));
         }
         
         self.layout_independent_token(|_| false);
@@ -289,7 +289,7 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
                 Some(tok) => {
                     if tok.token == LET || tok.token == WHERE || tok.token == OF || tok.token == DO {
                         let loc = self.unprocessedTokens.get(self.unprocessedTokens.len() - 1).location;
-                        let indentstart = Token { token : INDENTSTART, value : ~"{n}", location : loc };
+                        let indentstart = Token { token : INDENTSTART, value : "{n}".to_owned(), location : loc };
                         self.unprocessedTokens.push(indentstart);
                     }
                 }
@@ -298,7 +298,7 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
         }
         if newline {
             let loc = self.unprocessedTokens.get(self.unprocessedTokens.len() - 1).location;
-            self.unprocessedTokens.push(Token::new(INDENTLEVEL, ~"<n>", loc));
+            self.unprocessedTokens.push(Token::new(INDENTLEVEL, "<n>".to_owned(), loc));
         }
         self.layout_independent_token(parseError);
         self.tokens.back().unwrap()
@@ -315,7 +315,7 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
                         //m == n
                         if m == tok.location.column {
                             debug!("Indents are same, inserted semicolon");
-                            self.tokens.push_back(Token::new(SEMICOLON, ~";", tok.location));
+                            self.tokens.push_back(Token::new(SEMICOLON, ";".to_owned(), tok.location));
                             self.unprocessedTokens.pop();
                             return;
                         }
@@ -324,7 +324,7 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
                             //TODO
                             debug!("n < m, insert \\}");
                             self.indentLevels.pop();
-                            self.tokens.push_back(Token::new(RBRACE, ~"}", tok.location));
+                            self.tokens.push_back(Token::new(RBRACE, "}".to_owned(), tok.location));
                             return;
                         }
                     }
@@ -346,21 +346,21 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
                         if n > m {
                             debug!("n > m + INDENTSTART, insert \\{");
                             self.unprocessedTokens.pop();
-                            self.tokens.push_back(Token::new(LBRACE, ~"{", tok.location));
+                            self.tokens.push_back(Token::new(LBRACE, "{".to_owned(), tok.location));
                             self.indentLevels.push(n);
                             return;
                         }
                     }
                     if n > 0 {
-                        self.tokens.push_back(Token::new(LBRACE, ~"{", tok.location));
+                        self.tokens.push_back(Token::new(LBRACE, "{".to_owned(), tok.location));
                         self.unprocessedTokens.pop();
                         self.indentLevels.push(n);
                         return;
                     }
-                    self.tokens.push_back(Token::new(LBRACE, ~"{", tok.location));
-                    self.tokens.push_back(Token::new(RBRACE, ~"}", tok.location));
+                    self.tokens.push_back(Token::new(LBRACE, "{".to_owned(), tok.location));
+                    self.tokens.push_back(Token::new(RBRACE, "}".to_owned(), tok.location));
                     self.unprocessedTokens.pop();
-                    self.unprocessedTokens.push(Token::new(INDENTLEVEL, ~"<n>", tok.location));
+                    self.unprocessedTokens.push(Token::new(INDENTLEVEL, "<n>".to_owned(), tok.location));
                     self.offset += 1;
                     return;
                 }
@@ -387,7 +387,7 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
                 let m = *self.indentLevels.get(self.indentLevels.len() - 1);
                 if m != 0 && parseError(&tok) {
                     debug!("ParseError on token {:?}, inserting \\}", tok.token);
-                    self.tokens.push_back(Token::new(RBRACE, ~"}", tok.location));
+                    self.tokens.push_back(Token::new(RBRACE, "}".to_owned(), tok.location));
                     self.indentLevels.pop();
                     return;
                 }
@@ -403,7 +403,7 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
             else if *self.indentLevels.get(self.indentLevels.len() - 1) != 0 {
                 //Keep pusing right brackets
                 self.indentLevels.pop();
-                self.tokens.push_back(Token::new(RBRACE, ~"}", self.location));
+                self.tokens.push_back(Token::new(RBRACE, "}".to_owned(), self.location));
                 return;
             }
         }
@@ -523,10 +523,10 @@ use lexer::*;
 fn simple() {
     let mut lexer = Lexer::new("test 2 + 3".chars());
 
-    assert_eq!(*lexer.next_(), Token::new_(NAME, ~"test"));
-    assert_eq!(*lexer.next_(), Token::new_(NUMBER, ~"2"));
-    assert_eq!(*lexer.next_(), Token::new_(OPERATOR, ~"+"));
-    assert_eq!(*lexer.next_(), Token::new_(NUMBER, ~"3"));
+    assert_eq!(*lexer.next_(), Token::new_(NAME, "test".to_owned()));
+    assert_eq!(*lexer.next_(), Token::new_(NUMBER, "2".to_owned()));
+    assert_eq!(*lexer.next_(), Token::new_(OPERATOR, "+".to_owned()));
+    assert_eq!(*lexer.next_(), Token::new_(NUMBER, "3".to_owned()));
 }
 #[test]
 fn let_bind() {
@@ -535,13 +535,13 @@ r"let
     test = 2 + 3
 in test".chars());
 
-    assert_eq!(*lexer.next_(), Token::new_(LET, ~"let"));
-    assert_eq!(*lexer.next_(), Token::new_(LBRACE, ~"{"));
-    assert_eq!(*lexer.next_(), Token::new_(NAME, ~"test"));
-    assert_eq!(*lexer.next_(), Token::new_(EQUALSSIGN, ~"="));
-    assert_eq!(*lexer.next_(), Token::new_(NUMBER, ~"2"));
-    assert_eq!(*lexer.next_(), Token::new_(OPERATOR, ~"+"));
-    assert_eq!(*lexer.next_(), Token::new_(NUMBER, ~"3"));
+    assert_eq!(*lexer.next_(), Token::new_(LET, "let".to_owned()));
+    assert_eq!(*lexer.next_(), Token::new_(LBRACE, "{".to_owned()));
+    assert_eq!(*lexer.next_(), Token::new_(NAME, "test".to_owned()));
+    assert_eq!(*lexer.next_(), Token::new_(EQUALSSIGN, "=".to_owned()));
+    assert_eq!(*lexer.next_(), Token::new_(NUMBER, "2".to_owned()));
+    assert_eq!(*lexer.next_(), Token::new_(OPERATOR, "+".to_owned()));
+    assert_eq!(*lexer.next_(), Token::new_(NUMBER, "3".to_owned()));
 }
 
 }

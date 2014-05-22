@@ -1,5 +1,6 @@
 use collections::HashMap;
 use std::mem::swap;
+use std::vec::FromVec;
 use module::*;
 use graph::{Graph, VertexIndex, strongly_connected_components};
 use primitive::primitives;
@@ -174,7 +175,7 @@ fn add_primitives(globals: &mut HashMap<Name, Type>, typename: &str) {
         insertTo(globals, "prim" + typename + "Remainder", binop.clone());
     }
     {
-        let binop = function_type(&typ, &function_type(&typ, &Type::new_op(~"Bool", ~[])));
+        let binop = function_type(&typ, &function_type(&typ, &Type::new_op("Bool".to_owned(), ~[])));
         insertTo(globals, "prim" + typename + "EQ", binop.clone());
         insertTo(globals, "prim" + typename + "LT", binop.clone());
         insertTo(globals, "prim" + typename + "LE", binop.clone());
@@ -188,18 +189,18 @@ impl <'a> TypeEnvironment<'a> {
     ///Creates a new TypeEnvironment and adds all the primitive types
     pub fn new() -> TypeEnvironment {
         let mut globals = HashMap::new();
-        add_primitives(&mut globals, &"Int");
-        add_primitives(&mut globals, &"Double");
-        insertTo(&mut globals, ~"primIntToDouble", function_type(&Type::new_op(~"Int", ~[]), &Type::new_op(~"Double", ~[])));
-        insertTo(&mut globals, ~"primDoubleToInt", function_type(&Type::new_op(~"Double", ~[]), &Type::new_op(~"Int", ~[])));
+        add_primitives(&mut globals, "Int");
+        add_primitives(&mut globals, "Double");
+        insertTo(&mut globals, "primIntToDouble".to_owned(), function_type(&Type::new_op("Int".to_owned(), ~[]), &Type::new_op("Double".to_owned(), ~[])));
+        insertTo(&mut globals, "primDoubleToInt".to_owned(), function_type(&Type::new_op("Double".to_owned(), ~[]), &Type::new_op("Int".to_owned(), ~[])));
         let var = Generic(Type::new_var_kind(-10, star_kind.clone()).var().clone());
         
         for (name, typ) in primitives().move_iter() {
             insertTo(&mut globals, name.to_owned(), typ);
         }
-        let list = Type::new_op(~"[]", ~[var.clone()]);
-        insertTo(&mut globals, ~"[]", list.clone());
-        insertTo(&mut globals, ~":", function_type(&var, &function_type(&list, &list)));
+        let list = Type::new_op("[]".to_owned(), ~[var.clone()]);
+        insertTo(&mut globals, "[]".to_owned(), list.clone());
+        insertTo(&mut globals, ":".to_owned(), function_type(&var, &function_type(&list, &list)));
         for i in range(0 as uint, 10) {
             let (name, typ) = tuple_type(i);
             insertTo(&mut globals, name, typ);
@@ -269,7 +270,7 @@ impl <'a> TypeEnvironment<'a> {
                     swap(&mut context, &mut type_decl.context);
                     let mut vec_context: Vec<Constraint> = context.move_iter().collect();
                     vec_context.push(c);
-                    type_decl.context = vec_context.move_iter().collect();
+                    type_decl.context = FromVec::from_vec(vec_context);
                 }
                 let mut t = type_decl.typ.clone();
                 quantify(0, &mut t);
@@ -293,7 +294,7 @@ impl <'a> TypeEnvironment<'a> {
                         op.kind = maybe_data
                             .or_else(|| data_definitions.iter().find(|data| op.name == extract_applied_type(&data.typ).op().name))
                             .map(|data| extract_applied_type(&data.typ).kind().clone())
-                            .unwrap_or_else(|| if "[]" == op.name { KindFunction(~StarKind, ~StarKind) } else { StarKind });
+                            .unwrap_or_else(|| if "[]" == op.name { KindFunction(box StarKind, box StarKind) } else { StarKind });
                     }
                     _ => ()
                 }
@@ -311,7 +312,7 @@ impl <'a> TypeEnvironment<'a> {
                     for constraint in instance.constraints.iter() {
                         vec_context.push(constraint.clone());
                     }
-                    binding.typeDecl.context = vec_context.move_iter().collect();
+                    binding.typeDecl.context = FromVec::from_vec(vec_context);
                 }
                 self.freshen_declaration(&mut binding.typeDecl);
                 for constraint in binding.typeDecl.context.iter() {
@@ -378,7 +379,7 @@ impl <'a> TypeEnvironment<'a> {
             }
         },
         |_| ());
-        result.move_iter().collect()
+        FromVec::from_vec(result)
     }
     
     ///Searches through a type, comparing it with the type on the identifier, returning all the specialized constraints
@@ -388,7 +389,7 @@ impl <'a> TypeEnvironment<'a> {
         if constraints.len() == 0 {
             fail!("Could not find the specialized instance between {} <-> {}", typ, actual_type);
         }
-        constraints.move_iter().collect()
+        FromVec::from_vec(constraints)
     }
     fn find_specialized(&self, constraints: &mut Vec<(~str, Type)>, actual_type: &Type, typ: &Type) {
         match (actual_type, typ) {
@@ -536,24 +537,24 @@ impl <'a> TypeEnvironment<'a> {
 
         match &mut expr.expr {
             &Number(_) => {
-                self.constraints.insert(expr.typ.var().clone(), vec![~"Num"]);
+                self.constraints.insert(expr.typ.var().clone(), vec!["Num".to_owned()]);
                 match &mut expr.typ {
                     &TypeVariable(ref mut v) => v.kind = star_kind.clone(),
                     _ => ()
                 }
             }
             &Rational(_) => {
-                self.constraints.insert(expr.typ.var().clone(), vec![~"Fractional"]);
+                self.constraints.insert(expr.typ.var().clone(), vec!["Fractional".to_owned()]);
                 match &mut expr.typ {
                     &TypeVariable(ref mut v) => v.kind = star_kind.clone(),
                     _ => ()
                 }
             }
             &String(_) => {
-                expr.typ = Type::new_op(~"[]", ~[Type::new_op(~"Char", ~[])]);
+                expr.typ = Type::new_op("[]".to_owned(), ~[Type::new_op("Char".to_owned(), ~[])]);
             }
             &Char(_) => {
-                expr.typ = Type::new_op(~"Char", ~[]);
+                expr.typ = Type::new_op("Char".to_owned(), ~[]);
             }
             &Identifier(ref name) => {
                 match self.fresh(name) {
@@ -615,9 +616,9 @@ impl <'a> TypeEnvironment<'a> {
                 expr.typ = alt0_;
             }
             &Do(ref mut bindings, ref mut last_expr) => {
-                let mut previous = self.new_var_kind(KindFunction(~StarKind, ~StarKind));
-                self.constraints.insert(previous.var().clone(), vec!(~"Monad"));
-                previous = TypeApplication(~previous, ~self.new_var());
+                let mut previous = self.new_var_kind(KindFunction(box StarKind, box StarKind));
+                self.constraints.insert(previous.var().clone(), vec!("Monad".to_owned()));
+                previous = TypeApplication(box previous, box self.new_var());
                 for bind in bindings.mut_iter() {
                     match *bind {
                         DoExpr(ref mut e) => {
@@ -664,7 +665,7 @@ impl <'a> TypeEnvironment<'a> {
                 self.namedTypes.insert(ident.clone(), typ.clone());
             }
             &NumberPattern(_) => {
-                let mut typ = Type::new_op(~"Int", ~[]);
+                let mut typ = Type::new_op("Int".to_owned(), ~[]);
                 {
                     unify_location(self, subs, location, &mut typ, match_type);
                     replace(&mut self.constraints, match_type, subs);
@@ -807,7 +808,7 @@ fn is_function(typ: &Type) -> bool {
                 &TypeApplication(ref lhs, _) => {
                     let l: &Type = *lhs;
                     match l {
-                        &TypeOperator(ref op) => op.name.equiv(& &"->"),
+                        &TypeOperator(ref op) => op.name.equiv(&"->"),
                         _ => false
                     }
                 }
@@ -1042,10 +1043,10 @@ fn unify(env: &mut TypeEnvironment, subs: &mut Substitution, lhs: Type, rhs: Typ
                                 if !env.has_instance(*c, &typ) {
                                     match &typ {
                                         &TypeOperator(ref op) => {
-                                            if c.equiv(& &"Num") && (op.name.equiv(& &"Int") || op.name.equiv(& &"Double")) && *typ.kind() == star_kind {
+                                            if c.equiv(&"Num") && (op.name.equiv(&"Int") || op.name.equiv(&"Double")) && *typ.kind() == star_kind {
                                                 continue;
                                             }
-                                            else if c.equiv(& &"Fractional") && "Double" == op.name && *typ.kind() == star_kind {
+                                            else if c.equiv(&"Fractional") && "Double" == op.name && *typ.kind() == star_kind {
                                                 continue;
                                             }
                                         }
@@ -1073,7 +1074,7 @@ fn unify(env: &mut TypeEnvironment, subs: &mut Substitution, lhs: Type, rhs: Typ
                     replace(&mut env.constraints, r1, subs);
                     replace(&mut env.constraints, r2, subs);
                     match unify(env, subs, *r1, *r2) {
-                        Ok(typ) => Ok(TypeApplication(~arg, ~typ)),
+                        Ok(typ) => Ok(TypeApplication(box arg, box typ)),
                         Err(e) => Err(e)
                     }
                 }
@@ -1146,10 +1147,10 @@ fn add_edges<T>(graph: &mut Graph<T>, map: &HashMap<Name, VertexIndex>, function
     }
 }
 
-fn each_type(typ: &Type, var_fn: |&TypeVariable|, op_fn: |&TypeOperator|) {
-    each_type_(typ, &var_fn, &op_fn);
+fn each_type(typ: &Type, mut var_fn: |&TypeVariable|, mut op_fn: |&TypeOperator|) {
+    each_type_(typ, &mut var_fn, &mut op_fn);
 }
-fn each_type_(typ: &Type, var_fn: &|&TypeVariable|, op_fn: &|&TypeOperator|) {
+fn each_type_(typ: &Type, var_fn: &mut |&TypeVariable|, op_fn: &mut |&TypeOperator|) {
     match typ {
         &TypeVariable(ref var) => (*var_fn)(var),
         &TypeOperator(ref op) => (*op_fn)(op),
@@ -1190,11 +1191,11 @@ fn find_kind(test: &TypeVariable, expected: Option<Kind>, typ: &Type) -> Result<
 }
 
 pub fn function_type(func : &Type, arg : &Type) -> Type {
-    Type::new_op(~"->", ~[func.clone(), arg.clone()])
+    Type::new_op("->".to_owned(), ~[func.clone(), arg.clone()])
 }
 
 pub fn function_type_(func : Type, arg : Type) -> Type {
-    Type::new_op(~"->", ~[func, arg])
+    Type::new_op("->".to_owned(), ~[func, arg])
 }
 
 pub fn with_arg_return(func_type: &mut Type, func: |&mut Type, &mut Type|) -> bool {
@@ -1219,7 +1220,7 @@ pub fn identifier(i : ~str) -> TypedExpr {
 }
 #[cfg(test)]
 pub fn lambda(arg : ~str, body : TypedExpr) -> TypedExpr {
-    TypedExpr::new(Lambda(arg, ~body))
+    TypedExpr::new(Lambda(arg, box body))
 }
 #[cfg(test)]
 pub fn number(i : int) -> TypedExpr {
@@ -1231,15 +1232,15 @@ pub fn rational(i : f64) -> TypedExpr {
 }
 #[cfg(test)]
 pub fn apply(func : TypedExpr, arg : TypedExpr) -> TypedExpr {
-    TypedExpr::new(Apply(~func, ~arg))
+    TypedExpr::new(Apply(box func, box arg))
 }
 #[cfg(test)]
 pub fn let_(bindings : ~[Binding], expr : TypedExpr) -> TypedExpr {
-    TypedExpr::new(Let(bindings, ~expr))
+    TypedExpr::new(Let(bindings, box expr))
 }
 #[cfg(test)]
 pub fn case(expr : TypedExpr, alts: ~[Alternative]) -> TypedExpr {
-    TypedExpr::new(Case(~expr, alts))
+    TypedExpr::new(Case(box expr, alts))
 }
 
 #[cfg(test)]
@@ -1254,11 +1255,11 @@ use std::io::File;
 #[test]
 fn application() {
     let mut env = TypeEnvironment::new();
-    let n = ~TypedExpr::new(Identifier(~"primIntAdd"));
-    let num = ~TypedExpr::new(Number(1));
+    let n = box TypedExpr::new(Identifier("primIntAdd".to_owned()));
+    let num = box TypedExpr::new(Number(1));
     let e = TypedExpr::new(Apply(n, num));
     let mut expr = rename_expr(e);
-    let type_int = Type::new_op(~"Int", ~[]);
+    let type_int = Type::new_op("Int".to_owned(), ~[]);
     let unary_func = function_type(&type_int, &type_int);
     env.typecheck_expr(&mut expr);
 
@@ -1269,10 +1270,10 @@ fn application() {
 #[test]
 fn typecheck_lambda() {
     let mut env = TypeEnvironment::new();
-    let type_int = Type::new_op(~"Int",~[]);
+    let type_int = Type::new_op("Int".to_owned(),~[]);
     let unary_func = function_type(&type_int, &type_int);
 
-    let e = lambda(~"x", apply(apply(identifier(~"primIntAdd"), identifier(~"x")), number(1)));
+    let e = lambda("x".to_owned(), apply(apply(identifier("primIntAdd".to_owned()), identifier("x".to_owned())), number(1)));
     let mut expr = rename_expr(e);
     env.typecheck_expr(&mut expr);
 
@@ -1282,12 +1283,12 @@ fn typecheck_lambda() {
 #[test]
 fn typecheck_let() {
     let mut env = TypeEnvironment::new();
-    let type_int = Type::new_op(~"Int", ~[]);
+    let type_int = Type::new_op("Int".to_owned(), ~[]);
     let unary_func = function_type(&type_int, &type_int);
 
     //let test x = add x in test
-    let unary_bind = lambda(~"x", apply(apply(identifier(~"primIntAdd"), identifier(~"x")), number(1)));
-    let e = let_(~[Binding { arity: 1, name: ~"test", expression: unary_bind, typeDecl: Default::default() }], identifier(~"test"));
+    let unary_bind = lambda("x".to_owned(), apply(apply(identifier("primIntAdd".to_owned()), identifier("x".to_owned())), number(1)));
+    let e = let_(~[Binding { arity: 1, name: "test".to_owned(), expression: unary_bind, typeDecl: Default::default() }], identifier("test".to_owned()));
     let mut expr = rename_expr(e);
     env.typecheck_expr(&mut expr);
 
@@ -1297,7 +1298,7 @@ fn typecheck_let() {
 #[test]
 fn typecheck_case() {
     let mut env = TypeEnvironment::new();
-    let type_int = Type::new_op(~"Int", ~[]);
+    let type_int = Type::new_op("Int".to_owned(), ~[]);
 
     let mut parser = Parser::new(r"case [] of { : x xs -> primIntAdd x 2 ; [] -> 3}".chars());
     let mut expr = rename_expr(parser.expression_());
@@ -1306,7 +1307,7 @@ fn typecheck_case() {
     assert_eq!(expr.typ, type_int);
     match &expr.expr {
         &Case(ref case_expr, _) => {
-            assert_eq!(case_expr.typ, Type::new_op(~"[]", ~[Type::new_op(~"Int", ~[])]));
+            assert_eq!(case_expr.typ, Type::new_op("[]".to_owned(), ~[Type::new_op("Int".to_owned(), ~[])]));
         }
         _ => fail!("typecheck_case")
     }
@@ -1322,7 +1323,7 @@ main = case [mult2 123, 0] of
     [] -> 10";
     let module = do_typecheck(file);
 
-    assert_eq!(module.bindings[1].expression.typ, Type::new_op(~"Int", ~[]));
+    assert_eq!(module.bindings[1].expression.typ, Type::new_op("Int".to_owned(), ~[]));
 }
 
 #[test]
@@ -1333,7 +1334,7 @@ fn typecheck_string() {
     let mut expr = rename_expr(parser.expression_());
     env.typecheck_expr(&mut expr);
 
-    assert_eq!(expr.typ, Type::new_op(~"[]", ~[Type::new_op(~"Char", ~[])]));
+    assert_eq!(expr.typ, Type::new_op("[]".to_owned(), ~[Type::new_op("Char".to_owned(), ~[])]));
 }
 
 #[test]
@@ -1344,8 +1345,8 @@ fn typecheck_tuple() {
     let mut expr = rename_expr(parser.expression_());
     env.typecheck_expr(&mut expr);
 
-    let list = Type::new_op(~"[]", ~[Type::new_op(~"Char", ~[])]);
-    assert_eq!(expr.typ, Type::new_op(~"(,)", ~[Type::new_op(~"Int", ~[]), list]));
+    let list = Type::new_op("[]".to_owned(), ~[Type::new_op("Char".to_owned(), ~[])]);
+    assert_eq!(expr.typ, Type::new_op("(,)".to_owned(), ~[Type::new_op("Int".to_owned(), ~[]), list]));
 }
 
 #[test]
@@ -1356,7 +1357,7 @@ r"data Bool = True | False
 test x = True";
     let module = do_typecheck(file);
 
-    let typ = function_type(&Type::new_var(0), &Type::new_op(~"Bool", ~[]));
+    let typ = function_type(&Type::new_var(0), &Type::new_op("Bool".to_owned(), ~[]));
     let bind_type0 = module.bindings[0].expression.typ;
     assert_eq!(bind_type0, typ);
 }
@@ -1377,8 +1378,8 @@ in b".chars());
     env.typecheck_expr(&mut expr);
 
     
-    let int_type = Type::new_op(~"Int", ~[]);
-    let list_type = Type::new_op(~"[]", ~[int_type.clone()]);
+    let int_type = Type::new_op("Int".to_owned(), ~[]);
+    let list_type = Type::new_op("[]".to_owned(), ~[int_type.clone()]);
     match &expr.expr {
         &Let(ref binds, _) => {
             assert_eq!(binds.len(), 4);
@@ -1405,7 +1406,7 @@ main = test 1";
     let module = do_typecheck(file);
 
     let typ = &module.bindings[0].expression.typ;
-    assert_eq!(typ, &Type::new_op(~"Int", ~[]));
+    assert_eq!(typ, &Type::new_op("Int".to_owned(), ~[]));
 }
 
 //Test that calling a function with constraints will propagate the constraints to
@@ -1427,10 +1428,10 @@ main x y = primIntAdd (test x) (test y)".chars());
     env.typecheck_module(&mut module);
 
     let typ = &module.bindings[0].expression.typ;
-    let int_type = Type::new_op(~"Int", ~[]);
+    let int_type = Type::new_op("Int".to_owned(), ~[]);
     let test = function_type(&Type::new_var(-1),  &function_type(&Type::new_var(-2), &int_type));
     assert_eq!(typ, &test);
-    let test_cons = vec![~"Test"];
+    let test_cons = vec!["Test".to_owned()];
     assert_eq!(env.constraints.find(typ.appl().appr().var()), Some(&test_cons));
     let second_fn = &typ.appr();
     assert_eq!(env.constraints.find(second_fn.appl().appr().var()), Some(&test_cons));
@@ -1480,10 +1481,10 @@ instance Eq a => Eq [a] where
     env.typecheck_module(&mut module);
 
     let typ = &module.instances[0].bindings[0].expression.typ;
-    let list_type = Type::new_op(~"[]", ~[Type::new_var(100)]);
-    assert_eq!(*typ, function_type(&list_type, &function_type(&list_type, &Type::new_op(~"Bool", ~[]))));
+    let list_type = Type::new_op("[]".to_owned(), ~[Type::new_var(100)]);
+    assert_eq!(*typ, function_type(&list_type, &function_type(&list_type, &Type::new_op("Bool".to_owned(), ~[]))));
     let var = typ.appl().appr().appr().var();
-    let eq = vec![~"Eq"];
+    let eq = vec!["Eq".to_owned()];
     assert_eq!(env.constraints.find(var), Some(&eq));
 }
 
@@ -1494,7 +1495,7 @@ fn typecheck_num_double() {
 r"test x = primDoubleAdd 0 x";
     let module = do_typecheck(file);
 
-    let typ = function_type(&Type::new_op(~"Double", ~[]), &Type::new_op(~"Double", ~[]));
+    let typ = function_type(&Type::new_op("Double".to_owned(), ~[]), &Type::new_op("Double".to_owned(), ~[]));
     let bind_type0 = module.bindings[0].expression.typ;
     assert_eq!(bind_type0, typ);
 }
@@ -1517,7 +1518,7 @@ main = fmap add2 (Just 3)";
     let module = do_typecheck(file);
 
     let main = &module.bindings[1];
-    assert_eq!(main.expression.typ, Type::new_op(~"Maybe", ~[Type::new_op(~"Int", ~[])]));
+    assert_eq!(main.expression.typ, Type::new_op("Maybe".to_owned(), ~[Type::new_op("Int".to_owned(), ~[])]));
 }
 #[should_fail]
 #[test]
@@ -1566,9 +1567,9 @@ test2 = id (primIntAdd 2 0)";
     let module = do_typecheck_with(file, [&prelude as &DataTypes]);
 
     assert_eq!(module.bindings[0].name.as_slice(), "test1");
-    assert_eq!(module.bindings[0].expression.typ, Type::new_op(~"[]", ~[Type::new_op(~"Bool", ~[])]));
+    assert_eq!(module.bindings[0].expression.typ, Type::new_op("[]".to_owned(), ~[Type::new_op("Bool".to_owned(), ~[])]));
     assert_eq!(module.bindings[1].name.as_slice(), "test2");
-    assert_eq!(module.bindings[1].expression.typ, Type::new_op(~"Int", ~[]));
+    assert_eq!(module.bindings[1].expression.typ, Type::new_op("Int".to_owned(), ~[]));
 }
 
 #[test]
