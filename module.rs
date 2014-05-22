@@ -4,6 +4,7 @@ use std::iter::range_step;
 pub use std::default::Default;
 pub use lexer::{Location, Located};
 
+#[deriving(Clone)]
 pub struct Module<Ident = ~str> {
     pub name : Ident,
     pub bindings : ~[Binding<Ident>],
@@ -19,6 +20,7 @@ pub struct Class<Ident = ~str> {
     pub declarations : ~[TypeDeclaration]
 }
 
+#[deriving(Clone)]
 pub struct Instance<Ident = ~str> {
     pub bindings : ~[Binding<Ident>],
     pub constraints : ~[Constraint],
@@ -26,7 +28,7 @@ pub struct Instance<Ident = ~str> {
     pub classname : ~str
 }
 
-#[deriving(Eq)]
+#[deriving(Clone, Eq)]
 pub struct Binding<Ident = ~str> {
     pub name : Ident,
     pub expression : TypedExpr<Ident>,
@@ -368,6 +370,7 @@ impl Eq for Type {
     }
 }
 
+#[deriving(Clone)]
 pub struct TypedExpr<Ident = ~str> {
     pub expr : Expr<Ident>,
     pub typ : Type,
@@ -395,13 +398,13 @@ impl TypedExpr {
     }
 }
 
-#[deriving(Eq)]
+#[deriving(Clone, Eq)]
 pub struct Alternative<Ident = ~str> {
     pub pattern : Located<Pattern<Ident>>,
     pub expression : TypedExpr<Ident>
 }
 
-#[deriving(Eq, TotalEq)]
+#[deriving(Clone, Eq, TotalEq)]
 pub enum Pattern<Ident = ~str> {
     NumberPattern(int),
     IdentifierPattern(Ident),
@@ -409,14 +412,14 @@ pub enum Pattern<Ident = ~str> {
     WildCardPattern
 }
 
-#[deriving(Eq)]
+#[deriving(Clone, Eq)]
 pub enum DoBinding<Ident = ~str> {
     DoLet(~[Binding<Ident>]),
     DoBind(Located<Pattern<Ident>>, TypedExpr<Ident>),
     DoExpr(TypedExpr<Ident>)
 }
 
-#[deriving(Eq)]
+#[deriving(Clone, Eq)]
 pub enum Expr<Ident = ~str> {
     Identifier(Ident),
     Apply(~TypedExpr<Ident>, ~TypedExpr<Ident>),

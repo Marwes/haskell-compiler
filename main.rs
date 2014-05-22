@@ -4,6 +4,8 @@
 #[phase(syntax, link)]
 extern crate log;
 extern crate collections;
+#[cfg(test)]
+extern crate test;
 
 #[cfg(not(test))]
 use std::io::File;
@@ -14,7 +16,7 @@ use parser::Parser;
 #[cfg(not(test))]
 use compiler::{Compiler, Instruction, PushInt, Mkap, Eval, Split};
 #[cfg(not(test))]
-use typecheck::{Types, TypeEnvironment};
+use typecheck::{DataTypes, TypeEnvironment};
 #[cfg(not(test))]
 use vm::{VM, execute_main, compile_file};
 #[cfg(not(test))]
@@ -62,7 +64,7 @@ fn main() {
             let mut expr = rename_expr(parser.expression_());
 
             let mut type_env = TypeEnvironment::new();
-            type_env.add_types(&prelude as &Types);
+            type_env.add_types(&prelude as &DataTypes);
             type_env.typecheck_expr(&mut expr);
             let temp_module = Module::from_expr(translate_expr(expr));
             let m = do_lambda_lift(temp_module);

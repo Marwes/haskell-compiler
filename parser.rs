@@ -1075,6 +1075,7 @@ use parser::*;
 use module::*;
 use typecheck::{function_type, identifier, apply, number, rational, lambda, let_, case};
 use std::io::File;
+use test::Bencher;
 
 
 #[test]
@@ -1235,6 +1236,16 @@ fn parse_prelude() {
     assert!(module.bindings.iter().any(|bind| bind.name == ~"foldl"));
     assert!(module.bindings.iter().any(|bind| bind.name == ~"id"));
     assert!(module.classes.iter().any(|class| class.name == ~"Eq"));
+}
+
+#[bench]
+fn bench_prelude(b: &mut Bencher) {
+    let path = &Path::new("Prelude.hs");
+    let contents  = File::open(path).read_to_str().unwrap();
+    b.iter(|| {
+        let mut parser = Parser::new(contents.chars());
+        parser.module();
+    });
 }
 
 }

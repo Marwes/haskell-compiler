@@ -416,7 +416,6 @@ impl <'a> Compiler<'a> {
                 this.newStackVar(Name { name: ~"$dict", uid: 0 });
             }
             debug!("{} {}\n {}", bind.name, dict_arg, bind.expression);
-            print!("{} -> ", bind.name);
             let arity = this.compile_lambda_binding(&bind.expression, &mut instructions);
             comb.arity = arity + dict_arg;
             instructions.push(Update(0));
@@ -434,11 +433,9 @@ impl <'a> Compiler<'a> {
         match expr {
             &Lambda(ref ident, ref body) => {
                 self.newStackVar(ident.name.clone());
-                print!("{} ", ident.name);
                 1 + self.compile_lambda_binding(*body, instructions)
             }
             _ => {
-                println!("");
                 self.compile(expr, instructions, true);
                 0
             }
@@ -980,6 +977,7 @@ mod tests {
 use compiler::*;
 use typecheck::TypeEnvironment;
 use std::io::File;
+use test::Bencher;
 
 #[test]
 fn add() {
@@ -1145,4 +1143,23 @@ showInt i =
 ");
 }
 
+#[bench]
+fn bench_prelude(b: &mut Bencher) {
+    use lambda_lift::do_lambda_lift;
+    use core::translate::translate_module;
+    use renamer::rename_module;
+    use parser::Parser;
+
+    let path = &Path::new("Prelude.hs");
+    let contents = File::open(path).read_to_str().unwrap();
+    let mut parser = Parser::new(contents.chars());
+    let mut module = rename_module(parser.module());
+    let mut type_env = TypeEnvironment::new();
+    type_env.typecheck_module(&mut module);
+    let core_module = do_lambda_lift(translate_module(module));
+    b.iter(|| {
+        let mut compiler = Compiler::new(&type_env);
+        compiler.compileModule(&core_module)
+    });
+}
 }
