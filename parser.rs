@@ -698,7 +698,7 @@ fn constrained_type(&mut self, typeVariableMapping : &mut HashMap<InternedStr, i
     };
     let maybeContextArrow = self.lexer.next_().token;
     //If there is => arrow we proceed to parse the type
-    let typ = if (maybeContextArrow == OPERATOR && self.lexer.current().value == intern("=>")) {
+    let typ = if (maybeContextArrow == CONTEXTARROW) {
         self.parse_type_(&mut variableIndex, typeVariableMapping)
     }
     else if maybeContextArrow == ARROW {
@@ -770,7 +770,7 @@ fn dataDefinition(&mut self) -> DataDefinition {
 		fail!(ParseError(&self.lexer, EQUALSSIGN));
 	}
 	definition.constructors = self.sepBy1_func(|this| this.constructor(&definition),
-		|t : &Token| t.token == OPERATOR && t.value == intern("|"));
+		|t : &Token| t.token == PIPE);
 	for ii in range(0, definition.constructors.len())
 	{
 		definition.constructors[ii].tag = ii as int;
@@ -968,7 +968,8 @@ fn constructorError(tok : &Token) -> bool
 {
 	return tok.token != NAME
 		&& tok.token != OPERATOR
-		&& tok.token != LPARENS;
+		&& tok.token != LPARENS
+        && tok.token != PIPE;
 }
 
 fn tuple_name(size : uint) -> InternedStr

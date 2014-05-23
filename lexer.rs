@@ -23,6 +23,8 @@ pub enum TokenEnum {
 	INDENTSTART,
 	INDENTLEVEL,
 	COMMA,
+    PIPE,
+    CONTEXTARROW,
 	EQUALSSIGN,
 	SEMICOLON,
 	MODULE,
@@ -453,6 +455,8 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
                 "->" => ARROW,
                 "<-" => LARROW,
                 "::" => TYPEDECL,
+                "=>" => CONTEXTARROW,
+                "|"  => PIPE,
                 _    => OPERATOR
             };
             return Token::new(&self.interner, tok, result.as_slice(), startLocation);

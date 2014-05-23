@@ -1,14 +1,14 @@
 {
   "compiler::tests::bench_prelude": {
-    "noise": 930778.7,
-    "value": 10752844
+    "noise": 532268.1,
+    "value": 10545759.5
   },
   "parser::tests::bench_prelude": {
-    "noise": 1460741.3,
-    "value": 29769059
+    "noise": 910792.35,
+    "value": 30089274
   },
   "typecheck::test::bench_prelude": {
-    "noise": 31410071.1,
-    "value": 650065864
+    "noise": 75820480.4,
+    "value": 685276269
   }
 }
