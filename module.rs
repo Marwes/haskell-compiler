@@ -7,6 +7,7 @@ pub use lexer::{Location, Located};
 
 type DefaultIdent = InternedStr;
 
+#[deriving(Clone)]
 pub struct Module<Ident = InternedStr> {
     pub name : Ident,
     pub bindings : ~[Binding<Ident>],
@@ -22,6 +23,7 @@ pub struct Class<Ident = InternedStr> {
     pub declarations : ~[TypeDeclaration]
 }
 
+#[deriving(Clone)]
 pub struct Instance<Ident = InternedStr> {
     pub bindings : ~[Binding<Ident>],
     pub constraints : ~[Constraint],
@@ -29,7 +31,7 @@ pub struct Instance<Ident = InternedStr> {
     pub classname : InternedStr
 }
 
-#[deriving(Eq)]
+#[deriving(Clone, Eq)]
 pub struct Binding<Ident = InternedStr> {
     pub name : Ident,
     pub expression : TypedExpr<Ident>,
@@ -370,6 +372,8 @@ impl Eq for Type {
     }
 }
 
+
+#[deriving(Clone)]
 pub struct TypedExpr<Ident = InternedStr> {
     pub expr : Expr<Ident>,
     pub typ : Type,
@@ -397,13 +401,13 @@ impl TypedExpr {
     }
 }
 
-#[deriving(Eq)]
+#[deriving(Clone, Eq)]
 pub struct Alternative<Ident = InternedStr> {
     pub pattern : Located<Pattern<Ident>>,
     pub expression : TypedExpr<Ident>
 }
 
-#[deriving(Eq, TotalEq)]
+#[deriving(Clone, Eq, TotalEq)]
 pub enum Pattern<Ident = InternedStr> {
     NumberPattern(int),
     IdentifierPattern(Ident),
@@ -411,14 +415,14 @@ pub enum Pattern<Ident = InternedStr> {
     WildCardPattern
 }
 
-#[deriving(Eq)]
+#[deriving(Clone, Eq)]
 pub enum DoBinding<Ident = InternedStr> {
     DoLet(~[Binding<Ident>]),
     DoBind(Located<Pattern<Ident>>, TypedExpr<Ident>),
     DoExpr(TypedExpr<Ident>)
 }
 
-#[deriving(Eq)]
+#[deriving(Clone, Eq)]
 pub enum Expr<Ident = InternedStr> {
     Identifier(Ident),
     Apply(~TypedExpr<Ident>, ~TypedExpr<Ident>),

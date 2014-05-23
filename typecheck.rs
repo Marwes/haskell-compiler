@@ -1252,6 +1252,8 @@ use renamer::*;
 use parser::Parser;
 use std::io::File;
 
+use test::Bencher;
+
 #[test]
 fn application() {
     let mut env = TypeEnvironment::new();
@@ -1694,6 +1696,20 @@ fn type_declaration_error() {
 r"
 test :: [Int] -> Int -> Int
 test x y = primIntAdd x y");
+}
+
+#[bench]
+fn bench_prelude(b: &mut Bencher) {
+    let path = &Path::new("Prelude.hs");
+    let contents = File::open(path).read_to_str().unwrap();
+    let mut parser = Parser::new(contents.chars());
+    let module = rename_module(parser.module());
+
+    b.iter(|| {
+        let mut env = TypeEnvironment::new();
+        let mut m = module.clone();
+        env.typecheck_module(&mut m);
+    });
 }
 
 }

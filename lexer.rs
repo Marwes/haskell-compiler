@@ -52,7 +52,7 @@ impl Location {
         Location { column: -1, row: -1, absolute: -1 }
     }
 }
-
+#[deriving(Clone)]
 pub struct Located<T> {
     pub location: Location,
     pub node: T

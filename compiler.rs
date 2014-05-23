@@ -980,6 +980,7 @@ use interner::*;
 use compiler::*;
 use typecheck::TypeEnvironment;
 use std::io::File;
+use test::Bencher;
 
 #[test]
 fn add() {
@@ -1145,4 +1146,23 @@ showInt i =
 ");
 }
 
+#[bench]
+fn bench_prelude(b: &mut Bencher) {
+    use lambda_lift::do_lambda_lift;
+    use core::translate::translate_module;
+    use renamer::rename_module;
+    use parser::Parser;
+
+    let path = &Path::new("Prelude.hs");
+    let contents = File::open(path).read_to_str().unwrap();
+    let mut parser = Parser::new(contents.chars());
+    let mut module = rename_module(parser.module());
+    let mut type_env = TypeEnvironment::new();
+    type_env.typecheck_module(&mut module);
+    let core_module = do_lambda_lift(translate_module(module));
+    b.iter(|| {
+        let mut compiler = Compiler::new(&type_env);
+        compiler.compileModule(&core_module)
+    });
+}
 }
