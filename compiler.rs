@@ -1,3 +1,4 @@
+use interner::*;
 use core::*;
 use module::function_type;
 use typecheck::{Types, DataTypes, TypeEnvironment};
@@ -86,7 +87,7 @@ pub struct SuperCombinator {
 }
 impl SuperCombinator {
     fn new() -> SuperCombinator {
-        SuperCombinator { arity : 0, name: Name { name: ~"", uid: 0}, instructions : ~[], type_declaration: Default::default(), constraints: ~[], assembly_id: 0 }
+        SuperCombinator { arity : 0, name: Name { name: intern(""), uid: 0}, instructions : ~[], type_declaration: Default::default(), constraints: ~[], assembly_id: 0 }
     }
 }
 
@@ -102,7 +103,7 @@ pub struct Assembly {
 trait Globals {
     ///Lookup a global variable
     fn find_global<'a>(&'a self, name: &Name) -> Option<Var<'a>>;
-    fn find_constructor(&self, name: &str) -> Option<(u16, u16)>;
+    fn find_constructor(&self, name: InternedStr) -> Option<(u16, u16)>;
 }
 
 impl Globals for Assembly {
@@ -129,10 +130,10 @@ impl Globals for Assembly {
         
         self.find_constructor(name.name).map(|(tag, arity)| ConstructorVariable(tag, arity))
     }
-    fn find_constructor(&self, name: &str) -> Option<(u16, u16)> {
+    fn find_constructor(&self, name: InternedStr) -> Option<(u16, u16)> {
         for data_def in self.data_definitions.iter() {
             for ctor in data_def.constructors.iter() {
-                if name == ctor.name.as_slice() {
+                if name == ctor.name.name {
                     return Some((ctor.tag as u16, ctor.arity as u16));
                 }
             }
@@ -168,11 +169,11 @@ fn find_global<'a>(module: &'a Module<Id>, offset: uint, name: &Name) -> Option<
     find_constructor(module, name.name).map(|(tag, arity)| ConstructorVariable(tag, arity))
 }
 
-fn find_constructor(module: &Module<Id>, name: &str) -> Option<(u16, u16)> {
+fn find_constructor(module: &Module<Id>, name: InternedStr) -> Option<(u16, u16)> {
 
     for dataDef in module.data_definitions.iter() {
         for ctor in dataDef.constructors.iter() {
-            if name == ctor.name.as_slice() {
+            if name == ctor.name.name {
                 return Some((ctor.tag as u16, ctor.arity as u16));
             }
         }
@@ -190,7 +191,7 @@ impl Types for Module<Id> {
 
         for class in self.classes.iter() {
             for decl in class.declarations.iter() {
-                if name.as_slice() == decl.name {
+                if name.name == decl.name {
                     return Some(&decl.typ);
                 }
             }
@@ -205,11 +206,11 @@ impl Types for Module<Id> {
         return None;
     }
 
-    fn find_class<'a>(&'a self, name: &str) -> Option<&'a Class> {
+    fn find_class<'a>(&'a self, name: InternedStr) -> Option<&'a Class> {
         self.classes.iter().find(|class| name == class.name)
     }
 
-    fn find_instance<'a>(&'a self, classname: &str, typ: &Type) -> Option<(&'a [Constraint], &'a Type)> {
+    fn find_instance<'a>(&'a self, classname: InternedStr, typ: &Type) -> Option<(&'a [Constraint], &'a Type)> {
         for &(ref constraints, ref op) in self.instances.iter() {
             match op {
                 &TypeApplication(ref op, ref t) => {
@@ -268,7 +269,7 @@ impl Types for Assembly {
         
         for class in self.classes.iter() {
             for decl in class.declarations.iter() {
-                if name.as_slice() == decl.name {
+                if name.name == decl.name {
                     return Some(&decl.typ);
                 }
             }
@@ -284,10 +285,10 @@ impl Types for Assembly {
         return None;
     }
 
-    fn find_class<'a>(&'a self, name: &str) -> Option<&'a Class> {
+    fn find_class<'a>(&'a self, name: InternedStr) -> Option<&'a Class> {
         self.classes.iter().find(|class| name == class.name)
     }
-    fn find_instance<'a>(&'a self, classname: &str, typ: &Type) -> Option<(&'a [Constraint], &'a Type)> {
+    fn find_instance<'a>(&'a self, classname: InternedStr, typ: &Type) -> Option<(&'a [Constraint], &'a Type)> {
         for &(ref constraints, ref op) in self.instances.iter() {
             match op {
                 &TypeApplication(ref op, ref t) => {
@@ -328,7 +329,7 @@ impl Types for Assembly {
 }
 
 impl DataTypes for Assembly {
-    fn find_data_type<'a>(&'a self, name: &str) -> Option<&'a DataDefinition<Name>> {
+    fn find_data_type<'a>(&'a self, name: InternedStr) -> Option<&'a DataDefinition<Name>> {
         for data in self.data_definitions.iter() {
             if name == extract_applied_type(&data.typ).op().name {
                 return Some(data);
@@ -341,7 +342,7 @@ impl DataTypes for Assembly {
 pub struct Compiler<'a> {
     pub type_env: &'a TypeEnvironment<'a>,
     ///Hashmap containging class names mapped to the functions it contains
-    pub instance_dictionaries: Vec<(~[(~str, Type)], ~[uint])>,
+    pub instance_dictionaries: Vec<(~[(InternedStr, Type)], ~[uint])>,
     pub stackSize : uint,
     ///Array of all the assemblies which can be used to lookup functions in
     pub assemblies: Vec<&'a Assembly>,
@@ -354,7 +355,7 @@ impl <'a> Compiler<'a> {
     pub fn new(type_env: &'a TypeEnvironment) -> Compiler<'a> {
         let mut variables = ScopedMap::new();
         for (i, &(name, _)) in primitives().iter().enumerate() {
-            variables.insert(Name { name: name.to_owned(), uid: 0}, PrimitiveVariable(i));
+            variables.insert(Name { name: intern(name), uid: 0}, PrimitiveVariable(i));
         }
         Compiler { type_env: type_env, instance_dictionaries: Vec::new(),
             stackSize : 0, assemblies: Vec::new(),
@@ -413,7 +414,7 @@ impl <'a> Compiler<'a> {
         let mut instructions = Vec::new();
         self.scope(|this| {
             if dict_arg == 1 {
-                this.newStackVar(Name { name: ~"$dict", uid: 0 });
+                this.newStackVar(Name { name: intern("$dict"), uid: 0 });
             }
             debug!("{} {}\n {}", bind.name, dict_arg, bind.expression);
             let arity = this.compile_lambda_binding(&bind.expression, &mut instructions);
@@ -484,7 +485,7 @@ impl <'a> Compiler<'a> {
         })
     }
 
-    fn find_constructor(&self, identifier : &str) -> Option<(u16, u16)> {
+    fn find_constructor(&self, identifier : InternedStr) -> Option<(u16, u16)> {
         self.module.and_then(|module| find_constructor(module, identifier))
         .or_else(|| {
             for assembly in self.assemblies.iter() {
@@ -495,20 +496,21 @@ impl <'a> Compiler<'a> {
             }
             None
         }).or_else(|| {
+            let identifier = identifier.as_slice();
             if identifier.len() >= 3 && identifier.char_at(0) == '('
             && identifier.char_at(identifier.len() - 1) == ')'
             && identifier.chars().skip(1).take(identifier.len() - 2).all(|c| c == ',') {
                 return Some((0, (identifier.len() - 1) as u16));
             }
             match identifier {
-                &"[]" => Some((0, 0)),
-                &":" => Some((1, 2)),
+                "[]" => Some((0, 0)),
+                ":" => Some((1, 2)),
                 _ => None
             }
         })
     }
 
-    fn find_class<'r>(&'r self, name: &str) -> Option<&'r Class> {
+    fn find_class<'r>(&'r self, name: InternedStr) -> Option<&'r Class> {
         self.module.and_then(|m| m.find_class(name))
             .or_else(|| {
             for types in self.assemblies.iter() {
@@ -569,35 +571,35 @@ impl <'a> Compiler<'a> {
             &Literal(ref literal) => {
                 match &literal.value {
                     &Integral(i) => {
-                        if literal.typ == Type::new_op(~"Int", ~[]) {
+                        if literal.typ == Type::new_op(intern("Int"), ~[]) {
                             instructions.push(PushInt(i));
                         }
-                        else if literal.typ == Type::new_op(~"Double", ~[]) {
+                        else if literal.typ == Type::new_op(intern("Double"), ~[]) {
                             instructions.push(PushFloat(i as f64));
                         }
                         else {
                             let fromInteger = Identifier(Id {
-                                name: Name { name: ~"fromInteger", uid: 999999 }, 
-                                typ: function_type(&Type::new_op(~"Int", ~[]), &literal.typ),
+                                name: Name { name: intern("fromInteger"), uid: 999999 }, 
+                                typ: function_type(&Type::new_op(intern("Int"), ~[]), &literal.typ),
                                 constraints: ~[]
                             });
-                            let number = Literal(Literal { typ: Type::new_op(~"Double", ~[]), value: Integral(i) });
+                            let number = Literal(Literal { typ: Type::new_op(intern("Double"), ~[]), value: Integral(i) });
                             let apply = Apply(~fromInteger, ~number);
                             self.compile(&apply, instructions, strict);
                         }
                     }
                     &Fractional(f) => {
-                        if literal.typ == Type::new_op(~"Double", ~[]) {
+                        if literal.typ == Type::new_op(intern("Double"), ~[]) {
                             instructions.push(PushFloat(f));
                         }
                         else {
                             let fromRational = Identifier(Id {
-                                name: Name { name: ~"fromRational", uid: 999999 }, 
-                                typ: function_type(&Type::new_op(~"Double", ~[]), &literal.typ),
+                                name: Name { name: intern("fromRational"), uid: 999999 }, 
+                                typ: function_type(&Type::new_op(intern("Double"), ~[]), &literal.typ),
                                 constraints: ~[]
                             });
                             let number = Literal(Literal {
-                                typ: Type::new_op(~"Double", ~[]),
+                                typ: Type::new_op(intern("Double"), ~[]),
                                 value: Fractional(f)
                             });
                             let apply = Apply(~fromRational, ~number);
@@ -606,7 +608,7 @@ impl <'a> Compiler<'a> {
                     }
                     &String(ref s) => {
                         instructions.push(Pack(0, 0));
-                        for c in s.chars_rev() {
+                        for c in s.as_slice().chars_rev() {
                             instructions.push(PushChar(c));
                             instructions.push(Pack(1, 2));
                         }
@@ -701,11 +703,11 @@ impl <'a> Compiler<'a> {
     }
 
     ///Compile a function which is defined in a class
-    fn compile_instance_variable(&self, actual_type: &Type, instructions: &mut Vec<Instruction>, name: &Name, typ: &Type, var: &TypeVariable) -> Option<(~[(~str, Type)], ~[uint])> {
+    fn compile_instance_variable(&self, actual_type: &Type, instructions: &mut Vec<Instruction>, name: &Name, typ: &Type, var: &TypeVariable) -> Option<(~[(InternedStr, Type)], ~[uint])> {
         match try_find_instance_type(var, typ, actual_type) {
             Some(typename) => {
                 //We should be able to retrieve the instance directly
-                let instance_fn_name = Name { name: "#" + typename + name.as_slice(), uid: 0 };
+                let instance_fn_name = Name { name: intern("#" + typename + name.as_slice()), uid: 0 };
                 match self.find(&instance_fn_name) {
                     Some(GlobalVariable(index)) => {
                         instructions.push(PushGlobal(index));
@@ -728,11 +730,11 @@ impl <'a> Compiler<'a> {
     }
 
     ///Compile the loading of a variable which has constraints and will thus need to load a dictionary with functions as well
-    fn compile_with_constraints(&self, name: &Name, actual_type: &Type, function_type: &Type, constraints: &[Constraint], instructions: &mut Vec<Instruction>) -> Option<(~[(~str, Type)], ~[uint])> {
-        match self.find(&Name { name: "$dict".to_owned(), uid: 0}) {
+    fn compile_with_constraints(&self, name: &Name, actual_type: &Type, function_type: &Type, constraints: &[Constraint], instructions: &mut Vec<Instruction>) -> Option<(~[(InternedStr, Type)], ~[uint])> {
+        match self.find(&Name { name: intern("$dict"), uid: 0}) {
             Some(StackVariable(_)) => {
                 //Push dictionary or member of dictionary
-                match self.push_dictionary_member(constraints, name.as_slice()) {
+                match self.push_dictionary_member(constraints, name.name) {
                     Some(index) => instructions.push(PushDictionaryMember(index)),
                     None => instructions.push(Push(0))
                 }
@@ -750,7 +752,7 @@ impl <'a> Compiler<'a> {
     }
 
     ///Lookup which index in the instance dictionary that holds the function called 'name'
-    fn push_dictionary_member(&self, constraints: &[Constraint], name: &str) -> Option<uint> {
+    fn push_dictionary_member(&self, constraints: &[Constraint], name: InternedStr) -> Option<uint> {
         if constraints.len() == 0 {
             fail!("Attempted to push dictionary member '{}' with no constraints", name)
         }
@@ -758,7 +760,7 @@ impl <'a> Compiler<'a> {
             match self.find_class(c.class) {
                 Some(class) => {
                     for ii in range(0, class.declarations.len()) {
-                        if class.declarations[ii].name.equiv(&name) {
+                        if class.declarations[ii].name == name {
                             return Some(ii)
                         }
                     }
@@ -771,7 +773,7 @@ impl <'a> Compiler<'a> {
 
     ///Find the index of the instance dictionary for the constraints and types in 'constraints'
     ///Returns the index and possibly a new dictionary which needs to be added to the assemblies dictionaries
-    fn find_dictionary_index(&self, constraints: &[(~str, Type)]) -> (uint, Option<(~[(~str, Type)], ~[uint])>) {
+    fn find_dictionary_index(&self, constraints: &[(InternedStr, Type)]) -> (uint, Option<(~[(InternedStr, Type)], ~[uint])>) {
 
 
         fn extract_applied_type<'a>(typ: &'a Type) -> &'a Type {
@@ -801,7 +803,7 @@ impl <'a> Compiler<'a> {
                             &TypeOperator(ref x) => x,
                             _ => fail!("{}", typ)
                         };
-                        let f = "#" + x.name + decl.name;
+                        let f = intern("#" + x.name.as_slice() + decl.name.as_slice());
                         let name = Name { name: f, uid: 0 };
                         match self.find(&name) {
                             Some(GlobalVariable(index)) => {
@@ -864,7 +866,7 @@ impl <'a> Compiler<'a> {
                 }
             }
             &Identifier(ref name) => {
-                let n: &str = name.name.name;
+                let n: &str = name.name.name.as_slice();
                 let maybeOP = match n {
                     "primIntToDouble" => Some(IntToDouble),
                     "primDoubleToInt" => Some(DoubleToInt),
@@ -888,7 +890,7 @@ impl <'a> Compiler<'a> {
         match pattern {
             &ConstructorPattern(ref name, ref patterns) => {
                 instructions.push(Push(stack_index - pattern_index));
-                match self.find_constructor(name.as_slice()) {
+                match self.find_constructor(name.name.name) {
                     Some((tag, _)) => {
                         instructions.push(CaseJump(tag as uint));
                         branches.push(instructions.len());
@@ -905,7 +907,7 @@ impl <'a> Compiler<'a> {
                 size + patterns.len()
             }
             &NumberPattern(number) => {
-                self.newStackVar(Name { name: pattern_index.to_str(), uid: 0 });
+                self.newStackVar(Name { name: intern(pattern_index.to_str()), uid: 0 });
                 instructions.push(Push(stack_index - pattern_index));
                 instructions.push(Eval);
                 instructions.push(PushInt(number));
@@ -974,6 +976,7 @@ pub fn compile_with_type_env(type_env: &mut TypeEnvironment, assemblies: &[&Asse
 #[cfg(test)]
 mod tests {
 
+use interner::*;
 use compiler::*;
 use typecheck::TypeEnvironment;
 use std::io::File;
@@ -1083,7 +1086,7 @@ main = test (primIntAdd 6 0)";
     let assembly = compile(file);
 
     let main = &assembly.superCombinators[1];
-    assert_eq!(main.name.name, ~"main");
+    assert_eq!(main.name.name, intern("main"));
     assert_eq!(main.instructions, ~[PushInt(0), PushInt(6), Add, PushGlobal(0), Mkap, Eval, Update(0), Unwind]);
 }
 
@@ -1100,7 +1103,7 @@ main x = primIntAdd (test x) 6";
     let assembly = compile(file);
 
     let main = assembly.superCombinators[1];
-    assert_eq!(main.name.name, ~"main");
+    assert_eq!(main.name.name, intern("main"));
     assert_eq!(main.instructions, ~[PushInt(6), Push(1), PushDictionaryMember(0), Mkap, Eval, Add, Update(0), Pop(2), Unwind]);
 }
 
@@ -1112,7 +1115,7 @@ fn compile_prelude() {
     let assembly = compile_with_type_env(&mut type_env, [&prelude], r"main = id (primIntAdd 2 0)");
 
     let sc = &assembly.superCombinators[0];
-    let id_index = prelude.superCombinators.iter().position(|sc| sc.name.equiv(& &"id")).unwrap();
+    let id_index = prelude.superCombinators.iter().position(|sc| sc.name.name == intern("id")).unwrap();
     assert_eq!(sc.instructions, ~[PushInt(0), PushInt(2), Add, PushGlobal(id_index), Mkap, Eval, Update(0), Unwind]);
 }
 

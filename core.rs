@@ -1,6 +1,7 @@
 use std::fmt;
 pub use module::{Type, TypeApplication, TypeOperator, TypeVariable, IdentifierPattern, ConstructorPattern, WildCardPattern, NumberPattern, Constraint, Class, DataDefinition, TypeDeclaration, function_type_};
 use module;
+use interner::*;
 pub use renamer::Name;
 
 pub struct Module<Ident> {
@@ -17,7 +18,7 @@ impl Module<Id> {
             data_definitions: ~[],
             instances: ~[],
             bindings: ~[Binding {
-                name: Id::new(Name { name: "main".to_owned(), uid: 0 }, expr.get_type().clone(), ~[]),
+                name: Id::new(Name { name: intern("main"), uid: 0 }, expr.get_type().clone(), ~[]),
                 expression: expr
             }]
         }
@@ -48,7 +49,7 @@ pub struct Literal {
 pub enum Literal_ {
     Integral(int),
     Fractional(f64),
-    String(~str),
+    String(InternedStr),
     Char(char)
 }
 
@@ -118,7 +119,7 @@ impl <Ident: Typed> Typed for Expr<Ident> {
 
 impl <'a> Equiv<&'a str> for Name {
     fn equiv(&self, o: & &str) -> bool {
-        *o == self.name
+        self.name == intern(*o)
     }
 }
 
@@ -146,7 +147,7 @@ impl Str for Id {
         self.name.name.as_slice()
     }
     fn into_owned(self) -> ~str {
-        self.name.name
+        self.name.name.into_owned()
     }
 }
 
@@ -227,6 +228,7 @@ pub mod translate {
     use module;
     use module::{function_type_, char_type, list_type};
     use core::*;
+    use interner::*;
         
     pub fn translate_module(module: module::Module<Name>) -> Module<Id<Name>> {
         let module::Module { name : _name,
@@ -265,8 +267,8 @@ pub mod translate {
                 module::Lambda(arg, body) => {
                     //TODO need to make unique names for the lambdas created here
                     let l = Lambda(Id::new(arg, typ.clone(), ~[]), ~translate_expr_rest(*body));
-                    let bind = Binding { name: Id::new(Name { name: "#lambda".to_owned(), uid: 0 }, typ.clone(), ~[]), expression: l };
-                    Let(~[bind], ~Identifier(Id::new(Name { name: "#lambda".to_owned(), uid: 0 }, typ.clone(), ~[])))
+                    let bind = Binding { name: Id::new(Name { name: intern("#lambda"), uid: 0 }, typ.clone(), ~[]), expression: l };
+                    Let(~[bind], ~Identifier(Id::new(Name { name: intern("#lambda"), uid: 0 }, typ.clone(), ~[])))
                 }
                 _ => fail!()
             }
@@ -321,11 +323,11 @@ pub mod translate {
 
     fn do_bind2_id(m_a: Type, m_b: Type) -> Expr<Id<Name>> {
         let c = match *m_a.appl() {
-            TypeVariable(ref var) => ~[Constraint { class: "Monad".to_owned(), variables: ~[var.clone()] }],
+            TypeVariable(ref var) => ~[Constraint { class: intern("Monad"), variables: ~[var.clone()] }],
             _ => ~[]
         };
         let typ = function_type_(m_a, function_type_(m_b.clone(), m_b));
-        Identifier(Id::new(Name { name: ">>".to_owned(), uid: 0}, typ, c))
+        Identifier(Id::new(Name { name: intern(">>"), uid: 0}, typ, c))
     }
     fn do_bind_translate(pattern: Pattern<Name>, expr: Expr<Id<Name>>, result: Expr<Id<Name>>) -> Expr<Id<Name>> {
         //do {p <- e; stmts} 	=
@@ -337,24 +339,24 @@ pub mod translate {
         let m_b = result.get_type().clone();
                 debug!("m_a {}", m_a);
         let c = match *m_a.appl() {
-            TypeVariable(ref var) => ~[Constraint { class: "Monad".to_owned(), variables: ~[var.clone()] }],
+            TypeVariable(ref var) => ~[Constraint { class: intern("Monad"), variables: ~[var.clone()] }],
             _ => ~[]
         };
         let arg2_type = function_type_(a.clone(), m_b.clone());
         let bind_typ = function_type_(m_a, function_type_(arg2_type.clone(), m_b.clone()));
-        let bind_ident = Identifier(Id::new(Name { name: ">>=".to_owned(), uid: 0}, bind_typ, c.clone()));
+        let bind_ident = Identifier(Id::new(Name { name: intern(">>="), uid: 0}, bind_typ, c.clone()));
 
         //Create ok binding
         let func_ident = Id::new(
-            Name { name: "#ok".to_owned(), uid: 0 },
+            Name { name: intern("#ok"), uid: 0 },
             arg2_type.clone(),
             c.clone()
         );//TODO unique id
-        let var = Id::new(Name { name: "p".to_owned(), uid: 0 }, function_type_(a, m_b.clone()), c.clone());//Constraints for a
-        let fail_ident = Identifier(Id::new(Name { name: "fail".to_owned(), uid: 0 }, function_type_(list_type(char_type()), m_b), c));
+        let var = Id::new(Name { name: intern("p"), uid: 0 }, function_type_(a, m_b.clone()), c.clone());//Constraints for a
+        let fail_ident = Identifier(Id::new(Name { name: intern("fail"), uid: 0 }, function_type_(list_type(char_type()), m_b), c));
         let func = Lambda(var.clone(), ~Case(~Identifier(var), 
             ~[Alternative { pattern: translate_pattern(pattern), expression: result }
-            , Alternative { pattern: WildCardPattern, expression: Apply(~fail_ident, ~string(~"Unmatched pattern in let")) } ]));
+            , Alternative { pattern: WildCardPattern, expression: Apply(~fail_ident, ~string("Unmatched pattern in let")) } ]));
         let bind = Binding { name: func_ident.clone(), expression: func };
         
         Let(~[bind], ~mkApply(bind_ident, ~[expr, Identifier(func_ident)]))
@@ -376,8 +378,8 @@ pub mod translate {
         }
     }
 
-    fn string(s: ~str) -> Expr<Id<Name>> {
-        Literal(Literal { typ: list_type(char_type()), value: String(s) })
+    fn string(s: &str) -> Expr<Id<Name>> {
+        Literal(Literal { typ: list_type(char_type()), value: String(intern(s)) })
     }
     fn mkApply(func: Expr<Id<Name>>, args: ~[Expr<Id<Name>>]) -> Expr<Id<Name>> {
         let mut result = func;

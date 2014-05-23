@@ -3,8 +3,8 @@ use std::mem::swap;
 use module::*;
 use graph::{Graph, VertexIndex, strongly_connected_components};
 use primitive::primitives;
-
 use renamer::*;
+use interner::*;
 
 pub use lexer::Location;
 pub use module::Type;
@@ -15,19 +15,19 @@ use module::Alternative;
 ///Trait which can be implemented by types where types can be looked up by name
 pub trait Types {
     fn find_type<'a>(&'a self, name: &Name) -> Option<&'a Type>;
-    fn find_class<'a>(&'a self, name: &str) -> Option<&'a Class>;
-    fn has_instance(&self, classname: &str, typ: &Type) -> bool {
+    fn find_class<'a>(&'a self, name: InternedStr) -> Option<&'a Class>;
+    fn has_instance(&self, classname: InternedStr, typ: &Type) -> bool {
         match self.find_instance(classname, typ) {
             Some(_) => true,
             None => false
         }
     }
-    fn find_instance<'a>(&'a self, classname: &str, typ: &Type) -> Option<(&'a [Constraint], &'a Type)>;
+    fn find_instance<'a>(&'a self, classname: InternedStr, typ: &Type) -> Option<(&'a [Constraint], &'a Type)>;
     fn each_constraint_list(&self, |&[Constraint]|);
 }
 
 pub trait DataTypes : Types {
-    fn find_data_type<'a>(&'a self, name: &str) -> Option<&'a DataDefinition<Name>>;
+    fn find_data_type<'a>(&'a self, name: InternedStr) -> Option<&'a DataDefinition<Name>>;
 }
 
 //Use this to get the constructor name, ie,  extract_applied_type(Either a b) == Either
@@ -48,7 +48,7 @@ impl Types for Module<Name> {
 
         for class in self.classes.iter() {
             for decl in class.declarations.iter() {
-                if name.as_slice() == decl.name {
+                if name.name == decl.name {
                     return Some(&decl.typ);
                 }
             }
@@ -63,11 +63,11 @@ impl Types for Module<Name> {
         return None;
     }
 
-    fn find_class<'a>(&'a self, name: &str) -> Option<&'a Class> {
+    fn find_class<'a>(&'a self, name: InternedStr) -> Option<&'a Class> {
         self.classes.iter().find(|class| name == class.name)
     }
 
-    fn find_instance<'a>(&'a self, classname: &str, typ: &Type) -> Option<(&'a [Constraint], &'a Type)> {
+    fn find_instance<'a>(&'a self, classname: InternedStr, typ: &Type) -> Option<(&'a [Constraint], &'a Type)> {
         for instance in self.instances.iter() {
             if classname == instance.classname && extract_applied_type(&instance.typ) == extract_applied_type(typ) {//test name
                 let c : &[Constraint] = instance.constraints;
@@ -91,7 +91,7 @@ impl Types for Module<Name> {
 }
 
 impl DataTypes for Module<Name> {
-    fn find_data_type<'a>(&'a self, name: &str) -> Option<&'a DataDefinition<Name>> {
+    fn find_data_type<'a>(&'a self, name: InternedStr) -> Option<&'a DataDefinition<Name>> {
         for data in self.dataDefinitions.iter() {
             if name == extract_applied_type(&data.typ).op().name {
                 return Some(data);
@@ -104,15 +104,15 @@ impl DataTypes for Module<Name> {
 pub struct TypeEnvironment<'a> {
     assemblies: Vec<&'a DataTypes>,
     namedTypes : HashMap<Name, Type>,
-    constraints: HashMap<TypeVariable, Vec<~str>>,
-    instances: Vec<(~[Constraint], ~str, Type)>,
+    constraints: HashMap<TypeVariable, Vec<InternedStr>>,
+    instances: Vec<(~[Constraint], InternedStr, Type)>,
     variableIndex : int,
 }
 
 #[deriving(Clone)]
 struct Substitution {
     subs: HashMap<TypeVariable, Type>,
-    constraints: HashMap<TypeVariable, ~[~str]>
+    constraints: HashMap<TypeVariable, ~[InternedStr]>
 }
 
 trait Bindings {
@@ -160,11 +160,11 @@ impl <'a> Bindings for BindingsWrapper<'a> {
     }
 }
 
-fn insertTo(map: &mut HashMap<Name, Type>, name: ~str, typ: Type) {
-    map.insert(Name { name: name, uid: 0 }, typ);
+fn insertTo(map: &mut HashMap<Name, Type>, name: &str, typ: Type) {
+    map.insert(Name { name: intern(name), uid: 0 }, typ);
 }
 fn add_primitives(globals: &mut HashMap<Name, Type>, typename: &str) {
-    let typ = Type::new_op(typename.to_owned(), ~[]);
+    let typ = Type::new_op(intern(typename), ~[]);
     {
         let binop = function_type(&typ, &function_type(&typ, &typ));
         insertTo(globals, "prim" + typename + "Add", binop.clone());
@@ -174,7 +174,7 @@ fn add_primitives(globals: &mut HashMap<Name, Type>, typename: &str) {
         insertTo(globals, "prim" + typename + "Remainder", binop.clone());
     }
     {
-        let binop = function_type(&typ, &function_type(&typ, &Type::new_op(~"Bool", ~[])));
+        let binop = function_type(&typ, &function_type(&typ, &Type::new_op(intern("Bool"), ~[])));
         insertTo(globals, "prim" + typename + "EQ", binop.clone());
         insertTo(globals, "prim" + typename + "LT", binop.clone());
         insertTo(globals, "prim" + typename + "LE", binop.clone());
@@ -190,16 +190,16 @@ impl <'a> TypeEnvironment<'a> {
         let mut globals = HashMap::new();
         add_primitives(&mut globals, &"Int");
         add_primitives(&mut globals, &"Double");
-        insertTo(&mut globals, ~"primIntToDouble", function_type(&Type::new_op(~"Int", ~[]), &Type::new_op(~"Double", ~[])));
-        insertTo(&mut globals, ~"primDoubleToInt", function_type(&Type::new_op(~"Double", ~[]), &Type::new_op(~"Int", ~[])));
+        insertTo(&mut globals,"primIntToDouble", function_type(&Type::new_op(intern("Int"), ~[]), &Type::new_op(intern("Double"), ~[])));
+        insertTo(&mut globals, "primDoubleToInt", function_type(&Type::new_op(intern("Double"), ~[]), &Type::new_op(intern("Int"), ~[])));
         let var = Generic(Type::new_var_kind(-10, star_kind.clone()).var().clone());
         
         for (name, typ) in primitives().move_iter() {
-            insertTo(&mut globals, name.to_owned(), typ);
+            insertTo(&mut globals, name, typ);
         }
-        let list = Type::new_op(~"[]", ~[var.clone()]);
-        insertTo(&mut globals, ~"[]", list.clone());
-        insertTo(&mut globals, ~":", function_type(&var, &function_type(&list, &list)));
+        let list = Type::new_op(intern("[]"), ~[var.clone()]);
+        insertTo(&mut globals, "[]", list.clone());
+        insertTo(&mut globals, ":", function_type(&var, &function_type(&list, &list)));
         for i in range(0 as uint, 10) {
             let (name, typ) = tuple_type(i);
             insertTo(&mut globals, name, typ);
@@ -293,14 +293,14 @@ impl <'a> TypeEnvironment<'a> {
                         op.kind = maybe_data
                             .or_else(|| data_definitions.iter().find(|data| op.name == extract_applied_type(&data.typ).op().name))
                             .map(|data| extract_applied_type(&data.typ).kind().clone())
-                            .unwrap_or_else(|| if "[]" == op.name { KindFunction(~StarKind, ~StarKind) } else { StarKind });
+                            .unwrap_or_else(|| if intern("[]") == op.name { KindFunction(~StarKind, ~StarKind) } else { StarKind });
                     }
                     _ => ()
                 }
                 freshen_all(self, &mut subs, &mut instance.typ);
             }
             for binding in instance.bindings.mut_iter() {
-                let decl = class.declarations.iter().find(|decl| binding.name.as_slice().ends_with(decl.name))
+                let decl = class.declarations.iter().find(|decl| binding.name.as_slice().ends_with(decl.name.as_slice()))
                     .expect(format!("Could not find {} in class {}", binding.name, class.name));
                 binding.typeDecl = decl.clone();
                 replace_var(&mut binding.typeDecl.typ, &class.variable, &instance.typ);
@@ -325,7 +325,7 @@ impl <'a> TypeEnvironment<'a> {
         for type_decl in module.typeDeclarations.mut_iter() {
             self.freshen_declaration(type_decl);
 
-            match module.bindings.mut_iter().find(|bind| bind.name.as_slice() == type_decl.name) {
+            match module.bindings.mut_iter().find(|bind| bind.name.name == type_decl.name) {
                 Some(bind) => {
                     bind.typeDecl = type_decl.clone();
                 }
@@ -382,7 +382,7 @@ impl <'a> TypeEnvironment<'a> {
     }
     
     ///Searches through a type, comparing it with the type on the identifier, returning all the specialized constraints
-    pub fn find_specialized_instances(&self, typ: &Type, actual_type: &Type) -> ~[(~str, Type)] {
+    pub fn find_specialized_instances(&self, typ: &Type, actual_type: &Type) -> ~[(InternedStr, Type)] {
         let mut constraints = Vec::new();
         self.find_specialized(&mut constraints, actual_type, typ);
         if constraints.len() == 0 {
@@ -390,7 +390,7 @@ impl <'a> TypeEnvironment<'a> {
         }
         constraints.move_iter().collect()
     }
-    fn find_specialized(&self, constraints: &mut Vec<(~str, Type)>, actual_type: &Type, typ: &Type) {
+    fn find_specialized(&self, constraints: &mut Vec<(InternedStr, Type)>, actual_type: &Type, typ: &Type) {
         match (actual_type, typ) {
             (_, &TypeVariable(ref var)) => {
                 match self.constraints.find(var) {
@@ -485,7 +485,7 @@ impl <'a> TypeEnvironment<'a> {
     }
 
     ///Returns whether the type 'op' has an instance for 'class'
-    fn has_instance(&self, class: &str, searched_type: &Type) -> bool {
+    fn has_instance(&self, class: InternedStr, searched_type: &Type) -> bool {
         for &(ref constraints, ref name, ref typ) in self.instances.iter() {
             if class == *name {
                 if self.check_instance_constraints(*constraints, typ, searched_type) {
@@ -536,24 +536,24 @@ impl <'a> TypeEnvironment<'a> {
 
         match &mut expr.expr {
             &Number(_) => {
-                self.constraints.insert(expr.typ.var().clone(), vec![~"Num"]);
+                self.constraints.insert(expr.typ.var().clone(), vec![intern("Num")]);
                 match &mut expr.typ {
                     &TypeVariable(ref mut v) => v.kind = star_kind.clone(),
                     _ => ()
                 }
             }
             &Rational(_) => {
-                self.constraints.insert(expr.typ.var().clone(), vec![~"Fractional"]);
+                self.constraints.insert(expr.typ.var().clone(), vec![intern("Fractional")]);
                 match &mut expr.typ {
                     &TypeVariable(ref mut v) => v.kind = star_kind.clone(),
                     _ => ()
                 }
             }
             &String(_) => {
-                expr.typ = Type::new_op(~"[]", ~[Type::new_op(~"Char", ~[])]);
+                expr.typ = Type::new_op(intern("[]"), ~[Type::new_op(intern("Char"), ~[])]);
             }
             &Char(_) => {
-                expr.typ = Type::new_op(~"Char", ~[]);
+                expr.typ = Type::new_op(intern("Char"), ~[]);
             }
             &Identifier(ref name) => {
                 match self.fresh(name) {
@@ -616,7 +616,7 @@ impl <'a> TypeEnvironment<'a> {
             }
             &Do(ref mut bindings, ref mut last_expr) => {
                 let mut previous = self.new_var_kind(KindFunction(~StarKind, ~StarKind));
-                self.constraints.insert(previous.var().clone(), vec!(~"Monad"));
+                self.constraints.insert(previous.var().clone(), vec!(intern("Monad")));
                 previous = TypeApplication(~previous, ~self.new_var());
                 for bind in bindings.mut_iter() {
                     match *bind {
@@ -664,7 +664,7 @@ impl <'a> TypeEnvironment<'a> {
                 self.namedTypes.insert(ident.clone(), typ.clone());
             }
             &NumberPattern(_) => {
-                let mut typ = Type::new_op(~"Int", ~[]);
+                let mut typ = Type::new_op(intern("Int"), ~[]);
                 {
                     unify_location(self, subs, location, &mut typ, match_type);
                     replace(&mut self.constraints, match_type, subs);
@@ -807,7 +807,7 @@ fn is_function(typ: &Type) -> bool {
                 &TypeApplication(ref lhs, _) => {
                     let l: &Type = *lhs;
                     match l {
-                        &TypeOperator(ref op) => op.name.equiv(& &"->"),
+                        &TypeOperator(ref op) => op.name == intern("->"),
                         _ => false
                     }
                 }
@@ -833,7 +833,7 @@ fn get_returntype(typ: &Type) -> Type {
 }
 
 ///Update the constraints when replacing the variable 'old' with 'new'
-fn update_constraints(constraints: &mut HashMap<TypeVariable, Vec<~str>>, old: &TypeVariable, new: &Type, subs: &Substitution) {
+fn update_constraints(constraints: &mut HashMap<TypeVariable, Vec<InternedStr>>, old: &TypeVariable, new: &Type, subs: &Substitution) {
     match new {
         &TypeVariable(ref new_var) => {
             match subs.constraints.find(old) {
@@ -853,7 +853,7 @@ fn update_constraints(constraints: &mut HashMap<TypeVariable, Vec<~str>>, old: &
 }
 
 ///Replace all typevariables using the substitution 'subs'
-fn replace(constraints: &mut HashMap<TypeVariable, Vec<~str>>, old : &mut Type, subs : &Substitution) {
+fn replace(constraints: &mut HashMap<TypeVariable, Vec<InternedStr>>, old : &mut Type, subs : &Substitution) {
     let replaced = match old {
         &TypeVariable(ref id) => {
             match subs.subs.find(id) {
@@ -1001,7 +1001,7 @@ enum TypeError {
     UnifyFail,
     RecursiveUnification,
     WrongArity(Type, Type),
-    MissingInstance(~str, Type, TypeVariable)
+    MissingInstance(InternedStr, Type, TypeVariable)
 }
 
 fn unify(env: &mut TypeEnvironment, subs: &mut Substitution, lhs: Type, rhs: Type) -> Result<Type, TypeError> {
@@ -1042,10 +1042,10 @@ fn unify(env: &mut TypeEnvironment, subs: &mut Substitution, lhs: Type, rhs: Typ
                                 if !env.has_instance(*c, &typ) {
                                     match &typ {
                                         &TypeOperator(ref op) => {
-                                            if c.equiv(& &"Num") && (op.name.equiv(& &"Int") || op.name.equiv(& &"Double")) && *typ.kind() == star_kind {
+                                            if *c == intern("Num") && (op.name == intern("Int") || op.name == intern("Double")) && *typ.kind() == star_kind {
                                                 continue;
                                             }
-                                            else if c.equiv(& &"Fractional") && "Double" == op.name && *typ.kind() == star_kind {
+                                            else if *c == intern("Fractional") && intern("Double") == op.name && *typ.kind() == star_kind {
                                                 continue;
                                             }
                                         }
@@ -1164,13 +1164,13 @@ fn each_type_(typ: &Type, var_fn: &|&TypeVariable|, op_fn: &|&TypeOperator|) {
 ///Finds the kind for the variable test and makes sure that all occurences of the variable
 ///has the same kind in 'typ'
 ///'expected' should be None if the kinds is currently unknown, otherwise the expected kind
-fn find_kind(test: &TypeVariable, expected: Option<Kind>, typ: &Type) -> Result<Option<Kind>, ~str> {
+fn find_kind(test: &TypeVariable, expected: Option<Kind>, typ: &Type) -> Result<Option<Kind>, &'static str> {
     match *typ {
         TypeVariable(ref var) if test.id == var.id => {
             match expected {
                 Some(k) => {
                     if k != var.kind {
-                        Err("Kinds do not match".to_owned())
+                        Err("Kinds do not match")
                     }
                     else {
                         Ok(Some(k))
@@ -1190,11 +1190,11 @@ fn find_kind(test: &TypeVariable, expected: Option<Kind>, typ: &Type) -> Result<
 }
 
 pub fn function_type(func : &Type, arg : &Type) -> Type {
-    Type::new_op(~"->", ~[func.clone(), arg.clone()])
+    Type::new_op(intern("->"), ~[func.clone(), arg.clone()])
 }
 
 pub fn function_type_(func : Type, arg : Type) -> Type {
-    Type::new_op(~"->", ~[func, arg])
+    Type::new_op(intern("->"), ~[func, arg])
 }
 
 pub fn with_arg_return(func_type: &mut Type, func: |&mut Type, &mut Type|) -> bool {
@@ -1214,12 +1214,12 @@ pub fn with_arg_return(func_type: &mut Type, func: |&mut Type, &mut Type|) -> bo
 }
 
 #[cfg(test)]
-pub fn identifier(i : ~str) -> TypedExpr {
-    TypedExpr::new(Identifier(i))
+pub fn identifier(i : &str) -> TypedExpr {
+    TypedExpr::new(Identifier(intern(i)))
 }
 #[cfg(test)]
-pub fn lambda(arg : ~str, body : TypedExpr) -> TypedExpr {
-    TypedExpr::new(Lambda(arg, ~body))
+pub fn lambda(arg : &str, body : TypedExpr) -> TypedExpr {
+    TypedExpr::new(Lambda(intern(arg), ~body))
 }
 #[cfg(test)]
 pub fn number(i : int) -> TypedExpr {
@@ -1244,6 +1244,7 @@ pub fn case(expr : TypedExpr, alts: ~[Alternative]) -> TypedExpr {
 
 #[cfg(test)]
 mod test {
+use interner::*;
 use module::*;
 use typecheck::*;
 use renamer::*;
@@ -1254,11 +1255,11 @@ use std::io::File;
 #[test]
 fn application() {
     let mut env = TypeEnvironment::new();
-    let n = ~TypedExpr::new(Identifier(~"primIntAdd"));
+    let n = ~TypedExpr::new(Identifier(intern("primIntAdd")));
     let num = ~TypedExpr::new(Number(1));
     let e = TypedExpr::new(Apply(n, num));
     let mut expr = rename_expr(e);
-    let type_int = Type::new_op(~"Int", ~[]);
+    let type_int = Type::new_op(intern("Int"), ~[]);
     let unary_func = function_type(&type_int, &type_int);
     env.typecheck_expr(&mut expr);
 
@@ -1269,10 +1270,10 @@ fn application() {
 #[test]
 fn typecheck_lambda() {
     let mut env = TypeEnvironment::new();
-    let type_int = Type::new_op(~"Int",~[]);
+    let type_int = Type::new_op(intern("Int"),~[]);
     let unary_func = function_type(&type_int, &type_int);
 
-    let e = lambda(~"x", apply(apply(identifier(~"primIntAdd"), identifier(~"x")), number(1)));
+    let e = lambda("x", apply(apply(identifier("primIntAdd"), identifier("x")), number(1)));
     let mut expr = rename_expr(e);
     env.typecheck_expr(&mut expr);
 
@@ -1282,12 +1283,12 @@ fn typecheck_lambda() {
 #[test]
 fn typecheck_let() {
     let mut env = TypeEnvironment::new();
-    let type_int = Type::new_op(~"Int", ~[]);
+    let type_int = Type::new_op(intern("Int"), ~[]);
     let unary_func = function_type(&type_int, &type_int);
 
     //let test x = add x in test
-    let unary_bind = lambda(~"x", apply(apply(identifier(~"primIntAdd"), identifier(~"x")), number(1)));
-    let e = let_(~[Binding { arity: 1, name: ~"test", expression: unary_bind, typeDecl: Default::default() }], identifier(~"test"));
+    let unary_bind = lambda("x", apply(apply(identifier("primIntAdd"), identifier("x")), number(1)));
+    let e = let_(~[Binding { arity: 1, name: intern("test"), expression: unary_bind, typeDecl: Default::default() }], identifier("test"));
     let mut expr = rename_expr(e);
     env.typecheck_expr(&mut expr);
 
@@ -1297,7 +1298,7 @@ fn typecheck_let() {
 #[test]
 fn typecheck_case() {
     let mut env = TypeEnvironment::new();
-    let type_int = Type::new_op(~"Int", ~[]);
+    let type_int = Type::new_op(intern("Int"), ~[]);
 
     let mut parser = Parser::new(r"case [] of { : x xs -> primIntAdd x 2 ; [] -> 3}".chars());
     let mut expr = rename_expr(parser.expression_());
@@ -1306,7 +1307,7 @@ fn typecheck_case() {
     assert_eq!(expr.typ, type_int);
     match &expr.expr {
         &Case(ref case_expr, _) => {
-            assert_eq!(case_expr.typ, Type::new_op(~"[]", ~[Type::new_op(~"Int", ~[])]));
+            assert_eq!(case_expr.typ, Type::new_op(intern("[]"), ~[Type::new_op(intern("Int"), ~[])]));
         }
         _ => fail!("typecheck_case")
     }
@@ -1322,7 +1323,7 @@ main = case [mult2 123, 0] of
     [] -> 10";
     let module = do_typecheck(file);
 
-    assert_eq!(module.bindings[1].expression.typ, Type::new_op(~"Int", ~[]));
+    assert_eq!(module.bindings[1].expression.typ, Type::new_op(intern("Int"), ~[]));
 }
 
 #[test]
@@ -1333,7 +1334,7 @@ fn typecheck_string() {
     let mut expr = rename_expr(parser.expression_());
     env.typecheck_expr(&mut expr);
 
-    assert_eq!(expr.typ, Type::new_op(~"[]", ~[Type::new_op(~"Char", ~[])]));
+    assert_eq!(expr.typ, Type::new_op(intern("[]"), ~[Type::new_op(intern("Char"), ~[])]));
 }
 
 #[test]
@@ -1344,8 +1345,8 @@ fn typecheck_tuple() {
     let mut expr = rename_expr(parser.expression_());
     env.typecheck_expr(&mut expr);
 
-    let list = Type::new_op(~"[]", ~[Type::new_op(~"Char", ~[])]);
-    assert_eq!(expr.typ, Type::new_op(~"(,)", ~[Type::new_op(~"Int", ~[]), list]));
+    let list = Type::new_op(intern("[]"), ~[Type::new_op(intern("Char"), ~[])]);
+    assert_eq!(expr.typ, Type::new_op(intern("(,)"), ~[Type::new_op(intern("Int"), ~[]), list]));
 }
 
 #[test]
@@ -1356,7 +1357,7 @@ r"data Bool = True | False
 test x = True";
     let module = do_typecheck(file);
 
-    let typ = function_type(&Type::new_var(0), &Type::new_op(~"Bool", ~[]));
+    let typ = function_type(&Type::new_var(0), &Type::new_op(intern("Bool"), ~[]));
     let bind_type0 = module.bindings[0].expression.typ;
     assert_eq!(bind_type0, typ);
 }
@@ -1377,8 +1378,8 @@ in b".chars());
     env.typecheck_expr(&mut expr);
 
     
-    let int_type = Type::new_op(~"Int", ~[]);
-    let list_type = Type::new_op(~"[]", ~[int_type.clone()]);
+    let int_type = Type::new_op(intern("Int"), ~[]);
+    let list_type = Type::new_op(intern("[]"), ~[int_type.clone()]);
     match &expr.expr {
         &Let(ref binds, _) => {
             assert_eq!(binds.len(), 4);
@@ -1405,7 +1406,7 @@ main = test 1";
     let module = do_typecheck(file);
 
     let typ = &module.bindings[0].expression.typ;
-    assert_eq!(typ, &Type::new_op(~"Int", ~[]));
+    assert_eq!(typ, &Type::new_op(intern("Int"), ~[]));
 }
 
 //Test that calling a function with constraints will propagate the constraints to
@@ -1427,10 +1428,10 @@ main x y = primIntAdd (test x) (test y)".chars());
     env.typecheck_module(&mut module);
 
     let typ = &module.bindings[0].expression.typ;
-    let int_type = Type::new_op(~"Int", ~[]);
+    let int_type = Type::new_op(intern("Int"), ~[]);
     let test = function_type(&Type::new_var(-1),  &function_type(&Type::new_var(-2), &int_type));
     assert_eq!(typ, &test);
-    let test_cons = vec![~"Test"];
+    let test_cons = vec![intern("Test")];
     assert_eq!(env.constraints.find(typ.appl().appr().var()), Some(&test_cons));
     let second_fn = &typ.appr();
     assert_eq!(env.constraints.find(second_fn.appl().appr().var()), Some(&test_cons));
@@ -1480,10 +1481,10 @@ instance Eq a => Eq [a] where
     env.typecheck_module(&mut module);
 
     let typ = &module.instances[0].bindings[0].expression.typ;
-    let list_type = Type::new_op(~"[]", ~[Type::new_var(100)]);
-    assert_eq!(*typ, function_type(&list_type, &function_type(&list_type, &Type::new_op(~"Bool", ~[]))));
+    let list_type = Type::new_op(intern("[]"), ~[Type::new_var(100)]);
+    assert_eq!(*typ, function_type(&list_type, &function_type(&list_type, &Type::new_op(intern("Bool"), ~[]))));
     let var = typ.appl().appr().appr().var();
-    let eq = vec![~"Eq"];
+    let eq = vec![intern("Eq")];
     assert_eq!(env.constraints.find(var), Some(&eq));
 }
 
@@ -1494,7 +1495,7 @@ fn typecheck_num_double() {
 r"test x = primDoubleAdd 0 x";
     let module = do_typecheck(file);
 
-    let typ = function_type(&Type::new_op(~"Double", ~[]), &Type::new_op(~"Double", ~[]));
+    let typ = function_type(&Type::new_op(intern("Double"), ~[]), &Type::new_op(intern("Double"), ~[]));
     let bind_type0 = module.bindings[0].expression.typ;
     assert_eq!(bind_type0, typ);
 }
@@ -1517,7 +1518,7 @@ main = fmap add2 (Just 3)";
     let module = do_typecheck(file);
 
     let main = &module.bindings[1];
-    assert_eq!(main.expression.typ, Type::new_op(~"Maybe", ~[Type::new_op(~"Int", ~[])]));
+    assert_eq!(main.expression.typ, Type::new_op(intern("Maybe"), ~[Type::new_op(intern("Int"), ~[])]));
 }
 #[should_fail]
 #[test]
@@ -1566,9 +1567,9 @@ test2 = id (primIntAdd 2 0)";
     let module = do_typecheck_with(file, [&prelude as &DataTypes]);
 
     assert_eq!(module.bindings[0].name.as_slice(), "test1");
-    assert_eq!(module.bindings[0].expression.typ, Type::new_op(~"[]", ~[Type::new_op(~"Bool", ~[])]));
+    assert_eq!(module.bindings[0].expression.typ, Type::new_op(intern("[]"), ~[Type::new_op(intern("Bool"), ~[])]));
     assert_eq!(module.bindings[1].name.as_slice(), "test2");
-    assert_eq!(module.bindings[1].expression.typ, Type::new_op(~"Int", ~[]));
+    assert_eq!(module.bindings[1].expression.typ, Type::new_op(intern("Int"), ~[]));
 }
 
 #[test]
@@ -1629,7 +1630,7 @@ test x = do
     let var = Type::new_var(0);
     let t = function_type_(Type::new_var_args(2, ~[list_type(var.clone())]), Type::new_var_args(2, ~[var.clone()]));
     assert_eq!(module.bindings[0].expression.typ, t);
-    assert_eq!(module.bindings[0].typeDecl.context[0].class.as_slice(), "Monad");
+    assert_eq!(module.bindings[0].typeDecl.context[0].class, intern("Monad"));
 }
 #[test]
 #[should_fail]

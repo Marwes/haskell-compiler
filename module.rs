@@ -1,10 +1,13 @@
 use std::fmt;
 use collections::HashMap;
 use std::iter::range_step;
+use interner::{intern, InternedStr};
 pub use std::default::Default;
 pub use lexer::{Location, Located};
 
-pub struct Module<Ident = ~str> {
+type DefaultIdent = InternedStr;
+
+pub struct Module<Ident = InternedStr> {
     pub name : Ident,
     pub bindings : ~[Binding<Ident>],
     pub typeDeclarations : ~[TypeDeclaration],
@@ -13,21 +16,21 @@ pub struct Module<Ident = ~str> {
     pub dataDefinitions : ~[DataDefinition<Ident>]
 }
 #[deriving(Clone)]
-pub struct Class<Ident = ~str> {
+pub struct Class<Ident = InternedStr> {
     pub name : Ident,
     pub variable : TypeVariable,
     pub declarations : ~[TypeDeclaration]
 }
 
-pub struct Instance<Ident = ~str> {
+pub struct Instance<Ident = InternedStr> {
     pub bindings : ~[Binding<Ident>],
     pub constraints : ~[Constraint],
     pub typ : Type,
-    pub classname : ~str
+    pub classname : InternedStr
 }
 
 #[deriving(Eq)]
-pub struct Binding<Ident = ~str> {
+pub struct Binding<Ident = InternedStr> {
     pub name : Ident,
     pub expression : TypedExpr<Ident>,
     pub typeDecl : TypeDeclaration,
@@ -35,7 +38,7 @@ pub struct Binding<Ident = ~str> {
 }
 
 #[deriving(Eq, TotalEq, Clone, Show)]
-pub struct Constructor<Ident = ~str> {
+pub struct Constructor<Ident = InternedStr> {
     pub name : Ident,
     pub typ : Type,
     pub tag : int,
@@ -43,22 +46,22 @@ pub struct Constructor<Ident = ~str> {
 }
 
 #[deriving(Eq, Clone)]
-pub struct DataDefinition<Ident = ~str> {
+pub struct DataDefinition<Ident = InternedStr> {
     pub constructors : ~[Constructor<Ident>],
     pub typ : Type,
-    pub parameters : HashMap<~str, int>
+    pub parameters : HashMap<InternedStr, int>
 }
 
 #[deriving(Clone, Eq, TotalEq, Default)]
 pub struct TypeDeclaration {
     pub context : ~[Constraint],
     pub typ : Type,
-    pub name : ~str
+    pub name : InternedStr
 }
 
 #[deriving(Clone, Default, Eq, TotalEq, Hash)]
 pub struct TypeOperator {
-    pub name : ~str,
+    pub name : InternedStr,
     pub kind : Kind
 }
 #[deriving(Clone, Eq, TotalEq, Default, Hash)]
@@ -89,14 +92,14 @@ impl Type {
     pub fn new_var_kind(id : int, kind: Kind) -> Type {
         TypeVariable(TypeVariable { id : id, kind: kind })
     }
-    pub fn new_op(name : ~str, types : ~[Type]) -> Type {
+    pub fn new_op(name : InternedStr, types : ~[Type]) -> Type {
         let mut result = TypeOperator(TypeOperator { name : name, kind: Kind::new(types.len() as int + 1) });
         for typ in types.move_iter() {
             result = TypeApplication(~result, ~typ);
         }
         result
     }
-    pub fn new_op_kind(name : ~str, types : ~[Type], kind: Kind) -> Type {
+    pub fn new_op_kind(name : InternedStr, types : ~[Type], kind: Kind) -> Type {
         let mut result = TypeOperator(TypeOperator { name : name, kind: kind });
         for typ in types.move_iter() {
             result = TypeApplication(~result, ~typ);
@@ -166,41 +169,40 @@ pub fn tuple_type(size: uint) -> (~str, Type) {
         ident.push_char(',');
     }
     ident.push_char(')');
-    let result = ident.into_owned();
-    let mut typ = Type::new_op(result.clone(), var_list.move_iter().collect());
+    let mut typ = Type::new_op(intern(ident.as_slice()), var_list.move_iter().collect());
     for i in range_step(size as int - 1, -1, -1) {
-        typ = Type::new_op(~"->", ~[Generic(Type::new_var(i).var().clone()), typ]);
+        typ = function_type_(Generic(Type::new_var(i).var().clone()), typ);
     }
-    (result, typ)
+    (ident.into_owned(), typ)
 }
 
 pub fn list_type(typ: Type) -> Type {
-    Type::new_op(~"[]", ~[typ])
+    Type::new_op(intern("[]"), ~[typ])
 }
 
 pub fn char_type() -> Type {
-    Type::new_op(~"Char", ~[])
+    Type::new_op(intern("Char"), ~[])
 }
 
 pub fn function_type(func : &Type, arg : &Type) -> Type {
-    Type::new_op(~"->", ~[func.clone(), arg.clone()])
+    Type::new_op(intern("->"), ~[func.clone(), arg.clone()])
 }
 
 pub fn function_type_(func : Type, arg : Type) -> Type {
-    Type::new_op(~"->", ~[func, arg])
+    Type::new_op(intern("->"), ~[func, arg])
 }
 
 pub fn io(typ: Type) -> Type {
-    Type::new_op("IO".to_owned(), ~[typ])
+    Type::new_op(intern("IO"), ~[typ])
 }
 pub fn unit() -> Type {
-    Type::new_op("()".to_owned(), ~[])
+    Type::new_op(intern("()"), ~[])
 }
 
 
 #[deriving(Clone, Eq, TotalEq, Hash)]
 pub struct Constraint {
-    pub class : ~str,
+    pub class : InternedStr,
     pub variables : ~[TypeVariable]
 }
 
@@ -261,14 +263,14 @@ impl fmt::Show for Type {
             &TypeApplication(ref lhs, ref rhs) => {
                 let l: &Type = *lhs;
                 let is_list = match l {
-                    &TypeOperator(ref op) => "[]" == op.name,
+                    &TypeOperator(ref op) => "[]" == op.name.as_slice(),
                     _ => false
                 };
                 let is_func = match l {
                     &TypeApplication(ref xx, _) => {
                         let x: &Type = *xx;
                         match x {
-                            &TypeOperator(ref op) => "->" == op.name,
+                            &TypeOperator(ref op) => "->" == op.name.as_slice(),
                             _ => false
                         }
                     }
@@ -282,7 +284,7 @@ impl fmt::Show for Type {
                                 &TypeApplication(ref y, _) => {
                                     let yy: &Type = *y;
                                     match yy {
-                                        &TypeOperator(ref op) => "->" == op.name,
+                                        &TypeOperator(ref op) => "->" == op.name.as_slice(),
                                         _ => false
                                     }
                                 }
@@ -368,7 +370,7 @@ impl Eq for Type {
     }
 }
 
-pub struct TypedExpr<Ident = ~str> {
+pub struct TypedExpr<Ident = InternedStr> {
     pub expr : Expr<Ident>,
     pub typ : Type,
     pub location : Location
@@ -396,13 +398,13 @@ impl TypedExpr {
 }
 
 #[deriving(Eq)]
-pub struct Alternative<Ident = ~str> {
+pub struct Alternative<Ident = InternedStr> {
     pub pattern : Located<Pattern<Ident>>,
     pub expression : TypedExpr<Ident>
 }
 
 #[deriving(Eq, TotalEq)]
-pub enum Pattern<Ident = ~str> {
+pub enum Pattern<Ident = InternedStr> {
     NumberPattern(int),
     IdentifierPattern(Ident),
     ConstructorPattern(Ident, ~[Pattern<Ident>]),
@@ -410,19 +412,19 @@ pub enum Pattern<Ident = ~str> {
 }
 
 #[deriving(Eq)]
-pub enum DoBinding<Ident = ~str> {
+pub enum DoBinding<Ident = InternedStr> {
     DoLet(~[Binding<Ident>]),
     DoBind(Located<Pattern<Ident>>, TypedExpr<Ident>),
     DoExpr(TypedExpr<Ident>)
 }
 
 #[deriving(Eq)]
-pub enum Expr<Ident = ~str> {
+pub enum Expr<Ident = InternedStr> {
     Identifier(Ident),
     Apply(~TypedExpr<Ident>, ~TypedExpr<Ident>),
     Number(int),
     Rational(f64),
-    String(~str),
+    String(InternedStr),
     Char(char),
     Lambda(Ident, ~TypedExpr<Ident>),
     Let(~[Binding<Ident>], ~TypedExpr<Ident>),

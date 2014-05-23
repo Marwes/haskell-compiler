@@ -1,6 +1,7 @@
 use collections::hashmap::HashMap;
 use core::*;
 use module::function_type_;
+use interner::*;
 
 pub type TypeAndStr = Id;
 
@@ -110,10 +111,10 @@ fn abstract(&mut self, free_vars: &HashMap<Name, TypeAndStr>, input_expr: Expr<T
             }
             self.uid += 1;
             let bind = Binding {
-                name: Id::new(Name {name: "#sc".to_owned(), uid: self.uid }, typ.clone(), ~[]),
+                name: Id::new(Name {name: intern("#sc"), uid: self.uid }, typ.clone(), ~[]),
                 expression: rhs
             };
-            Let(~[bind], ~Identifier(Id::new(Name { name: "#sc".to_owned(), uid: self.uid }, typ.clone(), ~[])))
+            Let(~[bind], ~Identifier(Id::new(Name { name: intern("#sc"), uid: self.uid }, typ.clone(), ~[])))
         };
         for (_, var) in free_vars.iter() {
             e = Apply(~e, ~Identifier(var.clone()));
@@ -213,6 +214,7 @@ pub fn each_binding<Ident, Ident2>(module: Module<Ident>, _trans: |Ident| -> Ide
 
 #[cfg(test)]
 mod tests {
+    use interner::*;
     use lambda_lift::*;
     use collections::hashmap::HashSet;
     use parser::Parser;
@@ -257,9 +259,9 @@ test2 x =
         (&mut visitor as &mut Visitor<Id>).visit_module(&module);
     }
 
-    fn check_args(expr: &Expr<Id>, args: &[&str]) -> bool {
+    fn check_args(expr: &Expr<Id>, args: &[InternedStr]) -> bool {
         match expr {
-            &Lambda(ref arg, ref body) => arg.name.name.equiv(&args[0]) && check_args(*body, args.slice_from(1)),
+            &Lambda(ref arg, ref body) => arg.name.name == args[0] && check_args(*body, args.slice_from(1)),
             _ => args.len() == 0
         }
     }
@@ -268,12 +270,12 @@ test2 x =
         count: int
     }
     
-    fn get_let<'a>(expr: &'a Expr<Id>, args: &mut Vec<&'a str>) -> &'a Expr<Id> {
+    fn get_let<'a>(expr: &'a Expr<Id>, args: &mut Vec<InternedStr>) -> &'a Expr<Id> {
         match expr {
             &Apply(ref f, ref arg) => {
                 let a: &Expr<Id> = *arg;
                 match a {
-                    &Identifier(ref i) => args.push(i.name.name.as_slice()),
+                    &Identifier(ref i) => args.push(i.name.name),
                     _ => fail!("Expected identifier as argument")
                 }
                 get_let(*f, args)
@@ -284,12 +286,12 @@ test2 x =
 
     impl Visitor<Id> for CheckAbstract {
         fn visit_binding(&mut self, bind: &Binding<Id>) {
-            if "f" == bind.name.name.name {
+            if intern("f") == bind.name.name.name {
                 let mut args = Vec::new();
                 match get_let(&bind.expression, &mut args) {
                     &Let(ref binds, ref body) => {
                         //Push the argument of the function itself
-                        args.push("x");
+                        args.push(intern("x"));
                         assert!(check_args(&binds[0].expression, args.as_slice()));
                         assert_eq!(Identifier(binds[0].name.clone()), **body);
                     }
@@ -297,11 +299,11 @@ test2 x =
                 }
                 self.count += 1;
             }
-            else if "g" == bind.name.name.name {
+            else if intern("g") == bind.name.name.name {
                 let mut args = Vec::new();
                 match get_let(&bind.expression, &mut args) {
                     &Let(ref binds, ref body) => {
-                        args.push("y");
+                        args.push(intern("y"));
                         assert!(check_args(&binds[0].expression, args.as_slice()));
                         assert_eq!(Identifier(binds[0].name.clone()), **body);
                     }

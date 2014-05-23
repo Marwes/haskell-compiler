@@ -10,6 +10,7 @@ use core::translate::translate_module;
 use lambda_lift::do_lambda_lift;
 use renamer::rename_module;
 use vm::primitive::{PrimFun, get_primitive};
+use interner::*;
 
 enum Node_<'a> {
     Application(Node<'a>, Node<'a>),
@@ -450,7 +451,7 @@ fn extract_result(node: Node_) -> Option<VMResult> {
 pub fn execute_main<T : Iterator<char>>(iterator: T) -> Option<VMResult> {
     let mut vm = VM::new();
     vm.add_assembly(compile_iter(iterator));
-    let x = vm.assembly.iter().flat_map(|a| a.superCombinators.iter()).find(|sc| sc.name.name == ~"main");
+    let x = vm.assembly.iter().flat_map(|a| a.superCombinators.iter()).find(|sc| sc.name.name == intern("main"));
     match x {
         Some(sc) => {
             assert!(sc.arity == 0);
@@ -592,6 +593,7 @@ use std::io::File;
 use typecheck::TypeEnvironment;
 use compiler::{compile_with_type_env};
 use vm::{VM, compile_file, execute_main, extract_result, IntResult, DoubleResult, ConstructorResult};
+use interner::*;
 
 #[test]
 fn test_primitive()
@@ -741,7 +743,7 @@ main = foldl add 0 [1,2,3,4]");
     let mut vm = VM::new();
     vm.add_assembly(prelude);
     vm.add_assembly(assembly);
-    let x = vm.assembly.iter().flat_map(|a| a.superCombinators.iter()).find(|sc| sc.name.name == ~"main");
+    let x = vm.assembly.iter().flat_map(|a| a.superCombinators.iter()).find(|sc| sc.name.name == intern("main"));
     let result = match x {
         Some(sc) => {
             assert!(sc.arity == 0);
@@ -763,7 +765,7 @@ fn instance_super_class() {
     let mut vm = VM::new();
     vm.add_assembly(prelude);
     vm.add_assembly(assembly);
-    let x = vm.assembly.iter().flat_map(|a| a.superCombinators.iter()).find(|sc| sc.name.name == ~"main");
+    let x = vm.assembly.iter().flat_map(|a| a.superCombinators.iter()).find(|sc| sc.name.name == intern("main"));
     let result = match x {
         Some(sc) => {
             assert!(sc.arity == 0);
@@ -793,7 +795,7 @@ main = test (Just 4) (Just 6)");
     let mut vm = VM::new();
     vm.add_assembly(prelude);
     vm.add_assembly(assembly);
-    let x = vm.assembly.iter().flat_map(|a| a.superCombinators.iter()).find(|sc| sc.name.name == ~"main");
+    let x = vm.assembly.iter().flat_map(|a| a.superCombinators.iter()).find(|sc| sc.name.name == intern("main"));
     let result = match x {
         Some(sc) => {
             assert!(sc.arity == 0);

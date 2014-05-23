@@ -1,9 +1,10 @@
 use module::*;
 use scoped_map::ScopedMap;
+use interner::*;
 
 #[deriving(Eq, TotalEq, Hash, Clone, Show)]
 pub struct Name {
-    pub name: ~str,
+    pub name: InternedStr,
     pub uid: uint
 }
 
@@ -12,18 +13,18 @@ impl Str for Name {
         self.name.as_slice()
     }
     fn into_owned(self) -> ~str {
-        self.name
+        self.name.into_owned()
     }
 }
 
 struct Renamer {
-    uniques: ScopedMap<~str, Name>,
+    uniques: ScopedMap<InternedStr, Name>,
     unique_id: uint
 }
 
 impl Renamer {
 
-    fn rename_bindings(&mut self, bindings: ~[Binding<~str>]) -> ~[Binding<Name>] {
+    fn rename_bindings(&mut self, bindings: ~[Binding<InternedStr>]) -> ~[Binding<Name>] {
         //Add all bindings in the scope
         for bind in bindings.iter() {
             self.make_unique(bind.name.clone());
@@ -41,7 +42,7 @@ impl Renamer {
         }).collect()
     }
 
-    fn rename(&mut self, input_expr: TypedExpr<~str>) -> TypedExpr<Name> {
+    fn rename(&mut self, input_expr: TypedExpr<InternedStr>) -> TypedExpr<Name> {
         let TypedExpr { expr: expr, typ: typ, location: location } = input_expr;
         let e = match expr {
             Number(n) => Number(n),
@@ -96,7 +97,7 @@ impl Renamer {
         t
     }
 
-    fn rename_pattern(&mut self, pattern: Pattern<~str>) -> Pattern<Name> {
+    fn rename_pattern(&mut self, pattern: Pattern<InternedStr>) -> Pattern<Name> {
         match pattern {
             NumberPattern(i) => NumberPattern(i),
             ConstructorPattern(s, ps) => {
@@ -107,14 +108,14 @@ impl Renamer {
             WildCardPattern => WildCardPattern
         }
     }
-    fn get_name(&self, s: ~str) -> Name {
+    fn get_name(&self, s: InternedStr) -> Name {
         match self.uniques.find(&s) {
             Some(&Name { uid: uid, .. }) => Name { name: s, uid: uid },
             None => Name { name: s, uid: 0 }//If the variable is not found in variables it is a global variable
         }
     }
 
-    fn rename_binding(&mut self, binding: Binding<~str>) -> Binding<Name> {
+    fn rename_binding(&mut self, binding: Binding<InternedStr>) -> Binding<Name> {
         let Binding { name: name, expression: expression, typeDecl: td, arity: a } = binding;
         Binding {
             name: Name { name: name, uid: 0 },
@@ -125,19 +126,19 @@ impl Renamer {
     }
 
 
-    fn make_unique(&mut self, name: ~str) -> Name {
+    fn make_unique(&mut self, name: InternedStr) -> Name {
         self.unique_id += 1;
         let u = Name { name: name.clone(), uid: self.unique_id};
         self.uniques.insert(name, u.clone());
         u
     }
 }
-pub fn rename_expr(expr: TypedExpr<~str>) -> TypedExpr<Name> {
+pub fn rename_expr(expr: TypedExpr<InternedStr>) -> TypedExpr<Name> {
     let mut renamer = Renamer { uniques: ScopedMap::new(), unique_id: 1 };
     renamer.rename(expr)
 }
 
-pub fn rename_module(module: Module<~str>) -> Module<Name> {
+pub fn rename_module(module: Module<InternedStr>) -> Module<Name> {
     let mut renamer = Renamer { uniques: ScopedMap::new(), unique_id: 1 };
     let Module {
         name: name,
