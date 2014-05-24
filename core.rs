@@ -56,40 +56,40 @@ pub enum Literal_ {
 #[deriving(Eq)]
 pub enum Expr<Ident> {
     Identifier(Ident),
-    Apply(~Expr<Ident>, ~Expr<Ident>),
+    Apply(Box<Expr<Ident>>, Box<Expr<Ident>>),
     Literal(Literal),
-    Lambda(Ident, ~Expr<Ident>),
-    Let(~[Binding<Ident>], ~Expr<Ident>),
-    Case(~Expr<Ident>, ~[Alternative<Ident>])
+    Lambda(Ident, Box<Expr<Ident>>),
+    Let(~[Binding<Ident>], Box<Expr<Ident>>),
+    Case(Box<Expr<Ident>>, ~[Alternative<Ident>])
 }
 
 impl <T: fmt::Show> fmt::Show for Expr<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            &Identifier(ref s) => write!(f.buf, "{}", s),
-            &Apply(ref func, ref arg) => write!(f.buf, "({} {})", *func, *arg),
+            &Identifier(ref s) => write!(f, "{}", s),
+            &Apply(ref func, ref arg) => write!(f, "({} {})", *func, *arg),
             &Literal(ref literal) => {
                 match &literal.value {
-                    &Integral(i) => write!(f.buf, "{}", i),
-                    &Fractional(i) => write!(f.buf, "{}", i),
-                    &String(ref i) => write!(f.buf, "{}", i),
-                    &Char(i) => write!(f.buf, "{}", i)
+                    &Integral(i) => write!(f, "{}", i),
+                    &Fractional(i) => write!(f, "{}", i),
+                    &String(ref i) => write!(f, "{}", i),
+                    &Char(i) => write!(f, "{}", i)
                 }
             }
-            &Lambda(ref arg, ref body) => write!(f.buf, "(\\\\{} -> {})", arg, *body),
+            &Lambda(ref arg, ref body) => write!(f, "(\\\\{} -> {})", arg, *body),
             &Let(ref bindings, ref body) => {
-                try!(write!(f.buf, "let \\{\n"));
+                try!(write!(f, "let \\{\n"));
                 for bind in bindings.iter() {
-                    try!(write!(f.buf, "; {} = {}\n", bind.name, bind.expression));
+                    try!(write!(f, "; {} = {}\n", bind.name, bind.expression));
                 }
-                write!(f.buf, "\\} in {}\n", *body)
+                write!(f, "\\} in {}\n", *body)
             }
             &Case(ref expr, ref alts) => {
-                try!(write!(f.buf, "case {} of \\{\n", *expr));
+                try!(write!(f, "case {} of \\{\n", *expr));
                 for alt in alts.iter() {
-                    try!(write!(f.buf, "; {} -> {}\n", alt.pattern, alt.expression));
+                    try!(write!(f, "; {} -> {}\n", alt.pattern, alt.expression));
                 }
-                write!(f.buf, "\\}\n")
+                write!(f, "\\}\n")
             }
         }
     }
@@ -132,7 +132,7 @@ pub struct Id<T = Name> {
 
 impl fmt::Show for Id {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f.buf, "{}_{}", self.name.name, self.name.uid)
+        write!(f, "{}_{}", self.name.name, self.name.uid)
     }
 }
 
@@ -229,6 +229,7 @@ pub mod translate {
     use module::{function_type_, char_type, list_type};
     use core::*;
     use interner::*;
+    use std::vec::FromVec;
         
     pub fn translate_module(module: module::Module<Name>) -> Module<Id<Name>> {
         let module::Module { name : _name,
@@ -248,9 +249,9 @@ pub mod translate {
         instance_functions.extend(bindings.move_iter().map(translate_binding));
         Module {
             classes: classes,
-            data_definitions: dataDefinitions.move_iter().collect(),
-            bindings: instance_functions.move_iter().collect(),
-            instances: new_instances.move_iter().collect()
+            data_definitions: dataDefinitions,
+            bindings: FromVec::from_vec(instance_functions),
+            instances: FromVec::from_vec(new_instances)
         }
     }
 
@@ -266,7 +267,7 @@ pub mod translate {
             match expr {
                 module::Lambda(arg, body) => {
                     //TODO need to make unique names for the lambdas created here
-                    let l = Lambda(Id::new(arg, typ.clone(), ~[]), ~translate_expr_rest(*body));
+                    let l = Lambda(Id::new(arg, typ.clone(), ~[]), box translate_expr_rest(*body));
                     let bind = Binding { name: Id::new(Name { name: intern("#lambda"), uid: 0 }, typ.clone(), ~[]), expression: l };
                     Let(~[bind], ~Identifier(Id::new(Name { name: intern("#lambda"), uid: 0 }, typ.clone(), ~[])))
                 }
@@ -282,23 +283,23 @@ pub mod translate {
         let module::TypedExpr { typ: typ, expr: expr, ..} = input_expr;
         match expr {
             module::Identifier(s) => Identifier(Id::new(s, typ, ~[])),
-            module::Apply(func, arg) => Apply(~translate_expr(*func), ~translate_expr(*arg)),
+            module::Apply(func, arg) => Apply(box translate_expr(*func), box translate_expr(*arg)),
             module::Number(num) => Literal(Literal { typ: typ, value: Integral(num) }),
             module::Rational(num) => Literal(Literal { typ: typ, value: Fractional(num) }),
             module::String(s) => Literal(Literal { typ: typ, value: String(s) }),
             module::Char(c) => Literal(Literal { typ: typ, value: Char(c) }),
-            module::Lambda(arg, body) => Lambda(Id::new(arg, typ, ~[]), ~translate_expr_rest(*body)),
+            module::Lambda(arg, body) => Lambda(Id::new(arg, typ, ~[]), box translate_expr_rest(*body)),
             module::Let(bindings, body) => {
-                let bs = bindings.move_iter().map(translate_binding).collect();
-                Let(bs, ~translate_expr(*body))
+                let bs  = FromVec::<Binding<Id<Name>>>::from_vec(bindings.move_iter().map(translate_binding).collect());
+                Let(bs, box translate_expr(*body))
             }
             module::Case(expr, alts) => {
-                let a = alts.move_iter().map(|alt| {
+                let a = FromVec::<Alternative<Id<Name>>>::from_vec(alts.move_iter().map(|alt| {
                     let module::Alternative { pattern: pattern, expression: expr} = alt;
                     let p = translate_pattern(pattern.node);
                     Alternative { pattern: p, expression:translate_expr(expr) }
-                }).collect();
-                Case(~translate_expr(*expr), a)
+                }).collect());
+                Case(box translate_expr(*expr), a)
             }
             module::Do(bindings, expr) => {
                 let mut result = translate_expr(*expr);
@@ -306,13 +307,13 @@ pub mod translate {
                     result = match bind {
                         module::DoExpr(e) => {
                             let x = do_bind2_id(e.typ.clone(), result.get_type().clone());
-                            Apply(~Apply(~x, ~translate_expr(e)), ~result)
+                            Apply(box Apply(box x, box translate_expr(e)), box result)
                         }
                         module::DoBind(pattern, e) => {
                             do_bind_translate(pattern.node, translate_expr(e), result)
                         }
                         module::DoLet(bs) => {
-                            Let(bs.move_iter().map(translate_binding).collect(), ~result)
+                            Let(FromVec::<Binding<Id<Name>>>::from_vec(bs.move_iter().map(translate_binding).collect()), box result)
                         }
                     };
                 }
@@ -354,12 +355,12 @@ pub mod translate {
         );//TODO unique id
         let var = Id::new(Name { name: intern("p"), uid: 0 }, function_type_(a, m_b.clone()), c.clone());//Constraints for a
         let fail_ident = Identifier(Id::new(Name { name: intern("fail"), uid: 0 }, function_type_(list_type(char_type()), m_b), c));
-        let func = Lambda(var.clone(), ~Case(~Identifier(var), 
+        let func = Lambda(var.clone(), box Case(box Identifier(var), 
             ~[Alternative { pattern: translate_pattern(pattern), expression: result }
-            , Alternative { pattern: WildCardPattern, expression: Apply(~fail_ident, ~string("Unmatched pattern in let")) } ]));
+            , Alternative { pattern: WildCardPattern, expression: Apply(box fail_ident, box string("Unmatched pattern in let".to_owned())) } ]));
         let bind = Binding { name: func_ident.clone(), expression: func };
         
-        Let(~[bind], ~mkApply(bind_ident, ~[expr, Identifier(func_ident)]))
+        Let(~[bind], box mkApply(bind_ident, ~[expr, Identifier(func_ident)]))
     }
 
     fn translate_binding(binding : module::Binding<Name>) -> Binding<Id<Name>> {
@@ -373,7 +374,9 @@ pub mod translate {
             IdentifierPattern(i) => IdentifierPattern(Id::new(i, Type::new_var(0), ~[])),
             NumberPattern(n) => NumberPattern(n),
             ConstructorPattern(name, patterns) =>
-                ConstructorPattern(Id::new(name, Type::new_var(0), ~[]), patterns.move_iter().map(translate_pattern).collect()),
+                ConstructorPattern(
+                    Id::new(name, Type::new_var(0), ~[]),
+                    FromVec::<Pattern<Id<Name>>>::from_vec(patterns.move_iter().map(translate_pattern).collect())),
             WildCardPattern => WildCardPattern
         }
     }
@@ -384,7 +387,7 @@ pub mod translate {
     fn mkApply(func: Expr<Id<Name>>, args: ~[Expr<Id<Name>>]) -> Expr<Id<Name>> {
         let mut result = func;
         for arg in args.move_iter() {
-            result = Apply(~result, ~arg);
+            result = Apply(box result, box arg);
         }
         result
     }

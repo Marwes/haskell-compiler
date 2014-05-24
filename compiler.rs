@@ -5,6 +5,7 @@ use typecheck::{Types, DataTypes, TypeEnvironment};
 use scoped_map::ScopedMap;
 use std::iter::range_step;
 use std::default::Default;
+use std::vec::FromVec;
 
 use core::translate::{translate_module};
 use lambda_lift::do_lambda_lift;
@@ -391,12 +392,12 @@ impl <'a> Compiler<'a> {
         }
         self.module = None;
         Assembly {
-            superCombinators: superCombinators.move_iter().collect(),
-            instance_dictionaries: instance_dictionaries.move_iter().collect(),
+            superCombinators: FromVec::from_vec(superCombinators),
+            instance_dictionaries: FromVec::from_vec(instance_dictionaries),
             offset: self.assemblies.iter().flat_map(|assembly| assembly.superCombinators.iter()).len(),
             classes: module.classes.clone(),
-            instances: module.instances.iter().map(|x| x.clone()).collect(),
-            data_definitions: data_definitions.move_iter().collect()
+            instances: FromVec::<(~[Constraint], Type)>::from_vec(module.instances.iter().map(|x| x.clone()).collect()),
+            data_definitions: FromVec::from_vec(data_definitions)
         }
     }
 
@@ -425,7 +426,7 @@ impl <'a> Compiler<'a> {
             }
             instructions.push(Unwind);
         });
-        comb.instructions = instructions.move_iter().collect();
+        comb.instructions = FromVec::from_vec(instructions);
         debug!("{} compiled as:\n{}", bind.name, comb.instructions);
         comb
     }
@@ -478,8 +479,8 @@ impl <'a> Compiler<'a> {
                 return Some(ConstructorVariable(0, (identifier.len() - 1) as u16));
             }
             match identifier {
-                &"[]" => Some(ConstructorVariable(0, 0)),
-                &":" => Some(ConstructorVariable(1, 2)),
+                "[]" => Some(ConstructorVariable(0, 0)),
+                ":" => Some(ConstructorVariable(1, 2)),
                 _ => None
             }
         })
@@ -584,7 +585,7 @@ impl <'a> Compiler<'a> {
                                 constraints: ~[]
                             });
                             let number = Literal(Literal { typ: double_type(), value: Integral(i) });
-                            let apply = Apply(~fromInteger, ~number);
+                            let apply = Apply(box fromInteger, box number);
                             self.compile(&apply, instructions, strict);
                         }
                     }
@@ -602,13 +603,13 @@ impl <'a> Compiler<'a> {
                                 typ: double_type(),
                                 value: Fractional(f)
                             });
-                            let apply = Apply(~fromRational, ~number);
+                            let apply = Apply(box fromRational, box number);
                             self.compile(&apply, instructions, strict);
                         }
                     }
                     &String(ref s) => {
                         instructions.push(Pack(0, 0));
-                        for c in s.as_slice().chars_rev() {
+                        for c in s.chars().rev() {
                             instructions.push(PushChar(c));
                             instructions.push(Pack(1, 2));
                         }
@@ -816,7 +817,7 @@ impl <'a> Compiler<'a> {
                 None => fail!("Could not find class '{}'", *class_name)
             }
         }
-        (dict_len, Some((constraints.to_owned(), function_indexes.move_iter().collect())))
+        (dict_len, Some((constraints.to_owned(), FromVec::from_vec(function_indexes))))
     }
 
     ///Attempt to compile a binary primitive, returning true if it succeded

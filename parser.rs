@@ -1,4 +1,5 @@
 use std::mem::{swap};
+use std::vec::FromVec;
 use collections::HashMap;
 use lexer::*;
 use module::*;
@@ -124,11 +125,11 @@ pub fn module(&mut self) -> Module {
 	}
     Module {
         name : modulename,
-        bindings : bindings.move_iter().collect(),
-        typeDeclarations : typeDeclarations.move_iter().collect(),
-        classes : classes.move_iter().collect(),
-        instances : instances.move_iter().collect(),
-        dataDefinitions : dataDefinitions.move_iter().collect() }
+        bindings : FromVec::from_vec(bindings),
+        typeDeclarations : FromVec::from_vec(typeDeclarations),
+        classes : FromVec::from_vec(classes),
+        instances : FromVec::from_vec(instances),
+        dataDefinitions : FromVec::from_vec(dataDefinitions) }
 }
 
 fn class(&mut self) -> Class {
@@ -268,7 +269,7 @@ fn subExpression(&mut self, parseError : |&Token| -> bool) -> Option<TypedExpr> 
             }
 			match self.expression() {
                 Some(e) => {
-                    Some(TypedExpr::new(Let(binds, ~e)))
+                    Some(TypedExpr::new(Let(binds, box e)))
                 }
                 None => None
             }
@@ -288,7 +289,7 @@ fn subExpression(&mut self, parseError : |&Token| -> bool) -> Option<TypedExpr> 
 				fail!(ParseError(&self.lexer, RBRACE));
 			}
 			match expr {
-                Some(e) => Some(TypedExpr::with_location(Case(~e, alts), location)),
+                Some(e) => Some(TypedExpr::with_location(Case(box e, alts), location)),
                 None => None
             }
 		}
@@ -322,7 +323,7 @@ fn subExpression(&mut self, parseError : |&Token| -> bool) -> Option<TypedExpr> 
                 DoExpr(e) => e,
                 _ => fail!("{}: Parse error: Last binding in do must be an expression", self.lexer.current().location)
             };
-            Some(TypedExpr::with_location(Do(bs.move_iter().collect(), ~expr), location))
+            Some(TypedExpr::with_location(Do(FromVec::from_vec(bs), box expr), location))
         }
         NAME => {
             let token = self.lexer.current();
@@ -426,11 +427,10 @@ fn parseOperatorExpression(&mut self, inL : Option<TypedExpr>, minPrecedence : i
         };
         lhs = match (lhs, rhs) {
             (Some(lhs), Some(rhs)) => {
-                let args = ~[lhs, rhs];
+                let args = box [lhs, rhs];
                 Some(makeApplication(name, args.move_iter()))
             }
             (Some(lhs), None) => {
-                Some(TypedExpr::with_location(Apply(~name, ~lhs), loc))
             }
             (None, Some(rhs)) => {
                 if (op.value == intern("-"))
@@ -541,7 +541,7 @@ fn binding(&mut self) -> Binding {
 		let lambda = makeLambda(arguments.move_iter(), self.expression_());
 		Binding { name : name.clone(),
             typeDecl : TypeDeclaration {
-                context : ~[],
+                context : box [],
                 typ : Type::new_var(-1),
                 name : name
             },
@@ -554,7 +554,7 @@ fn binding(&mut self) -> Binding {
 		Binding {
             name : name.clone(),
             typeDecl : TypeDeclaration {
-                context : ~[],
+                context : box [],
                 typ : Type::new_var(-1),
                 name : name
             },
@@ -583,7 +583,7 @@ fn patternParameter(&mut self) -> ~[Pattern] {
 						fail!(ParseError(&self.lexer, RPARENS));
 					}
 					tupleArgs.unshift(pat);
-					parameters.push(ConstructorPattern(tuple_name(tupleArgs.len()), tupleArgs.move_iter().collect()));
+					parameters.push(ConstructorPattern(tuple_name(tupleArgs.len()), FromVec::from_vec(tupleArgs)));
 				}
 				else {
                     //TODO?
@@ -599,7 +599,7 @@ fn patternParameter(&mut self) -> ~[Pattern] {
 		}
 	}
 	self.lexer.backtrack();
-	return parameters.move_iter().collect();
+	return FromVec::from_vec(parameters);
 }
 
 fn located_pattern(&mut self) -> Located<Pattern> {
@@ -694,7 +694,7 @@ fn constrained_type(&mut self, typeVariableMapping : &mut HashMap<InternedStr, i
     }
     else {
         self.lexer.backtrack();
-        ~[self.parse_type_(&mut variableIndex, typeVariableMapping)]
+        box [self.parse_type_(&mut variableIndex, typeVariableMapping)]
     };
     let maybeContextArrow = self.lexer.next_().token;
     //If there is => arrow we proceed to parse the type
@@ -703,13 +703,13 @@ fn constrained_type(&mut self, typeVariableMapping : &mut HashMap<InternedStr, i
     }
     else if maybeContextArrow == ARROW {
 	    self.lexer.backtrack();
-        let mut args = ~[];
+        let mut args = box [];
         swap(&mut args, &mut maybeConstraints);
         self.parse_return_type(tupleType(args), &mut variableIndex, typeVariableMapping)
     }
     else {//If no => was found, translate the constraint list into a type
 	    self.lexer.backtrack();
-        let mut args = ~[];
+        let mut args = box [];
         swap(&mut args, &mut maybeConstraints);
         tupleType(args)
     };
@@ -729,7 +729,7 @@ fn constructorType(&mut self, arity : &mut int, dataDef: &DataDefinition, mappin
             }
 		}
 		else {
-			Type::new_op(self.lexer.current().value.clone(), ~[])
+			Type::new_op(self.lexer.current().value.clone(), box [])
         };
         function_type(&arg, &self.constructorType(arity, dataDef, mapping))
 	}
@@ -751,14 +751,14 @@ fn dataDefinition(&mut self) -> DataDefinition {
 	let dataName = self.requireNext(NAME).value.clone();
 
 	let mut definition = DataDefinition {
-        constructors : ~[],
+        constructors : box [],
         typ : Type::new_var(0),
         parameters : HashMap::new()
     };
     let mut typ = TypeOperator(TypeOperator { name: dataName, kind: star_kind.clone() });
 	while self.lexer.next_().token == NAME {
         //TODO use new variables isntead of only  -1
-		typ = TypeApplication(~typ, ~Type::new_var(-1));
+		typ = TypeApplication(box typ, box Type::new_var(-1));
 		definition.parameters.insert(self.lexer.current().value.clone(), -1);
 	}
     definition.typ = typ;
@@ -806,7 +806,7 @@ fn sub_type(&mut self, variableIndex: &mut int, typeVariableMapping: &mut HashMa
 	    NAME =>
 		{
 			if (token.value.as_slice().char_at(0).is_uppercase()) {
-				Some(Type::new_op(token.value, ~[]))
+				Some(Type::new_op(token.value, box []))
 			}
 			else {
                 let t = typeVariableMapping.find_or_insert(token.value, *variableIndex);
@@ -842,12 +842,14 @@ fn parse_type_(&mut self, variableIndex: &mut int, typeVariableMapping : &mut Ha
 			let maybeComma = self.lexer.next_().token;
 			if (maybeComma == COMMA)
 			{
-				let mut tupleArgs: Vec<Type> = self.sepBy1(|this| this.parse_type_(variableIndex, typeVariableMapping), COMMA).move_iter().collect();
+				let mut tupleArgs: Vec<Type> = self.sepBy1(|this| this.parse_type_(variableIndex, typeVariableMapping), COMMA)
+                    .move_iter()
+                    .collect();
 				tupleArgs.unshift(t);
                 self.lexer.backtrack();
                 self.requireNext(RPARENS);
 
-                self.parse_return_type(tupleType(tupleArgs.move_iter().collect()), variableIndex, typeVariableMapping)
+                self.parse_return_type(tupleType(FromVec::from_vec(tupleArgs)), variableIndex, typeVariableMapping)
 			}
 			else if (maybeComma == RPARENS)
 			{
@@ -868,12 +870,12 @@ fn parse_type_(&mut self, variableIndex: &mut int, typeVariableMapping : &mut Ha
             }
 
 			let thisType = if (token.value.as_slice().char_at(0).is_uppercase()) {
-				Type::new_op(token.value, typeArguments.move_iter().collect())
+				Type::new_op(token.value, FromVec::from_vec(typeArguments))
 			}
 			else {
                 let t = typeVariableMapping.find_or_insert(token.value, *variableIndex);
                 *variableIndex += 1;
-                Type::new_var_args(*t, typeArguments.move_iter().collect())
+                Type::new_var_args(*t, FromVec::from_vec(typeArguments))
 			};
 			self.parse_return_type(thisType, variableIndex, typeVariableMapping)
 		}
@@ -905,7 +907,7 @@ fn sepBy1_func<T>(&mut self, f : |&mut Parser<Iter>| -> T, sep : |&Token| -> boo
             break;
         }
     }
-    result.move_iter().collect()
+    FromVec::from_vec(result)
 }
 }//end impl Parser
 
@@ -926,14 +928,14 @@ fn precedence(s : &str) -> int {
     }
 }
 fn make_constraints(types: ~[Type]) -> ~[Constraint] {
-    types.move_iter().map(|typ| {
+    FromVec::<Constraint>::from_vec(types.move_iter().map(|typ| {
         match typ {
             TypeApplication(lhs, rhs) => {
-                Constraint { class: lhs.op().name.clone(), variables: ~[rhs.var().clone()] }
+                Constraint { class: lhs.op().name.clone(), variables: box [rhs.var().clone()] }
             }
             _ => fail!("Parse error in constraint, non applied type")
         }
-    }).collect()
+    }).collect())
 }
 
 
@@ -987,7 +989,7 @@ fn makeApplication<I: Iterator<TypedExpr>>(f : TypedExpr, mut args : I) -> Typed
     let mut func = f;
 	for a in args {
         let loc = func.location.clone();
-		func = TypedExpr::with_location(Apply(~func, ~a), loc);
+		func = TypedExpr::with_location(Apply(box func, box a), loc);
 	}
     func
 }
@@ -995,7 +997,7 @@ fn makeLambda<Iter: DoubleEndedIterator<InternedStr>>(args : Iter, body : TypedE
 	let mut body = body;
 	for a in args.rev() {
         let loc = body.location.clone();
-		body = TypedExpr::with_location(Lambda(a, ~body), loc);
+		body = TypedExpr::with_location(Lambda(a, box body), loc);
 	}
     body
 }

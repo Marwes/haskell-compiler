@@ -1,4 +1,5 @@
 use collections::hashmap::HashMap;
+use std::vec::FromVec;
 use core::*;
 use module::function_type_;
 use interner::*;
@@ -13,7 +14,7 @@ struct FreeVariables {
     uid: uint
 }
 
-fn each_pattern_variables(pattern: &Pattern<Id>, f: &|&Name|) {
+fn each_pattern_variables(pattern: &Pattern<Id>, f: &mut |&Name|) {
     match *pattern {
         IdentifierPattern(ref ident) => (*f)(&ident.name),
         ConstructorPattern(_, ref patterns) => {
@@ -42,8 +43,8 @@ fn free_variables(&mut self, variables: &mut HashMap<Name, int>, free_vars: &mut
             Identifier(i)
         }
         Apply(func, arg) => {
-            let f = ~self.free_variables(variables, free_vars, *func);
-            let a = ~self.free_variables(variables, free_vars, *arg);
+            let f = box self.free_variables(variables, free_vars, *func);
+            let a = box self.free_variables(variables, free_vars, *arg);
             Apply(f, a)
         }
         Lambda(arg, body) => {
@@ -51,14 +52,14 @@ fn free_variables(&mut self, variables: &mut HashMap<Name, int>, free_vars: &mut
             let b = self.free_variables(variables, free_vars, *body);
             *variables.get_mut(&arg.name) -= 1;
             free_vars.remove(&arg.name);//arg was not actually a free variable
-            Lambda(arg, ~b)
+            Lambda(arg, box b)
         }
         Let(bindings, expr) => {
             for bind in bindings.iter() {
                 variables.insert_or_update_with(bind.name.name.clone(), 1, |_, v| *v += 1);
             }
             let mut free_vars2 = HashMap::new();
-            let new_bindings: ~[Binding<TypeAndStr>] = bindings.move_iter().map(
+            let new_bindings: Vec<Binding<TypeAndStr>> = bindings.move_iter().map(
                 |Binding { name: name, expression: bind_expr }| {
                 free_vars2.clear();
                 let e = self.free_variables(variables, &mut free_vars2, bind_expr);
@@ -71,27 +72,27 @@ fn free_variables(&mut self, variables: &mut HashMap<Name, int>, free_vars: &mut
                     expression: self.abstract(&free_vars2, e)
                 }
             }).collect();
-            let e = ~self.free_variables(variables, free_vars, *expr);
+            let e = box self.free_variables(variables, free_vars, *expr);
             for bind in new_bindings.iter() {
                 *variables.get_mut(&bind.name.name) -= 1;
                 free_vars.remove(&bind.name.name);
             }
-            Let(new_bindings, e)
+            Let(FromVec::from_vec(new_bindings), e)
         }
         Case(expr, alts) => {
             let e = self.free_variables(variables, free_vars, *expr);
-            let a = alts.move_iter().map(|Alternative { pattern: pattern, expression: expression }| {
-                each_pattern_variables(&pattern, &|name| {
+            let a: Vec<Alternative<TypeAndStr>> = alts.move_iter().map(|Alternative { pattern: pattern, expression: expression }| {
+                each_pattern_variables(&pattern, &mut |name| {
                     variables.insert_or_update_with(name.clone(), 1, |_, v| *v += 1);
                 });
                 let e = self.free_variables(variables, free_vars, expression);
-                each_pattern_variables(&pattern, &|name| {
+                each_pattern_variables(&pattern, &mut |name| {
                     *variables.get_mut(name) -= 1;
                     free_vars.remove(name);//arg was not actually a free variable
                 });
                 Alternative { pattern: pattern, expression: e }
             }).collect();
-            Case(~e, a)
+            Case(box e, FromVec::from_vec(a))
         }
         e => e
     }
@@ -106,18 +107,18 @@ fn abstract(&mut self, free_vars: &HashMap<Name, TypeAndStr>, input_expr: Expr<T
             let mut rhs = input_expr;
             let mut typ = rhs.get_type().clone();
             for (_, var) in free_vars.iter() {
-                rhs = Lambda(var.clone(), ~rhs);
+                rhs = Lambda(var.clone(), box rhs);
                 typ = function_type_(var.get_type().clone(), typ);
             }
             self.uid += 1;
             let bind = Binding {
-                name: Id::new(Name {name: intern("#sc"), uid: self.uid }, typ.clone(), ~[]),
+                name: Id::new(Name {name: intern("#sc"), uid: self.uid }, typ.clone(), box []),
                 expression: rhs
             };
             Let(~[bind], ~Identifier(Id::new(Name { name: intern("#sc"), uid: self.uid }, typ.clone(), ~[])))
         };
         for (_, var) in free_vars.iter() {
-            e = Apply(~e, ~Identifier(var.clone()));
+            e = Apply(box e, box Identifier(var.clone()));
         }
         e
     }
@@ -126,8 +127,8 @@ fn abstract(&mut self, free_vars: &HashMap<Name, TypeAndStr>, input_expr: Expr<T
 
 fn lift_lambdas_expr<T>(expr: Expr<T>, out_lambdas: &mut Vec<Binding<T>>) -> Expr<T> {
     match expr {
-        Apply(func, arg) => Apply(~lift_lambdas_expr(*func, out_lambdas), ~lift_lambdas_expr(*arg, out_lambdas)),
-        Lambda(arg, body) => Lambda(arg, ~lift_lambdas_expr(*body, out_lambdas)),
+        Apply(func, arg) => Apply(box lift_lambdas_expr(*func, out_lambdas), box lift_lambdas_expr(*arg, out_lambdas)),
+        Lambda(arg, body) => Lambda(arg, box lift_lambdas_expr(*body, out_lambdas)),
         Let(bindings, expr) => {
             let mut new_binds = Vec::new();
             for Binding { name: name, expression: expression } in bindings.move_iter() {
@@ -147,14 +148,14 @@ fn lift_lambdas_expr<T>(expr: Expr<T>, out_lambdas: &mut Vec<Binding<T>>) -> Exp
                 lift_lambdas_expr(*expr, out_lambdas)
             }
             else {
-                Let(new_binds.move_iter().collect(), ~lift_lambdas_expr(*expr, out_lambdas))
+                Let(FromVec::from_vec(new_binds), box lift_lambdas_expr(*expr, out_lambdas))
             }
         }
         Case(expr, alts) => {
-            let a = alts.move_iter().map(|Alternative { pattern: pattern, expression: expression }| {
+            let a: Vec<Alternative<T>> = alts.move_iter().map(|Alternative { pattern: pattern, expression: expression }| {
                 Alternative { pattern: pattern, expression: lift_lambdas_expr(expression, out_lambdas) }
             }).collect();
-            Case(~lift_lambdas_expr(*expr, out_lambdas), a)
+            Case(box lift_lambdas_expr(*expr, out_lambdas), FromVec::from_vec(a))
         }
         _ => expr
     }
@@ -168,14 +169,14 @@ pub fn lift_lambdas<T: ::std::fmt::Show>(module: Module<T>) -> Module<T> {
     } = module;
     
     let mut new_bindings : Vec<Binding<T>> = Vec::new();
-    let bindings2 : ~[Binding<T>] = bindings.move_iter().map(|Binding { name: name, expression: expression }| {
+    let bindings2 : Vec<Binding<T>> = bindings.move_iter().map(|Binding { name: name, expression: expression }| {
         Binding { name: name, expression: lift_lambdas_expr(expression, &mut new_bindings) }
     }).collect();
 
     Module {
         classes : classes,
         data_definitions: data_definitions,
-        bindings : bindings2.move_iter().chain(new_bindings.move_iter()).collect(),
+        bindings : FromVec::<Binding<T>>::from_vec(bindings2.move_iter().chain(new_bindings.move_iter()).collect()),
         instances: instances
     }
 }
@@ -201,12 +202,12 @@ pub fn each_binding<Ident, Ident2>(module: Module<Ident>, _trans: |Ident| -> Ide
         instances: instances
     } = module;
     
-    let bindings2 = bindings.move_iter().map(|x| bind_f(x)).collect();
+    let bindings2: Vec<Binding<Ident2>> = bindings.move_iter().map(|x| bind_f(x)).collect();
     
     Module {
         classes : classes,
         data_definitions: data_definitions,
-        bindings : bindings2,
+        bindings : FromVec::from_vec(bindings2),
         instances: instances
     }
 }

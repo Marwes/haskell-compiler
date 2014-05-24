@@ -57,18 +57,18 @@ impl <'a> Node<'a> {
 }
 impl <'a> fmt::Show for Node<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f.buf, "{}", *self.borrow())
+        write!(f, "{}", *self.borrow())
     }
 }
 impl <'a> fmt::Show for Node_<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            &Application(ref func, ref arg) => write!(f.buf, "({} {})", *func, *arg),
-            &Int(i) => write!(f.buf, "{}", i),
-            &Float(i) => write!(f.buf, "{}", i),
-            &Char(c) => write!(f.buf, "'{}'", c),
-            &Combinator(ref sc) => write!(f.buf, "{}", sc.name),
-            &Indirection(ref n) => write!(f.buf, "(~> {})", *n),
+            &Application(ref func, ref arg) => write!(f, "({} {})", *func, *arg),
+            &Int(i) => write!(f, "{}", i),
+            &Float(i) => write!(f, "{}", i),
+            &Char(c) => write!(f, "'{}'", c),
+            &Combinator(ref sc) => write!(f, "{}", sc.name),
+            &Indirection(ref n) => write!(f, "(~> {})", *n),
             &Constructor(ref tag, ref args) => {
                 let cons = args;
                 if cons.len() > 0 {
@@ -77,7 +77,7 @@ impl <'a> fmt::Show for Node_<'a> {
                             fn print_string<'a>(f: &mut fmt::Formatter, cons: &Vec<Node<'a>>) -> fmt::Result {
                                 if cons.len() >= 2 {
                                     match *cons.get(0).borrow() {
-                                        Char(c) =>  { try!(write!(f.buf, "{}", c)); },
+                                        Char(c) =>  { try!(write!(f, "{}", c)); },
                                         _ => ()
                                     }
                                     match *cons.get(1).borrow() {
@@ -87,31 +87,31 @@ impl <'a> fmt::Show for Node_<'a> {
                                 }
                                 Ok(())
                             }
-                            try!(write!(f.buf, "\""));
+                            try!(write!(f, "\""));
                             try!(print_string(f, cons));
-                            write!(f.buf, "\"")
+                            write!(f, "\"")
                         }
                         _ => {
                             //Print a normal constructor
-                            try!(write!(f.buf, "\\{{}", *tag));
+                            try!(write!(f, "\\{{}", *tag));
                             for arg in args.iter() {
-                                try!(write!(f.buf, " {}", *arg.borrow()));
+                                try!(write!(f, " {}", *arg.borrow()));
                             }
-                            write!(f.buf, "\\}")
+                            write!(f, "\\}")
                         }
                     }
                 }
                 else {
                     //Print a normal constructor
-                    try!(write!(f.buf, "\\{{}", *tag));
+                    try!(write!(f, "\\{{}", *tag));
                     for arg in args.iter() {
-                        try!(write!(f.buf, " {}", *arg.borrow()));
+                        try!(write!(f, " {}", *arg.borrow()));
                     }
-                    write!(f.buf, "\\}")
+                    write!(f, "\\}")
                 }
             }
-            &Dictionary(ref dict) => write!(f.buf, "{:?}", dict),
-            &PrimitiveFunction(..) => write!(f.buf, "<extern function>")
+            &Dictionary(ref dict) => write!(f, "{:?}", dict),
+            &PrimitiveFunction(..) => write!(f, "<extern function>")
         }
     }
 }

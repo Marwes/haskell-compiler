@@ -70,7 +70,7 @@ impl <T: Eq> Eq for Located<T> {
 
 impl fmt::Show for Location {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f.buf, "{}:{}", self.row, self.column)
+        write!(f, "{}:{}", self.row, self.column)
     }
 }
 

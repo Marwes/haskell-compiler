@@ -1,5 +1,6 @@
 use collections::HashMap;
 use std::mem::swap;
+use std::vec::FromVec;
 use module::*;
 use graph::{Graph, VertexIndex, strongly_connected_components};
 use primitive::primitives;
@@ -269,7 +270,7 @@ impl <'a> TypeEnvironment<'a> {
                     swap(&mut context, &mut type_decl.context);
                     let mut vec_context: Vec<Constraint> = context.move_iter().collect();
                     vec_context.push(c);
-                    type_decl.context = vec_context.move_iter().collect();
+                    type_decl.context = FromVec::from_vec(vec_context);
                 }
                 let mut t = type_decl.typ.clone();
                 quantify(0, &mut t);
@@ -311,7 +312,7 @@ impl <'a> TypeEnvironment<'a> {
                     for constraint in instance.constraints.iter() {
                         vec_context.push(constraint.clone());
                     }
-                    binding.typeDecl.context = vec_context.move_iter().collect();
+                    binding.typeDecl.context = FromVec::from_vec(vec_context);
                 }
                 self.freshen_declaration(&mut binding.typeDecl);
                 for constraint in binding.typeDecl.context.iter() {
@@ -378,7 +379,7 @@ impl <'a> TypeEnvironment<'a> {
             }
         },
         |_| ());
-        result.move_iter().collect()
+        FromVec::from_vec(result)
     }
     
     ///Searches through a type, comparing it with the type on the identifier, returning all the specialized constraints
@@ -388,7 +389,7 @@ impl <'a> TypeEnvironment<'a> {
         if constraints.len() == 0 {
             fail!("Could not find the specialized instance between {} <-> {}", typ, actual_type);
         }
-        constraints.move_iter().collect()
+        FromVec::from_vec(constraints)
     }
     fn find_specialized(&self, constraints: &mut Vec<(InternedStr, Type)>, actual_type: &Type, typ: &Type) {
         match (actual_type, typ) {
@@ -1074,6 +1075,7 @@ fn unify(env: &mut TypeEnvironment, subs: &mut Substitution, lhs: Type, rhs: Typ
                     replace(&mut env.constraints, r2, subs);
                     match unify(env, subs, *r1, *r2) {
                         Ok(typ) => Ok(TypeApplication(~arg, ~typ)),
+                        Ok(typ) => Ok(TypeApplication(box arg, box typ)),
                         Err(e) => Err(e)
                     }
                 }
@@ -1146,10 +1148,10 @@ fn add_edges<T>(graph: &mut Graph<T>, map: &HashMap<Name, VertexIndex>, function
     }
 }
 
-fn each_type(typ: &Type, var_fn: |&TypeVariable|, op_fn: |&TypeOperator|) {
-    each_type_(typ, &var_fn, &op_fn);
+fn each_type(typ: &Type, mut var_fn: |&TypeVariable|, mut op_fn: |&TypeOperator|) {
+    each_type_(typ, &mut var_fn, &mut op_fn);
 }
-fn each_type_(typ: &Type, var_fn: &|&TypeVariable|, op_fn: &|&TypeOperator|) {
+fn each_type_(typ: &Type, var_fn: &mut |&TypeVariable|, op_fn: &mut |&TypeOperator|) {
     match typ {
         &TypeVariable(ref var) => (*var_fn)(var),
         &TypeOperator(ref op) => (*op_fn)(op),
@@ -1231,15 +1233,15 @@ pub fn rational(i : f64) -> TypedExpr {
 }
 #[cfg(test)]
 pub fn apply(func : TypedExpr, arg : TypedExpr) -> TypedExpr {
-    TypedExpr::new(Apply(~func, ~arg))
+    TypedExpr::new(Apply(box func, box arg))
 }
 #[cfg(test)]
 pub fn let_(bindings : ~[Binding], expr : TypedExpr) -> TypedExpr {
-    TypedExpr::new(Let(bindings, ~expr))
+    TypedExpr::new(Let(bindings, box expr))
 }
 #[cfg(test)]
 pub fn case(expr : TypedExpr, alts: ~[Alternative]) -> TypedExpr {
-    TypedExpr::new(Case(~expr, alts))
+    TypedExpr::new(Case(box expr, alts))
 }
 
 #[cfg(test)]
