@@ -546,6 +546,23 @@ pub fn walk_expr<Ident>(visitor: &mut Visitor<Ident>, expr: &TypedExpr<Ident>) {
                 visitor.visit_alternative(alt);
             }
         }
+        &Do(ref binds, ref expr) => {
+            for bind in binds.iter() {
+                match *bind {
+                    DoLet(ref bs) => {
+                        for b in bs.iter() {
+                            visitor.visit_binding(b);
+                        }
+                    }
+                    DoBind(ref pattern, ref e) => {
+                        visitor.visit_pattern(&pattern.node);
+                        visitor.visit_expr(e);
+                    }
+                    DoExpr(ref e) => visitor.visit_expr(e)
+                }
+            }
+            visitor.visit_expr(*expr);
+        }
         _ => ()
     }
 }
