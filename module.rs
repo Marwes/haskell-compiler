@@ -65,7 +65,7 @@ pub struct TypeOperator {
     pub name : InternedStr,
     pub kind : Kind
 }
-#[deriving(Clone, Eq, TotalEq, Default, Hash)]
+#[deriving(Clone, Eq, TotalEq, Default)]
 pub struct TypeVariable {
     pub id : int,
     pub kind : Kind
@@ -157,6 +157,13 @@ impl Type {
             &TypeOperator(ref mut v) => &mut v.kind,
             _ => fail!("Typeapplication has no kind")
         }
+    }
+}
+
+impl <S: Writer> ::std::hash::Hash<S> for TypeVariable {
+    #[inline]
+    fn hash(&self, state: &mut S) {
+        self.id.hash(state);
     }
 }
 
