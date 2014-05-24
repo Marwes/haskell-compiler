@@ -1522,7 +1522,7 @@ main = fmap add2 (Just 3)";
     let module = do_typecheck(file);
 
     let main = &module.bindings[1];
-    assert_eq!(main.expression.typ, Type::new_op(intern("Maybe"), ~[double_type()]));
+    assert_eq!(main.expression.typ, Type::new_op(intern("Maybe"), ~[int_type()]));
 }
 #[should_fail]
 #[test]
