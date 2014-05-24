@@ -1076,35 +1076,26 @@ fn build_graph(bindings: &Bindings) -> Graph<(uint, uint)> {
     graph
 }
 
-fn add_edges<T>(graph: &mut Graph<T>, map: &HashMap<Name, VertexIndex>, function_index: VertexIndex, expr: &TypedExpr<Name>) {
-    match expr.expr {
-        Identifier(ref n) => {
-            match map.find(n) {
-                Some(index) => graph.connect(function_index, *index),
-                None => ()
-            }
-        }
-        Lambda(_, ref body) => {
-            add_edges(graph, map, function_index, *body);
-        }
-        Apply(ref f, ref a) => {
-            add_edges(graph, map, function_index, *f);
-            add_edges(graph, map, function_index, *a);
-        }
-        Let(ref binds, ref body) => {
-            add_edges(graph, map, function_index, *body);
-            for bind in binds.iter() {
-                add_edges(graph, map, function_index, &bind.expression);
-            }
-        }
-        Case(ref b, ref alts) => {
-            add_edges(graph, map, function_index, *b);
-            for alt in alts.iter() {
-                add_edges(graph, map, function_index, &alt.expression);
-            }
-        }
-        _ => ()
+fn add_edges<T: 'static>(graph: &mut Graph<T>, map: &HashMap<Name, VertexIndex>, function_index: VertexIndex, expr: &TypedExpr<Name>) {
+    struct EdgeVisitor<'a, T> {
+        graph: &'a mut Graph<T>,
+        map: &'a HashMap<Name, VertexIndex>,
+        function_index: VertexIndex
     }
+    impl <'a, T: 'static> Visitor<Name> for EdgeVisitor<'a, T> {
+        fn visit_expr(&mut self, expr: &TypedExpr<Name>) {
+            match expr.expr {
+                Identifier(ref n) => {
+                    match self.map.find(n) {
+                        Some(index) => self.graph.connect(self.function_index, *index),
+                        None => ()
+                    }
+                }
+                _ => walk_expr(self, expr)
+            }
+        }
+    }
+    EdgeVisitor { graph: graph, map: map, function_index: function_index }.visit_expr(expr)
 }
 
 fn each_type(typ: &Type, mut var_fn: |&TypeVariable|, mut op_fn: |&TypeOperator|) {
