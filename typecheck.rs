@@ -174,7 +174,7 @@ fn add_primitives(globals: &mut HashMap<Name, Type>, typename: &str) {
         insertTo(globals, "prim" + typename + "Remainder", binop.clone());
     }
     {
-        let binop = function_type(&typ, &function_type(&typ, &Type::new_op(intern("Bool"), ~[])));
+        let binop = function_type_(typ.clone(), function_type_(typ, bool_type()));
         insertTo(globals, "prim" + typename + "EQ", binop.clone());
         insertTo(globals, "prim" + typename + "LT", binop.clone());
         insertTo(globals, "prim" + typename + "LE", binop.clone());
@@ -190,14 +190,14 @@ impl <'a> TypeEnvironment<'a> {
         let mut globals = HashMap::new();
         add_primitives(&mut globals, &"Int");
         add_primitives(&mut globals, &"Double");
-        insertTo(&mut globals,"primIntToDouble", function_type(&Type::new_op(intern("Int"), ~[]), &Type::new_op(intern("Double"), ~[])));
-        insertTo(&mut globals, "primDoubleToInt", function_type(&Type::new_op(intern("Double"), ~[]), &Type::new_op(intern("Int"), ~[])));
+        insertTo(&mut globals,"primIntToDouble", function_type_(int_type(), double_type()));
+        insertTo(&mut globals, "primDoubleToInt", function_type_(double_type(), int_type()));
         let var = Generic(Type::new_var_kind(-10, star_kind.clone()).var().clone());
         
         for (name, typ) in primitives().move_iter() {
             insertTo(&mut globals, name, typ);
         }
-        let list = Type::new_op(intern("[]"), ~[var.clone()]);
+        let list = list_type(var.clone());
         insertTo(&mut globals, "[]", list.clone());
         insertTo(&mut globals, ":", function_type(&var, &function_type(&list, &list)));
         for i in range(0 as uint, 10) {
@@ -550,10 +550,10 @@ impl <'a> TypeEnvironment<'a> {
                 }
             }
             &String(_) => {
-                expr.typ = Type::new_op(intern("[]"), ~[Type::new_op(intern("Char"), ~[])]);
+                expr.typ = list_type(char_type());
             }
             &Char(_) => {
-                expr.typ = Type::new_op(intern("Char"), ~[]);
+                expr.typ = char_type();
             }
             &Identifier(ref name) => {
                 match self.fresh(name) {
@@ -664,7 +664,7 @@ impl <'a> TypeEnvironment<'a> {
                 self.namedTypes.insert(ident.clone(), typ.clone());
             }
             &NumberPattern(_) => {
-                let mut typ = Type::new_op(intern("Int"), ~[]);
+                let mut typ = int_type();
                 {
                     unify_location(self, subs, location, &mut typ, match_type);
                     replace(&mut self.constraints, match_type, subs);
@@ -1261,19 +1261,16 @@ fn application() {
     let num = ~TypedExpr::new(Number(1));
     let e = TypedExpr::new(Apply(n, num));
     let mut expr = rename_expr(e);
-    let type_int = Type::new_op(intern("Int"), ~[]);
-    let unary_func = function_type(&type_int, &type_int);
+    let unary_func = function_type_(int_type(), int_type());
     env.typecheck_expr(&mut expr);
 
-    let expr_type = expr.typ;
-    assert!(expr_type == unary_func);
+    assert!(expr.typ == unary_func);
 }
 
 #[test]
 fn typecheck_lambda() {
     let mut env = TypeEnvironment::new();
-    let type_int = Type::new_op(intern("Int"),~[]);
-    let unary_func = function_type(&type_int, &type_int);
+    let unary_func = function_type_(int_type(), int_type());
 
     let e = lambda("x", apply(apply(identifier("primIntAdd"), identifier("x")), number(1)));
     let mut expr = rename_expr(e);
@@ -1285,8 +1282,7 @@ fn typecheck_lambda() {
 #[test]
 fn typecheck_let() {
     let mut env = TypeEnvironment::new();
-    let type_int = Type::new_op(intern("Int"), ~[]);
-    let unary_func = function_type(&type_int, &type_int);
+    let unary_func = function_type_(int_type(), int_type());
 
     //let test x = add x in test
     let unary_bind = lambda("x", apply(apply(identifier("primIntAdd"), identifier("x")), number(1)));
@@ -1300,7 +1296,7 @@ fn typecheck_let() {
 #[test]
 fn typecheck_case() {
     let mut env = TypeEnvironment::new();
-    let type_int = Type::new_op(intern("Int"), ~[]);
+    let type_int = int_type();
 
     let mut parser = Parser::new(r"case [] of { : x xs -> primIntAdd x 2 ; [] -> 3}".chars());
     let mut expr = rename_expr(parser.expression_());
@@ -1309,7 +1305,7 @@ fn typecheck_case() {
     assert_eq!(expr.typ, type_int);
     match &expr.expr {
         &Case(ref case_expr, _) => {
-            assert_eq!(case_expr.typ, Type::new_op(intern("[]"), ~[Type::new_op(intern("Int"), ~[])]));
+            assert_eq!(case_expr.typ, list_type(type_int));
         }
         _ => fail!("typecheck_case")
     }
@@ -1325,7 +1321,7 @@ main = case [mult2 123, 0] of
     [] -> 10";
     let module = do_typecheck(file);
 
-    assert_eq!(module.bindings[1].expression.typ, Type::new_op(intern("Int"), ~[]));
+    assert_eq!(module.bindings[1].expression.typ, int_type());
 }
 
 #[test]
@@ -1336,7 +1332,7 @@ fn typecheck_string() {
     let mut expr = rename_expr(parser.expression_());
     env.typecheck_expr(&mut expr);
 
-    assert_eq!(expr.typ, Type::new_op(intern("[]"), ~[Type::new_op(intern("Char"), ~[])]));
+    assert_eq!(expr.typ, list_type(char_type()));
 }
 
 #[test]
@@ -1347,8 +1343,8 @@ fn typecheck_tuple() {
     let mut expr = rename_expr(parser.expression_());
     env.typecheck_expr(&mut expr);
 
-    let list = Type::new_op(intern("[]"), ~[Type::new_op(intern("Char"), ~[])]);
-    assert_eq!(expr.typ, Type::new_op(intern("(,)"), ~[Type::new_op(intern("Int"), ~[]), list]));
+    let list = list_type(char_type());
+    assert_eq!(expr.typ, Type::new_op(intern("(,)"), ~[int_type(), list]));
 }
 
 #[test]
@@ -1359,7 +1355,7 @@ r"data Bool = True | False
 test x = True";
     let module = do_typecheck(file);
 
-    let typ = function_type(&Type::new_var(0), &Type::new_op(intern("Bool"), ~[]));
+    let typ = function_type_(Type::new_var(0), bool_type());
     let bind_type0 = module.bindings[0].expression.typ;
     assert_eq!(bind_type0, typ);
 }
@@ -1380,8 +1376,8 @@ in b".chars());
     env.typecheck_expr(&mut expr);
 
     
-    let int_type = Type::new_op(intern("Int"), ~[]);
-    let list_type = Type::new_op(intern("[]"), ~[int_type.clone()]);
+    let int_type = int_type();
+    let list_type = list_type(int_type.clone());
     match &expr.expr {
         &Let(ref binds, _) => {
             assert_eq!(binds.len(), 4);
@@ -1408,7 +1404,7 @@ main = test 1";
     let module = do_typecheck(file);
 
     let typ = &module.bindings[0].expression.typ;
-    assert_eq!(typ, &Type::new_op(intern("Int"), ~[]));
+    assert_eq!(typ, &int_type());
 }
 
 //Test that calling a function with constraints will propagate the constraints to
@@ -1430,8 +1426,7 @@ main x y = primIntAdd (test x) (test y)".chars());
     env.typecheck_module(&mut module);
 
     let typ = &module.bindings[0].expression.typ;
-    let int_type = Type::new_op(intern("Int"), ~[]);
-    let test = function_type(&Type::new_var(-1),  &function_type(&Type::new_var(-2), &int_type));
+    let test = function_type_(Type::new_var(-1), function_type_(Type::new_var(-2), int_type()));
     assert_eq!(typ, &test);
     let test_cons = vec![intern("Test")];
     assert_eq!(env.constraints.find(typ.appl().appr().var()), Some(&test_cons));
@@ -1483,8 +1478,8 @@ instance Eq a => Eq [a] where
     env.typecheck_module(&mut module);
 
     let typ = &module.instances[0].bindings[0].expression.typ;
-    let list_type = Type::new_op(intern("[]"), ~[Type::new_var(100)]);
-    assert_eq!(*typ, function_type(&list_type, &function_type(&list_type, &Type::new_op(intern("Bool"), ~[]))));
+    let list_type = list_type(Type::new_var(100));
+    assert_eq!(*typ, function_type_(list_type.clone(), function_type_(list_type, bool_type())));
     let var = typ.appl().appr().appr().var();
     let eq = vec![intern("Eq")];
     assert_eq!(env.constraints.find(var), Some(&eq));
@@ -1497,7 +1492,7 @@ fn typecheck_num_double() {
 r"test x = primDoubleAdd 0 x";
     let module = do_typecheck(file);
 
-    let typ = function_type(&Type::new_op(intern("Double"), ~[]), &Type::new_op(intern("Double"), ~[]));
+    let typ = function_type_(double_type(), double_type());
     let bind_type0 = module.bindings[0].expression.typ;
     assert_eq!(bind_type0, typ);
 }
@@ -1520,7 +1515,7 @@ main = fmap add2 (Just 3)";
     let module = do_typecheck(file);
 
     let main = &module.bindings[1];
-    assert_eq!(main.expression.typ, Type::new_op(intern("Maybe"), ~[Type::new_op(intern("Int"), ~[])]));
+    assert_eq!(main.expression.typ, Type::new_op(intern("Maybe"), ~[double_type()]));
 }
 #[should_fail]
 #[test]
@@ -1550,7 +1545,7 @@ fn typecheck_prelude() {
     let id = module.bindings.iter().find(|bind| bind.name.as_slice() == "id");
     assert!(id != None);
     let id_bind = id.unwrap();
-    assert_eq!(id_bind.expression.typ, function_type(&Type::new_var(0), &Type::new_var(0)));
+    assert_eq!(id_bind.expression.typ, function_type_(Type::new_var(0), Type::new_var(0)));
 }
 
 #[test]
@@ -1569,9 +1564,9 @@ test2 = id (primIntAdd 2 0)";
     let module = do_typecheck_with(file, [&prelude as &DataTypes]);
 
     assert_eq!(module.bindings[0].name.as_slice(), "test1");
-    assert_eq!(module.bindings[0].expression.typ, Type::new_op(intern("[]"), ~[Type::new_op(intern("Bool"), ~[])]));
+    assert_eq!(module.bindings[0].expression.typ, list_type(bool_type()));
     assert_eq!(module.bindings[1].name.as_slice(), "test2");
-    assert_eq!(module.bindings[1].expression.typ, Type::new_op(intern("Int"), ~[]));
+    assert_eq!(module.bindings[1].expression.typ, int_type());
 }
 
 #[test]

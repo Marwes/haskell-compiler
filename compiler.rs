@@ -571,35 +571,35 @@ impl <'a> Compiler<'a> {
             &Literal(ref literal) => {
                 match &literal.value {
                     &Integral(i) => {
-                        if literal.typ == Type::new_op(intern("Int"), ~[]) {
+                        if literal.typ == int_type() {
                             instructions.push(PushInt(i));
                         }
-                        else if literal.typ == Type::new_op(intern("Double"), ~[]) {
+                        else if literal.typ == double_type() {
                             instructions.push(PushFloat(i as f64));
                         }
                         else {
                             let fromInteger = Identifier(Id {
                                 name: Name { name: intern("fromInteger"), uid: 999999 }, 
-                                typ: function_type(&Type::new_op(intern("Int"), ~[]), &literal.typ),
+                                typ: function_type_(int_type(), literal.typ.clone()),
                                 constraints: ~[]
                             });
-                            let number = Literal(Literal { typ: Type::new_op(intern("Double"), ~[]), value: Integral(i) });
+                            let number = Literal(Literal { typ: double_type(), value: Integral(i) });
                             let apply = Apply(~fromInteger, ~number);
                             self.compile(&apply, instructions, strict);
                         }
                     }
                     &Fractional(f) => {
-                        if literal.typ == Type::new_op(intern("Double"), ~[]) {
+                        if literal.typ == double_type() {
                             instructions.push(PushFloat(f));
                         }
                         else {
                             let fromRational = Identifier(Id {
                                 name: Name { name: intern("fromRational"), uid: 999999 }, 
-                                typ: function_type(&Type::new_op(intern("Double"), ~[]), &literal.typ),
+                                typ: function_type_(double_type(), literal.typ.clone()),
                                 constraints: ~[]
                             });
                             let number = Literal(Literal {
-                                typ: Type::new_op(intern("Double"), ~[]),
+                                typ: double_type(),
                                 value: Fractional(f)
                             });
                             let apply = Apply(~fromRational, ~number);

@@ -831,7 +831,7 @@ fn parse_type_(&mut self, variableIndex: &mut int, typeVariableMapping : &mut Ha
                 self.lexer.backtrack();
                 let t = self.parse_type_(variableIndex, typeVariableMapping);
                 self.requireNext(RBRACKET);
-                let listType = Type::new_op(intern("[]"), ~[t]);
+                let listType = list_type(t);
                 
                 self.parse_return_type(listType, variableIndex, typeVariableMapping)
             }
@@ -1159,7 +1159,7 @@ fn parse_data() {
 r"data Bool = True | False".chars());
     let data = parser.dataDefinition();
 
-    let b = Type::new_op(intern("Bool"), ~[]);
+    let b = bool_type();
     let t = Constructor { name: intern("True"), tag:0, arity:0, typ: b.clone() };
     let f = Constructor { name: intern("False"), tag:1, arity:0, typ: b.clone() };
     assert_eq!(data.typ, b);
@@ -1210,7 +1210,7 @@ instance Eq a => Eq [a] where
     assert_eq!(module.classes[0].name, intern("Eq"));
     assert_eq!(module.instances[0].classname, intern("Eq"));
     assert_eq!(module.instances[0].constraints[0].class, intern("Eq"));
-    assert_eq!(module.instances[0].typ, Type::new_op(intern("[]"), ~[Type::new_var(0)]));
+    assert_eq!(module.instances[0].typ, list_type(Type::new_var(0)));
 }
 #[test]
 fn parse_do_expr() {

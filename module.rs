@@ -5,8 +5,6 @@ use interner::{intern, InternedStr};
 pub use std::default::Default;
 pub use lexer::{Location, Located};
 
-type DefaultIdent = InternedStr;
-
 #[deriving(Clone)]
 pub struct Module<Ident = InternedStr> {
     pub name : Ident,
@@ -184,6 +182,15 @@ pub fn list_type(typ: Type) -> Type {
 
 pub fn char_type() -> Type {
     Type::new_op(intern("Char"), ~[])
+}
+pub fn int_type() -> Type {
+    Type::new_op(intern("Int"), ~[])
+}
+pub fn bool_type() -> Type {
+    Type::new_op(intern("Bool"), ~[])
+}
+pub fn double_type() -> Type {
+    Type::new_op(intern("Double"), ~[])
 }
 
 pub fn function_type(func : &Type, arg : &Type) -> Type {
