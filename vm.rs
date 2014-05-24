@@ -45,7 +45,7 @@ struct Node<'a> {
 }
 
 impl <'a> Node<'a> {
-    fn new(n : Node_<'a>) -> Node<'a> {
+    fn new<'a>(n : Node_<'a>) -> Node<'a> {
         Node { node: Rc::new(RefCell::new(n)) }
     }
     fn borrow<'b>(&'b self) -> Ref<'b, Node_<'a>> {
@@ -138,21 +138,22 @@ impl <'a> VM<'a> {
         }
         assembly_index
     }
-
-    pub fn evaluate(&'a self, code: &[Instruction], assembly_id: uint) -> Node_<'a> {
+}
+    pub fn evaluate<'a>(self_: &'a VM<'a>, code: &[Instruction], assembly_id: uint) -> Node_<'a> {
         let mut stack = Vec::new();
-        self.execute(&mut stack, code, assembly_id);
-        self.deepseq(stack, assembly_id)
+        execute(self_, &mut stack, code, assembly_id);
+        deepseq(self_, stack, assembly_id)
     }
-    fn deepseq(&'a self, mut stack: Vec<Node<'a>>, assembly_id: uint) -> Node_<'a> {
+
+    fn deepseq<'a>(self_: &'a VM<'a>, mut stack: Vec<Node<'a>>, assembly_id: uint) -> Node_<'a> {
         static evalCode : &'static [Instruction] = &[Eval];
-        self.execute(&mut stack, evalCode, assembly_id);
+        execute(self_, &mut stack, evalCode, assembly_id);
         match *stack.get(0).borrow() {
             Constructor(tag, ref vals) => {
                 let mut ret = Vec::new();
                 for v in vals.iter() {
                     let s = vec!(v.clone());
-                    let x = self.deepseq(s, assembly_id);
+                    let x = deepseq(self_, s, assembly_id);
                     ret.push(Node::new(x));
                 }
                 Constructor(tag, ret)
@@ -161,7 +162,7 @@ impl <'a> VM<'a> {
         }
     }
 
-    pub fn execute(&'a self, stack: &mut Vec<Node<'a>>, code: &[Instruction], assembly_id: uint) {
+    pub fn execute<'a>(self_: &'a VM<'a>, stack: &mut Vec<Node<'a>>, code: &[Instruction], assembly_id: uint) {
         debug!("----------------------------");
         debug!("Entering frame with stack");
         for x in stack.iter() {
@@ -218,8 +219,8 @@ impl <'a> VM<'a> {
                     stack.push(x);
                 }
                 &PushGlobal(index) => {
-                    let &(assembly_index, index) = self.globals.get(index);
-                    let sc = &self.assembly.get(assembly_index).superCombinators[index];
+                    let &(assembly_index, index) = self_.globals.get(index);
+                    let sc = &self_.assembly.get(assembly_index).superCombinators[index];
                     stack.push(Node::new(Combinator(sc)));
                 }
                 &PushPrimitive(index) => {
@@ -237,7 +238,7 @@ impl <'a> VM<'a> {
                     static unwindCode : &'static [Instruction] = &[Unwind];
                     let old = stack.pop().unwrap();
                     let mut newStack = vec!(old.clone());
-                    self.execute(&mut newStack, unwindCode, assembly_id);
+                    execute(self_, &mut newStack, unwindCode, assembly_id);
                     stack.push(newStack.pop().unwrap());
                     let new = stack.last().unwrap().borrow().clone();
                     *(*old.node).borrow_mut() = new;
@@ -289,12 +290,12 @@ impl <'a> VM<'a> {
                         Combinator(comb) => {
                             debug!(">>> Call {}", comb.name);
                             unwind(&mut i, comb.arity, stack, |new_stack| {
-                                self.execute(new_stack, comb.instructions, comb.assembly_id);
+                                execute(self_, new_stack, comb.instructions, comb.assembly_id);
                                 new_stack.pop().unwrap()
                             });
                         }
                         PrimitiveFunction(arity, func) => {
-                            unwind(&mut i, arity, stack, |new_stack| func(self, new_stack.as_slice()));
+                            unwind(&mut i, arity, stack, |new_stack| func(self_, new_stack.as_slice()));
                         }
                         Indirection(node) => {
                             *stack.mut_last().unwrap() = node;
@@ -356,7 +357,7 @@ impl <'a> VM<'a> {
                     i = to - 1;
                 }
                 &PushDictionary(index) => {
-                    let assembly = self.assembly.get(assembly_id);
+                    let assembly = self_.assembly.get(assembly_id);
                     let dict : &[uint] = assembly.instance_dictionaries[index];
                     stack.push(Node::new(Dictionary(dict)));
                 }
@@ -368,8 +369,8 @@ impl <'a> VM<'a> {
                             ref x => fail!("Attempted to retrieve {} as dictionary", *x)
                         };
                         let gi = dict[index];
-                        let &(assembly_index, i) = self.globals.get(gi);
-                        &self.assembly.get(assembly_index).superCombinators[i]
+                        let &(assembly_index, i) = self_.globals.get(gi);
+                        &self_.assembly.get(assembly_index).superCombinators[i]
                     };
                     stack.push(Node::new(Combinator(sc)));
                 }
@@ -380,7 +381,7 @@ impl <'a> VM<'a> {
         debug!("End frame");
         debug!("--------------------------");
     }
-}
+
 
 fn primitive_int(stack: &mut Vec<Node>, f: |int, int| -> Node_) {
     let l = stack.pop().unwrap();
@@ -455,7 +456,7 @@ pub fn execute_main<T : Iterator<char>>(iterator: T) -> Option<VMResult> {
     match x {
         Some(sc) => {
             assert!(sc.arity == 0);
-            let result = vm.evaluate(sc.instructions, sc.assembly_id);
+            let result = evaluate(&vm, sc.instructions, sc.assembly_id);
             extract_result(result)
         }
         None => None
@@ -465,7 +466,7 @@ pub fn execute_main<T : Iterator<char>>(iterator: T) -> Option<VMResult> {
 mod primitive {
 
     use std::io::fs::File;
-    use vm::{VM, Node, Node_, Application, Constructor, PrimitiveFunction, Char};
+    use vm::{VM, execute, deepseq, Node, Node_, Application, Constructor, PrimitiveFunction, Char};
     use compiler::{Instruction, Eval};
 
     pub fn get_primitive(i: uint) -> (uint, PrimFun) {
@@ -485,14 +486,14 @@ mod primitive {
     fn error<'a>(vm: &'a VM<'a>, stack: &[Node<'a>]) -> Node<'a> {
         let mut vec = Vec::new();
         vec.push(stack[0].clone());
-        let node = vm.deepseq(vec, 123);
+        let node = deepseq(vm, vec, 123);
         fail!("error: {}", node)
     }
     fn eval<'a>(vm: &'a VM<'a>, node: Node<'a>) -> Node<'a> {
         static evalCode : &'static [Instruction] = &[Eval];
         let mut temp = Vec::new();
         temp.push(node);
-        vm.execute(&mut temp, evalCode, 123);
+        execute(vm, &mut temp, evalCode, 123);
         temp.pop().unwrap()
     }
     fn seq<'a>(vm: &'a VM<'a>, stack: &[Node<'a>]) -> Node<'a> {
@@ -526,7 +527,7 @@ mod primitive {
     fn readFile<'a>(vm: &'a VM<'a>, stack: &[Node<'a>]) -> Node<'a> {
         let mut temp = Vec::new();
         temp.push(stack[0].clone());
-        let node_filename = vm.deepseq(temp, 123);
+        let node_filename = deepseq(vm, temp, 123);
         let filename = get_string(&node_filename);
         let mut file = match File::open(&Path::new(filename.as_slice())) {
             Ok(f) => f,
@@ -543,7 +544,7 @@ mod primitive {
     fn putStrLn<'a>(vm: &'a VM<'a>, stack: &[Node<'a>]) -> Node<'a> {
         let mut temp = Vec::new();
         temp.push(stack[0].clone());
-        let msg_node = vm.deepseq(temp, 123);
+        let msg_node = deepseq(vm, temp, 123);
         let msg = get_string(&msg_node);
         println!("{}", msg);
         Node::new(Constructor(0, vec!(Node::new(Constructor(0, vec!())), stack[1].clone())))
@@ -592,7 +593,7 @@ use std::path::Path;
 use std::io::File;
 use typecheck::TypeEnvironment;
 use compiler::{compile_with_type_env};
-use vm::{VM, compile_file, execute_main, extract_result, IntResult, DoubleResult, ConstructorResult};
+use vm::{VM, evaluate, compile_file, execute_main, extract_result, IntResult, DoubleResult, ConstructorResult};
 use interner::*;
 
 #[test]
@@ -747,7 +748,7 @@ main = foldl add 0 [1,2,3,4]");
     let result = match x {
         Some(sc) => {
             assert!(sc.arity == 0);
-            let result = vm.evaluate(sc.instructions, sc.assembly_id);
+            let result = evaluate(&vm, sc.instructions, sc.assembly_id);
             extract_result(result)
         }
         None => None
@@ -769,7 +770,7 @@ fn instance_super_class() {
     let result = match x {
         Some(sc) => {
             assert!(sc.arity == 0);
-            let result = vm.evaluate(sc.instructions, sc.assembly_id);
+            let result = evaluate(&vm, sc.instructions, sc.assembly_id);
             extract_result(result)
         }
         None => None
@@ -799,7 +800,7 @@ main = test (Just 4) (Just 6)");
     let result = match x {
         Some(sc) => {
             assert!(sc.arity == 0);
-            let result = vm.evaluate(sc.instructions, sc.assembly_id);
+            let result = evaluate(&vm, sc.instructions, sc.assembly_id);
             extract_result(result)
         }
         None => None
