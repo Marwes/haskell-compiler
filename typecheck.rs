@@ -985,9 +985,13 @@ fn unify_location(env: &mut TypeEnvironment, subs: &mut Substitution, location: 
     debug!("Unifying {} <-> {}", *lhs, *rhs);
     match unify(env, subs, lhs.clone(), rhs.clone()) {
         Ok(typ) => {
-            let subs2 = subs.clone();
+            //Using unsafe here to avoid a very expensive copy of the substitution
+            //Since 'subs.subs' is never resized but only has its elements modified
+            //and calling find on 'subs2' will only return None for variables in 'typ'
+            //since we have checked for recursive unifiction in unify
+            let subs2 = unsafe { ::std::mem::transmute::<&Substitution, &mut Substitution>(subs) };
             for (_, ref mut typ) in subs.subs.mut_iter() {
-                replace(&mut env.constraints, *typ, &subs2);
+                replace(&mut env.constraints, *typ, subs2);
             }
             *lhs = typ.clone();
             *rhs = typ;
