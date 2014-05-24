@@ -17,7 +17,7 @@ pub fn new(iterator : Iter) -> Parser<Iter> {
 
 fn requireNext<'a>(&'a mut self, expected : TokenEnum) -> &'a Token {
 	let tok = self.lexer.next_().token;
-	if (tok != expected) {
+	if tok != expected {
 		fail!(ParseError(&self.lexer, expected));
     }
 	return self.lexer.current();
@@ -47,13 +47,12 @@ pub fn module(&mut self) -> Module {
 	loop {
 		//Do a lookahead to see what the next top level binding is
 		let token = self.lexer.next(toplevelError).token;
-		if (token == NAME || token == LPARENS)
-		{
+		if token == NAME || token == LPARENS {
             let mut equalOrType = self.lexer.next(bindingError).token;
             {
 			    let mut numberOfLookaheads = 2;
-                while (equalOrType != TYPEDECL
-                    && equalOrType != EQUALSSIGN)
+                while equalOrType != TYPEDECL
+                    && equalOrType != EQUALSSIGN
                 {
                     equalOrType = self.lexer.next(bindingError).token;
                     numberOfLookaheads += 1;
@@ -64,60 +63,50 @@ pub fn module(&mut self) -> Module {
                 }
             }
 
-			if (equalOrType == TYPEDECL)
-			{
+			if equalOrType == TYPEDECL {
 				let bind = self.typeDeclaration();
 				typeDeclarations.push(bind);
 			}
-			else
-			{
+			else {
 				let bind = self.binding();
                 debug!("Parsed binding {}", bind.name);
 				bindings.push(bind);
 			}
 		}
-		else if (token == CLASS)
-		{
+		else if token == CLASS {
 			self.lexer.backtrack();
 			classes.push(self.class());
 		}
-		else if (token == INSTANCE)
-		{
+		else if token == INSTANCE {
 			self.lexer.backtrack();
 			instances.push(self.instance());
 		}
-		else if (token == DATA)
-		{
+		else if token == DATA {
 			self.lexer.backtrack();
 			dataDefinitions.push(self.dataDefinition());
 		}
-		else
-		{
+		else {
 			break;
 		}
 		let semicolon = self.lexer.next(toplevelNewBindError);
         debug!("More bindings? {:?}", semicolon.token);
-	    if (semicolon.token != SEMICOLON) {
+	    if semicolon.token != SEMICOLON {
             break;
         }
     }
 
 	let rBracket = self.lexer.current().token;
-	if (rBracket != RBRACE)
-	{
+	if rBracket != RBRACE {
 		fail!(ParseError(&self.lexer, RBRACE));
 	}
 
 	let eof = self.lexer.next_();
-	if (eof.token != EOF)
-	{
+	if eof.token != EOF {
 		fail!("Unexpected token after end of module, {:?}", eof.token);
 	}
 
-	for decl in typeDeclarations.mut_iter()
-	{
-		for bind in bindings.mut_iter()
-		{
+	for decl in typeDeclarations.mut_iter() {
+		for bind in bindings.mut_iter() {
 			if decl.name == bind.name {
 				bind.typeDecl = (*decl).clone();
 			}
@@ -129,7 +118,8 @@ pub fn module(&mut self) -> Module {
         typeDeclarations : FromVec::from_vec(typeDeclarations),
         classes : FromVec::from_vec(classes),
         instances : FromVec::from_vec(instances),
-        dataDefinitions : FromVec::from_vec(dataDefinitions) }
+        dataDefinitions : FromVec::from_vec(dataDefinitions)
+    }
 }
 
 fn class(&mut self) -> Class {
@@ -203,7 +193,7 @@ fn parseList(&mut self) -> TypedExpr {
             None => break
         }
 		let comma = self.lexer.next_().token;
-        if (comma != COMMA) {
+        if comma != COMMA {
             self.lexer.backtrack();
             break;
         }
@@ -214,17 +204,15 @@ fn parseList(&mut self) -> TypedExpr {
 		return TypedExpr::new(Identifier(intern("[]")));
 	}
 
-	let mut application;
-	{
+	let mut application = {
 		let mut arguments = ~[TypedExpr::new(Number(0)), TypedExpr::new(Number(0))];//Must be 2 in length
 		swap(&mut arguments[0], expressions.mut_last().unwrap());
 		expressions.pop();
 		arguments[1] = TypedExpr::new(Identifier(intern("[]")));
 
-		application = makeApplication(TypedExpr::new(Identifier(intern(":"))), arguments.move_iter());
-	}
-	while (expressions.len() > 0)
-	{
+		makeApplication(TypedExpr::new(Identifier(intern(":"))), arguments.move_iter())
+	};
+	while expressions.len() > 0 {
 		let mut arguments = ~[TypedExpr::new(Number(0)), TypedExpr::new(Number(0))];//Must be 2 in length
 		swap(&mut arguments[0], expressions.mut_last().unwrap());
 		expressions.pop();
@@ -239,32 +227,27 @@ fn subExpression(&mut self, parseError : |&Token| -> bool) -> Option<TypedExpr> 
 	let token = self.lexer.next(parseError).token;
     debug!("Begin SubExpr {:?}", self.lexer.current());
 	match token {
-	    LPARENS =>
-		{
+	    LPARENS => {
 			let expressions = self.sepBy1(|this| this.expression_(), COMMA);
 
 			let maybeParens = self.lexer.current();
 
-			if (maybeParens.token != RPARENS)
-			{
+			if maybeParens.token != RPARENS {
 				fail!(ParseError(&self.lexer, RPARENS));
 			}
-			if (expressions.len() == 1)
-			{
+			if expressions.len() == 1 {
 				Some(expressions[0])
 			}
-			else
-			{
+			else {
 				Some(newTuple(expressions))
 			}
 		}
 	    LBRACKET => Some(self.parseList()),
-	    LET =>
-		{
+	    LET => {
 			let binds = self.let_bindings();
 
 			let inToken = self.lexer.next(letExpressionEndError).token;
-			if (inToken != IN) {
+			if inToken != IN {
 				fail!(ParseError(&self.lexer, IN));
             }
 			match self.expression() {
@@ -274,8 +257,7 @@ fn subExpression(&mut self, parseError : |&Token| -> bool) -> Option<TypedExpr> 
                 None => None
             }
 		}
-	    CASE =>
-		{
+	    CASE => {
             let location = self.lexer.current().location;
 			let expr = self.expression();
 
@@ -284,8 +266,7 @@ fn subExpression(&mut self, parseError : |&Token| -> bool) -> Option<TypedExpr> 
 
 			let alts = self.sepBy1(|this| this.alternative(), SEMICOLON);
 			let rBrace = self.lexer.current();
-			if (rBrace.token != RBRACE)
-			{
+			if rBrace.token != RBRACE {
 				fail!(ParseError(&self.lexer, RBRACE));
 			}
 			match expr {
@@ -386,8 +367,7 @@ fn let_bindings(&mut self) -> ~[Binding] {
     let binds = self.sepBy1(|this| this.binding(), SEMICOLON);
 
     let rBracket = self.lexer.current().token;
-    if (rBracket != RBRACE)
-    {
+    if rBracket != RBRACE {
         fail!(ParseError(&self.lexer, RBRACE));
     }
     binds
@@ -405,15 +385,15 @@ fn parseOperatorExpression(&mut self, inL : Option<TypedExpr>, minPrecedence : i
 	let mut lhs = inL;
     self.lexer.next_();
     debug!("Parse operator exression, {:?}", self.lexer.current());
-	while (self.lexer.valid() && self.lexer.current().token == OPERATOR
-		&& precedence(self.lexer.current().value.as_slice()) >= minPrecedence)
+	while self.lexer.valid() && self.lexer.current().token == OPERATOR
+		&& precedence(self.lexer.current().value.as_slice()) >= minPrecedence
 	{
 		let op = (*self.lexer.current()).clone();
 		let mut rhs = self.application();
 		self.lexer.next_();
         debug!("Parsing operator? {:?}", self.lexer.current());
-		while (self.lexer.valid() && self.lexer.current().token == OPERATOR
-			&& precedence(self.lexer.current().value.as_slice()) >= precedence(op.value.as_slice()))
+		while self.lexer.valid() && self.lexer.current().token == OPERATOR
+			&& precedence(self.lexer.current().value.as_slice()) >= precedence(op.value.as_slice())
 		{
 			let lookaheadPrecedence = precedence(self.lexer.current().value.as_slice());
 			self.lexer.backtrack();
@@ -421,9 +401,9 @@ fn parseOperatorExpression(&mut self, inL : Option<TypedExpr>, minPrecedence : i
             self.lexer.next_();
 		}
 		let mut name = TypedExpr::with_location(Identifier(op.value.clone()), op.location);
-		let loc = match &lhs {
-            &Some(ref l) => l.location,
-            &None => op.location
+		let loc = match lhs {
+            Some(ref l) => l.location,
+            None => op.location
         };
         lhs = match (lhs, rhs) {
             (Some(lhs), Some(rhs)) => {
@@ -434,8 +414,7 @@ fn parseOperatorExpression(&mut self, inL : Option<TypedExpr>, minPrecedence : i
                 Some(TypedExpr::with_location(Apply(box name, box lhs), loc))
             }
             (None, Some(rhs)) => {
-                if (op.value == intern("-"))
-                {
+                if op.value == intern("-") {
                     match name.expr {
                         Identifier(ref mut n) => *n = intern("negate"),
                         _ => fail!("WTF")
@@ -443,8 +422,7 @@ fn parseOperatorExpression(&mut self, inL : Option<TypedExpr>, minPrecedence : i
                     let args = ~[rhs];
                     Some(makeApplication(name, args.move_iter()))
                 }
-                else
-                {
+                else {
                     let args = ~[TypedExpr::with_location(Identifier(intern("#")), loc), rhs];
                     let mut apply = makeApplication(name, args.move_iter());
                     apply.location = loc;
@@ -471,8 +449,7 @@ fn application(&mut self) -> Option<TypedExpr> {
                     None => break
                 }
             }
-            if (expressions.len() > 0)
-            {
+            if expressions.len() > 0 {
                 let loc = lhs.location;
                 lhs = makeApplication(lhs, expressions.move_iter());//, loc);
                 lhs.location = loc;
@@ -499,31 +476,26 @@ fn binding(&mut self) -> Binding {
 	//name2 x y = expr
 	let nameToken = self.lexer.next(errorIfNotNameOrLParens).token;
 	let mut name = self.lexer.current().value.clone();
-	if (nameToken == LPARENS)
-	{
+	if nameToken == LPARENS {
 		//Parse a name within parentheses
 		let functionName = self.lexer.next(errorIfNotNameOrOperator).token;
-		if (functionName != NAME && functionName != OPERATOR)
-		{
+		if functionName != NAME && functionName != OPERATOR {
 			fail!("Expected NAME or OPERATOR on left side of binding {:?}", self.lexer.current().token);
 		}
 		name = self.lexer.current().value.clone();
 
 		let rParens = self.lexer.next(errorIfNotRParens).token;
-		if (rParens != RPARENS)
-		{
+		if rParens != RPARENS {
 			fail!(ParseError(&self.lexer, RPARENS));
 		}
 	}
-	else if (nameToken != NAME)
-	{
+	else if nameToken != NAME {
 		fail!(ParseError(&self.lexer, NAME));
 	}
 
 	//Parse the arguments for the binding
 	let mut arguments = Vec::new();
-	while (true)
-	{
+	loop {
 		let token = self.lexer.next(errorIfNotNameOrEqual);
 		if token.token == NAME {
 			arguments.push(token.value.clone());
@@ -532,12 +504,10 @@ fn binding(&mut self) -> Binding {
 			break;
 		}
 	}
-	if (self.lexer.current().token != EQUALSSIGN)
-	{
+	if self.lexer.current().token != EQUALSSIGN {
 		fail!(ParseError(&self.lexer, EQUALSSIGN));
 	}
-	if (arguments.len() > 0)
-    {
+	if arguments.len() > 0 {
         let arity = arguments.len();
 		let lambda = makeLambda(arguments.move_iter(), self.expression_());
 		Binding { name : name.clone(),
@@ -550,8 +520,7 @@ fn binding(&mut self) -> Binding {
             arity : arity
         }
 	}
-	else
-	{
+	else {
 		Binding {
             name : name.clone(),
             typeDecl : TypeDeclaration {
@@ -613,33 +582,27 @@ fn pattern(&mut self) -> Pattern {
 	let nameToken = self.lexer.next_().token;
     let name = self.lexer.current().value.clone();
 	match nameToken {
-	    LBRACKET =>
-		{
-			if (self.lexer.next_().token != RBRACKET)
-			{
+	    LBRACKET => {
+			if self.lexer.next_().token != RBRACKET {
 				fail!(ParseError(&self.lexer, RBRACKET));
 			}
 			ConstructorPattern(intern("[]"), ~[])
 		}
-	    NAME | OPERATOR =>
-		{
+	    NAME | OPERATOR => {
 			let patterns = self.patternParameter();
-			if (name.as_slice().char_at(0).is_uppercase() || name == intern(":"))
-			{
+			if name.as_slice().char_at(0).is_uppercase() || name == intern(":") {
 				ConstructorPattern(name, patterns)
 			}
-			else
-			{
+			else {
 				assert!(patterns.len() == 0);
 				IdentifierPattern(name)
 			}
 		}
 	    NUMBER => NumberPattern(from_str(name.as_slice()).unwrap()),
-	    LPARENS =>
-		{
+	    LPARENS => {
 			let tupleArgs = self.sepBy1(|this| this.pattern(), COMMA);
 			let rParens = self.lexer.current().token;
-			if (rParens != RPARENS) {
+			if rParens != RPARENS {
 				fail!(ParseError(&self.lexer, RPARENS));
 			}
 			ConstructorPattern(tuple_name(tupleArgs.len()), tupleArgs)
@@ -658,26 +621,24 @@ fn typeDeclaration_(&mut self, typeVariableMapping : &mut HashMap<InternedStr, i
 	{
         let nameToken = self.lexer.next(errorIfNotNameOrLParens).token;
         name = self.lexer.current().value.clone();
-        if (nameToken == LPARENS) {
+        if nameToken == LPARENS {
             //Parse a name within parentheses
             let functionName = self.lexer.next(errorIfNotNameOrOperator).token;
-            if (functionName != NAME && functionName != OPERATOR)
-            {
+            if functionName != NAME && functionName != OPERATOR {
                 fail!("Expected NAME or OPERATOR on left side of binding {:?}", functionName);
             }
             name = self.lexer.current().value.clone();
             let rParens = self.lexer.next(errorIfNotRParens).token;
-            if (rParens != RPARENS)
-            {
+            if rParens != RPARENS {
                 fail!(ParseError(&self.lexer, RPARENS));
             }
         }
-        else if (nameToken != NAME) {
+        else if nameToken != NAME {
             fail!(ParseError(&self.lexer, NAME));
         }
     }
 	let decl = self.lexer.next_().token;
-	if (decl != TYPEDECL) {
+	if decl != TYPEDECL {
 		fail!(ParseError(&self.lexer, TYPEDECL));
 	}
     let (context, typ) = self.constrained_type(typeVariableMapping);
@@ -699,7 +660,7 @@ fn constrained_type(&mut self, typeVariableMapping : &mut HashMap<InternedStr, i
     };
     let maybeContextArrow = self.lexer.next_().token;
     //If there is => arrow we proceed to parse the type
-    let typ = if (maybeContextArrow == CONTEXTARROW) {
+    let typ = if maybeContextArrow == CONTEXTARROW {
         self.parse_type_(&mut variableIndex, typeVariableMapping)
     }
     else if maybeContextArrow == ARROW {
@@ -720,10 +681,9 @@ fn constrained_type(&mut self, typeVariableMapping : &mut HashMap<InternedStr, i
 fn constructorType(&mut self, arity : &mut int, dataDef: &DataDefinition, mapping : &mut HashMap<InternedStr, int>) -> Type
 {
 	let token = self.lexer.next(constructorError).token;
-	if (token == NAME) {
+	if token == NAME {
 		*arity += 1;
-		let arg = if (self.lexer.current().value.as_slice().char_at(0).is_lowercase())
-		{
+		let arg = if self.lexer.current().value.as_slice().char_at(0).is_lowercase() {
 			match mapping.find(&self.lexer.current().value) {
                 Some(existingVariable) => Type::new_var(*existingVariable),
                 None => fail!("Undefined type parameter {:?}", self.lexer.current().value)
@@ -766,14 +726,12 @@ fn dataDefinition(&mut self) -> DataDefinition {
     Parser::<Iter>::set_kind(&mut definition.typ, 1);
 
 	let equalToken = self.lexer.current().token;
-	if (equalToken != EQUALSSIGN)
-	{
+	if equalToken != EQUALSSIGN {
 		fail!(ParseError(&self.lexer, EQUALSSIGN));
 	}
 	definition.constructors = self.sepBy1_func(|this| this.constructor(&definition),
 		|t : &Token| t.token == PIPE);
-	for ii in range(0, definition.constructors.len())
-	{
+	for ii in range(0, definition.constructors.len()) {
 		definition.constructors[ii].tag = ii as int;
 	}
 	self.lexer.backtrack();
@@ -794,19 +752,16 @@ fn set_kind(typ: &mut Type, kind: int) {
 fn sub_type(&mut self, variableIndex: &mut int, typeVariableMapping: &mut HashMap<InternedStr, int>) -> Option<Type> {
 	let token = (*self.lexer.next_()).clone();
 	match token.token {
-	    LBRACKET =>
-		{
+	    LBRACKET => {
             self.lexer.backtrack();
             Some(self.parse_type_(variableIndex, typeVariableMapping))
 		}
-	    LPARENS =>
-		{
+	    LPARENS => {
             self.lexer.backtrack();
 			Some(self.parse_type_(variableIndex, typeVariableMapping))
 		}
-	    NAME =>
-		{
-			if (token.value.as_slice().char_at(0).is_uppercase()) {
+	    NAME => {
+			if token.value.as_slice().char_at(0).is_uppercase() {
 				Some(Type::new_op(token.value, box []))
 			}
 			else {
@@ -822,8 +777,7 @@ fn sub_type(&mut self, variableIndex: &mut int, typeVariableMapping: &mut HashMa
 fn parse_type_(&mut self, variableIndex: &mut int, typeVariableMapping : &mut HashMap<InternedStr, int>) -> Type {
 	let token = (*self.lexer.next_()).clone();
 	match token.token {
-	    LBRACKET =>
-		{
+	    LBRACKET => {
             if self.lexer.next_().token == RBRACKET {
                 let listType = Type::new_op_kind(intern("[]"), ~[], Kind::new(2));
                 self.parse_return_type(listType, variableIndex, typeVariableMapping)
@@ -837,12 +791,10 @@ fn parse_type_(&mut self, variableIndex: &mut int, typeVariableMapping : &mut Ha
                 self.parse_return_type(listType, variableIndex, typeVariableMapping)
             }
 		}
-	    LPARENS =>
-		{
+	    LPARENS => {
 			let t = self.parse_type_(variableIndex, typeVariableMapping);
 			let maybeComma = self.lexer.next_().token;
-			if (maybeComma == COMMA)
-			{
+			if maybeComma == COMMA {
 				let mut tupleArgs: Vec<Type> = self.sepBy1(|this| this.parse_type_(variableIndex, typeVariableMapping), COMMA)
                     .move_iter()
                     .collect();
@@ -852,16 +804,14 @@ fn parse_type_(&mut self, variableIndex: &mut int, typeVariableMapping : &mut Ha
 
                 self.parse_return_type(tupleType(FromVec::from_vec(tupleArgs)), variableIndex, typeVariableMapping)
 			}
-			else if (maybeComma == RPARENS)
-			{
+			else if maybeComma == RPARENS {
                 self.parse_return_type(t, variableIndex, typeVariableMapping)
 			}
             else {
                 fail!(ParseError2(&self.lexer, &[COMMA, RPARENS]))
             }
 		}
-	    NAME =>
-		{
+	    NAME => {
 			let mut typeArguments = Vec::new();
             loop {
                 match self.sub_type(variableIndex, typeVariableMapping) {
@@ -870,7 +820,7 @@ fn parse_type_(&mut self, variableIndex: &mut int, typeVariableMapping : &mut Ha
                 }
             }
 
-			let thisType = if (token.value.as_slice().char_at(0).is_uppercase()) {
+			let thisType = if token.value.as_slice().char_at(0).is_uppercase() {
 				Type::new_op(token.value, FromVec::from_vec(typeArguments))
 			}
 			else {
@@ -887,7 +837,7 @@ fn parse_type_(&mut self, variableIndex: &mut int, typeVariableMapping : &mut Ha
 fn parse_return_type(&mut self, typ : Type, variableIndex: &mut int, typeVariableMapping : &mut HashMap<InternedStr, int>) -> Type {
 
     let arrow = self.lexer.next_().token;
-    if (arrow == ARROW) {
+    if arrow == ARROW {
         return function_type(&typ, &self.parse_type_(variableIndex, typeVariableMapping));
     }
     else {
@@ -916,15 +866,15 @@ fn precedence(s : &str) -> int {
     match s {
         "+" => 1,
         "-" => 1,
-        "*" => 3,
-        "/" => 3,
-        "%" => 3,
         "==" => 1,
         "/=" => 1,
         "<" => 1,
         ">" => 1,
         "<=" => 1,
         ">=" => 1,
+        "*" => 3,
+        "/" => 3,
+        "%" => 3,
         _ => 9
     }
 }
@@ -941,8 +891,7 @@ fn make_constraints(types: ~[Type]) -> ~[Constraint] {
 
 
 
-fn toplevelError(t : &Token) -> bool
-{
+fn toplevelError(t : &Token) -> bool {
 	return t.token != NAME
 		&& t.token != RBRACKET
 		&& t.token != SEMICOLON
@@ -952,14 +901,12 @@ fn toplevelError(t : &Token) -> bool
 		&& t.token != INSTANCE;
 }
 
-fn toplevelNewBindError(t : &Token) -> bool
-{
+fn toplevelNewBindError(t : &Token) -> bool {
 	return t.token != RBRACKET
 		&& t.token != SEMICOLON;
 }
 
-fn bindingError(t : &Token) -> bool
-{
+fn bindingError(t : &Token) -> bool {
 	return t.token != EQUALSSIGN
 		&& t.token != NAME
 		&& t.token != TYPEDECL
@@ -967,16 +914,14 @@ fn bindingError(t : &Token) -> bool
 		&& t.token != RPARENS;
 }
 
-fn constructorError(tok : &Token) -> bool
-{
+fn constructorError(tok : &Token) -> bool {
 	return tok.token != NAME
 		&& tok.token != OPERATOR
 		&& tok.token != LPARENS
         && tok.token != PIPE;
 }
 
-fn tuple_name(size : uint) -> InternedStr
-{
+fn tuple_name(size : uint) -> InternedStr {
 	let mut name = StrBuf::with_capacity(size+1);
     name.push_char('(');
     for _ in range(1, size) {
@@ -994,6 +939,7 @@ fn makeApplication<I: Iterator<TypedExpr>>(f : TypedExpr, mut args : I) -> Typed
 	}
     func
 }
+
 fn makeLambda<Iter: DoubleEndedIterator<InternedStr>>(args : Iter, body : TypedExpr) -> TypedExpr {
 	let mut body = body;
 	for a in args.rev() {
@@ -1013,8 +959,7 @@ fn letExpressionEndError(t : &Token) -> bool {
 	t.token != IN
 }
 
-fn applicationError(t :&Token) -> bool
-{
+fn applicationError(t :&Token) -> bool {
 	return t.token != LPARENS
 		&& t.token != RPARENS
 		&& t.token != LBRACKET

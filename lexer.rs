@@ -219,8 +219,7 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
                 self.previousLocation = self.location;
                 self.location.absolute += 1;
                 self.location.column += 1;
-                if (c == '\n' || c == '\r')
-                {
+                if c == '\n' || c == '\r' {
                     self.location.column = 0;
                     self.location.row += 1;
                     //If this is a \n\r line ending skip the next char without increasing the location
@@ -423,8 +422,7 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
             match self.read_char() {
                 Some(x) => {
                     c = x;
-                    if (self.location.column == 0)//newline detected
-                    {
+                    if self.location.column == 0 {//newline detected
                         *newline = true;
                     }
                 }
@@ -435,8 +433,7 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
 
         //Decide how to tokenize depending on what the first char is
         //ie if its an operator then more operators will follow
-        if (is_operator(c))
-        {
+        if is_operator(c) {
             let mut result = StrBuf::from_char(1, c);
             loop {
                 match self.peek() {
@@ -461,12 +458,10 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
             };
             return Token::new(&self.interner, tok, result.as_slice(), startLocation);
         }
-        else if (c.is_digit())
-        {
+        else if c.is_digit() {
             return self.scan_number(c, startLocation);
         }
-        else if (c.is_alphabetic() || c == '_')
-        {
+        else if c.is_alphabetic() || c == '_' {
             return self.scan_identifier(c, startLocation);
         }
         else if c == '`' {
