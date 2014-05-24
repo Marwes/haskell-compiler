@@ -27,6 +27,10 @@ use core::translate::{translate_expr};
 use lambda_lift::do_lambda_lift;
 #[cfg(not(test))]
 use renamer::{rename_expr, Name};
+#[cfg(not(test))]
+use interner::intern;
+#[cfg(not(test))]
+use std::vec::FromVec;
 
 mod compiler;
 mod typecheck;
@@ -58,8 +62,8 @@ fn is_io(typ: &Type) -> bool {
 fn main() {
     let args = std::os::args();
     if args.len() == 2 {
-        let expr_str = args[1];
-        let prelude = compile_file(&"Prelude.hs");
+        let expr_str = args.get(1).as_slice();
+        let prelude = compile_file("Prelude.hs");
         let assembly = {
             let mut parser = Parser::new(expr_str.chars());
             let mut expr = rename_expr(parser.expression_());
@@ -77,7 +81,7 @@ fn main() {
         let mut vm = VM::new();
         vm.add_assembly(prelude);
         let instructions = assembly.superCombinators.iter()
-            .find(|sc| sc.name == Name { name: "main".to_owned(), uid: 0 })
+            .find(|sc| sc.name == Name { name: intern("main"), uid: 0 })
             .map(|sc| {
                 if is_io(&sc.type_declaration.typ) {
                     //If the expression we compiled is IO we need to add an extra argument
@@ -88,7 +92,7 @@ fn main() {
                     let len = vec.len();
                     vec.insert(len - 3, Mkap);
                     vec.insert(0, PushInt(42));//Realworld
-                    vec.move_iter().collect()
+                    FromVec::from_vec(vec)
                 }
                 else {
                     sc.instructions.clone()
@@ -99,11 +103,11 @@ fn main() {
         let result = vm.evaluate(instructions, assembly_index);//TODO 0 is not necessarily correct
         println!("{}", result);
     }
-    else if args.len() == 3 && "-l" == args[1] {
-        let filename = args[2];
+    else if args.len() == 3 && "-l" == args.get(1).as_slice() {
+        let filename = args.get(2).as_slice();
         let path = &Path::new(filename);
         let contents = File::open(path).read_to_str().unwrap();
-        let result = execute_main(contents.chars());
+        let result = execute_main(contents.as_slice().chars());
         match result {
             Some(x) => println!("{:?}", x),
             None => println!("Error running file {:?}", path)

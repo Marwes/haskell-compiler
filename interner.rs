@@ -7,8 +7,8 @@ use std::fmt;
 pub struct InternedStr(uint);
 
 pub struct Interner {
-    indexes: HashMap<~str, uint>,
-    strings: Vec<~str>
+    indexes: HashMap<StrBuf, uint>,
+    strings: Vec<StrBuf>
 }
 
 impl Interner {
@@ -41,11 +41,11 @@ impl Interner {
 
 pub fn get_local_interner() -> Rc<RefCell<Interner>> {
     local_data_key!(key: Rc<RefCell<Interner>>)
-    match ::std::local_data::get(key, |x| x.map(|y| y.clone())) {
+    match key.get() {
         Some(interner) => interner.clone(),
         None => {
             let interner = Rc::new(RefCell::new(Interner::new()));
-            ::std::local_data::set(key, interner.clone());
+            key.replace(Some(interner.clone()));
             interner
         }
     }
@@ -62,15 +62,12 @@ impl Str for InternedStr {
         let mut x = (*interner).borrow_mut();
         let r: &str = x.get_str(*self);
         //The interner is task local and will never remove a string so this is safe
-        unsafe { ::std::cast::transmute(r) }
-    }
-    fn into_owned(self) -> ~str {
-        self.as_slice().into_owned()
+        unsafe { ::std::mem::transmute(r) }
     }
 }
 
 impl fmt::Show for InternedStr {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f.buf, "{}", self.as_slice())
+        write!(f, "{}", self.as_slice())
     }
 }

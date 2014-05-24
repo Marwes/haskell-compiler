@@ -164,23 +164,29 @@ impl <'a> Bindings for BindingsWrapper<'a> {
 fn insertTo(map: &mut HashMap<Name, Type>, name: &str, typ: Type) {
     map.insert(Name { name: intern(name), uid: 0 }, typ);
 }
+fn prim(typename: &str, op: &str) -> StrBuf {
+    let mut b = StrBuf::from_str("prim");
+    b.push_str(typename);
+    b.push_str(op);
+    b
+}
 fn add_primitives(globals: &mut HashMap<Name, Type>, typename: &str) {
     let typ = Type::new_op(intern(typename), ~[]);
     {
         let binop = function_type(&typ, &function_type(&typ, &typ));
-        insertTo(globals, "prim" + typename + "Add", binop.clone());
-        insertTo(globals, "prim" + typename + "Subtract", binop.clone());
-        insertTo(globals, "prim" + typename + "Multiply", binop.clone());
-        insertTo(globals, "prim" + typename + "Divide", binop.clone());
-        insertTo(globals, "prim" + typename + "Remainder", binop.clone());
+        insertTo(globals, prim(typename, "Add").as_slice(), binop.clone());
+        insertTo(globals, prim(typename, "Subtract").as_slice(), binop.clone());
+        insertTo(globals, prim(typename, "Multiply").as_slice(), binop.clone());
+        insertTo(globals, prim(typename, "Divide").as_slice(), binop.clone());
+        insertTo(globals, prim(typename, "Remainder").as_slice(), binop.clone());
     }
     {
         let binop = function_type_(typ.clone(), function_type_(typ, bool_type()));
-        insertTo(globals, "prim" + typename + "EQ", binop.clone());
-        insertTo(globals, "prim" + typename + "LT", binop.clone());
-        insertTo(globals, "prim" + typename + "LE", binop.clone());
-        insertTo(globals, "prim" + typename + "GT", binop.clone());
-        insertTo(globals, "prim" + typename + "GE", binop.clone());
+        insertTo(globals, prim(typename, "EQ").as_slice(), binop.clone());
+        insertTo(globals, prim(typename, "LT").as_slice(), binop.clone());
+        insertTo(globals, prim(typename, "LE").as_slice(), binop.clone());
+        insertTo(globals, prim(typename, "GT").as_slice(), binop.clone());
+        insertTo(globals, prim(typename, "GE").as_slice(), binop.clone());
     }
 }
 
@@ -189,8 +195,8 @@ impl <'a> TypeEnvironment<'a> {
     ///Creates a new TypeEnvironment and adds all the primitive types
     pub fn new() -> TypeEnvironment {
         let mut globals = HashMap::new();
-        add_primitives(&mut globals, &"Int");
-        add_primitives(&mut globals, &"Double");
+        add_primitives(&mut globals, "Int");
+        add_primitives(&mut globals, "Double");
         insertTo(&mut globals,"primIntToDouble", function_type_(int_type(), double_type()));
         insertTo(&mut globals, "primDoubleToInt", function_type_(double_type(), int_type()));
         let var = Generic(Type::new_var_kind(-10, star_kind.clone()).var().clone());
@@ -203,7 +209,7 @@ impl <'a> TypeEnvironment<'a> {
         insertTo(&mut globals, ":", function_type(&var, &function_type(&list, &list)));
         for i in range(0 as uint, 10) {
             let (name, typ) = tuple_type(i);
-            insertTo(&mut globals, name, typ);
+            insertTo(&mut globals, name.as_slice(), typ);
         }
         TypeEnvironment {
             assemblies: Vec::new(),
@@ -294,7 +300,7 @@ impl <'a> TypeEnvironment<'a> {
                         op.kind = maybe_data
                             .or_else(|| data_definitions.iter().find(|data| op.name == extract_applied_type(&data.typ).op().name))
                             .map(|data| extract_applied_type(&data.typ).kind().clone())
-                            .unwrap_or_else(|| if intern("[]") == op.name { KindFunction(~StarKind, ~StarKind) } else { StarKind });
+                            .unwrap_or_else(|| if intern("[]") == op.name { KindFunction(box StarKind, box StarKind) } else { StarKind });
                     }
                     _ => ()
                 }
@@ -616,9 +622,9 @@ impl <'a> TypeEnvironment<'a> {
                 expr.typ = alt0_;
             }
             &Do(ref mut bindings, ref mut last_expr) => {
-                let mut previous = self.new_var_kind(KindFunction(~StarKind, ~StarKind));
+                let mut previous = self.new_var_kind(KindFunction(box StarKind, box StarKind));
                 self.constraints.insert(previous.var().clone(), vec!(intern("Monad")));
-                previous = TypeApplication(~previous, ~self.new_var());
+                previous = TypeApplication(box previous, box self.new_var());
                 for bind in bindings.mut_iter() {
                     match *bind {
                         DoExpr(ref mut e) => {
@@ -1074,7 +1080,6 @@ fn unify(env: &mut TypeEnvironment, subs: &mut Substitution, lhs: Type, rhs: Typ
                     replace(&mut env.constraints, r1, subs);
                     replace(&mut env.constraints, r2, subs);
                     match unify(env, subs, *r1, *r2) {
-                        Ok(typ) => Ok(TypeApplication(~arg, ~typ)),
                         Ok(typ) => Ok(TypeApplication(box arg, box typ)),
                         Err(e) => Err(e)
                     }
@@ -1221,7 +1226,7 @@ pub fn identifier(i : &str) -> TypedExpr {
 }
 #[cfg(test)]
 pub fn lambda(arg : &str, body : TypedExpr) -> TypedExpr {
-    TypedExpr::new(Lambda(intern(arg), ~body))
+    TypedExpr::new(Lambda(intern(arg), box body))
 }
 #[cfg(test)]
 pub fn number(i : int) -> TypedExpr {
@@ -1259,9 +1264,9 @@ use test::Bencher;
 #[test]
 fn application() {
     let mut env = TypeEnvironment::new();
-    let n = ~TypedExpr::new(Identifier(intern("primIntAdd")));
-    let num = ~TypedExpr::new(Number(1));
-    let e = TypedExpr::new(Apply(n, num));
+    let n = identifier("primIntAdd");
+    let num = number(1);
+    let e = apply(n, num);
     let mut expr = rename_expr(e);
     let unary_func = function_type_(int_type(), int_type());
     env.typecheck_expr(&mut expr);
@@ -1542,7 +1547,7 @@ main = fmap add2 3");
 fn typecheck_prelude() {
     let path = &Path::new("Prelude.hs");
     let contents = File::open(path).read_to_str().unwrap();
-    let module = do_typecheck(contents);
+    let module = do_typecheck(contents.as_slice());
 
     let id = module.bindings.iter().find(|bind| bind.name.as_slice() == "id");
     assert!(id != None);
@@ -1556,7 +1561,7 @@ fn typecheck_import() {
     let prelude = {
         let path = &Path::new("Prelude.hs");
         let contents = File::open(path).read_to_str().unwrap();
-        do_typecheck(contents)
+        do_typecheck(contents.as_slice())
     };
 
     let file = 
@@ -1595,7 +1600,7 @@ fn do_expr_simple() {
     let prelude = {
         let path = &Path::new("Prelude.hs");
         let contents = File::open(path).read_to_str().unwrap();
-        do_typecheck(contents)
+        do_typecheck(contents.as_slice())
     };
 
     let file = 
@@ -1615,7 +1620,7 @@ fn do_expr_pattern() {
     let prelude = {
         let path = &Path::new("Prelude.hs");
         let contents = File::open(path).read_to_str().unwrap();
-        do_typecheck(contents)
+        do_typecheck(contents.as_slice())
     };
 
     let file = 
@@ -1638,7 +1643,7 @@ fn do_expr_wrong_monad() {
     let prelude = {
         let path = &Path::new("Prelude.hs");
         let contents = File::open(path).read_to_str().unwrap();
-        do_typecheck(contents)
+        do_typecheck(contents.as_slice())
     };
 
     let file = 
@@ -1699,7 +1704,7 @@ test x y = primIntAdd x y");
 fn bench_prelude(b: &mut Bencher) {
     let path = &Path::new("Prelude.hs");
     let contents = File::open(path).read_to_str().unwrap();
-    let mut parser = Parser::new(contents.chars());
+    let mut parser = Parser::new(contents.as_slice().chars());
     let module = rename_module(parser.module());
 
     b.iter(|| {

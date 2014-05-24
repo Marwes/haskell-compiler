@@ -115,7 +115,7 @@ fn abstract(&mut self, free_vars: &HashMap<Name, TypeAndStr>, input_expr: Expr<T
                 name: Id::new(Name {name: intern("#sc"), uid: self.uid }, typ.clone(), box []),
                 expression: rhs
             };
-            Let(~[bind], ~Identifier(Id::new(Name { name: intern("#sc"), uid: self.uid }, typ.clone(), ~[])))
+            Let(~[bind], box Identifier(Id::new(Name { name: intern("#sc"), uid: self.uid }, typ.clone(), ~[])))
         };
         for (_, var) in free_vars.iter() {
             e = Apply(box e, box Identifier(var.clone()));

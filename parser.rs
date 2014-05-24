@@ -431,6 +431,7 @@ fn parseOperatorExpression(&mut self, inL : Option<TypedExpr>, minPrecedence : i
                 Some(makeApplication(name, args.move_iter()))
             }
             (Some(lhs), None) => {
+                Some(TypedExpr::with_location(Apply(box name, box lhs), loc))
             }
             (None, Some(rhs)) => {
                 if (op.value == intern("-"))
@@ -1061,15 +1062,19 @@ fn tupleType(types : ~[Type]) -> Type {
     }
 }
 
-fn ParseError2<Iter : Iterator<char>>(lexer : &Lexer<Iter>, expected : &[TokenEnum]) -> ~str {
+fn ParseError2<Iter : Iterator<char>>(lexer : &Lexer<Iter>, expected : &[TokenEnum]) -> StrBuf {
     format!("Expected {:?} but found {:?}\\{{:?}\\}, at {}", expected, lexer.current().token, lexer.current().value, lexer.current().location)
     
 }
-fn ParseError<Iter : Iterator<char>>(lexer : &Lexer<Iter>, expected : TokenEnum) -> ~str {
+fn ParseError<Iter : Iterator<char>>(lexer : &Lexer<Iter>, expected : TokenEnum) -> StrBuf {
     format!("Expected {:?} but found {:?}\\{{:?}\\}, at {}", expected, lexer.current().token, lexer.current().value, lexer.current().location)
 }
 fn encodeBindingIdentifier(instancename : InternedStr, bindingname : InternedStr) -> InternedStr {
-    intern("#" + instancename.clone().as_slice() + bindingname.clone().as_slice())
+    let mut buffer = StrBuf::new();
+    buffer.push_str("#");
+    buffer.push_str(instancename.clone().as_slice());
+    buffer.push_str(bindingname.clone().as_slice());
+    intern(buffer.as_slice())
 }
 
 #[cfg(test)]
@@ -1227,7 +1232,7 @@ r"main = do
     let b = TypedExpr::new(Do(~[
         DoExpr(apply(identifier("putStrLn"), identifier("test"))),
         DoBind(Located { location: Location::eof(), node: IdentifierPattern(intern("s")) }, identifier("getContents"))
-        ], ~apply(identifier("return"), identifier("s"))));
+        ], box apply(identifier("return"), identifier("s"))));
     assert_eq!(module.bindings[0].expression, b);
 }
 
@@ -1235,7 +1240,7 @@ r"main = do
 fn parse_prelude() {
     let path = &Path::new("Prelude.hs");
     let contents  = File::open(path).read_to_str().unwrap();
-    let mut parser = Parser::new(contents.chars());
+    let mut parser = Parser::new(contents.as_slice().chars());
     let module = parser.module();
 
     assert!(module.bindings.iter().any(|bind| bind.name == intern("foldl")));
@@ -1248,7 +1253,7 @@ fn bench_prelude(b: &mut Bencher) {
     let path = &Path::new("Prelude.hs");
     let contents  = File::open(path).read_to_str().unwrap();
     b.iter(|| {
-        let mut parser = Parser::new(contents.chars());
+        let mut parser = Parser::new(contents.as_slice().chars());
         parser.module();
     });
 }

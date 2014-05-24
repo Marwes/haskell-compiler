@@ -235,7 +235,7 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
         }
     }
 
-    fn scan_digits(&mut self) -> ~str {
+    fn scan_digits(&mut self) -> StrBuf {
         let mut result = StrBuf::new();
         loop {
             match self.peek() {
@@ -249,19 +249,19 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
                 None => break
             }
         }
-        result.into_owned()
+        result
     }
 
     fn scan_number(&mut self, c : char, location : Location) -> Token {
         let mut number = StrBuf::from_char(1, c);
-        number.push_str(self.scan_digits());
+        number.push_str(self.scan_digits().as_slice());
         let mut token = NUMBER;
         match self.peek() {
             Some('.') => {
                 self.input.next();
                 token = FLOAT;
                 number.push_char('.');
-                number.push_str(self.scan_digits());
+                number.push_str(self.scan_digits().as_slice());
             }
             _ => ()
         }
@@ -498,7 +498,7 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
             match self.read_char() {
                 Some(x) => {
                     if self.read_char() == Some('\'') {
-                        return Token::new(&self.interner, CHAR, x.to_str(), startLocation);
+                        return Token::new(&self.interner, CHAR, ::std::str::from_char(x).as_slice(), startLocation);
                     }
                     else {
                         fail!("Multi char character")
@@ -519,7 +519,7 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
             '\\'=> LAMBDA,
             _   => EOF
         };
-        Token::new(&self.interner, tok, c.to_str(), startLocation)
+        Token::new(&self.interner, tok, ::std::str::from_char(c).as_slice(), startLocation)
     }
 
 }

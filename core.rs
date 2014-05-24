@@ -146,9 +146,6 @@ impl Str for Id {
     fn as_slice<'a>(&'a self) -> &'a str {
         self.name.name.as_slice()
     }
-    fn into_owned(self) -> ~str {
-        self.name.name.into_owned()
-    }
 }
 
 impl <T> Typed for Id<T> {
@@ -269,7 +266,7 @@ pub mod translate {
                     //TODO need to make unique names for the lambdas created here
                     let l = Lambda(Id::new(arg, typ.clone(), ~[]), box translate_expr_rest(*body));
                     let bind = Binding { name: Id::new(Name { name: intern("#lambda"), uid: 0 }, typ.clone(), ~[]), expression: l };
-                    Let(~[bind], ~Identifier(Id::new(Name { name: intern("#lambda"), uid: 0 }, typ.clone(), ~[])))
+                    Let(~[bind], box Identifier(Id::new(Name { name: intern("#lambda"), uid: 0 }, typ.clone(), ~[])))
                 }
                 _ => fail!()
             }
@@ -357,7 +354,7 @@ pub mod translate {
         let fail_ident = Identifier(Id::new(Name { name: intern("fail"), uid: 0 }, function_type_(list_type(char_type()), m_b), c));
         let func = Lambda(var.clone(), box Case(box Identifier(var), 
             ~[Alternative { pattern: translate_pattern(pattern), expression: result }
-            , Alternative { pattern: WildCardPattern, expression: Apply(box fail_ident, box string("Unmatched pattern in let".to_owned())) } ]));
+            , Alternative { pattern: WildCardPattern, expression: Apply(box fail_ident, box string("Unmatched pattern in let")) } ]));
         let bind = Binding { name: func_ident.clone(), expression: func };
         
         Let(~[bind], box mkApply(bind_ident, ~[expr, Identifier(func_ident)]))

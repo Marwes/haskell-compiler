@@ -160,7 +160,7 @@ impl Type {
     }
 }
 
-pub fn tuple_type(size: uint) -> (~str, Type) {
+pub fn tuple_type(size: uint) -> (StrBuf, Type) {
     let mut var_list = Vec::new();
     for i in range(0, size) {
         var_list.push(Generic(Type::new_var_kind(i as int, star_kind.clone()).var().clone()));

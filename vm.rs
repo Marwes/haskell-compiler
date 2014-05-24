@@ -424,7 +424,7 @@ fn compile_iter<T : Iterator<char>>(iterator: T) -> Assembly {
 pub fn compile_file(filename: &str) -> Assembly {
     let path = &Path::new(filename);
     let contents = File::open(path).read_to_str().unwrap();
-    compile_iter(contents.chars())
+    compile_iter(contents.as_slice().chars())
 }
 
 fn extract_result(node: Node_) -> Option<VMResult> {
@@ -528,12 +528,12 @@ mod primitive {
         temp.push(stack[0].clone());
         let node_filename = vm.deepseq(temp, 123);
         let filename = get_string(&node_filename);
-        let mut file = match File::open(&Path::new(filename)) {
+        let mut file = match File::open(&Path::new(filename.as_slice())) {
             Ok(f) => f,
             Err(err) => fail!("error: readFile -> {}", err)
         };
         let (begin, _end) = match file.read_to_str() {
-            Ok(s) => create_string(s),
+            Ok(s) => create_string(s.as_slice()),
             Err(err) => fail!("error: readFile -> {}", err)
         };
         //Return (String, RealWorld)
@@ -548,7 +548,7 @@ mod primitive {
         println!("{}", msg);
         Node::new(Constructor(0, vec!(Node::new(Constructor(0, vec!())), stack[1].clone())))
     }
-    fn get_string<'a>(node: &Node_<'a>) -> ~str {
+    fn get_string<'a>(node: &Node_<'a>) -> StrBuf {
         fn get_string_<'a>(buffer: &mut StrBuf, node: &Node_<'a>) {
             match *node {
                 Constructor(_, ref args) => {
@@ -565,7 +565,7 @@ mod primitive {
         }
         let mut buffer = StrBuf::new();
         get_string_(&mut buffer, node);
-        buffer.into_owned()
+        buffer
     }
     fn create_string<'a>(s: &str) -> (Node<'a>, Node<'a>) {
         let mut node = Node::new(Constructor(0, vec!()));
@@ -734,7 +734,7 @@ main = testAdd True";
 #[test]
 fn test_run_prelude() {
     let mut type_env = TypeEnvironment::new();
-    let prelude = compile_with_type_env(&mut type_env, [], File::open(&Path::new("Prelude.hs")).read_to_str().unwrap());
+    let prelude = compile_with_type_env(&mut type_env, [], File::open(&Path::new("Prelude.hs")).read_to_str().unwrap().as_slice());
 
     let assembly = compile_with_type_env(&mut type_env, [&prelude],
 r"add x y = primIntAdd x y

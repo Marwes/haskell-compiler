@@ -13,9 +13,6 @@ impl Str for Name {
     fn as_slice<'a>(&'a self) -> &'a str {
         self.name.as_slice()
     }
-    fn into_owned(self) -> ~str {
-        self.name.into_owned()
-    }
 }
 
 struct Renamer {

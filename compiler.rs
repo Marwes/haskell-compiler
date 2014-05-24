@@ -1,6 +1,6 @@
 use interner::*;
 use core::*;
-use module::function_type;
+use module::{int_type, double_type, function_type};
 use typecheck::{Types, DataTypes, TypeEnvironment};
 use scoped_map::ScopedMap;
 use std::iter::range_step;
@@ -609,7 +609,7 @@ impl <'a> Compiler<'a> {
                     }
                     &String(ref s) => {
                         instructions.push(Pack(0, 0));
-                        for c in s.chars().rev() {
+                        for c in s.as_slice().chars().rev() {
                             instructions.push(PushChar(c));
                             instructions.push(Pack(1, 2));
                         }
@@ -708,7 +708,10 @@ impl <'a> Compiler<'a> {
         match try_find_instance_type(var, typ, actual_type) {
             Some(typename) => {
                 //We should be able to retrieve the instance directly
-                let instance_fn_name = Name { name: intern("#" + typename + name.as_slice()), uid: 0 };
+                let mut b = StrBuf::from_str("#");
+                b.push_str(typename);
+                b.push_str(name.as_slice());
+                let instance_fn_name = Name { name: intern(b.as_slice()), uid: 0 };
                 match self.find(&instance_fn_name) {
                     Some(GlobalVariable(index)) => {
                         instructions.push(PushGlobal(index));
@@ -804,7 +807,10 @@ impl <'a> Compiler<'a> {
                             &TypeOperator(ref x) => x,
                             _ => fail!("{}", typ)
                         };
-                        let f = intern("#" + x.name.as_slice() + decl.name.as_slice());
+                        let mut b = StrBuf::from_str("#");
+                        b.push_str(x.name.as_slice());
+                        b.push_str(decl.name.as_slice());
+                        let f = intern(b.as_slice());
                         let name = Name { name: f, uid: 0 };
                         match self.find(&name) {
                             Some(GlobalVariable(index)) => {
@@ -908,7 +914,7 @@ impl <'a> Compiler<'a> {
                 size + patterns.len()
             }
             &NumberPattern(number) => {
-                self.newStackVar(Name { name: intern(pattern_index.to_str()), uid: 0 });
+                self.newStackVar(Name { name: intern(pattern_index.to_str().as_slice()), uid: 0 });
                 instructions.push(Push(stack_index - pattern_index));
                 instructions.push(Eval);
                 instructions.push(PushInt(number));
@@ -959,7 +965,7 @@ pub fn compile(contents: &str) -> Assembly {
 pub fn compile_with_type_env(type_env: &mut TypeEnvironment, assemblies: &[&Assembly], contents: &str) -> Assembly {
     use parser::Parser;
 
-    let mut parser = Parser::new(contents.chars()); 
+    let mut parser = Parser::new(contents.as_slice().chars()); 
     let mut module = rename_module(parser.module());
     for assem in assemblies.iter() {
         type_env.add_types(*assem);
@@ -1112,7 +1118,7 @@ main x = primIntAdd (test x) 6";
 #[test]
 fn compile_prelude() {
     let mut type_env = TypeEnvironment::new();
-    let prelude = compile_with_type_env(&mut type_env, [], File::open(&Path::new("Prelude.hs")).read_to_str().unwrap());
+    let prelude = compile_with_type_env(&mut type_env, [], File::open(&Path::new("Prelude.hs")).read_to_str().unwrap().as_slice());
 
     let assembly = compile_with_type_env(&mut type_env, [&prelude], r"main = id (primIntAdd 2 0)");
 
@@ -1156,7 +1162,7 @@ fn bench_prelude(b: &mut Bencher) {
 
     let path = &Path::new("Prelude.hs");
     let contents = File::open(path).read_to_str().unwrap();
-    let mut parser = Parser::new(contents.chars());
+    let mut parser = Parser::new(contents.as_slice().chars());
     let mut module = rename_module(parser.module());
     let mut type_env = TypeEnvironment::new();
     type_env.typecheck_module(&mut module);
