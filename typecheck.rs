@@ -843,17 +843,14 @@ fn get_returntype(typ: &Type) -> Type {
 fn update_constraints(constraints: &mut HashMap<TypeVariable, Vec<InternedStr>>, old: &TypeVariable, new: &Type, subs: &Substitution) {
     match new {
         &TypeVariable(ref new_var) => {
-            match subs.constraints.find(old) {
-                Some(subs_constraints) => {
-                    let to_update = constraints.find_or_insert(new_var.clone(), Vec::new());
-                    for c in subs_constraints.iter() {
-                        if to_update.iter().find(|x| *x == c) == None {
-                            to_update.push(c.clone());
-                        }
+            subs.constraints.find(old).map(|subs_constraints| {
+                let to_update = constraints.find_or_insert(new_var.clone(), Vec::new());
+                for c in subs_constraints.iter() {
+                    if to_update.iter().find(|x| *x == c) == None {
+                        to_update.push(c.clone());
                     }
                 }
-                None => ()
-            }
+            });
         }
         _ => ()
     }
@@ -861,37 +858,22 @@ fn update_constraints(constraints: &mut HashMap<TypeVariable, Vec<InternedStr>>,
 
 ///Replace all typevariables using the substitution 'subs'
 fn replace(constraints: &mut HashMap<TypeVariable, Vec<InternedStr>>, old : &mut Type, subs : &Substitution) {
-    let replaced = match old {
-        &TypeVariable(ref id) => {
-            match subs.subs.find(id) {
-                Some(new) => {
-                    update_constraints(constraints, id, new, subs);
-                    Some(new.clone())
-                }
-                None => None
-            }
+    let replaced = match *old {
+        TypeVariable(ref id) => {
+            subs.subs.find(id).map(|new| {
+                update_constraints(constraints, id, new, subs);
+                new.clone()
+            })
         }
-        &TypeOperator(_) => None,
-        &TypeApplication(ref mut lhs, ref mut rhs) => {
+        TypeApplication(ref mut lhs, ref mut rhs) => {
             replace(constraints, *lhs, subs);
             replace(constraints, *rhs, subs);
             None
         }
-        &Generic(_) => None, //fail!("replace called on Generic")
+        _ => None, //fail!("replace called on Generic")
     };
     match replaced {
-        Some(x) => {
-            let is_var = match old {
-                &TypeVariable(_) => true,
-                _ => false
-            };
-            if is_var {
-                *old = x;
-            }
-            else {
-                *old = x;
-            }
-        }
+        Some(x) => *old = x,
         None => ()
     }
 }
@@ -906,22 +888,9 @@ fn occurs(type_var: &TypeVariable, inType: &Type) -> bool {
 }
 
 fn freshen(env: &mut TypeEnvironment, subs: &mut Substitution, typ: &mut Type) {
-    let result = match typ {
-        &Generic(ref id) => {
-            let new = env.new_var_kind(id.kind.clone());
-            let maybe_constraints = match env.constraints.find(id) {
-                Some(constraints) => Some(constraints.clone()),
-                None => None
-            };
-            match (maybe_constraints, new.clone()) {
-                (Some(c), TypeVariable(newid)) => {
-                    env.constraints.insert(newid, c);
-                }
-                _ => ()
-            }
-            Some(subs.subs.find_or_insert(id.clone(), new.clone()).clone())
-        }
-        &TypeApplication(ref mut lhs, ref mut rhs) => {
+    let result = match *typ {
+        Generic(ref id) => freshen_var(env, subs, id),
+        TypeApplication(ref mut lhs, ref mut rhs) => {
             freshen(env, subs, *lhs);
             freshen(env, subs, *rhs);
             None
@@ -935,31 +904,7 @@ fn freshen(env: &mut TypeEnvironment, subs: &mut Substitution, typ: &mut Type) {
 }
 fn freshen_all(env: &mut TypeEnvironment, subs: &mut Substitution, typ: &mut Type) {
     let result = match typ {
-        &TypeVariable(ref id) => {
-            let t = match subs.subs.find(id) {
-                Some(var) => Some(var.clone()),
-                _ => {
-                    None
-                }
-            };
-            if t.is_some() {
-                t
-            }
-            else {
-                let new = env.new_var_kind(id.kind.clone());
-                let maybe_constraints = match env.constraints.find(id) {
-                    Some(constraints) => Some(constraints.clone()),
-                    None => None
-                };
-                match (maybe_constraints, new.clone()) {
-                    (Some(c), TypeVariable(newid)) => {
-                        env.constraints.insert(newid, c);
-                    }
-                    _ => ()
-                }
-                Some(subs.subs.find_or_insert(id.clone(), new.clone()).clone())
-            }
-        }
+        &TypeVariable(ref id) => freshen_var(env, subs, id),
         &TypeApplication(ref mut lhs, ref mut rhs) => {
             freshen_all(env, subs, *lhs);
             freshen_all(env, subs, *rhs);
@@ -968,16 +913,21 @@ fn freshen_all(env: &mut TypeEnvironment, subs: &mut Substitution, typ: &mut Typ
         _ => None
     };
     match result {
-        Some(mut x) => {
-            let k = x.kind().clone();
-            match x {
-                TypeVariable(ref mut v) => v.kind = k,
-                _ => ()
-            }
-            *typ = x;
-        }
+        Some(x) => *typ = x,
         None => ()
     }
+}
+fn freshen_var(env: &mut TypeEnvironment, subs: &mut Substitution, id: &TypeVariable) -> Option<Type> {
+    subs.subs.find(id)
+        .map(|var| var.clone())
+        .or_else(|| {
+        let new = env.new_var_kind(id.kind.clone());
+        subs.subs.insert(id.clone(), new.clone());
+        env.constraints.find(id)
+            .map(|constraints| constraints.clone())
+            .map(|c| env.constraints.insert(new.var().clone(), c));
+        Some(new)
+    })
 }
 
 ///Takes two types and attempts to make them the same type
@@ -1017,8 +967,8 @@ enum TypeError {
 
 fn unify(env: &mut TypeEnvironment, subs: &mut Substitution, lhs: Type, rhs: Type) -> Result<Type, TypeError> {
     fn bind_variable(env: &mut TypeEnvironment, subs: &mut Substitution, var: TypeVariable, typ: Type) -> Result<Type, TypeError> {
-        let x = match &typ {
-            &TypeVariable(ref var2) => {
+        let x = match typ {
+            TypeVariable(ref var2) => {
                 if var != *var2 {
                     subs.subs.insert(var.clone(), typ.clone());
                     match env.constraints.pop(&var) {
@@ -1051,8 +1001,8 @@ fn unify(env: &mut TypeEnvironment, subs: &mut Substitution, lhs: Type, rhs: Typ
                         Some(constraints) => {
                             for c in constraints.iter() {
                                 if !env.has_instance(*c, &typ) {
-                                    match &typ {
-                                        &TypeOperator(ref op) => {
+                                    match typ {
+                                        TypeOperator(ref op) => {
                                             if *c == intern("Num") && (op.name == intern("Int") || op.name == intern("Double")) && *typ.kind() == star_kind {
                                                 continue;
                                             }
@@ -1127,27 +1077,27 @@ fn build_graph(bindings: &Bindings) -> Graph<(uint, uint)> {
 }
 
 fn add_edges<T>(graph: &mut Graph<T>, map: &HashMap<Name, VertexIndex>, function_index: VertexIndex, expr: &TypedExpr<Name>) {
-    match &expr.expr {
-        &Identifier(ref n) => {
+    match expr.expr {
+        Identifier(ref n) => {
             match map.find(n) {
                 Some(index) => graph.connect(function_index, *index),
                 None => ()
             }
         }
-        &Lambda(_, ref body) => {
+        Lambda(_, ref body) => {
             add_edges(graph, map, function_index, *body);
         }
-        &Apply(ref f, ref a) => {
+        Apply(ref f, ref a) => {
             add_edges(graph, map, function_index, *f);
             add_edges(graph, map, function_index, *a);
         }
-        &Let(ref binds, ref body) => {
+        Let(ref binds, ref body) => {
             add_edges(graph, map, function_index, *body);
             for bind in binds.iter() {
                 add_edges(graph, map, function_index, &bind.expression);
             }
         }
-        &Case(ref b, ref alts) => {
+        Case(ref b, ref alts) => {
             add_edges(graph, map, function_index, *b);
             for alt in alts.iter() {
                 add_edges(graph, map, function_index, &alt.expression);
