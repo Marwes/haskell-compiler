@@ -54,45 +54,40 @@ fn free_variables(&mut self, variables: &mut HashMap<Name, int>, free_vars: &mut
             free_vars.remove(&arg.name);//arg was not actually a free variable
             Lambda(arg, box b)
         }
-        Let(bindings, expr) => {
+        Let(mut bindings, expr) => {
             for bind in bindings.iter() {
                 variables.insert_or_update_with(bind.name.name.clone(), 1, |_, v| *v += 1);
             }
             let mut free_vars2 = HashMap::new();
-            let new_bindings: Vec<Binding<TypeAndStr>> = bindings.move_iter().map(
-                |Binding { name: name, expression: bind_expr }| {
+            for bind in bindings.mut_iter() {
                 free_vars2.clear();
-                let e = self.free_variables(variables, &mut free_vars2, bind_expr);
+                update(&mut bind.expression, |bind_expr| self.free_variables(variables, &mut free_vars2, bind_expr));
                 //free_vars2 is the free variables for this binding
                 for (k, v) in free_vars2.iter() {
                     free_vars.insert(k.clone(), v.clone());
                 }
-                Binding{
-                    name: name,
-                    expression: self.abstract(&free_vars2, e)
-                }
-            }).collect();
+                update(&mut bind.expression, |e| self.abstract(&free_vars2, e));
+            }
             let e = box self.free_variables(variables, free_vars, *expr);
-            for bind in new_bindings.iter() {
+            for bind in bindings.iter() {
                 *variables.get_mut(&bind.name.name) -= 1;
                 free_vars.remove(&bind.name.name);
             }
-            Let(FromVec::from_vec(new_bindings), e)
+            Let(bindings, e)
         }
-        Case(expr, alts) => {
+        Case(expr, mut alts) => {
             let e = self.free_variables(variables, free_vars, *expr);
-            let a: Vec<Alternative<TypeAndStr>> = alts.move_iter().map(|Alternative { pattern: pattern, expression: expression }| {
-                each_pattern_variables(&pattern, &mut |name| {
+            for alt in alts.mut_iter() {
+                each_pattern_variables(&alt.pattern, &mut |name| {
                     variables.insert_or_update_with(name.clone(), 1, |_, v| *v += 1);
                 });
-                let e = self.free_variables(variables, free_vars, expression);
-                each_pattern_variables(&pattern, &mut |name| {
+                update(&mut alt.expression, |expression| self.free_variables(variables, free_vars, expression));
+                each_pattern_variables(&alt.pattern, &mut |name| {
                     *variables.get_mut(name) -= 1;
                     free_vars.remove(name);//arg was not actually a free variable
                 });
-                Alternative { pattern: pattern, expression: e }
-            }).collect();
-            Case(box e, FromVec::from_vec(a))
+            }
+            Case(box e, alts)
         }
         e => e
     }
@@ -131,12 +126,12 @@ fn lift_lambdas_expr<T>(expr: Expr<T>, out_lambdas: &mut Vec<Binding<T>>) -> Exp
         Lambda(arg, body) => Lambda(arg, box lift_lambdas_expr(*body, out_lambdas)),
         Let(bindings, expr) => {
             let mut new_binds = Vec::new();
-            for Binding { name: name, expression: expression } in bindings.move_iter() {
-                let is_lambda = match &expression {
-                    &Lambda(..) => true,
+            for mut bind in bindings.move_iter() {
+                let is_lambda = match bind.expression {
+                    Lambda(..) => true,
                     _ => false
                 };
-                let bind = Binding { name: name, expression: lift_lambdas_expr(expression, out_lambdas) };
+                update(&mut bind.expression, |expression| lift_lambdas_expr(expression, out_lambdas));
                 if is_lambda {
                     out_lambdas.push(bind);
                 }
@@ -151,70 +146,69 @@ fn lift_lambdas_expr<T>(expr: Expr<T>, out_lambdas: &mut Vec<Binding<T>>) -> Exp
                 Let(FromVec::from_vec(new_binds), box lift_lambdas_expr(*expr, out_lambdas))
             }
         }
-        Case(expr, alts) => {
-            let a: Vec<Alternative<T>> = alts.move_iter().map(|Alternative { pattern: pattern, expression: expression }| {
-                Alternative { pattern: pattern, expression: lift_lambdas_expr(expression, out_lambdas) }
-            }).collect();
-            Case(box lift_lambdas_expr(*expr, out_lambdas), FromVec::from_vec(a))
+        Case(expr, mut alts) => {
+            for alt in alts.mut_iter() {
+                update(&mut alt.expression, |expression| lift_lambdas_expr(expression, out_lambdas));
+            }
+            Case(box lift_lambdas_expr(*expr, out_lambdas), alts)
         }
         _ => expr
     }
 }
-pub fn lift_lambdas<T: ::std::fmt::Show>(module: Module<T>) -> Module<T> {
-    let Module {
-        classes : classes,
-        data_definitions: data_definitions,
-        bindings : bindings,
-        instances: instances
-    } = module;
-    
-    let mut new_bindings : Vec<Binding<T>> = Vec::new();
-    let bindings2 : Vec<Binding<T>> = bindings.move_iter().map(|Binding { name: name, expression: expression }| {
-        Binding { name: name, expression: lift_lambdas_expr(expression, &mut new_bindings) }
-    }).collect();
+pub fn lift_lambdas<T: ::std::fmt::Show>(mut module: Module<T>) -> Module<T> {
+    update(&mut module.bindings, |bindings| {
+        let mut new_bindings : Vec<Binding<T>> = Vec::new();
+        let mut bindings2 : Vec<Binding<T>> = bindings.move_iter()
+            .map(|mut bind| {
+                update(&mut bind.expression, |expression| lift_lambdas_expr(expression, &mut new_bindings));
+                bind
+            }).collect();
+        bindings2.extend(new_bindings.move_iter());
+        FromVec::from_vec(bindings2)
+    });
+    module
+}
 
-    Module {
-        classes : classes,
-        data_definitions: data_definitions,
-        bindings : FromVec::<Binding<T>>::from_vec(bindings2.move_iter().chain(new_bindings.move_iter()).collect()),
-        instances: instances
-    }
+macro_rules! interact(
+    ($typ: ident, $x:expr, $field:ident, $func: expr) => ({
+        let mut temp = ::std::default::Default::default();
+        ::std::mem::swap(&mut temp, &mut $x.$field);
+        $typ { $field: $func(temp), ..$x }
+    })
+)
+
+fn update_field<T, F>(mut x: T, selector: <'a> |&'a mut T| -> &'a mut F, f: |F| -> F) -> T {
+    update(selector(&mut x), f);
+    x
+}
+
+fn update<T>(x: &mut T, f: |T| -> T) {
+    use std::mem::{swap, forget, uninit};
+    let mut temp = unsafe { uninit() };
+    swap(x, &mut temp);
+    temp = f(temp);
+    swap(x, &mut temp);
+    unsafe { forget(temp) };
 }
 
 pub fn abstract_module(module: Module<TypeAndStr>) -> Module<TypeAndStr> {
-    let mut this = FreeVariables { uid: 1 };
-    each_binding(module,
-        |name| name,
-        |bind| {
+    use core::result::*;
+    impl Visitor<TypeAndStr> for FreeVariables {
+        fn visit_binding(&mut self, bind: Binding<TypeAndStr>) -> Binding<TypeAndStr> {
             let Binding { name: name, expression: bind_expr } = bind;
             let mut variables = HashMap::new();
             let mut free_vars = HashMap::new();
-            let e = this.free_variables(&mut variables, &mut free_vars, bind_expr);
+            let e = self.free_variables(&mut variables, &mut free_vars, bind_expr);
             Binding { name: name, expression: e }
-        })
-}
-
-pub fn each_binding<Ident, Ident2>(module: Module<Ident>, _trans: |Ident| -> Ident2, bind_f: |Binding<Ident>| -> Binding<Ident2>) -> Module<Ident2> {
-    let Module {
-        classes : classes,
-        data_definitions: data_definitions,
-        bindings : bindings,
-        instances: instances
-    } = module;
-    
-    let bindings2: Vec<Binding<Ident2>> = bindings.move_iter().map(|x| bind_f(x)).collect();
-    
-    Module {
-        classes : classes,
-        data_definitions: data_definitions,
-        bindings : FromVec::from_vec(bindings2),
-        instances: instances
+        }
     }
+    let mut this = FreeVariables { uid: 1 };
+    this.visit_module(module)
 }
-
 
 #[cfg(test)]
 mod tests {
+    use test::Bencher;
     use interner::*;
     use lambda_lift::*;
     use collections::hashmap::HashSet;
@@ -371,5 +365,18 @@ test2 x =
         for bind in module.bindings.iter() {
             (&mut visitor as &mut Visitor<TypeAndStr>).visit_expr(skip_lambdas(&bind.expression));
         }
+    }
+
+    #[bench]
+    fn bench(b: &mut Bencher) {
+        use std::io::File;
+        use typecheck::do_typecheck;
+
+        let path = &Path::new("Prelude.hs");
+        let contents = File::open(path).read_to_str().unwrap();
+        let module = do_typecheck(contents.as_slice());
+        b.iter(|| {
+            do_lambda_lift(translate_module(module.clone()))
+        });
     }
 }

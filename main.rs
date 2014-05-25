@@ -1,6 +1,6 @@
 #![crate_id = "vm#0.0"]
 #![crate_type = "bin"]
-#![feature(globs, phase, default_type_params)]
+#![feature(globs, phase, default_type_params, macro_rules)]
 #[phase(syntax, link)]
 extern crate log;
 extern crate collections;

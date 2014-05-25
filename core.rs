@@ -221,6 +221,88 @@ pub fn walk_pattern<Ident>(visitor: &mut Visitor<Ident>, pattern: &Pattern<Ident
     }
 }
 
+pub mod result {
+    use core::*;
+    use std::vec::FromVec;
+
+    pub trait Visitor<Ident> {
+        fn visit_expr(&mut self, expr: Expr<Ident>) -> Expr<Ident> {
+            walk_expr(self, expr)
+        }
+        fn visit_alternative(&mut self, alt: Alternative<Ident>) -> Alternative<Ident> {
+            walk_alternative(self, alt)
+        }
+        fn visit_pattern(&mut self, pattern: Pattern<Ident>) -> Pattern<Ident> {
+            walk_pattern(self, pattern)
+        }
+        fn visit_binding(&mut self, binding: Binding<Ident>) -> Binding<Ident> {
+            walk_binding(self, binding)
+        }
+        fn visit_module(&mut self, module: Module<Ident>) -> Module<Ident> {
+            walk_module(self, module)
+        }
+    }
+
+    pub fn walk_module<Ident>(visitor: &mut Visitor<Ident>, mut module: Module<Ident>) -> Module<Ident> {
+        let mut bindings = ~[];
+        ::std::mem::swap(&mut module.bindings, &mut bindings);
+        module.bindings = FromVec::<Binding<Ident>>::from_vec(bindings.move_iter()
+            .map(|bind| visitor.visit_binding(bind))
+            .collect());
+        module
+    }
+
+    pub fn walk_binding<Ident>(visitor: &mut Visitor<Ident>, binding: Binding<Ident>) -> Binding<Ident> {
+        let Binding { name: name, expression: expression } = binding;
+        Binding {
+            name: name,
+            expression: visitor.visit_expr(expression)
+        }
+    }
+
+    pub fn walk_expr<Ident>(visitor: &mut Visitor<Ident>, expr: Expr<Ident>) -> Expr<Ident> {
+        match expr {
+            Apply(func, arg) => {
+                let f = visitor.visit_expr(*func);
+                let a = visitor.visit_expr(*arg);
+                Apply(box f, box a)
+            }
+            Lambda(x, body) => Lambda(x, box visitor.visit_expr(*body)),
+            Let(binds, e) => {
+                let bs: Vec<Binding<Ident>> = binds.move_iter().map(|b| {
+                    visitor.visit_binding(b)
+                }).collect();
+                Let(FromVec::from_vec(bs), box visitor.visit_expr(*e))
+            }
+            Case(e, alts) => {
+                let e2 = visitor.visit_expr(*e);
+                let alts2: Vec<Alternative<Ident>> = alts.move_iter()
+                    .map(|alt| visitor.visit_alternative(alt))
+                    .collect();
+                Case(box e2, FromVec::from_vec(alts2))
+            }
+            expr => expr
+        }
+    }
+
+    pub fn walk_alternative<Ident>(visitor: &mut Visitor<Ident>, alt: Alternative<Ident>) -> Alternative<Ident> {
+        let Alternative { pattern: pattern, expression: expression } = alt;
+        Alternative { pattern: visitor.visit_pattern(pattern), expression: visitor.visit_expr(expression) }
+    }
+
+    pub fn walk_pattern<Ident>(visitor: &mut Visitor<Ident>, pattern: Pattern<Ident>) -> Pattern<Ident> {
+        match pattern {
+            ConstructorPattern(x, ps) => {
+                let ps2: Vec<Pattern<Ident>> = ps.move_iter().map(|p| {
+                    visitor.visit_pattern(p)
+                }).collect();
+                ConstructorPattern(x, FromVec::from_vec(ps2))
+            }
+            _ => pattern
+        }
+    }
+}
+
 pub mod translate {
     use module;
     use module::{function_type_, char_type, list_type};

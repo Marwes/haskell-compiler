@@ -1194,6 +1194,21 @@ pub fn case(expr : TypedExpr, alts: ~[Alternative]) -> TypedExpr {
     TypedExpr::new(Case(box expr, alts))
 }
 
+pub fn do_typecheck(input: &str) -> Module<Name> {
+    do_typecheck_with(input, [])
+}
+pub fn do_typecheck_with(input: &str, types: &[&DataTypes]) -> Module<Name> {
+    let mut parser = ::parser::Parser::new(input.chars());
+    let mut module = rename_module(parser.module());
+    let mut env = TypeEnvironment::new();
+    for t in types.iter() {
+        env.add_types(*t);
+    }
+    env.typecheck_module(&mut module);
+    module
+}
+
+
 #[cfg(test)]
 mod test {
 use interner::*;
@@ -1600,20 +1615,6 @@ test x = do
 }
 
 
-
-fn do_typecheck(input: &str) -> Module<Name> {
-    do_typecheck_with(input, [])
-}
-fn do_typecheck_with(input: &str, types: &[&DataTypes]) -> Module<Name> {
-    let mut parser = Parser::new(input.chars());
-    let mut module = rename_module(parser.module());
-    let mut env = TypeEnvironment::new();
-    for t in types.iter() {
-        env.add_types(*t);
-    }
-    env.typecheck_module(&mut module);
-    module
-}
 
 #[test]
 #[should_fail]
