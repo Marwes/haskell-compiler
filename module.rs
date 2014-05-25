@@ -271,73 +271,78 @@ impl fmt::Show for TypeOperator {
     }
 }
 
-impl fmt::Show for Type {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            &TypeVariable(ref var) => write!(f, "{}", *var),
-            &TypeOperator(ref op) => write!(f, "{}", *op),
-            &Generic(ref var) => write!(f, "\\#{}", *var),
-            &TypeApplication(ref lhs, ref rhs) => {
-                let l: &Type = *lhs;
-                let is_list = match l {
-                    &TypeOperator(ref op) => "[]" == op.name.as_slice(),
-                    _ => false
-                };
-                let is_func = match l {
-                    &TypeApplication(ref xx, _) => {
-                        let x: &Type = *xx;
-                        match x {
-                            &TypeOperator(ref op) => "->" == op.name.as_slice(),
-                            _ => false
+#[deriving(Eq, Ord)]
+enum Prec_ {
+    Top,
+    Function,
+    Constructor,
+}
+struct Prec<'a>(Prec_, &'a Type);
+
+fn try_get_function<'a>(typ: &'a Type) -> Option<(&'a Type, &'a Type)> {
+    match *typ {
+        TypeApplication(ref xx, ref result) => {
+            let y: &Type = *xx;
+            match *y {
+                TypeApplication(ref xx, ref arg) => {
+                    let x: &Type = *xx;
+                    match x {
+                        &TypeOperator(ref op) if "->" == op.name.as_slice() => {
+                            let a: &Type = *arg;
+                            let r: &Type = *result;
+                            Some((a, r))
                         }
-                    }
-                    _ => false
-                };
-                if is_func {
-                    let is_lhs_func = match l {
-                        &TypeApplication(ref x, _) => {
-                            let xx: &Type = *x;
-                            match xx {
-                                &TypeApplication(ref y, _) => {
-                                    let yy: &Type = *y;
-                                    match yy {
-                                        &TypeOperator(ref op) => "->" == op.name.as_slice(),
-                                        _ => false
-                                    }
-                                }
-                                _ => false
-                            }
-                        }
-                        _ => false
-                    };
-                    let x = match l {
-                        &TypeApplication(_, ref x) => x,
-                        _ => fail!()
-                    };
-                    if is_lhs_func {
-                        write!(f, "({}) -> {}", lhs, rhs)
-                    }
-                    else {
-                        write!(f, "{} -> {}", *x, rhs)
+                        _ => None
                     }
                 }
-                else {
-                    if is_list {
-                        try!(write!(f, "["));
+                _ => None
+            }
+        }
+        _ => None
+    }
+}
+
+impl <'a> fmt::Show for Prec<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let Prec(p, t) = *self;
+        match *t {
+            TypeVariable(ref var) => write!(f, "{}", *var),
+            TypeOperator(ref op) => write!(f, "{}", *op),
+            Generic(ref var) => write!(f, "\\#{}", *var),
+            TypeApplication(ref lhs, ref rhs) => {
+                match try_get_function(*lhs) {
+                    Some((arg, result)) => {
+                        if p >= Function {
+                            write!(f, "({} -> {})", *arg, result)
+                        }
+                        else {
+                            write!(f, "{} -> {}", Prec(Function, arg), result)
+                        }
                     }
-                    else {
-                        try!(write!(f, "({} ", lhs));
-                    }
-                    try!(write!(f, "{}", rhs));
-                    if is_list {
-                        write!(f, "]")
-                    }
-                    else {
-                        write!(f, ")")
+                    None => {
+                        match l {
+                            &TypeOperator(ref op) if "[]" == op.name.as_slice() => {
+                                write!(f, "[{}]", rhs)
+                            }
+                            _ => {
+                                if p >= Constructor {
+                                    write!(f, "({} {})", Prec(Function, *lhs), Prec(Constructor, *rhs))
+                                }
+                                else {
+                                    write!(f, "{} {}", Prec(Function, *lhs), Prec(Constructor, *rhs))
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
+    }
+}
+
+impl fmt::Show for Type {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", Prec(Top, self))
     }
 }
 impl fmt::Show for Constraint {

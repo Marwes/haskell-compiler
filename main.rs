@@ -18,7 +18,7 @@ use compiler::{Compiler, Instruction, PushInt, Mkap, Eval, Split};
 #[cfg(not(test))]
 use typecheck::{DataTypes, TypeEnvironment};
 #[cfg(not(test))]
-use vm::{VM, execute_main, compile_file};
+use vm::{VM, evaluate, execute_main, compile_file};
 #[cfg(not(test))]
 use core::{Module};
 #[cfg(not(test))]
@@ -107,7 +107,7 @@ fn main() {
         };
         let mut vm = VM::new();
         vm.add_assembly(prelude);
-        let instructions = assembly.superCombinators.iter()
+        let (instructions, type_decl) = assembly.superCombinators.iter()
             .find(|sc| sc.name == Name { name: intern("main"), uid: 0 })
             .map(|sc| {
                 if is_io(&sc.type_declaration.typ) {
@@ -119,16 +119,16 @@ fn main() {
                     let len = vec.len();
                     vec.insert(len - 3, Mkap);
                     vec.insert(0, PushInt(42));//Realworld
-                    FromVec::from_vec(vec)
+                    (FromVec::from_vec(vec), sc.type_declaration.clone())
                 }
                 else {
-                    sc.instructions.clone()
+                    (sc.instructions.clone(), sc.type_declaration.clone())
                 }
             })
             .expect("Expected main function");
         let assembly_index = vm.add_assembly(assembly);
-        let result = vm.evaluate(instructions, assembly_index);//TODO 0 is not necessarily correct
-        println!("{}", result);
+        let result = evaluate(&vm, instructions, assembly_index);//TODO 0 is not necessarily correct
+        println!("{}  {}", result, type_decl);
     }
     else if args.len() == 3 && "-l" == args.get(1).as_slice() {
         let filename = args.get(2).as_slice();
