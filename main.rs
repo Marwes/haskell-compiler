@@ -14,7 +14,7 @@ use module::{Type, TypeApplication, TypeOperator};
 #[cfg(not(test))]
 use parser::Parser;
 #[cfg(not(test))]
-use compiler::{Compiler, Instruction, PushInt, Mkap, Eval, Split};
+use compiler::{Compiler, Instruction, PushInt, Mkap};
 #[cfg(not(test))]
 use typecheck::{DataTypes, TypeEnvironment};
 #[cfg(not(test))]

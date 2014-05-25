@@ -320,8 +320,8 @@ impl <'a> fmt::Show for Prec<'a> {
                         }
                     }
                     None => {
-                        match l {
-                            &TypeOperator(ref op) if "[]" == op.name.as_slice() => {
+                        match **lhs {
+                            TypeOperator(ref op) if "[]" == op.name.as_slice() => {
                                 write!(f, "[{}]", rhs)
                             }
                             _ => {
