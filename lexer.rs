@@ -67,6 +67,11 @@ impl <T: Eq> Eq for Located<T> {
     }
 }
     
+impl <T: fmt::Show> fmt::Show for Located<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.node)
+    }
+}
 
 impl fmt::Show for Location {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

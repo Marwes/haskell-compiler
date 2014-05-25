@@ -32,11 +32,38 @@ use interner::intern;
 #[cfg(not(test))]
 use std::vec::FromVec;
 
+#[macro_escape]
+macro_rules! write_core_expr(
+    ($e:expr, $f:expr, $($p:pat),*) => ({
+        match $e {
+            Identifier(ref s) => write!($f, "{}", *s),
+            Apply(ref func, ref arg) => write!($f, "({} {})", func, *arg),
+            Literal(ref l) => write!($f, "{}", *l),
+            Lambda(ref arg, ref body) => write!($f, "({} -> {})", *arg, *body),
+            Let(ref bindings, ref body) => {
+                try!(write!($f, "let \\{\n"));
+                for bind in bindings.iter() {
+                    try!(write!($f, "; {} = {}\n", bind.name, bind.expression));
+                }
+                write!($f, "\\} in {}\n", *body)
+            }
+            Case(ref expr, ref alts) => {
+                try!(write!($f, "case {} of \\{\n", *expr));
+                for alt in alts.iter() {
+                    try!(write!($f, "; {} -> {}\n", alt.pattern, alt.expression));
+                }
+                write!($f, "\\}\n")
+            }
+            $($p => Ok(()))*
+        }
+    })
+)
+
+mod module;
 mod compiler;
 mod typecheck;
 mod lexer;
 mod parser;
-mod module;
 mod graph;
 mod vm;
 mod scoped_map;

@@ -542,25 +542,29 @@ impl <'a> TypeEnvironment<'a> {
         }
 
         match &mut expr.expr {
-            &Number(_) => {
-                self.constraints.insert(expr.typ.var().clone(), vec![intern("Num")]);
-                match &mut expr.typ {
-                    &TypeVariable(ref mut v) => v.kind = star_kind.clone(),
-                    _ => ()
-                }
-            }
-            &Rational(_) => {
-                self.constraints.insert(expr.typ.var().clone(), vec![intern("Fractional")]);
-                match &mut expr.typ {
-                    &TypeVariable(ref mut v) => v.kind = star_kind.clone(),
-                    _ => ()
-                }
-            }
-            &String(_) => {
-                expr.typ = list_type(char_type());
-            }
-            &Char(_) => {
-                expr.typ = char_type();
+            &Literal(ref lit) => {
+                match *lit {
+                    Integral(_) => {
+                        self.constraints.insert(expr.typ.var().clone(), vec![intern("Num")]);
+                        match &mut expr.typ {
+                            &TypeVariable(ref mut v) => v.kind = star_kind.clone(),
+                            _ => ()
+                        }
+                    }
+                    Fractional(_) => {
+                        self.constraints.insert(expr.typ.var().clone(), vec![intern("Fractional")]);
+                        match &mut expr.typ {
+                            &TypeVariable(ref mut v) => v.kind = star_kind.clone(),
+                            _ => ()
+                        }
+                    }
+                    String(_) => {
+                        expr.typ = list_type(char_type());
+                    }
+                    Char(_) => {
+                        expr.typ = char_type();
+                    }
+                }   
             }
             &Identifier(ref name) => {
                 match self.fresh(name) {
@@ -1175,11 +1179,11 @@ pub fn lambda(arg : &str, body : TypedExpr) -> TypedExpr {
 }
 #[cfg(test)]
 pub fn number(i : int) -> TypedExpr {
-    TypedExpr::new(Number(i))
+    TypedExpr::new(Literal(Integral(i)))
 }
 #[cfg(test)]
 pub fn rational(i : f64) -> TypedExpr {
-    TypedExpr::new(Rational(i))
+    TypedExpr::new(Literal(Fractional(i)))
 }
 #[cfg(test)]
 pub fn apply(func : TypedExpr, arg : TypedExpr) -> TypedExpr {

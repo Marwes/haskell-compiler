@@ -205,7 +205,7 @@ fn parseList(&mut self) -> TypedExpr {
 	}
 
 	let mut application = {
-		let mut arguments = ~[TypedExpr::new(Number(0)), TypedExpr::new(Number(0))];//Must be 2 in length
+		let mut arguments = ~[TypedExpr::new(Literal(Integral(0))), TypedExpr::new(Literal(Integral(0)))];//Must be 2 in length
 		swap(&mut arguments[0], expressions.mut_last().unwrap());
 		expressions.pop();
 		arguments[1] = TypedExpr::new(Identifier(intern("[]")));
@@ -213,7 +213,7 @@ fn parseList(&mut self) -> TypedExpr {
 		makeApplication(TypedExpr::new(Identifier(intern(":"))), arguments.move_iter())
 	};
 	while expressions.len() > 0 {
-		let mut arguments = ~[TypedExpr::new(Number(0)), TypedExpr::new(Number(0))];//Must be 2 in length
+		let mut arguments = ~[TypedExpr::new(Literal(Integral(0))), TypedExpr::new(Literal(Integral(0)))];//Must be 2 in length
 		swap(&mut arguments[0], expressions.mut_last().unwrap());
 		expressions.pop();
 		arguments[1] = application;
@@ -312,19 +312,19 @@ fn subExpression(&mut self, parseError : |&Token| -> bool) -> Option<TypedExpr> 
         }
         NUMBER => {
             let token = self.lexer.current();
-            Some(TypedExpr::with_location(Number(from_str(token.value.as_slice()).unwrap()), token.location))
+            Some(TypedExpr::with_location(Literal(Integral(from_str(token.value.as_slice()).unwrap())), token.location))
         }
 	    FLOAT => {
             let token = self.lexer.current();
-            Some(TypedExpr::with_location(Rational(from_str(token.value.as_slice()).unwrap()), token.location))
+            Some(TypedExpr::with_location(Literal(Fractional(from_str(token.value.as_slice()).unwrap())), token.location))
         }
         STRING => {
             let token = self.lexer.current();
-            Some(TypedExpr::with_location(String(token.value.clone()), token.location))
+            Some(TypedExpr::with_location(Literal(String(token.value.clone())), token.location))
         }
         CHAR => {
             let token = self.lexer.current();
-            Some(TypedExpr::with_location(Char(token.value.as_slice().char_at(0)), token.location))
+            Some(TypedExpr::with_location(Literal(Char(token.value.as_slice().char_at(0))), token.location))
         }
 	    _ => {
             self.lexer.backtrack();

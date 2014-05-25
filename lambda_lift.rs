@@ -169,19 +169,6 @@ pub fn lift_lambdas<T: ::std::fmt::Show>(mut module: Module<T>) -> Module<T> {
     module
 }
 
-macro_rules! interact(
-    ($typ: ident, $x:expr, $field:ident, $func: expr) => ({
-        let mut temp = ::std::default::Default::default();
-        ::std::mem::swap(&mut temp, &mut $x.$field);
-        $typ { $field: $func(temp), ..$x }
-    })
-)
-
-fn update_field<T, F>(mut x: T, selector: <'a> |&'a mut T| -> &'a mut F, f: |F| -> F) -> T {
-    update(selector(&mut x), f);
-    x
-}
-
 fn update<T>(x: &mut T, f: |T| -> T) {
     use std::mem::{swap, forget, uninit};
     let mut temp = unsafe { uninit() };

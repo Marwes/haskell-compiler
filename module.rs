@@ -438,13 +438,17 @@ pub enum DoBinding<Ident = InternedStr> {
 }
 
 #[deriving(Clone, Eq)]
+pub enum Literal {
+    Integral(int),
+    Fractional(f64),
+    String(InternedStr),
+    Char(char)
+}
+#[deriving(Clone, Eq)]
 pub enum Expr<Ident = InternedStr> {
     Identifier(Ident),
     Apply(Box<TypedExpr<Ident>>, Box<TypedExpr<Ident>>),
-    Number(int),
-    Rational(f64),
-    String(InternedStr),
-    Char(char),
+    Literal(Literal),
     Lambda(Ident, Box<TypedExpr<Ident>>),
     Let(~[Binding<Ident>], Box<TypedExpr<Ident>>),
     Case(Box<TypedExpr<Ident>>, ~[Alternative<Ident>]),
@@ -453,29 +457,26 @@ pub enum Expr<Ident = InternedStr> {
 
 impl <T: fmt::Show> fmt::Show for Expr<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            &Identifier(ref s) => write!(f, "{}", *s),
-            &Apply(ref func, ref arg) => write!(f, "({} {})", *func, *arg),
-            &Number(num) => write!(f, "{}", num),
-            &Rational(num) => write!(f, "{}", num),
-            &String(ref s) => write!(f, "\"{}\"", *s),
-            &Char(c) => write!(f, "'{}'", c),
-            &Lambda(ref arg, ref body) => write!(f, "({} -> {})", *arg, *body),
-            &Let(ref bindings, ref body) => {
-                try!(write!(f, "let \\{\n"));
+        try!(write_core_expr!(*self, f, _));
+        match *self {
+            Do(ref bindings, ref expr) => {
+                try!(write!(f, "do \\{\n"));
                 for bind in bindings.iter() {
-                    try!(write!(f, "; {} = {}\n", bind.name, bind.expression));
+                    match *bind {
+                        DoLet(ref bindings) => {
+                            try!(write!(f, "let \\{\n"));
+                            for bind in bindings.iter() {
+                                try!(write!(f, "; {} = {}\n", bind.name, bind.expression));
+                            }
+                            try!(write!(f, "\\}\n"));
+                        }
+                        DoBind(ref p, ref e) => try!(write!(f, "; {} <- {}\n", p.node, *e)),
+                        DoExpr(ref e) => try!(write!(f, "; {}\n", *e))
+                    }
                 }
-                write!(f, "\\} in {}\n", *body)
+                write!(f, "{} \\}", *expr)
             }
-            &Case(ref expr, ref alts) => {
-                try!(write!(f, "case {} of \\{\n", *expr));
-                for alt in alts.iter() {
-                    try!(write!(f, "; {} -> {}\n", alt.pattern.node, alt.expression));
-                }
-                write!(f, "\\}\n")
-            }
-            _ => write!(f, "...")
+            _ => Ok(())
         }
     }
 }
@@ -492,6 +493,16 @@ impl <T: fmt::Show> fmt::Show for Pattern<T> {
                 write!(f, ")")
             }
             &WildCardPattern => write!(f, "_")
+        }
+    }
+}
+impl fmt::Show for Literal {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            Integral(i) => write!(f, "{}", i),
+            Fractional(v) => write!(f, "{}", v),
+            String(ref s) => write!(f, "\"{}\"", *s),
+            Char(c) => write!(f, "'{}'", c)
         }
     }
 }

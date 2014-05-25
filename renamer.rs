@@ -43,10 +43,7 @@ impl Renamer {
     fn rename(&mut self, input_expr: TypedExpr<InternedStr>) -> TypedExpr<Name> {
         let TypedExpr { expr: expr, typ: typ, location: location } = input_expr;
         let e = match expr {
-            Number(n) => Number(n),
-            Rational(r) => Rational(r),
-            String(s) => String(s),
-            Char(c) => Char(c),
+            Literal(l) => Literal(l),
             Identifier(i) => Identifier(self.get_name(i)),
             Apply(func, arg) => Apply(box self.rename(*func), box self.rename(*arg)),
             Lambda(arg, body) => {

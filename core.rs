@@ -1,5 +1,5 @@
 use std::fmt;
-pub use module::{Type, TypeApplication, TypeOperator, TypeVariable, IdentifierPattern, ConstructorPattern, WildCardPattern, NumberPattern, Constraint, Class, DataDefinition, TypeDeclaration, function_type_};
+pub use module::{Type, TypeApplication, TypeOperator, TypeVariable, IdentifierPattern, ConstructorPattern, WildCardPattern, NumberPattern, Constraint, Class, DataDefinition, TypeDeclaration, function_type_, Integral, Fractional, String, Char};
 use module;
 use interner::*;
 pub use renamer::Name;
@@ -45,13 +45,7 @@ pub struct Literal {
     pub value: Literal_
 }
 
-#[deriving(Eq, Show)]
-pub enum Literal_ {
-    Integral(int),
-    Fractional(f64),
-    String(InternedStr),
-    Char(char)
-}
+pub type Literal_ = module::Literal;
 
 #[deriving(Eq)]
 pub enum Expr<Ident> {
@@ -63,35 +57,15 @@ pub enum Expr<Ident> {
     Case(Box<Expr<Ident>>, ~[Alternative<Ident>])
 }
 
+impl fmt::Show for Literal {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.value)
+    }
+}
+
 impl <T: fmt::Show> fmt::Show for Expr<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            &Identifier(ref s) => write!(f, "{}", s),
-            &Apply(ref func, ref arg) => write!(f, "({} {})", *func, *arg),
-            &Literal(ref literal) => {
-                match &literal.value {
-                    &Integral(i) => write!(f, "{}", i),
-                    &Fractional(i) => write!(f, "{}", i),
-                    &String(ref i) => write!(f, "{}", i),
-                    &Char(i) => write!(f, "{}", i)
-                }
-            }
-            &Lambda(ref arg, ref body) => write!(f, "(\\\\{} -> {})", arg, *body),
-            &Let(ref bindings, ref body) => {
-                try!(write!(f, "let \\{\n"));
-                for bind in bindings.iter() {
-                    try!(write!(f, "; {} = {}\n", bind.name, bind.expression));
-                }
-                write!(f, "\\} in {}\n", *body)
-            }
-            &Case(ref expr, ref alts) => {
-                try!(write!(f, "case {} of \\{\n", *expr));
-                for alt in alts.iter() {
-                    try!(write!(f, "; {} -> {}\n", alt.pattern, alt.expression));
-                }
-                write!(f, "\\}\n")
-            }
-        }
+        write_core_expr!(*self, f,)
     }
 }
 
@@ -363,10 +337,7 @@ pub mod translate {
         match expr {
             module::Identifier(s) => Identifier(Id::new(s, typ, ~[])),
             module::Apply(func, arg) => Apply(box translate_expr(*func), box translate_expr(*arg)),
-            module::Number(num) => Literal(Literal { typ: typ, value: Integral(num) }),
-            module::Rational(num) => Literal(Literal { typ: typ, value: Fractional(num) }),
-            module::String(s) => Literal(Literal { typ: typ, value: String(s) }),
-            module::Char(c) => Literal(Literal { typ: typ, value: Char(c) }),
+            module::Literal(l) => Literal(Literal { typ: typ, value: l }),
             module::Lambda(arg, body) => Lambda(Id::new(arg, typ, ~[]), box translate_expr_rest(*body)),
             module::Let(bindings, body) => {
                 let bs  = FromVec::<Binding<Id<Name>>>::from_vec(bindings.move_iter().map(translate_binding).collect());
