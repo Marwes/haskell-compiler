@@ -1,6 +1,18 @@
 {
+  "compiler::tests::bench_prelude": {
+    "noise": 294971.75,
+    "value": 7533558
+  },
   "lambda_lift::tests::bench": {
-    "noise": 368014.45,
-    "value": 8344489.5
+    "noise": 283035.95,
+    "value": 8171374.5
+  },
+  "parser::tests::bench_prelude": {
+    "noise": 832539.55,
+    "value": 26254459
+  },
+  "typecheck::test::bench_prelude": {
+    "noise": 1180271.4,
+    "value": 77507842.5
   }
 }

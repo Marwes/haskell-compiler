@@ -342,7 +342,7 @@ impl <'a> TypeEnvironment<'a> {
 
         {
             let mut subs = Substitution { subs: HashMap::new(), constraints: HashMap::new() }; 
-            self.typecheck_mutually_recursive_bindings(&mut subs, module);
+            self.typecheck_global_bindings(&mut subs, module);
         }
         //FIXME
         //for bind in module.bindings.iter() {
@@ -602,7 +602,7 @@ impl <'a> TypeEnvironment<'a> {
             &Let(ref mut bindings, ref mut body) => {
 
                 {
-                    self.typecheck_mutually_recursive_bindings(subs, &mut BindingsWrapper { value: *bindings });
+                    self.typecheck_local_bindings(subs, &mut BindingsWrapper { value: *bindings });
                     self.apply(subs);
                     self.typecheck(*body, subs);
                 }
@@ -636,7 +636,7 @@ impl <'a> TypeEnvironment<'a> {
                             unify_location(self, subs, &e.location, &mut e.typ, &mut previous);
                         }
                         DoLet(ref mut bindings) => {
-                            self.typecheck_mutually_recursive_bindings(subs, &mut BindingsWrapper { value: *bindings });
+                            self.typecheck_local_bindings(subs, &mut BindingsWrapper { value: *bindings });
                             self.apply(subs);
                         }
                         DoBind(ref mut pattern, ref mut e) => {
@@ -708,14 +708,17 @@ impl <'a> TypeEnvironment<'a> {
         }
     }
 
-    pub fn typecheck_mutually_recursive_bindings(&mut self, subs: &mut Substitution, bindings: &mut Bindings) {
+    pub fn typecheck_mutually_recursive_bindings<'a>
+            (&mut self
+            , subs: &mut Substitution
+            , bindings: &'a mut Bindings
+            , is_global: bool) {
         let start_var_index = self.variableIndex + 1;
         
         let graph = build_graph(bindings);
         let groups = strongly_connected_components(&graph);
 
-        for i in range(0, groups.len()) {
-            let group = &groups[i];
+        for group in groups.iter() {
             for index in group.iter() {
                 let bindIndex = graph.get_vertex(*index).value;
                 let bind = bindings.get_mut(bindIndex);
@@ -725,32 +728,36 @@ impl <'a> TypeEnvironment<'a> {
                     bind.typeDecl.typ = self.new_var();
                 }
             }
-            
-            for index in group.iter() {
-                {
-                    let bindIndex = graph.get_vertex(*index).value;
-                    let bind = bindings.get_mut(bindIndex);
-                    debug!("Begin typecheck {} :: {}", bind.name, bind.expression.typ);
-                    let type_var = bind.expression.typ.var().clone();
-                    self.typecheck(&mut bind.expression, subs);
-                    unify_location(self, subs, &bind.expression.location, &mut bind.typeDecl.typ, &mut bind.expression.typ);
-                    self.substitute(subs, &mut bind.expression);
-                    subs.subs.insert(type_var, bind.expression.typ.clone());
-                    self.apply(subs);
-                    debug!("End typecheck {} :: {}", bind.name, bind.expression.typ);
-                }
+            for bind in group.iter().map(|index| bindings.get_mut(graph.get_vertex(*index).value)) {
+                debug!("Begin typecheck {} :: {}", bind.name, bind.expression.typ);
+                let type_var = bind.expression.typ.var().clone();
+                self.typecheck(&mut bind.expression, subs);
+                unify_location(self, subs, &bind.expression.location, &mut bind.typeDecl.typ, &mut bind.expression.typ);
+                self.substitute(subs, &mut bind.expression);
+                subs.subs.insert(type_var, bind.expression.typ.clone());
+                self.apply(subs);
+                debug!("End typecheck {} :: {}", bind.name, bind.expression.typ);
             }
-            
+            if is_global {
+                subs.subs.clear();
+                subs.constraints.clear();
+            }
             for index in group.iter() {
                 let bindIndex = graph.get_vertex(*index).value;
                 let bind = bindings.get_mut(bindIndex);
-                self.substitute(subs, &mut bind.expression);
                 bind.typeDecl.typ = bind.expression.typ.clone();
                 bind.typeDecl.context = self.find_constraints(&bind.typeDecl.typ);
                 let typ = self.namedTypes.get_mut(&bind.name);
                 quantify(start_var_index, typ);
             }
         }
+    }
+
+    fn typecheck_local_bindings(&mut self, subs: &mut Substitution, bindings: &mut Bindings) {
+        self.typecheck_mutually_recursive_bindings(subs, bindings, false);
+    }
+    fn typecheck_global_bindings(&mut self, subs: &mut Substitution, bindings: &mut Bindings) {
+        self.typecheck_mutually_recursive_bindings(subs, bindings, true);
     }
 
     ///Instantiates new typevariables for every typevariable in the type found at 'name'
