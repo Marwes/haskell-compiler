@@ -742,21 +742,27 @@ impl <'a> TypeEnvironment<'a> {
                     bind.typeDecl.typ = self.new_var();
                 }
             }
-            for bind in group.iter().map(|index| bindings.get_mut(graph.get_vertex(*index).value)) {
-                debug!("Begin typecheck {} :: {}", bind.name, bind.expression.typ);
-                let type_var = bind.expression.typ.var().clone();
-                self.typecheck(&mut bind.expression, subs);
-                unify_location(self, subs, &bind.expression.location, &mut bind.typeDecl.typ, &mut bind.expression.typ);
-                self.substitute(subs, &mut bind.expression);
-                subs.subs.insert(type_var, bind.expression.typ.clone());
+            for index in group.iter() {
+                {
+                    let bindIndex = graph.get_vertex(*index).value;
+                    let bind = bindings.get_mut(bindIndex);
+                    debug!("Begin typecheck {} :: {}", bind.name, bind.expression.typ);
+                    let type_var = bind.expression.typ.var().clone();
+                    self.typecheck(&mut bind.expression, subs);
+                    unify_location(self, subs, &bind.expression.location, &mut bind.typeDecl.typ, &mut bind.expression.typ);
+                    self.substitute(subs, &mut bind.expression);
+                    subs.subs.insert(type_var, bind.expression.typ.clone());
+                    debug!("End typecheck {} :: {}", bind.name, bind.expression.typ);
+                }
                 if is_global {
-                    self.apply_globals(subs);
+                    for bind in group.iter().map(|index| bindings.get_mut(graph.get_vertex(*index).value)) {
+                        replace(&mut self.constraints, self.namedTypes.get_mut(&bind.name), subs);
+                    }
                     self.local_types.clear();
                 }
                 else {
                     self.apply_locals(subs);
                 }
-                debug!("End typecheck {} :: {}", bind.name, bind.expression.typ);
             }
             if is_global {
                 subs.subs.clear();
