@@ -9,12 +9,19 @@ pub use lexer::{Location, Located};
 #[deriving(Clone)]
 pub struct Module<Ident = InternedStr> {
     pub name : Ident,
+    pub imports: ~[Import],
     pub bindings : ~[Binding<Ident>],
     pub typeDeclarations : ~[TypeDeclaration],
     pub classes : ~[Class],
     pub instances : ~[Instance<Ident>],
     pub dataDefinitions : ~[DataDefinition<Ident>]
 }
+
+#[deriving(Clone)]
+pub struct Import {
+    pub module: InternedStr
+}
+
 #[deriving(Clone)]
 pub struct Class<Ident = InternedStr> {
     pub name : Ident,

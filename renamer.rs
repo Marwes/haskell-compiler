@@ -137,6 +137,7 @@ pub fn rename_module(module: Module<InternedStr>) -> Module<Name> {
     let mut renamer = Renamer { uniques: ScopedMap::new(), unique_id: 1 };
     let Module {
         name: name,
+        imports: imports,
         classes : classes,
         dataDefinitions: data_definitions,
         typeDeclarations: typeDeclarations,
@@ -191,6 +192,7 @@ pub fn rename_module(module: Module<InternedStr>) -> Module<Name> {
     
     Module {
         name: renamer.make_unique(name),
+        imports: imports,
         classes : classes,
         dataDefinitions: FromVec::from_vec(data_definitions2),
         typeDeclarations: typeDeclarations,

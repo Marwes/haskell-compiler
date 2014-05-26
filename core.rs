@@ -286,6 +286,7 @@ pub mod translate {
         
     pub fn translate_module(module: module::Module<Name>) -> Module<Id<Name>> {
         let module::Module { name : _name,
+            imports : _imports,
             bindings : bindings,
             typeDeclarations : _typeDeclarations,
             classes : classes,

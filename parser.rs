@@ -39,6 +39,21 @@ pub fn module(&mut self) -> Module {
         _ => fail!(ParseError(&self.lexer, LBRACE))
     };
 
+    let mut imports = Vec::new();
+    loop {
+        if self.lexer.next_().token == IMPORT {
+            self.lexer.backtrack();
+            imports.push(self.import());
+            if self.lexer.next_().token != SEMICOLON {
+                break;
+            }
+        }
+        else {
+            self.lexer.backtrack();
+            break;
+        }
+    }
+
     let mut classes = Vec::new();
     let mut bindings = Vec::new();
     let mut instances = Vec::new();
@@ -114,12 +129,19 @@ pub fn module(&mut self) -> Module {
 	}
     Module {
         name : modulename,
+        imports : FromVec::from_vec(imports),
         bindings : FromVec::from_vec(bindings),
         typeDeclarations : FromVec::from_vec(typeDeclarations),
         classes : FromVec::from_vec(classes),
         instances : FromVec::from_vec(instances),
         dataDefinitions : FromVec::from_vec(dataDefinitions)
     }
+}
+
+fn import(&mut self) -> Import {
+    self.requireNext(IMPORT);
+    let tok = self.requireNext(NAME);
+    Import { module: tok.value }
 }
 
 fn class(&mut self) -> Class {
@@ -1179,6 +1201,20 @@ r"main = do
         DoBind(Located { location: Location::eof(), node: IdentifierPattern(intern("s")) }, identifier("getContents"))
         ], box apply(identifier("return"), identifier("s"))));
     assert_eq!(module.bindings[0].expression, b);
+}
+
+#[test]
+fn parse_imports() {
+    let mut parser = Parser::new(
+r"import Hello
+import World
+
+id x = x
+".chars());
+    let module = parser.module();
+
+    assert_eq!(module.imports[0].module.as_slice(), "Hello");
+    assert_eq!(module.imports[1].module.as_slice(), "World");
 }
 
 #[test]

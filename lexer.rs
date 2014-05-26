@@ -40,7 +40,8 @@ pub enum TokenEnum {
 	TYPEDECL,
 	DATA,
     LAMBDA,
-    DO
+    DO,
+    IMPORT
 }
 
 #[deriving(Clone, Eq)]
@@ -119,6 +120,7 @@ fn name_or_keyword(tok : &str) -> TokenEnum {
         "->" => ARROW,
         "data" => DATA,
         "do" => DO,
+        "import" => IMPORT,
         _ => NAME
     }
 }
