@@ -105,6 +105,7 @@ impl DataTypes for Module<Name> {
 pub struct TypeEnvironment<'a> {
     assemblies: Vec<&'a DataTypes>,
     namedTypes : HashMap<Name, Type>,
+    local_types : HashMap<Name, Type>,
     constraints: HashMap<TypeVariable, Vec<InternedStr>>,
     instances: Vec<(~[Constraint], InternedStr, Type)>,
     variableIndex : int,
@@ -214,6 +215,7 @@ impl <'a> TypeEnvironment<'a> {
         TypeEnvironment {
             assemblies: Vec::new(),
             namedTypes : globals,
+            local_types : HashMap::new(),
             constraints: HashMap::new(),
             instances: Vec::new(),
             variableIndex : 0 ,
@@ -357,7 +359,9 @@ impl <'a> TypeEnvironment<'a> {
     }
 
     pub fn find(&'a self, ident: &Name) -> Option<&'a Type> {
-        self.namedTypes.find(ident).or_else(|| {
+        self.local_types.find(ident)
+            .or_else(|| self.namedTypes.find(ident))
+            .or_else(|| {
             for types in self.assemblies.iter() {
                 let v = types.find_type(ident);
                 if v != None {
@@ -446,8 +450,13 @@ impl <'a> TypeEnvironment<'a> {
     }
 
     ///Applies a substitution on all global types
-    fn apply(&mut self, subs: &Substitution) {
+    fn apply_globals(&mut self, subs: &Substitution) {
         for (_, typ) in self.namedTypes.mut_iter() {
+            replace(&mut self.constraints, typ, subs);
+        }
+    }
+    fn apply_locals(&mut self, subs: &Substitution) {
+        for (_, typ) in self.local_types.mut_iter() {
             replace(&mut self.constraints, typ, subs);
         }
     }
@@ -591,7 +600,7 @@ impl <'a> TypeEnvironment<'a> {
                 expr.typ = function_type(&argType, &self.new_var());
 
                 {
-                    self.namedTypes.insert(arg.clone(), argType.clone());
+                    self.local_types.insert(arg.clone(), argType.clone());
                     self.typecheck(*body, subs);
                 }
                 replace(&mut self.constraints, &mut expr.typ, subs);
@@ -603,7 +612,7 @@ impl <'a> TypeEnvironment<'a> {
 
                 {
                     self.typecheck_local_bindings(subs, &mut BindingsWrapper { value: *bindings });
-                    self.apply(subs);
+                    self.apply_locals(subs);
                     self.typecheck(*body, subs);
                 }
 
@@ -637,7 +646,7 @@ impl <'a> TypeEnvironment<'a> {
                         }
                         DoLet(ref mut bindings) => {
                             self.typecheck_local_bindings(subs, &mut BindingsWrapper { value: *bindings });
-                            self.apply(subs);
+                            self.apply_locals(subs);
                         }
                         DoBind(ref mut pattern, ref mut e) => {
                             self.typecheck(e, subs);
@@ -672,7 +681,7 @@ impl <'a> TypeEnvironment<'a> {
                     replace(&mut self.constraints, match_type, subs);
                     replace(&mut self.constraints, &mut typ, subs);
                 }
-                self.namedTypes.insert(ident.clone(), typ.clone());
+                self.local_types.insert(ident.clone(), typ.clone());
             }
             &NumberPattern(_) => {
                 let mut typ = int_type();
@@ -689,7 +698,7 @@ impl <'a> TypeEnvironment<'a> {
                 unify_location(self, subs, location, &mut data_type, match_type);
                 replace(&mut self.constraints, match_type, subs);
                 replace(&mut self.constraints, &mut t, subs);
-                self.apply(subs);
+                self.apply_locals(subs);
                 self.pattern_rec(0, location, subs, *patterns, &mut t);
             }
             &WildCardPattern => {
@@ -723,7 +732,12 @@ impl <'a> TypeEnvironment<'a> {
                 let bindIndex = graph.get_vertex(*index).value;
                 let bind = bindings.get_mut(bindIndex);
                 bind.expression.typ = self.new_var();
-                self.namedTypes.insert(bind.name.clone(), bind.expression.typ.clone());
+                if is_global {
+                    self.namedTypes.insert(bind.name.clone(), bind.expression.typ.clone());
+                }
+                else {
+                    self.local_types.insert(bind.name.clone(), bind.expression.typ.clone());
+                }
                 if bind.typeDecl.typ == Type::new_var(0) {
                     bind.typeDecl.typ = self.new_var();
                 }
@@ -735,7 +749,13 @@ impl <'a> TypeEnvironment<'a> {
                 unify_location(self, subs, &bind.expression.location, &mut bind.typeDecl.typ, &mut bind.expression.typ);
                 self.substitute(subs, &mut bind.expression);
                 subs.subs.insert(type_var, bind.expression.typ.clone());
-                self.apply(subs);
+                if is_global {
+                    self.apply_globals(subs);
+                    self.local_types.clear();
+                }
+                else {
+                    self.apply_locals(subs);
+                }
                 debug!("End typecheck {} :: {}", bind.name, bind.expression.typ);
             }
             if is_global {
@@ -747,7 +767,12 @@ impl <'a> TypeEnvironment<'a> {
                 let bind = bindings.get_mut(bindIndex);
                 bind.typeDecl.typ = bind.expression.typ.clone();
                 bind.typeDecl.context = self.find_constraints(&bind.typeDecl.typ);
-                let typ = self.namedTypes.get_mut(&bind.name);
+                let typ = if is_global {
+                    self.namedTypes.get_mut(&bind.name)
+                }
+                else {
+                    self.local_types.get_mut(&bind.name)
+                };
                 quantify(start_var_index, typ);
             }
         }
