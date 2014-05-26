@@ -134,7 +134,6 @@ fn is_operator(first_char : char) -> bool {
 pub struct Lexer<Stream> {
     input : Peekable<char, Stream>,
     location : Location,
-    previousLocation : Location,
     unprocessedTokens : Vec<Token>,
     tokens : RingBuf<Token>,
     indentLevels : Vec<int>,
@@ -150,7 +149,6 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
         Lexer { 
             input : input.peekable(),
             location : start,
-            previousLocation : start,
             unprocessedTokens : Vec::new(),
             tokens : RingBuf::with_capacity(20),
             indentLevels : Vec::new(),
@@ -212,16 +210,12 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
     }
 
     fn peek(&mut self) -> Option<char> {
-        match self.input.peek() {
-            Some(ch) => Some(*ch),
-            None => None
-        }
+        self.input.peek().map(|c| *c)
     }
 
     fn read_char(&mut self) -> Option<char> {
         match self.input.next() {
             Some(c) => {
-                self.previousLocation = self.location;
                 self.location.absolute += 1;
                 self.location.column += 1;
                 if c == '\n' || c == '\r' {
