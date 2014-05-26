@@ -1,6 +1,7 @@
 use std::mem::{swap};
 use std::vec::FromVec;
-use collections::HashMap;
+use std::io::{IoResult, File};
+use collections::{HashSet, HashMap};
 use lexer::*;
 use module::*;
 use interner::*;
@@ -1044,6 +1045,37 @@ fn encodeBindingIdentifier(instancename : InternedStr, bindingname : InternedStr
     intern(buffer.as_slice())
 }
 
+pub fn parse_modules(modulename: &str) -> IoResult<Vec<Module>> {
+    let mut modules = Vec::new();
+    let mut visited = HashSet::new();
+    try!(parse_modules_(&mut visited, &mut modules, modulename));
+    Ok(modules)
+}
+pub fn parse_modules_(visited: &mut HashSet<InternedStr>, modules: &mut Vec<Module>, modulename: &str) -> IoResult<()> {
+    let contents = {
+        let mut filename = StrBuf::from_str(modulename);
+        filename.push_str(".hs");
+        let mut file = File::open(&Path::new(filename.as_slice()));
+        try!(file.read_to_str())
+    };
+    let mut parser = Parser::new(contents.as_slice().chars());
+    let module = parser.module();
+    let interned_name = intern(modulename);
+    visited.insert(interned_name);
+    for import in module.imports.iter() {
+        if visited.contains(&import.module) {
+            fail!("Cyclic dependency in modules");
+        }
+        else if modules.iter().all(|m| m.name != import.module) {
+            //parse the module if it is not parsed
+            try!(parse_modules_(visited, modules, import.module.as_slice()));
+        }
+    }
+    visited.remove(&interned_name);
+    modules.push(module);
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -1215,6 +1247,14 @@ id x = x
 
     assert_eq!(module.imports[0].module.as_slice(), "Hello");
     assert_eq!(module.imports[1].module.as_slice(), "World");
+}
+#[test]
+fn parse_module_imports() {
+    let modules = parse_modules("Test").unwrap();
+
+    assert_eq!(modules.get(0).name.as_slice(), "Prelude");
+    assert_eq!(modules.get(1).name.as_slice(), "Test");
+    assert_eq!(modules.get(1).imports[0].module.as_slice(), "Prelude");
 }
 
 #[test]

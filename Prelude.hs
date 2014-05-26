@@ -1,3 +1,4 @@
+module Prelude where
 
 data Bool = True | False
 
