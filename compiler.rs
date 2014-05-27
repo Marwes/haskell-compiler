@@ -585,7 +585,7 @@ impl <'a> Compiler<'a> {
                                 typ: function_type_(int_type(), literal.typ.clone()),
                                 constraints: ~[]
                             });
-                            let number = Literal(Literal { typ: double_type(), value: Integral(i) });
+                            let number = Literal(Literal { typ: int_type(), value: Integral(i) });
                             let apply = Apply(box fromInteger, box number);
                             self.compile(&apply, instructions, strict);
                         }
