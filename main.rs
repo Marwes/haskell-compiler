@@ -8,8 +8,6 @@ extern crate collections;
 extern crate test;
 
 #[cfg(not(test))]
-use std::io::File;
-#[cfg(not(test))]
 use module::{Type, TypeApplication, TypeOperator};
 #[cfg(not(test))]
 use parser::Parser;
@@ -18,7 +16,7 @@ use compiler::{Compiler, Instruction, PushInt, Mkap};
 #[cfg(not(test))]
 use typecheck::{DataTypes, TypeEnvironment};
 #[cfg(not(test))]
-use vm::{VM, evaluate, execute_main, compile_file};
+use vm::{VM, evaluate, execute_main_module, compile_file};
 #[cfg(not(test))]
 use core::{Module};
 #[cfg(not(test))]
@@ -131,13 +129,11 @@ fn main() {
         println!("{}  {}", result, type_decl);
     }
     else if args.len() == 3 && "-l" == args.get(1).as_slice() {
-        let filename = args.get(2).as_slice();
-        let path = &Path::new(filename);
-        let contents = File::open(path).read_to_str().unwrap();
-        let result = execute_main(contents.as_slice().chars());
+        let modulename = args.get(2).as_slice();
+        let result = execute_main_module(modulename).unwrap();
         match result {
             Some(x) => println!("{:?}", x),
-            None => println!("Error running file {:?}", path)
+            None => println!("Error running module {:?}", modulename)
         }
     }
     else {

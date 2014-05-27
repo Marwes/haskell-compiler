@@ -6,6 +6,7 @@ use scoped_map::ScopedMap;
 use std::iter::range_step;
 use std::default::Default;
 use std::vec::FromVec;
+use std::io::IoResult;
 
 use core::translate::{translate_module};
 use lambda_lift::do_lambda_lift;
@@ -977,6 +978,19 @@ pub fn compile_with_type_env(type_env: &mut TypeEnvironment, assemblies: &[&Asse
         compiler.assemblies.push(*assem);
     }
     compiler.compileModule(&core_module)
+}
+
+pub fn compile_module(module: &str) -> IoResult<Vec<Assembly>> {
+    use typecheck::typecheck_module;
+    use compiler::Compiler;
+    let (modules, mut type_env) = try!(typecheck_module(module));
+    let core_modules: Vec<Module<Id<Name>>> = modules.move_iter()
+        .map(|module| do_lambda_lift(translate_module(module)))
+        .collect();
+    let mut compiler = Compiler::new(&mut type_env);
+    Ok(core_modules.iter().map(|module| {
+        compiler.compileModule(module)
+    }).collect())
 }
 
 

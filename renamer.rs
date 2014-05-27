@@ -135,6 +135,9 @@ pub fn rename_expr(expr: TypedExpr<InternedStr>) -> TypedExpr<Name> {
 
 pub fn rename_module(module: Module<InternedStr>) -> Module<Name> {
     let mut renamer = Renamer { uniques: ScopedMap::new(), unique_id: 1 };
+    rename_module_(&mut renamer, module)
+}
+pub fn rename_module_(renamer: &mut Renamer, module: Module<InternedStr>) -> Module<Name> {
     let Module {
         name: name,
         imports: imports,
@@ -199,5 +202,12 @@ pub fn rename_module(module: Module<InternedStr>) -> Module<Name> {
         bindings : FromVec::from_vec(bindings2),
         instances: FromVec::from_vec(instances2)
     }
+}
+
+pub fn rename_modules(modules: Vec<Module<InternedStr>>) -> Vec<Module<Name>> {
+    let mut renamer = Renamer { uniques: ScopedMap::new(), unique_id: 1 };
+    modules.move_iter().map(|module| {
+        rename_module_(&mut renamer, module)
+    }).collect()
 }
 

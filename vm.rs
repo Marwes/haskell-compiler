@@ -2,7 +2,7 @@ use std::fmt;
 use std::rc::Rc;
 use std::cell::{Ref, RefMut, RefCell};
 use std::path::Path;
-use std::io::File;
+use std::io::{File, IoResult};
 use typecheck::TypeEnvironment;
 use compiler::*;
 use parser::Parser;
@@ -460,6 +460,23 @@ pub fn execute_main<T : Iterator<char>>(iterator: T) -> Option<VMResult> {
             extract_result(result)
         }
         None => None
+    }
+}
+
+pub fn execute_main_module(modulename: &str) -> IoResult<Option<VMResult>> {
+    let assemblies = try!(compile_module(modulename));
+    let mut vm = VM::new();
+    for assembly in assemblies.move_iter() {
+        vm.add_assembly(assembly);
+    }
+    let x = vm.assembly.iter().flat_map(|a| a.superCombinators.iter()).find(|sc| sc.name.name == intern("main"));
+    match x {
+        Some(sc) => {
+            assert!(sc.arity == 0);
+            let result = evaluate(&vm, sc.instructions, sc.assembly_id);
+            Ok(extract_result(result))
+        }
+        None => Ok(None)
     }
 }
 

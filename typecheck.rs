@@ -1,6 +1,7 @@
 use collections::HashMap;
 use std::mem::swap;
 use std::vec::FromVec;
+use std::io::IoResult;
 use module::*;
 use graph::{Graph, VertexIndex, strongly_connected_components};
 use primitive::primitives;
@@ -1248,6 +1249,16 @@ pub fn do_typecheck_with(input: &str, types: &[&DataTypes]) -> Module<Name> {
     }
     env.typecheck_module(&mut module);
     module
+}
+pub fn typecheck_module(module: &str) -> IoResult<(Vec<Module<Name>>, TypeEnvironment)> {
+    use parser::parse_modules;
+    use renamer::rename_modules;
+    let mut modules = rename_modules(try!(parse_modules(module)));
+    let mut env = TypeEnvironment::new();
+    for module in modules.mut_iter() {
+        env.typecheck_module(module);
+    }
+    Ok((modules, env))
 }
 
 
