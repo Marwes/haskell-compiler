@@ -987,12 +987,19 @@ pub fn compile_module(module: &str) -> IoResult<Vec<Assembly>> {
     let core_modules: Vec<Module<Id<Name>>> = modules.move_iter()
         .map(|module| do_lambda_lift(translate_module(module)))
         .collect();
-    let mut compiler = Compiler::new(&mut type_env);
-    Ok(core_modules.iter().map(|module| {
-        compiler.compileModule(module)
-    }).collect())
+    let mut assemblies = Vec::new();
+    for module in core_modules.iter() {
+        let x = {
+            let mut compiler = Compiler::new(&mut type_env);
+            for a in assemblies.iter() {
+                compiler.assemblies.push(a);
+            }
+            compiler.compileModule(module)
+        };
+        assemblies.push(x);
+    }
+    Ok(assemblies)
 }
-
 
 #[cfg(test)]
 mod tests {

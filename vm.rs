@@ -65,7 +65,7 @@ impl <'a> fmt::Show for Node_<'a> {
         match self {
             &Application(ref func, ref arg) => write!(f, "({} {})", *func, *arg),
             &Int(i) => write!(f, "{}", i),
-            &Float(i) => write!(f, "{}", i),
+            &Float(i) => write!(f, "{}f", i),
             &Char(c) => write!(f, "'{}'", c),
             &Combinator(ref sc) => write!(f, "{}", sc.name),
             &Indirection(ref n) => write!(f, "(~> {})", *n),
@@ -610,7 +610,7 @@ use std::path::Path;
 use std::io::File;
 use typecheck::TypeEnvironment;
 use compiler::{compile_with_type_env};
-use vm::{VM, evaluate, compile_file, execute_main, extract_result, IntResult, DoubleResult, ConstructorResult};
+use vm::{VM, evaluate, compile_file, execute_main, execute_main_module, extract_result, IntResult, DoubleResult, ConstructorResult};
 use interner::*;
 
 #[test]
@@ -823,6 +823,12 @@ main = test (Just 4) (Just 6)");
         None => None
     };
     assert_eq!(result, Some(ConstructorResult(0, vec!(IntResult(5)))));
+}
+
+#[test]
+fn import() {
+    let result = execute_main_module("Test");
+    assert_eq!(result, Ok(Some(IntResult(6))));
 }
 
 }
