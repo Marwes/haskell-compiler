@@ -311,7 +311,7 @@ fn subExpression(&mut self, parseError : |&Token| -> bool) -> Option<TypedExpr> 
                     fail!(ParseError2(&self.lexer, [ARROW, NAME]));
                 }
             }
-            Some(makeLambda(args.move_iter(), self.expression_()))
+            Some(makeLambda(args.move_iter().map(|a| IdentifierPattern(a)), self.expression_()))
         }
         DO => {
             let location = self.lexer.current().location;
@@ -450,7 +450,7 @@ fn parseOperatorExpression(&mut self, inL : Option<TypedExpr>, minPrecedence : i
                     let mut apply = makeApplication(name, args.move_iter());
                     apply.location = loc;
                     let params = ~[intern("#")];
-                    Some(makeLambda(params.move_iter(), apply))
+                    Some(makeLambda(params.move_iter().map(|a| IdentifierPattern(a)), apply))
                 }
             }
             (None, None) => return None
@@ -532,7 +532,7 @@ fn binding(&mut self) -> Binding {
 	}
 	if arguments.len() > 0 {
         let arity = arguments.len();
-		let lambda = makeLambda(arguments.move_iter(), self.expression_());
+		let lambda = makeLambda(arguments.move_iter().map(|a| IdentifierPattern(a)), self.expression_());
 		Binding { name : name.clone(),
             typeDecl : TypeDeclaration {
                 context : box [],
@@ -963,7 +963,7 @@ fn makeApplication<I: Iterator<TypedExpr>>(f : TypedExpr, mut args : I) -> Typed
     func
 }
 
-fn makeLambda<Iter: DoubleEndedIterator<InternedStr>>(args : Iter, body : TypedExpr) -> TypedExpr {
+fn makeLambda<Iter: DoubleEndedIterator<Pattern<InternedStr>>>(args : Iter, body : TypedExpr) -> TypedExpr {
 	let mut body = body;
 	for a in args.rev() {
         let loc = body.location.clone();

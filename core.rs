@@ -319,7 +319,7 @@ pub mod translate {
         if is_lambda {
             let module::TypedExpr { typ: typ, expr: expr, ..} = input_expr;
             match expr {
-                module::Lambda(arg, body) => {
+                module::Lambda(IdentifierPattern(arg), body) => {
                     //TODO need to make unique names for the lambdas created here
                     let l = Lambda(Id::new(arg, typ.clone(), ~[]), box translate_expr_rest(*body));
                     let bind = Binding { name: Id::new(Name { name: intern("#lambda"), uid: 0 }, typ.clone(), ~[]), expression: l };
@@ -339,7 +339,12 @@ pub mod translate {
             module::Identifier(s) => Identifier(Id::new(s, typ, ~[])),
             module::Apply(func, arg) => Apply(box translate_expr(*func), box translate_expr(*arg)),
             module::Literal(l) => Literal(Literal { typ: typ, value: l }),
-            module::Lambda(arg, body) => Lambda(Id::new(arg, typ, ~[]), box translate_expr_rest(*body)),
+            module::Lambda(arg, body) => {
+                match arg {
+                    IdentifierPattern(arg) => Lambda(Id::new(arg, typ, ~[]), box translate_expr_rest(*body)),
+                    _ => fail!("Core translation of pattern matches in lambdas are not implemented")
+                }
+            }
             module::Let(bindings, body) => {
                 let bs  = FromVec::<Binding<Id<Name>>>::from_vec(bindings.move_iter().map(translate_binding).collect());
                 Let(bs, box translate_expr(*body))

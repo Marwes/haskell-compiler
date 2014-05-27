@@ -591,11 +591,11 @@ impl <'a> TypeEnvironment<'a> {
                 };
             }
             &Lambda(ref arg, ref mut body) => {
-                let argType = self.new_var();
+                let mut argType = self.new_var();
                 expr.typ = function_type(&argType, &self.new_var());
 
                 {
-                    self.local_types.insert(arg.clone(), argType.clone());
+                    self.typecheck_pattern(&expr.location, subs, arg, &mut argType);
                     self.typecheck(*body, subs);
                 }
                 replace(&mut self.constraints, &mut expr.typ, subs);
@@ -1208,7 +1208,7 @@ pub fn identifier(i : &str) -> TypedExpr {
 }
 #[cfg(test)]
 pub fn lambda(arg : &str, body : TypedExpr) -> TypedExpr {
-    TypedExpr::new(Lambda(intern(arg), box body))
+    TypedExpr::new(Lambda(IdentifierPattern(intern(arg)), box body))
 }
 #[cfg(test)]
 pub fn number(i : int) -> TypedExpr {

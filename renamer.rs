@@ -48,7 +48,7 @@ impl Renamer {
             Apply(func, arg) => Apply(box self.rename(*func), box self.rename(*arg)),
             Lambda(arg, body) => {
                 self.uniques.enter_scope();
-                let l = Lambda(self.make_unique(arg), box self.rename(*body));
+                let l = Lambda(self.rename_pattern(arg), box self.rename(*body));
                 self.uniques.exit_scope();
                 l
             }

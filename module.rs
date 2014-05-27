@@ -461,7 +461,7 @@ pub enum Expr<Ident = InternedStr> {
     Identifier(Ident),
     Apply(Box<TypedExpr<Ident>>, Box<TypedExpr<Ident>>),
     Literal(Literal),
-    Lambda(Ident, Box<TypedExpr<Ident>>),
+    Lambda(Pattern<Ident>, Box<TypedExpr<Ident>>),
     Let(~[Binding<Ident>], Box<TypedExpr<Ident>>),
     Case(Box<TypedExpr<Ident>>, ~[Alternative<Ident>]),
     Do(~[DoBinding<Ident>], Box<TypedExpr<Ident>>)
