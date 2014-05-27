@@ -450,12 +450,6 @@ impl <'a> TypeEnvironment<'a> {
         self.freshen_declaration2(decl, mapping);
     }
 
-    ///Applies a substitution on all global types
-    fn apply_globals(&mut self, subs: &Substitution) {
-        for (_, typ) in self.namedTypes.mut_iter() {
-            replace(&mut self.constraints, typ, subs);
-        }
-    }
     fn apply_locals(&mut self, subs: &Substitution) {
         for (_, typ) in self.local_types.mut_iter() {
             replace(&mut self.constraints, typ, subs);
