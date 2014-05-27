@@ -198,7 +198,7 @@ fn instance(&mut self) -> Instance {
 pub fn expression_(&mut self) -> TypedExpr {
     match self.expression() {
         Some(expr) => expr,
-        None => fail!("Failed to parse expression at {:?}", self.lexer.current().location)
+        None => fail!("Failed to parse expression at {}", self.lexer.current().location)
     }
 }
 
@@ -298,20 +298,9 @@ fn subExpression(&mut self, parseError : |&Token| -> bool) -> Option<TypedExpr> 
             }
 		}
         LAMBDA => {
-            let mut args = Vec::new();
-            loop {
-                let token = self.lexer.next_().token;
-                if token == NAME {
-                    args.push(self.lexer.current().value.clone());
-                }
-                else if token == ARROW {
-                    break;
-                }
-                else {
-                    fail!(ParseError2(&self.lexer, [ARROW, NAME]));
-                }
-            }
-            Some(makeLambda(args.move_iter().map(|a| IdentifierPattern(a)), self.expression_()))
+            let args = self.patternParameter();
+            self.requireNext(ARROW);
+            Some(makeLambda(args.move_iter(), self.expression_()))
         }
         DO => {
             let location = self.lexer.current().location;
@@ -517,22 +506,12 @@ fn binding(&mut self) -> Binding {
 	}
 
 	//Parse the arguments for the binding
-	let mut arguments = Vec::new();
-	loop {
-		let token = self.lexer.next(errorIfNotNameOrEqual);
-		if token.token == NAME {
-			arguments.push(token.value.clone());
-		}
-		else {
-			break;
-		}
-	}
-	if self.lexer.current().token != EQUALSSIGN {
-		fail!(ParseError(&self.lexer, EQUALSSIGN));
-	}
+	let arguments = self.patternParameter();
+    self.requireNext(EQUALSSIGN);
+
 	if arguments.len() > 0 {
         let arity = arguments.len();
-		let lambda = makeLambda(arguments.move_iter().map(|a| IdentifierPattern(a)), self.expression_());
+		let lambda = makeLambda(arguments.move_iter(), self.expression_());
 		Binding { name : name.clone(),
             typeDecl : TypeDeclaration {
                 context : box [],
@@ -557,13 +536,29 @@ fn binding(&mut self) -> Binding {
 	}
 }
 
+fn make_pattern(&mut self, name: InternedStr, args: |&mut Parser<Iter>| -> ~[Pattern]) -> Pattern {
+    let c = name.as_slice().char_at(0);
+    if c.is_uppercase() || name == intern(":") {
+        ConstructorPattern(name, args(self))
+    }
+    else if c == '_' {
+        WildCardPattern
+    }
+    else {
+        IdentifierPattern(name)
+    }
+}
 
 fn patternParameter(&mut self) -> ~[Pattern] {
 	let mut parameters = Vec::new();
 	loop {
 		let token = self.lexer.next_().token;
 		match token {
-            NAME => parameters.push(IdentifierPattern(self.lexer.current().value.clone())),
+            NAME => {
+                let name = self.lexer.current().value;
+                let p = self.make_pattern(name, |_| ~[]);
+                parameters.push(p);
+            }
             NUMBER => parameters.push(NumberPattern(from_str(self.lexer.current().value.as_slice()).unwrap())),
 		    LPARENS => {
 				let pat = self.pattern();
@@ -579,7 +574,9 @@ fn patternParameter(&mut self) -> ~[Pattern] {
 					parameters.push(ConstructorPattern(tuple_name(tupleArgs.len()), FromVec::from_vec(tupleArgs)));
 				}
 				else {
-                    //TODO?
+                    self.lexer.backtrack();
+                    self.requireNext(RPARENS);
+                    parameters.push(pat);
 				}
 			}
             LBRACKET => {
@@ -611,16 +608,7 @@ fn pattern(&mut self) -> Pattern {
 			}
 			ConstructorPattern(intern("[]"), ~[])
 		}
-	    NAME | OPERATOR => {
-			let patterns = self.patternParameter();
-			if name.as_slice().char_at(0).is_uppercase() || name == intern(":") {
-				ConstructorPattern(name, patterns)
-			}
-			else {
-				assert!(patterns.len() == 0);
-				IdentifierPattern(name)
-			}
-		}
+	    NAME | OPERATOR => self.make_pattern(name, |this| this.patternParameter()),
 	    NUMBER => NumberPattern(from_str(name.as_slice()).unwrap()),
 	    LPARENS => {
 			let tupleArgs = self.sepBy1(|this| this.pattern(), COMMA);
@@ -934,7 +922,10 @@ fn bindingError(t : &Token) -> bool {
 		&& t.token != NAME
 		&& t.token != TYPEDECL
 		&& t.token != OPERATOR
-		&& t.token != RPARENS;
+        && t.token != LPARENS
+		&& t.token != RPARENS
+        && t.token != LBRACKET
+        && t.token != RBRACKET;
 }
 
 fn constructorError(tok : &Token) -> bool {
@@ -1007,9 +998,6 @@ fn errorIfNotNameOrOperator(tok : &Token) -> bool {
 	tok.token != NAME && tok.token != OPERATOR
 }
 
-fn errorIfNotNameOrEqual(tok : &Token) -> bool {
-	tok.token != NAME && tok.token != EQUALSSIGN
-}
 fn errorIfNotRParens(tok : &Token) -> bool {
 	tok.token != RPARENS
 }
@@ -1031,11 +1019,11 @@ fn tupleType(types : ~[Type]) -> Type {
 }
 
 fn ParseError2<Iter : Iterator<char>>(lexer : &Lexer<Iter>, expected : &[TokenEnum]) -> StrBuf {
-    format!("Expected {:?} but found {:?}\\{{:?}\\}, at {}", expected, lexer.current().token, lexer.current().value, lexer.current().location)
+    format!("Expected {:?} but found {:?}\\{{}\\}, at {}", expected, lexer.current().token, lexer.current().value.as_slice(), lexer.current().location)
     
 }
 fn ParseError<Iter : Iterator<char>>(lexer : &Lexer<Iter>, expected : TokenEnum) -> StrBuf {
-    format!("Expected {:?} but found {:?}\\{{:?}\\}, at {}", expected, lexer.current().token, lexer.current().value, lexer.current().location)
+    format!("Expected {:?} but found {:?}\\{{}\\}, at {}", expected, lexer.current().token, lexer.current().value.as_slice(), lexer.current().location)
 }
 fn encodeBindingIdentifier(instancename : InternedStr, bindingname : InternedStr) -> InternedStr {
     let mut buffer = StrBuf::new();
@@ -1234,6 +1222,14 @@ r"main = do
         ], box apply(identifier("return"), identifier("s"))));
     assert_eq!(module.bindings[0].expression, b);
 }
+#[test]
+fn lambda_pattern() {
+    let mut parser = Parser::new(r"(\(x, _) -> x)".chars());
+    let expr = parser.expression_();
+    let pattern = ConstructorPattern(intern("(,)"), ~[IdentifierPattern(intern("x")), WildCardPattern]);
+    assert_eq!(expr, TypedExpr::new(Lambda(pattern, box identifier("x"))));
+}
+
 
 #[test]
 fn parse_imports() {

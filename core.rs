@@ -319,9 +319,14 @@ pub mod translate {
         if is_lambda {
             let module::TypedExpr { typ: typ, expr: expr, ..} = input_expr;
             match expr {
-                module::Lambda(IdentifierPattern(arg), body) => {
+                module::Lambda(arg, body) => {
                     //TODO need to make unique names for the lambdas created here
-                    let l = Lambda(Id::new(arg, typ.clone(), ~[]), box translate_expr_rest(*body));
+                    let argname = match arg {
+                        IdentifierPattern(arg) => arg,
+                        WildCardPattern => Name { name: intern("_"), uid: -1 },
+                        _ => fail!("Core translation of pattern matches in lambdas are not implemented")
+                    };
+                    let l = Lambda(Id::new(argname, typ.clone(), ~[]), box translate_expr_rest(*body));
                     let bind = Binding { name: Id::new(Name { name: intern("#lambda"), uid: 0 }, typ.clone(), ~[]), expression: l };
                     Let(~[bind], box Identifier(Id::new(Name { name: intern("#lambda"), uid: 0 }, typ.clone(), ~[])))
                 }
@@ -342,6 +347,7 @@ pub mod translate {
             module::Lambda(arg, body) => {
                 match arg {
                     IdentifierPattern(arg) => Lambda(Id::new(arg, typ, ~[]), box translate_expr_rest(*body)),
+                    WildCardPattern => Lambda(Id::new(Name { name: intern("_"), uid: -1 }, typ, ~[]), box translate_expr_rest(*body)),
                     _ => fail!("Core translation of pattern matches in lambdas are not implemented")
                 }
             }

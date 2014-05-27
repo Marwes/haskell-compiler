@@ -697,7 +697,10 @@ impl <'a> TypeEnvironment<'a> {
                 self.pattern_rec(0, location, subs, *patterns, &mut t);
             }
             &WildCardPattern => {
-                fail!("Wildcard pattern not implemented in typechecking")
+                let mut typ = self.new_var();
+                unify_location(self, subs, location, &mut typ, match_type);
+                replace(&mut self.constraints, match_type, subs);
+                replace(&mut self.constraints, &mut typ, subs);
             }
         }
     }
@@ -1643,6 +1646,19 @@ test x = do
     assert_eq!(module.bindings[0].expression.typ, t);
     assert_eq!(module.bindings[0].typeDecl.context[0].class, intern("Monad"));
 }
+
+#[test]
+fn binding_pattern() {
+    let module = do_typecheck(r"
+test f (: x xs) = f x : test f xs
+test _ [] = []
+");
+    let a = Type::new_var(0);
+    let b = Type::new_var(1);
+    let test = function_type_(function_type_(a.clone(), b.clone()), function_type_(list_type(a), list_type(b)));
+    assert_eq!(module.bindings[0].expression.typ, test);
+}
+
 #[test]
 #[should_fail]
 fn do_expr_wrong_monad() {
@@ -1660,8 +1676,6 @@ test x = do
     reverse [primIntAdd 0 0, 1, 2]";
     do_typecheck_with(file, [&prelude as &DataTypes]);
 }
-
-
 
 #[test]
 #[should_fail]
