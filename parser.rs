@@ -509,31 +509,17 @@ fn binding(&mut self) -> Binding {
 	let arguments = self.patternParameter();
     self.requireNext(EQUALSSIGN);
 
-	if arguments.len() > 0 {
-        let arity = arguments.len();
-		let lambda = makeLambda(arguments.move_iter(), self.expression_());
-		Binding { name : name.clone(),
-            typeDecl : TypeDeclaration {
-                context : box [],
-                typ : Type::new_var(-1),
-                name : name
-            },
-            expression : lambda,
-            arity : arity
-        }
-	}
-	else {
-		Binding {
-            name : name.clone(),
-            typeDecl : TypeDeclaration {
-                context : box [],
-                typ : Type::new_var(-1),
-                name : name
-            },
-            expression : self.expression_(),
-            arity : 0
-        }
-	}
+    Binding {
+        name : name.clone(),
+        typeDecl : TypeDeclaration {
+            context : box [],
+            typ : Type::new_var(-1),
+            name : name
+        },
+        arity : arguments.len(),
+        arguments: arguments,
+        expression : self.expression_(),
+    }
 }
 
 fn make_pattern(&mut self, name: InternedStr, args: |&mut Parser<Iter>| -> ~[Pattern]) -> Pattern {
@@ -1087,7 +1073,8 @@ fn binding()
 {
     let mut parser = Parser::new("test x = x + 3".chars());
     let bind = parser.binding();
-    assert_eq!(bind.expression, lambda("x", apply(apply(identifier("+"), identifier("x")), number(3))));
+    assert_eq!(bind.arguments, ~[IdentifierPattern(intern("x"))]);
+    assert_eq!(bind.expression, apply(apply(identifier("+"), identifier("x")), number(3)));
     assert_eq!(bind.name, intern("test"));
 }
 
@@ -1108,7 +1095,7 @@ let
     test = add 3 2
 in test - 2".chars());
     let expr = parser.expression_();
-    let mut bind = Binding { arity: 0, name: intern("test"), typeDecl:Default::default(),
+    let mut bind = Binding { arity: 0, arguments: ~[], name: intern("test"), typeDecl:Default::default(),
         expression: apply(apply(identifier("add"), number(3)), number(2)) };
     bind.typeDecl.name = intern("test");
     assert_eq!(expr, let_(~[bind], apply(apply(identifier("-"), identifier("test")), number(2))));

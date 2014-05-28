@@ -28,15 +28,19 @@ impl Renamer {
             self.make_unique(bind.name.clone());
         }
         FromVec::<Binding<Name>>::from_vec(bindings.move_iter().map(|binding| {
-            let Binding { name: name, expression: expression, typeDecl: typeDecl, arity: arity  } = binding;
+            let Binding { name: name, arguments: arguments, expression: expression, typeDecl: typeDecl, arity: arity  } = binding;
             let n = self.uniques.find(&name).map(|u| u.clone())
                 .expect(format!("Error: lambda_lift: Undefined variable {}", name));
-            Binding {
+            self.uniques.enter_scope();
+            let b = Binding {
                 name: n,
+                arguments: self.rename_arguments(arguments),
                 expression: self.rename(expression),
                 typeDecl: typeDecl,
                 arity: arity
-            }
+            };
+            self.uniques.exit_scope();
+            b
         }).collect())
     }
 
@@ -111,15 +115,21 @@ impl Renamer {
     }
 
     fn rename_binding(&mut self, binding: Binding<InternedStr>) -> Binding<Name> {
-        let Binding { name: name, expression: expression, typeDecl: td, arity: a } = binding;
-        Binding {
+        let Binding { name: name, arguments: arguments, expression: expression, typeDecl: td, arity: a } = binding;
+        self.uniques.enter_scope();
+        let b = Binding {
             name: Name { name: name, uid: 0 },
+            arguments: self.rename_arguments(arguments),
             expression: self.rename(expression),
             typeDecl: td,
             arity: a
-        }
+        };
+        self.uniques.exit_scope();
+        b
     }
-
+    fn rename_arguments(&mut self, arguments: ~[Pattern<InternedStr>]) -> ~[Pattern<Name>] {
+        FromVec::<Pattern<Name>>::from_vec(arguments.move_iter().map(|a| self.rename_pattern(a)).collect())
+    }
 
     fn make_unique(&mut self, name: InternedStr) -> Name {
         self.unique_id += 1;
@@ -128,6 +138,7 @@ impl Renamer {
         u
     }
 }
+
 pub fn rename_expr(expr: TypedExpr<InternedStr>) -> TypedExpr<Name> {
     let mut renamer = Renamer { uniques: ScopedMap::new(), unique_id: 1 };
     renamer.rename(expr)

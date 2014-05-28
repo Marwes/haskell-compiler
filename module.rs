@@ -40,6 +40,7 @@ pub struct Instance<Ident = InternedStr> {
 #[deriving(Clone, Eq)]
 pub struct Binding<Ident = InternedStr> {
     pub name : Ident,
+    pub arguments: ~[Pattern<Ident>],
     pub expression : TypedExpr<Ident>,
     pub typeDecl : TypeDeclaration,
     pub arity : uint
@@ -604,3 +605,28 @@ pub fn walk_pattern<Ident>(visitor: &mut Visitor<Ident>, pattern: &Pattern<Ident
         _ => ()
     }
 }
+
+struct Binds<'a, Ident> {
+    vec: &'a [Binding<Ident>]
+}
+
+impl <'a, Ident: Eq> Iterator<&'a [Binding<Ident>]> for Binds<'a, Ident> {
+    fn next(&mut self) -> Option<&'a [Binding<Ident>]> {
+        if self.vec.len() == 0 {
+            None
+        }
+        else {
+            let end = self.vec.iter()
+                .position(|bind| bind.name != self.vec[0].name)
+                .unwrap_or(self.vec.len());
+            let head = self.vec.slice_to(end);
+            self.vec = self.vec.slice_from(end);
+            Some(head)
+        }
+    }
+}
+
+pub fn binding_groups<'a, Ident: Eq>(bindings: &'a [Binding<Ident>]) -> Binds<'a, Ident> {
+    Binds { vec: bindings }
+}
+

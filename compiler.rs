@@ -1174,6 +1174,14 @@ showInt i =
 ");
 }
 
+#[test]
+fn binding_pattern() {
+    compile(r"
+test f (: x xs) = f x : test f xs
+test _ [] = []
+");
+}
+
 #[bench]
 fn bench_prelude(b: &mut Bencher) {
     use lambda_lift::do_lambda_lift;

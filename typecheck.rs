@@ -119,31 +119,45 @@ struct Substitution {
 }
 
 trait Bindings {
-    fn get_mut<'a>(&'a mut self, idx: (uint, uint)) -> &'a mut Binding<Name>;
+    fn get_mut<'a>(&'a mut self, idx: (uint, uint)) -> &'a mut [Binding<Name>];
 
-    fn each_binding(&self, |&Binding<Name>, (uint, uint)|);
+    fn each_binding(&self, |&[Binding<Name>], (uint, uint)|);
 }
 
 impl Bindings for Module<Name> {
-    fn get_mut<'a>(&'a mut self, (instance_idx, idx): (uint, uint)) -> &'a mut Binding<Name> {
-        if instance_idx == 0 {
-            &mut self.bindings[idx]
+    fn get_mut<'a>(&'a mut self, (instance_idx, idx): (uint, uint)) -> &'a mut [Binding<Name>] {
+        let bindings = if instance_idx == 0 {
+            &mut self.bindings
         }
         else {
-            &mut self.instances[instance_idx - 1].bindings[idx]
-        }
+            &mut self.instances[instance_idx - 1].bindings
+        };
+        mut_bindings_at(*bindings, idx)
     }
 
-    fn each_binding(&self, func: |&Binding<Name>, (uint, uint)|) {
-        for (index, bind) in self.bindings.iter().enumerate() {
-            func(bind, (0, index));
+    fn each_binding(&self, func: |&[Binding<Name>], (uint, uint)|) {
+        let mut index = 0;
+        for binds in binding_groups(self.bindings.as_slice()) {
+            func(binds, (0, index));
+            index += binds.len();
         }
         for (instance_index, instance) in self.instances.iter().enumerate() {
-            for (index, bind) in instance.bindings.iter().enumerate() {
-                func(bind, (instance_index + 1, index));
+            index = 0;
+            for binds in binding_groups(instance.bindings.as_slice()) {
+                func(binds, (instance_index + 1, index));
+                index += binds.len();
             }
         }
     }
+}
+
+fn mut_bindings_at<'a, Ident: Eq>(bindings: &'a mut [Binding<Ident>], idx: uint) -> &'a mut [Binding<Ident>] {
+    let end = bindings
+        .slice_from(idx)
+        .iter()
+        .position(|bind| bind.name != bindings[idx].name)
+        .unwrap_or(bindings.len() - idx);
+    bindings.mut_slice(idx, idx + end)
 }
 
 //Woraround since traits around a vector seems problematic
@@ -152,13 +166,15 @@ struct BindingsWrapper<'a> {
 }
 
 impl <'a> Bindings for BindingsWrapper<'a> {
-    fn get_mut<'a>(&'a mut self, (_, idx): (uint, uint)) -> &'a mut Binding<Name> {
-        &mut self.value[idx]
+    fn get_mut<'a>(&'a mut self, (_, idx): (uint, uint)) -> &'a mut [Binding<Name>] {
+        mut_bindings_at(self.value, idx)
     }
 
-    fn each_binding(&self, func: |&Binding<Name>, (uint, uint)|) {
-        for (index, bind) in self.value.iter().enumerate() {
-            func(bind, (0, index));
+    fn each_binding(&self, func: |&[Binding<Name>], (uint, uint)|) {
+        let mut index = 0;
+        for binds in binding_groups(self.value.as_slice()) {
+            func(binds, (0, index));
+            index += binds.len();
         }
     }
 }
@@ -715,6 +731,30 @@ impl <'a> TypeEnvironment<'a> {
         }
     }
 
+    fn typecheck_binding_group(&mut self, subs: &mut Substitution, bindings: &mut [Binding<Name>]) {
+        debug!("Begin typecheck {} :: {}", bindings[0].name, bindings[0].expression.typ);
+        let mut argument_types = Vec::from_fn(bindings[0].arguments.len(), |_| self.new_var());
+        for bind in bindings.mut_iter() {
+            let type_var = bind.expression.typ.var().clone();
+            if argument_types.len() != bind.arguments.len() {
+                fail!("{} Binding {} do not have the same number of arguments", bind.expression.location, bind.name);
+            }
+            for (arg, typ) in bind.arguments.mut_iter().zip(argument_types.mut_iter()) {
+                self.typecheck_pattern(&bind.expression.location, subs, arg, typ);
+            }
+            fn make_function(arguments: &[Type], expr: &Type) -> Type {
+                if arguments.len() == 0 { expr.clone() }
+                else { function_type_(arguments[0].clone(), make_function(arguments.slice_from(1), expr)) }
+            }
+            self.typecheck(&mut bind.expression, subs);
+            bind.expression.typ = make_function(argument_types.as_slice(), &bind.expression.typ);
+            unify_location(self, subs, &bind.expression.location, &mut bind.typeDecl.typ, &mut bind.expression.typ);
+            self.substitute(subs, &mut bind.expression);
+            subs.subs.insert(type_var, bind.expression.typ.clone());
+        }
+        debug!("End typecheck {} :: {}", bindings[0].name, bindings[0].expression.typ);
+    }
+
     pub fn typecheck_mutually_recursive_bindings<'a>
             (&mut self
             , subs: &mut Substitution
@@ -728,32 +768,28 @@ impl <'a> TypeEnvironment<'a> {
         for group in groups.iter() {
             for index in group.iter() {
                 let bindIndex = graph.get_vertex(*index).value;
-                let bind = bindings.get_mut(bindIndex);
-                bind.expression.typ = self.new_var();
+                let binds = bindings.get_mut(bindIndex);
+                for bind in binds.mut_iter() {
+                    bind.expression.typ = self.new_var();
+                    if bind.typeDecl.typ == Type::new_var(0) {
+                        bind.typeDecl.typ = self.new_var();
+                    }
+                }
                 if is_global {
-                    self.namedTypes.insert(bind.name.clone(), bind.expression.typ.clone());
+                    self.namedTypes.insert(binds[0].name.clone(), binds[0].expression.typ.clone());
                 }
                 else {
-                    self.local_types.insert(bind.name.clone(), bind.expression.typ.clone());
-                }
-                if bind.typeDecl.typ == Type::new_var(0) {
-                    bind.typeDecl.typ = self.new_var();
+                    self.local_types.insert(binds[0].name.clone(), binds[0].expression.typ.clone());
                 }
             }
             for index in group.iter() {
                 {
                     let bindIndex = graph.get_vertex(*index).value;
-                    let bind = bindings.get_mut(bindIndex);
-                    debug!("Begin typecheck {} :: {}", bind.name, bind.expression.typ);
-                    let type_var = bind.expression.typ.var().clone();
-                    self.typecheck(&mut bind.expression, subs);
-                    unify_location(self, subs, &bind.expression.location, &mut bind.typeDecl.typ, &mut bind.expression.typ);
-                    self.substitute(subs, &mut bind.expression);
-                    subs.subs.insert(type_var, bind.expression.typ.clone());
-                    debug!("End typecheck {} :: {}", bind.name, bind.expression.typ);
+                    let binds = bindings.get_mut(bindIndex);
+                    self.typecheck_binding_group(subs, binds);
                 }
                 if is_global {
-                    for bind in group.iter().map(|index| bindings.get_mut(graph.get_vertex(*index).value)) {
+                    for bind in group.iter().flat_map(|index| bindings.get_mut(graph.get_vertex(*index).value).iter()) {
                         replace(&mut self.constraints, self.namedTypes.get_mut(&bind.name), subs);
                     }
                     self.local_types.clear();
@@ -768,16 +804,18 @@ impl <'a> TypeEnvironment<'a> {
             }
             for index in group.iter() {
                 let bindIndex = graph.get_vertex(*index).value;
-                let bind = bindings.get_mut(bindIndex);
-                bind.typeDecl.typ = bind.expression.typ.clone();
-                bind.typeDecl.context = self.find_constraints(&bind.typeDecl.typ);
-                let typ = if is_global {
-                    self.namedTypes.get_mut(&bind.name)
+                let binds = bindings.get_mut(bindIndex);
+                for bind in binds.mut_iter() {
+                    bind.typeDecl.typ = bind.expression.typ.clone();
+                    bind.typeDecl.context = self.find_constraints(&bind.typeDecl.typ);
+                    let typ = if is_global {
+                        self.namedTypes.get_mut(&bind.name)
+                    }
+                    else {
+                        self.local_types.get_mut(&bind.name)
+                    };
+                    quantify(start_var_index, typ);
                 }
-                else {
-                    self.local_types.get_mut(&bind.name)
-                };
-                quantify(start_var_index, typ);
             }
         }
     }
@@ -1106,12 +1144,14 @@ fn unify(env: &mut TypeEnvironment, subs: &mut Substitution, lhs: Type, rhs: Typ
 fn build_graph(bindings: &Bindings) -> Graph<(uint, uint)> {
     let mut graph = Graph::new();
     let mut map = HashMap::new();
-    bindings.each_binding(|bind, i| {
+    bindings.each_binding(|binds, i| {
         let index = graph.new_vertex(i);
-        map.insert(bind.name.clone(), index);
+        map.insert(binds[0].name.clone(), index);
     });
-    bindings.each_binding(|bind, _| {
-        add_edges(&mut graph, &map, *map.get(&bind.name), &bind.expression);
+    bindings.each_binding(|binds, _| {
+        for bind in binds.iter() {
+            add_edges(&mut graph, &map, *map.get(&bind.name), &bind.expression);
+        }
     });
     graph
 }
@@ -1303,7 +1343,7 @@ fn typecheck_let() {
 
     //let test x = add x in test
     let unary_bind = lambda("x", apply(apply(identifier("primIntAdd"), identifier("x")), number(1)));
-    let e = let_(~[Binding { arity: 1, name: intern("test"), expression: unary_bind, typeDecl: Default::default() }], identifier("test"));
+    let e = let_(~[Binding { arity: 0, arguments: ~[], name: intern("test"), expression: unary_bind, typeDecl: Default::default() }], identifier("test"));
     let mut expr = rename_expr(e);
     env.typecheck_expr(&mut expr);
 

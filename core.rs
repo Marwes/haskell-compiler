@@ -426,8 +426,22 @@ pub mod translate {
     }
 
     fn translate_binding(binding : module::Binding<Name>) -> Binding<Id<Name>> {
-        let module::Binding { name: name, expression: expr, typeDecl: typeDecl, .. } = binding;
-        let expr = translate_expr_rest(expr);
+        let module::Binding { name: name, arguments: arguments, expression: expr, typeDecl: typeDecl, .. } = binding;
+        let mut typ = expr.typ.clone();
+        let mut expr = translate_expr_rest(expr);
+        for arg in arguments.move_iter().rev() {
+            let name = match arg  {
+                IdentifierPattern(name) => name,
+                WildCardPattern => Name { name: intern("_"), uid: -1 },
+                _ => fail!("Pattern not implemented")
+            };
+            expr = Lambda(Id::new(name, typ.clone(), typeDecl.context.clone()), box expr);
+            typ = match typ {
+                TypeApplication(_, x) => *x,
+                TypeVariable(x) => TypeVariable(x),//Probably in a test where typechecking has been skipped
+                _ => fail!("{} should be a function type", typ)
+            };
+        }
         Binding { name: Id::new(name, expr.get_type().clone(), typeDecl.context), expression: expr }
     }
     
