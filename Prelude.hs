@@ -7,9 +7,8 @@ not b = case b of
     False -> True
 
 (||) :: Bool -> Bool -> Bool
-(||) x y = case x of
-    True -> True
-    False -> y
+(||) True y = True
+(||) False y = y
 
 (&&) :: Bool -> Bool -> Bool
 (&&) x y = case x of
@@ -38,15 +37,9 @@ class Eq a where
     (/=) :: a -> a -> Bool
 
 instance Eq Bool where
-    (==) x y = case x of
-        True ->
-            case y of
-                True -> True
-                False -> False
-        False ->
-            case y of
-                True -> False
-                False -> True
+    (==) True True = True
+    (==) False False = True
+    (==) x y = False
 
     (/=) x y = not (x == y)
 
@@ -283,9 +276,8 @@ until p f x = case p x of
     False -> until p f (f x)
 
 map :: (a -> b) -> [a] -> [b]
-map f xs = case xs of
-    : y ys -> f y : map f ys
-    [] -> []
+map f (: y ys) = f y : map f ys
+map f [] = []
 
 foldl :: (b -> a -> b) -> b -> [a] -> b
 foldl f x (: y ys) = foldl f (f x y) ys

@@ -833,4 +833,19 @@ fn import() {
     assert_eq!(result, Ok(Some(IntResult(6))));
 }
 
+#[test]
+fn pattern_bind() {
+    let result = execute_main(
+r"data Bool = True | False
+
+test :: [Bool] -> Bool
+test (: True []) = False
+test (: True (:y ys)) = y
+test [] = False
+
+main = test [True, True]
+".chars());
+    assert_eq!(result, Some(ConstructorResult(0, Vec::new())));
+}
+
 }

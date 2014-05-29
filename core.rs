@@ -495,8 +495,13 @@ pub mod translate {
                 })).collect()
             };
             let match_expr = {
-                let args = make_arguments(arg_iterator(&bindings.get(0).typeDecl.typ)).map(|id| Identifier(id));
-                apply(match_expr, args)
+                let mut args = make_arguments(arg_iterator(&bindings.get(0).typeDecl.typ)).map(|id| Identifier(id));
+                if bindings.get(0).arguments.len() == 1 {//Avoid tuple single argument functions
+                    args.next().unwrap()
+                }
+                else {
+                    apply(match_expr, args)
+                }
             };
             let alts: Vec<Alternative<Id<Name>>> = bindings.move_iter().map(|bind| {
                 let module::Binding { name: bind_name, arguments: arguments, expression: expression, typeDecl: type_decl, .. } = bind;
