@@ -652,7 +652,7 @@ impl <'a> Compiler<'a> {
             }
             &Case(ref body, ref alternatives) => {
                 self.compile(*body, instructions, true);
-                self.stackSize += 1;//Dummy variable for the case expression
+                //Dummy variable for the case expression
                 //Storage for all the jumps that should go to the end of the case expression
                 let mut end_branches = Vec::new();
                 for i in range(0, alternatives.len()) {
@@ -667,7 +667,7 @@ impl <'a> Compiler<'a> {
                             IdentifierPattern(_) => this.stackSize -= 1,
                             _ => ()
                         }
-                        let stack_increase = this.compile_pattern(&alt.pattern, &mut branches, instructions, this.stackSize - 1, 0);
+                        let stack_increase = this.compile_pattern(&alt.pattern, &mut branches, instructions, this.stackSize, 0);
                         let pattern_end = instructions.len() as int;
 
                         this.compile(&alt.expression, instructions, strict);
@@ -897,6 +897,7 @@ impl <'a> Compiler<'a> {
         //TODO this is unlikely to work with nested patterns currently
         match pattern {
             &ConstructorPattern(ref name, ref patterns) => {
+                self.stackSize += 1;
                 instructions.push(Push(stack_index - pattern_index));
                 match self.find_constructor(name.name.name) {
                     Some((tag, _)) => {

@@ -288,9 +288,8 @@ map f xs = case xs of
     [] -> []
 
 foldl :: (b -> a -> b) -> b -> [a] -> b
-foldl f x xs = case xs of
-    : y ys -> foldl f (f x y) ys
-    [] -> x
+foldl f x (: y ys) = foldl f (f x y) ys
+foldl f x [] = x
 
 undefined :: a
 undefined = error "undefined"
