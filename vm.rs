@@ -171,7 +171,7 @@ impl <'a> VM<'a> {
         debug!("");
         let mut i = 0;
         while i < code.len() {
-            debug!("Executing instruction : {:?}", code[i]);
+            debug!("Executing instruction {} : {:?}", i, code[i]);
             match &code[i] {
                 &Add => primitive(stack, |l, r| { l + r }),
                 &Sub => primitive(stack, |l, r| { l - r }),
@@ -240,8 +240,10 @@ impl <'a> VM<'a> {
                     let mut newStack = vec!(old.clone());
                     execute(self_, &mut newStack, unwindCode, assembly_id);
                     stack.push(newStack.pop().unwrap());
+                    debug!("{}", stack.as_slice());
                     let new = stack.last().unwrap().borrow().clone();
                     *(*old.node).borrow_mut() = new;
+                    debug!("{}", stack.as_slice());
                 }
                 &Pop(num) => {
                     for _ in range(0, num) {

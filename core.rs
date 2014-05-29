@@ -298,9 +298,9 @@ pub mod translate {
         let mut new_instances = Vec::new();
         for module::Instance {classname: classname, typ: typ, constraints: constraints, bindings: bindings } in instances.move_iter() {
             new_instances.push((constraints.clone(), Type::new_op(classname, ~[typ])));
-            instance_functions.extend(bindings.move_iter().map(translate_binding));
+            instance_functions.extend(translate_bindings(bindings).move_iter());
         }
-        instance_functions.extend(bindings.move_iter().map(translate_binding));
+        instance_functions.extend(translate_bindings(bindings).move_iter());
         Module {
             classes: classes,
             data_definitions: dataDefinitions,
@@ -352,7 +352,7 @@ pub mod translate {
                 }
             }
             module::Let(bindings, body) => {
-                let bs  = FromVec::<Binding<Id<Name>>>::from_vec(bindings.move_iter().map(translate_binding).collect());
+                let bs = translate_bindings(bindings);
                 Let(bs, box translate_expr(*body))
             }
             module::Case(expr, alts) => {
@@ -375,7 +375,7 @@ pub mod translate {
                             do_bind_translate(pattern.node, translate_expr(e), result)
                         }
                         module::DoLet(bs) => {
-                            Let(FromVec::<Binding<Id<Name>>>::from_vec(bs.move_iter().map(translate_binding).collect()), box result)
+                            Let(translate_bindings(bs), box result)
                         }
                     };
                 }
@@ -425,33 +425,171 @@ pub mod translate {
         Let(~[bind], box mkApply(bind_ident, ~[expr, Identifier(func_ident)]))
     }
 
-    fn translate_binding(binding : module::Binding<Name>) -> Binding<Id<Name>> {
-        let module::Binding { name: name, arguments: arguments, expression: expr, typeDecl: typeDecl, .. } = binding;
-        let mut typ = expr.typ.clone();
-        let mut expr = translate_expr_rest(expr);
-        for arg in arguments.move_iter().rev() {
-            let name = match arg  {
-                IdentifierPattern(name) => name,
-                WildCardPattern => Name { name: intern("_"), uid: -1 },
-                _ => fail!("Pattern not implemented")
-            };
-            expr = Lambda(Id::new(name, typ.clone(), typeDecl.context.clone()), box expr);
-            typ = match typ {
-                TypeApplication(_, x) => *x,
-                TypeVariable(x) => TypeVariable(x),//Probably in a test where typechecking has been skipped
-                _ => fail!("{} should be a function type", typ)
-            };
+    fn translate_bindings(bindings: ~[module::Binding<Name>]) -> ~[Binding<Id<Name>>] {
+        let mut result = Vec::new();
+        let mut vec: Vec<module::Binding<Name>> = Vec::new();
+        for bind in bindings.move_iter() {
+            if vec.len() > 0 && vec.get(0).name != bind.name {
+                result.push(translate_binding_group(vec));
+                vec = Vec::new();
+            }
+            vec.push(bind);
         }
-        Binding { name: Id::new(name, expr.get_type().clone(), typeDecl.context), expression: expr }
+        if vec.len() > 0 {
+            result.push(translate_binding_group(vec));
+        }
+        FromVec::from_vec(result)
+    }
+    fn translate_binding_group(mut bindings: Vec<module::Binding<Name>>) -> Binding<Id<Name>> {
+        let mut name = Name { name: intern(""), uid: -1 };
+        let mut context = ~[];
+        let expr = if bindings.get(0).arguments.len() == 0 {
+            let module::Binding {
+                name: bind_name, arguments: _arguments,
+                expression: expression, typeDecl: type_decl, ..
+            } = bindings.pop().unwrap();
+            name = bind_name;
+            context = type_decl.context;
+            translate_expr(expression)
+        }
+        else if bindings.len() == 1 && simple_binding(bindings.get(0)) {
+            let module::Binding {
+                name: bind_name, arguments: arguments,
+                expression: expression, typeDecl: type_decl, ..
+            } = bindings.pop().unwrap();
+            name = bind_name;
+            context = type_decl.context.clone();
+            let mut typ = &type_decl.typ;
+            let arg_names = arguments.move_iter().map(|pattern| {
+                let mut p = match translate_pattern(pattern) {
+                    IdentifierPattern(name) => name,
+                    WildCardPattern => Id::new(Name { name: intern("_"), uid: -1 }, Type::new_var(99999), ~[]),
+                    _ => fail!()
+                };
+                p.typ = typ.clone();
+                typ = match *typ {
+                    TypeApplication(_, ref next) => &**next,
+                    _ => typ//We dont actually have a function type which we need, so we are likely in a unittest
+                            //just reuse the same type so we do not crash
+                };
+                p
+            });
+            make_lambda(arg_names, translate_expr(expression))
+        }
+        else {
+            let arg_len = bindings.get(0).arguments.len();
+            let match_expr : Expr<Id<Name>> = {
+                let (name, tuple_typ) = module::tuple_type(arg_len);
+                let id = Id::new(Name { name: intern(name.as_slice()), uid: 0 }, tuple_typ, ~[]);
+                Identifier(id.clone())
+            };
+            let args: Vec<Id<Name>> = {
+                let mut typ = &bindings.get(0).typeDecl.typ;
+                make_arguments(range(0, bindings.get(0).arguments.len()).map(|_| {
+                    let f = typ;
+                    typ = match *typ {
+                        TypeApplication(_, ref next) => &**next,
+                        _ => typ
+                    };
+                    f
+                })).collect()
+            };
+            let match_expr = {
+                let args = make_arguments(arg_iterator(&bindings.get(0).typeDecl.typ)).map(|id| Identifier(id));
+                apply(match_expr, args)
+            };
+            let alts: Vec<Alternative<Id<Name>>> = bindings.move_iter().map(|bind| {
+                let module::Binding { name: bind_name, arguments: arguments, expression: expression, typeDecl: type_decl, .. } = bind;
+                name = bind_name;
+                context = type_decl.context;
+                make_alternative(arguments, translate_expr(expression))
+            }).collect();
+            make_lambda(args.move_iter(), Case(box match_expr, FromVec::from_vec(alts)))
+        };
+        Binding {
+            name: Id::new(name, expr.get_type().clone(), context),
+            expression: expr
+        }
     }
     
+    struct ArgIterator<'a> {
+        typ: &'a Type
+    }
+    impl <'a> Iterator<&'a Type> for ArgIterator<'a> {
+        fn next(&mut self) -> Option<&'a Type> {
+            match *self.typ {
+                TypeApplication(ref lhs, ref rhs) => {
+                    match **lhs {
+                        TypeApplication(ref func, ref arg) => {
+                            match **func {
+                                TypeOperator(ref op) if op.name.as_slice() == "->" => {
+                                    self.typ = &**rhs;
+                                    Some(&**arg)
+                                }
+                                _ => None
+                            }
+                        }
+                        _ => None
+                    }
+                }
+                _ => None
+            }
+        }
+    }
+    fn arg_iterator<'a>(typ: &'a Type) -> ArgIterator<'a> {
+        ArgIterator { typ: typ }
+    }
+
+    fn make_arguments<'a, 'b, I : Iterator<&'b Type>>(iter: I) -> ::std::iter::Map<'a, (uint, &'b Type), Id<Name>, ::std::iter::Enumerate<I>> {
+        iter.enumerate().map(|(index, typ)| {
+            let arg_name = Name { name: intern(index.to_str().as_slice()), uid: -100 };
+            Id::new(arg_name, typ.clone(), ~[])
+        })
+    }
+
+    fn simple_binding(binding: &module::Binding<Name>) -> bool {
+        binding.arguments.iter().all(|arg| {
+            match *arg {
+                WildCardPattern | IdentifierPattern(..) => true,
+                _ => false
+            }
+        })
+    }
+
+    fn apply<T, I: Iterator<Expr<T>>>(mut func: Expr<T>, mut iter: I) -> Expr<T> {
+        for arg in iter {
+            func = Apply(box func, box arg);
+        }
+        func
+    }
+
+    fn make_lambda<T, I: Iterator<T>>(mut iter: I, body: Expr<T>) -> Expr<T> {
+        match iter.next() {
+            Some(arg) => Lambda(arg, box make_lambda(iter, body)),
+            None => body
+        }
+    }
+    
+
+    fn make_alternative(arguments: ~[Pattern<Name>], body: Expr<Id<Name>>) -> Alternative<Id<Name>> {
+        if arguments.len() == 1 {
+            Alternative { pattern: translate_pattern(arguments[0]), expression: body }
+        }
+        else {
+            let (tuple_name, tuple_typ) = module::tuple_type(arguments.len());
+            let tuple_id = Id::new(Name { name: intern(tuple_name.as_slice()), uid: 0 }, tuple_typ, ~[]);
+            let patterns: Vec<Pattern<Id<Name>>> = arguments.move_iter().map(|arg| translate_pattern(arg)).collect();
+            Alternative { pattern: ConstructorPattern(tuple_id, FromVec::from_vec(patterns)), expression: body }
+        }
+    }
+
     fn translate_pattern(pattern: module::Pattern<Name>) -> Pattern<Id<Name>> {
         match pattern {
-            IdentifierPattern(i) => IdentifierPattern(Id::new(i, Type::new_var(0), ~[])),
+            IdentifierPattern(i) => IdentifierPattern(Id::new(i, Type::new_var(1213), ~[])),
             NumberPattern(n) => NumberPattern(n),
             ConstructorPattern(name, patterns) =>
                 ConstructorPattern(
-                    Id::new(name, Type::new_var(0), ~[]),
+                    Id::new(name, Type::new_var(444), ~[]),
                     FromVec::<Pattern<Id<Name>>>::from_vec(patterns.move_iter().map(translate_pattern).collect())),
             WildCardPattern => WildCardPattern
         }
