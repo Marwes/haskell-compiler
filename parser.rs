@@ -547,23 +547,8 @@ fn patternParameter(&mut self) -> ~[Pattern] {
             }
             NUMBER => parameters.push(NumberPattern(from_str(self.lexer.current().value.as_slice()).unwrap())),
 		    LPARENS => {
-				let pat = self.pattern();
-				let maybeComma = self.lexer.next_().token;
-				if maybeComma == COMMA {
-					let mut tupleArgs: Vec<Pattern> = self.sepBy1(|this| this.pattern(), COMMA).move_iter().collect();
-
-					let rParens = self.lexer.current();
-					if rParens.token != RPARENS {
-						fail!(ParseError(&self.lexer, RPARENS));
-					}
-					tupleArgs.unshift(pat);
-					parameters.push(ConstructorPattern(tuple_name(tupleArgs.len()), FromVec::from_vec(tupleArgs)));
-				}
-				else {
-                    self.lexer.backtrack();
-                    self.requireNext(RPARENS);
-                    parameters.push(pat);
-				}
+                self.lexer.backtrack();
+				parameters.push(self.pattern());
 			}
             LBRACKET => {
                 if self.lexer.next_().token != RBRACKET {
@@ -602,7 +587,12 @@ fn pattern(&mut self) -> Pattern {
             if rParens != RPARENS {
                 fail!(ParseError(&self.lexer, RPARENS));
             }
-            ConstructorPattern(tuple_name(tupleArgs.len()), tupleArgs)
+            if tupleArgs.len() == 1 {
+                tupleArgs[0]
+            }
+            else {
+                ConstructorPattern(tuple_name(tupleArgs.len()), tupleArgs)
+            }
         }
         _ => { fail!("Error parsing pattern at token {}", self.lexer.current()) }
     };
