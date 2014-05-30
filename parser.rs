@@ -223,27 +223,11 @@ fn parseList(&mut self) -> TypedExpr {
 	}
     self.requireNext(RBRACKET);
 
-	if expressions.len() == 0 {
-		return TypedExpr::new(Identifier(intern("[]")));
-	}
-
-	let mut application = {
-		let mut arguments = ~[TypedExpr::new(Literal(Integral(0))), TypedExpr::new(Literal(Integral(0)))];//Must be 2 in length
-		swap(&mut arguments[0], expressions.mut_last().unwrap());
-		expressions.pop();
-		arguments[1] = TypedExpr::new(Identifier(intern("[]")));
-
+	let nil = TypedExpr::new(Identifier(intern("[]")));
+    expressions.move_iter().rev().fold(nil, |application, expr| {
+		let arguments = ~[expr, application];
 		makeApplication(TypedExpr::new(Identifier(intern(":"))), arguments.move_iter())
-	};
-	while expressions.len() > 0 {
-		let mut arguments = ~[TypedExpr::new(Literal(Integral(0))), TypedExpr::new(Literal(Integral(0)))];//Must be 2 in length
-		swap(&mut arguments[0], expressions.mut_last().unwrap());
-		expressions.pop();
-		arguments[1] = application;
-
-		application = makeApplication(TypedExpr::new(Identifier(intern(":"))), arguments.move_iter());
-	}
-    application
+	})
 }
 
 fn subExpression(&mut self, parseError : |&Token| -> bool) -> Option<TypedExpr> {
@@ -673,8 +657,7 @@ fn constrained_type(&mut self, typeVariableMapping : &mut HashMap<InternedStr, i
 	(make_constraints(maybeConstraints), typ)
 }
 
-fn constructorType(&mut self, arity : &mut int, dataDef: &DataDefinition, mapping : &mut HashMap<InternedStr, int>) -> Type
-{
+fn constructorType(&mut self, arity : &mut int, dataDef: &DataDefinition, mapping : &mut HashMap<InternedStr, int>) -> Type {
 	let token = self.lexer.next(constructorError).token;
 	if token == NAME {
 		*arity += 1;
@@ -687,14 +670,14 @@ fn constructorType(&mut self, arity : &mut int, dataDef: &DataDefinition, mappin
 		else {
 			Type::new_op(self.lexer.current().value.clone(), box [])
         };
-        function_type(&arg, &self.constructorType(arity, dataDef, mapping))
+        function_type_(arg, self.constructorType(arity, dataDef, mapping))
 	}
 	else if token == LPARENS {
         *arity += 1;
         let mut var = 100000;
         let arg = self.parse_type_(&mut var, mapping);
         self.requireNext(RPARENS);
-        function_type(&arg, &self.constructorType(arity, dataDef, mapping))
+        function_type_(arg, self.constructorType(arity, dataDef, mapping))
     }
     else {
 		dataDef.typ.clone()
