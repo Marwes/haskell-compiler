@@ -48,13 +48,10 @@ instance Eq Int where
     (/=) x y = not (x == y)
 
 instance Eq a => Eq [a] where
-    (==) xs ys = case xs of
-        : x2 xs2 -> case ys of
-            : y2 ys2 -> (x2 == y2) && (xs2 == ys2)
-            [] -> False
-        [] -> case ys of
-            : y2 ys2 -> False
-            [] -> True
+    (==) (: x xs) (: y ys) = (x == y) && (xs == ys)
+    (==) [] [] = True
+    (==) x y = False
+
     (/=) xs ys = not (xs == ys)
 
 instance Eq a => Eq (Maybe a) where

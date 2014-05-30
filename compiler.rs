@@ -341,6 +341,26 @@ impl DataTypes for Assembly {
     }
 }
 
+impl Instruction {
+    fn stack_change(&self) -> int {
+        match *self {
+            Add | Sub | Multiply | Divide | Remainder | IntEQ | IntLT | IntLE | IntGT | IntGE | 
+            DoubleAdd |  DoubleSub |  DoubleMultiply |  DoubleDivide |  DoubleRemainder |  DoubleEQ |
+            DoubleLT |  DoubleLE |  DoubleGT |  DoubleGE => -1,
+            IntToDouble |  DoubleToInt => 0,
+            Push(..) | PushGlobal(..) | PushInt(..) | PushFloat(..) | PushChar(..) => 1,
+            Mkap => -1,
+            Eval | Unwind | Update(..) => 0,
+            Pop(s) => -(s as int),
+            Slide(s) => -(s as int),
+            Split(s) => (s as int) - 1, 
+            Pack(_, s) => 1 - (s as int),
+            CaseJump(..) | Jump(..) | JumpFalse(..) => 0,
+            PushDictionary(..) | PushDictionaryMember(..) | PushPrimitive(..) => 1
+        }
+    }
+}
+
 pub struct Compiler<'a> {
     pub type_env: &'a TypeEnvironment<'a>,
     ///Hashmap containging class names mapped to the functions it contains
@@ -529,6 +549,9 @@ impl <'a> Compiler<'a> {
         self.variables.insert(identifier, StackVariable(self.stackSize));
         self.stackSize += 1;
     }
+    fn new_var_at(&mut self, identifier : Name, index: uint) {
+        self.variables.insert(identifier, StackVariable(index));
+    }
 
     fn scope(&mut self, f: |&mut Compiler|) {
         self.variables.enter_scope();
@@ -661,13 +684,7 @@ impl <'a> Compiler<'a> {
                     self.scope(|this| {
                         let pattern_start = instructions.len() as int;
                         let mut branches = Vec::new();
-                        //If it is only an identifier we do nothing in the pattern, but we still allocate a variable
-                        //Thus we decrease the stack size first so the result is no change after the allocation
-                        match alt.pattern {
-                            IdentifierPattern(_) => this.stackSize -= 1,
-                            _ => ()
-                        }
-                        let stack_increase = this.compile_pattern(&alt.pattern, &mut branches, instructions, this.stackSize, 0);
+                        let stack_increase = this.compile_pattern(&alt.pattern, &mut branches, instructions, this.stackSize);
                         let pattern_end = instructions.len() as int;
 
                         this.compile(&alt.expression, instructions, strict);
@@ -690,7 +707,6 @@ impl <'a> Compiler<'a> {
                         }
                     });
                 }
-                self.stackSize -= 1;
                 for branch in end_branches.iter() {
                     *instructions.get_mut(*branch) = Jump(instructions.len());
                 }
@@ -893,12 +909,11 @@ impl <'a> Compiler<'a> {
         }
     }
 
-    fn compile_pattern(&mut self, pattern: &Pattern<Id>, branches: &mut Vec<uint>, instructions: &mut Vec<Instruction>, stack_index: uint, pattern_index: uint) -> uint {
-        //TODO this is unlikely to work with nested patterns currently
+    fn compile_pattern(&mut self, pattern: &Pattern<Id>, branches: &mut Vec<uint>, instructions: &mut Vec<Instruction>, stack_size: uint) -> uint {
+        debug!("Pattern {} at {}", pattern, stack_size);
         match pattern {
             &ConstructorPattern(ref name, ref patterns) => {
-                self.stackSize += 1;
-                instructions.push(Push(stack_index - pattern_index));
+                instructions.push(Push(stack_size));
                 match self.find_constructor(name.name.name) {
                     Some((tag, _)) => {
                         instructions.push(CaseJump(tag as uint));
@@ -908,16 +923,16 @@ impl <'a> Compiler<'a> {
                     _ => fail!("Undefined constructor {}", *name)
                 }
                 instructions.push(Split(patterns.len()));
+                self.stackSize += patterns.len();
                 let mut size = 0;
                 for (i, p) in patterns.iter().enumerate() {
-                    let stack_size = stack_index + patterns.len();
-                    size += self.compile_pattern(p, branches, instructions, stack_size, patterns.len() - i - 1);
+                    size += self.compile_pattern(p, branches, instructions, self.stackSize + 1 - patterns.len() + i);
                 }
                 size + patterns.len()
             }
             &NumberPattern(number) => {
-                self.newStackVar(Name { name: intern(pattern_index.to_str().as_slice()), uid: 0 });
-                instructions.push(Push(stack_index - pattern_index));
+                self.new_var_at(Name { name: intern(stack_size.to_str().as_slice()), uid: 0 }, stack_size);
+                instructions.push(Push(stack_size));
                 instructions.push(Eval);
                 instructions.push(PushInt(number));
                 instructions.push(IntEQ);
@@ -925,11 +940,10 @@ impl <'a> Compiler<'a> {
                 0
             }
             &IdentifierPattern(ref ident) => {
-                self.newStackVar(ident.name.clone());
+                self.new_var_at(ident.name.clone(), stack_size);
                 0
             }
             &WildCardPattern => {
-                self.stackSize += 1;
                 0
             }
         }
