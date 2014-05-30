@@ -318,7 +318,7 @@ impl <'a> fmt::Show for Prec<'a> {
             TypeOperator(ref op) => write!(f, "{}", *op),
             Generic(ref var) => write!(f, "\\#{}", *var),
             TypeApplication(ref lhs, ref rhs) => {
-                match try_get_function(*lhs) {
+                match try_get_function(t) {
                     Some((arg, result)) => {
                         if p >= Function {
                             write!(f, "({} -> {})", *arg, result)
@@ -499,9 +499,9 @@ impl <T: fmt::Show> fmt::Show for Pattern<T> {
             &IdentifierPattern(ref s) => write!(f, "{}", s),
             &NumberPattern(ref i) => write!(f, "{}", i),
             &ConstructorPattern(ref name, ref patterns) => {
-                try!(write!(f, "({}", name));
+                try!(write!(f, "({} ", name));
                 for p in patterns.iter() {
-                    try!(write!(f, "{} ", p));
+                    try!(write!(f, " {}", p));
                 }
                 write!(f, ")")
             }
