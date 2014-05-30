@@ -587,25 +587,33 @@ fn located_pattern(&mut self) -> Located<Pattern> {
 fn pattern(&mut self) -> Pattern {
 	let nameToken = self.lexer.next_().token;
     let name = self.lexer.current().value.clone();
-	match nameToken {
-	    LBRACKET => {
-			if self.lexer.next_().token != RBRACKET {
-				fail!(ParseError(&self.lexer, RBRACKET));
-			}
-			ConstructorPattern(intern("[]"), ~[])
-		}
-	    NAME | OPERATOR => self.make_pattern(name, |this| this.patternParameter()),
-	    NUMBER => NumberPattern(from_str(name.as_slice()).unwrap()),
-	    LPARENS => {
-			let tupleArgs = self.sepBy1(|this| this.pattern(), COMMA);
-			let rParens = self.lexer.current().token;
-			if rParens != RPARENS {
-				fail!(ParseError(&self.lexer, RPARENS));
-			}
-			ConstructorPattern(tuple_name(tupleArgs.len()), tupleArgs)
-		}
-	    _ => { fail!("Error parsing pattern at token {}", self.lexer.current()) }
-	}
+    let pat = match nameToken {
+        LBRACKET => {
+            if self.lexer.next_().token != RBRACKET {
+                fail!(ParseError(&self.lexer, RBRACKET));
+            }
+            ConstructorPattern(intern("[]"), ~[])
+        }
+        NAME | OPERATOR => self.make_pattern(name, |this| this.patternParameter()),
+        NUMBER => NumberPattern(from_str(name.as_slice()).unwrap()),
+        LPARENS => {
+            let tupleArgs = self.sepBy1(|this| this.pattern(), COMMA);
+            let rParens = self.lexer.current().token;
+            if rParens != RPARENS {
+                fail!(ParseError(&self.lexer, RPARENS));
+            }
+            ConstructorPattern(tuple_name(tupleArgs.len()), tupleArgs)
+        }
+        _ => { fail!("Error parsing pattern at token {}", self.lexer.current()) }
+    };
+    self.lexer.next_();
+    if self.lexer.current().token == OPERATOR && self.lexer.current().value.as_slice() == ":" {
+        ConstructorPattern(self.lexer.current().value, ~[pat, self.pattern()])
+    }
+    else {
+        self.lexer.backtrack();
+        pat
+    }
 }
 
 fn typeDeclaration(&mut self) -> TypeDeclaration {
