@@ -381,6 +381,3 @@ instance Monad IO where
     return = io_return
     fail x = error x
 
-test = show (Just True)
-
-

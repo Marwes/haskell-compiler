@@ -15,17 +15,47 @@ impl Str for Name {
     }
 }
 
+struct Errors<T> {
+    errors: Vec<T>
+}
+impl <T> Errors<T> {
+    fn new() -> Errors<T> {
+        Errors { errors: Vec::new() }
+    }
+    fn insert(&mut self, e: T) {
+        self.errors.push(e);
+    }
+    fn has_errors(&self) -> bool {
+        self.errors.len() != 0
+    }
+}
+impl <T: ::std::fmt::Show> Errors<T> {
+    fn report_errors(&self, pass: &str) {
+        println!("Found {} errors in compiler pass: {}", self.errors.len(), pass);
+        for error in self.errors.iter() {
+            println!("{}", error);
+        }
+    }
+}
+
 struct Renamer {
     uniques: ScopedMap<InternedStr, Name>,
-    unique_id: uint
+    unique_id: uint,
+    errors: Errors<StrBuf>
 }
 
 impl Renamer {
+    fn new() -> Renamer {
+        Renamer { uniques: ScopedMap::new(), unique_id: 1, errors: Errors::new() }
+    }
 
-    fn rename_bindings(&mut self, bindings: ~[Binding<InternedStr>]) -> ~[Binding<Name>] {
+    fn rename_bindings(&mut self, bindings: ~[Binding<InternedStr>], is_global: bool) -> ~[Binding<Name>] {
         //Add all bindings in the scope
-        for bind in bindings.iter() {
-            self.make_unique(bind.name.clone());
+        for bind in binding_groups(bindings.as_slice()) {
+            self.make_unique(bind[0].name.clone());
+            if is_global {
+                self.uniques.find_mut(&bind[0].name).unwrap().uid = 0;
+            }
         }
         FromVec::<Binding<Name>>::from_vec(bindings.move_iter().map(|binding| {
             let Binding { name: name, arguments: arguments, expression: expression, typeDecl: typeDecl, arity: arity  } = binding;
@@ -58,7 +88,7 @@ impl Renamer {
             }
             Let(bindings, expr) => {
                 self.uniques.enter_scope();
-                let bs = self.rename_bindings(bindings);
+                let bs = self.rename_bindings(bindings, false);
                 let l = Let(bs, box self.rename(*expr));
                 self.uniques.exit_scope();
                 l
@@ -80,7 +110,7 @@ impl Renamer {
                 let bs: Vec<DoBinding<Name>> = bindings.move_iter().map(|bind| {
                     match bind {
                         DoExpr(expr) => DoExpr(self.rename(expr)),
-                        DoLet(bs) => DoLet(self.rename_bindings(bs)),
+                        DoLet(bs) => DoLet(self.rename_bindings(bs, false)),
                         DoBind(pattern, expr) => {
                             let Located { location: location, node: node } = pattern;
                             let loc = Located { location: location, node: self.rename_pattern(node) };
@@ -116,6 +146,8 @@ impl Renamer {
 
     fn rename_binding(&mut self, binding: Binding<InternedStr>) -> Binding<Name> {
         let Binding { name: name, arguments: arguments, expression: expression, typeDecl: td, arity: a } = binding;
+        self.make_unique(name);
+        self.uniques.find_mut(&name).unwrap().uid = 0;
         self.uniques.enter_scope();
         let b = Binding {
             name: Name { name: name, uid: 0 },
@@ -132,20 +164,26 @@ impl Renamer {
     }
 
     fn make_unique(&mut self, name: InternedStr) -> Name {
-        self.unique_id += 1;
-        let u = Name { name: name.clone(), uid: self.unique_id};
-        self.uniques.insert(name, u.clone());
-        u
+        if self.uniques.in_current_scope(&name) {
+            self.errors.insert(format!("{} is defined multiple times", name));
+            self.uniques.find(&name).map(|x| x.clone()).unwrap()
+        }
+        else {
+            self.unique_id += 1;
+            let u = Name { name: name.clone(), uid: self.unique_id};
+            self.uniques.insert(name, u.clone());
+            u
+        }
     }
 }
 
 pub fn rename_expr(expr: TypedExpr<InternedStr>) -> TypedExpr<Name> {
-    let mut renamer = Renamer { uniques: ScopedMap::new(), unique_id: 1 };
+    let mut renamer = Renamer::new();
     renamer.rename(expr)
 }
 
 pub fn rename_module(module: Module<InternedStr>) -> Module<Name> {
-    let mut renamer = Renamer { uniques: ScopedMap::new(), unique_id: 1 };
+    let mut renamer = Renamer::new();
     rename_module_(&mut renamer, module)
 }
 pub fn rename_module_(renamer: &mut Renamer, module: Module<InternedStr>) -> Module<Name> {
@@ -195,14 +233,14 @@ pub fn rename_module_(renamer: &mut Renamer, module: Module<InternedStr>) -> Mod
             classname : classname
         } = instance;
         Instance {
-            bindings : FromVec::<Binding<Name>>::from_vec(bindings.move_iter().map(|b| renamer.rename_binding(b)).collect()),
+            bindings : renamer.rename_bindings(bindings, true),
             constraints : constraints,
             typ : typ,
             classname : classname
         }
     }).collect();
     
-    let bindings2 : Vec<Binding<Name>> = bindings.move_iter().map(|b| renamer.rename_binding(b)).collect();
+    let bindings2 = renamer.rename_bindings(bindings, true);
     
     Module {
         name: renamer.make_unique(name),
@@ -210,15 +248,35 @@ pub fn rename_module_(renamer: &mut Renamer, module: Module<InternedStr>) -> Mod
         classes : classes,
         dataDefinitions: FromVec::from_vec(data_definitions2),
         typeDeclarations: typeDeclarations,
-        bindings : FromVec::from_vec(bindings2),
+        bindings : bindings2,
         instances: FromVec::from_vec(instances2)
     }
 }
 
 pub fn rename_modules(modules: Vec<Module<InternedStr>>) -> Vec<Module<Name>> {
-    let mut renamer = Renamer { uniques: ScopedMap::new(), unique_id: 1 };
-    modules.move_iter().map(|module| {
+    let mut renamer = Renamer::new();
+    let ms = modules.move_iter().map(|module| {
         rename_module_(&mut renamer, module)
-    }).collect()
+    }).collect();
+    if renamer.errors.has_errors() {
+        renamer.errors.report_errors("Renamer");
+        fail!();
+    }
+    ms
 }
 
+#[cfg(test)]
+mod tests {
+    use renamer::*;
+    use parser::*;
+    #[test]
+    #[should_fail]
+    fn duplicate_binding() {
+        let mut parser = Parser::new(
+r"main = 1
+test = []
+main = 2".chars());
+        let module = parser.module();
+        rename_modules(vec!(module));
+    }
+}

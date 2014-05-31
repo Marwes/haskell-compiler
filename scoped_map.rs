@@ -46,6 +46,17 @@ impl <K: TotalEq + Hash + Clone, V> ScopedMap<K, V> {
         self.map.find_equiv(k).and_then(|x| x.last())
     }
 
+    pub fn in_current_scope(&self, k: &K) -> bool {
+        for n in self.scopes.iter().rev() {
+            match *n {
+                Some(ref name) if name == k => return true,
+                None => break,
+                _ => ()
+            }
+        }
+        false
+    }
+
     pub fn mut_iter<'a>(&'a mut self) -> MutEntries<'a, K, Vec<V>> {
         self.map.mut_iter()
     }
