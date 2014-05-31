@@ -4,6 +4,7 @@
 #[phase(syntax, link)]
 extern crate log;
 extern crate collections;
+extern crate getopts;
 #[cfg(test)]
 extern crate test;
 
@@ -29,6 +30,8 @@ use renamer::{rename_expr, Name};
 use interner::intern;
 #[cfg(not(test))]
 use std::vec::FromVec;
+#[cfg(not(test))]
+use getopts::{optopt, optflag, getopts, usage};
 
 #[macro_escape]
 macro_rules! write_core_expr(
@@ -85,59 +88,70 @@ fn is_io(typ: &Type) -> bool {
 
 #[cfg(not(test))]
 fn main() {
-    let args = std::os::args();
-    if args.len() == 2 {
-        let expr_str = args.get(1).as_slice();
-        let prelude = compile_file("Prelude.hs");
-        let assembly = {
-            let mut parser = Parser::new(expr_str.chars());
-            let mut expr = rename_expr(parser.expression_());
+    let opts = [
+        optopt("l", "", "Input file", "Module name"),
+        optflag("h", "help", "Print help")
+    ];
+    let matches = {
+        let args = std::os::args();
+        getopts(args.tail(), opts)
+            .unwrap_or_else(|err| fail!("{}", err))
+    };
 
-            let mut type_env = TypeEnvironment::new();
-            type_env.add_types(&prelude as &DataTypes);
-            type_env.typecheck_expr(&mut expr);
-            let temp_module = Module::from_expr(translate_expr(expr));
-            let m = do_lambda_lift(temp_module);
-            
-            let mut compiler = Compiler::new(&type_env);
-            compiler.assemblies.push(&prelude);
-            compiler.compileModule(&m)
-        };
-        let mut vm = VM::new();
-        vm.add_assembly(prelude);
-        let (instructions, type_decl) = assembly.superCombinators.iter()
-            .find(|sc| sc.name == Name { name: intern("main"), uid: 0 })
-            .map(|sc| {
-                if is_io(&sc.type_declaration.typ) {
-                    //If the expression we compiled is IO we need to add an extra argument
-                    //'RealWorld' which can be any dumb value (42 here), len - 3 is used because
-                    //it is currently 3 instructions Eval, Update(0), Unwind at the end of each instruction list
-                    //to finish the expression
-                    let mut vec: Vec<Instruction> = sc.instructions.iter().map(|x| x.clone()).collect();
-                    let len = vec.len();
-                    vec.insert(len - 3, Mkap);
-                    vec.insert(0, PushInt(42));//Realworld
-                    (FromVec::from_vec(vec), sc.type_declaration.clone())
-                }
-                else {
-                    (sc.instructions.clone(), sc.type_declaration.clone())
-                }
-            })
-            .expect("Expected main function");
-        let assembly_index = vm.add_assembly(assembly);
-        let result = evaluate(&vm, instructions, assembly_index);//TODO 0 is not necessarily correct
-        println!("{}  {}", result, type_decl);
+    if matches.opt_present("h") {
+        println!("Usage: vm [OPTIONS|EXPRESSION] {}", usage("", opts));
+        return;
     }
-    else if args.len() == 3 && "-l" == args.get(1).as_slice() {
-        let modulename = args.get(2).as_slice();
-        let result = execute_main_module(modulename).unwrap();
-        match result {
-            Some(x) => println!("{:?}", x),
-            None => println!("Error running module {:?}", modulename)
+    match matches.opt_str("l") {
+        Some(modulename) => {
+            let result = execute_main_module(modulename.as_slice()).unwrap();
+            match result {
+                Some(x) => println!("{:?}", x),
+                None => println!("Error running module {:?}", modulename)
+            }
+            return;
         }
+        None => ()
     }
-    else {
-        println!("Expected one argument which is the expression or 2 arguments where the first is -l and the second the file to run (needs a main function)")
-    }
+    let expr_str = matches.free.get(0).as_slice();
+    let prelude = compile_file("Prelude.hs");
+    let assembly = {
+        let mut parser = Parser::new(expr_str.chars());
+        let mut expr = rename_expr(parser.expression_());
+
+        let mut type_env = TypeEnvironment::new();
+        type_env.add_types(&prelude as &DataTypes);
+        type_env.typecheck_expr(&mut expr);
+        let temp_module = Module::from_expr(translate_expr(expr));
+        let m = do_lambda_lift(temp_module);
+        
+        let mut compiler = Compiler::new(&type_env);
+        compiler.assemblies.push(&prelude);
+        compiler.compileModule(&m)
+    };
+    let mut vm = VM::new();
+    vm.add_assembly(prelude);
+    let (instructions, type_decl) = assembly.superCombinators.iter()
+        .find(|sc| sc.name == Name { name: intern("main"), uid: 0 })
+        .map(|sc| {
+            if is_io(&sc.type_declaration.typ) {
+                //If the expression we compiled is IO we need to add an extra argument
+                //'RealWorld' which can be any dumb value (42 here), len - 3 is used because
+                //it is currently 3 instructions Eval, Update(0), Unwind at the end of each instruction list
+                //to finish the expression
+                let mut vec: Vec<Instruction> = sc.instructions.iter().map(|x| x.clone()).collect();
+                let len = vec.len();
+                vec.insert(len - 3, Mkap);
+                vec.insert(0, PushInt(42));//Realworld
+                (FromVec::from_vec(vec), sc.type_declaration.clone())
+            }
+            else {
+                (sc.instructions.clone(), sc.type_declaration.clone())
+            }
+        })
+        .expect("Expected main function");
+    let assembly_index = vm.add_assembly(assembly);
+    let result = evaluate(&vm, instructions, assembly_index);//TODO 0 is not necessarily correct
+    println!("{}  {}", result, type_decl);
 }
 
