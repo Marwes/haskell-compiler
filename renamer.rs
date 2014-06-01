@@ -3,7 +3,7 @@ use module::*;
 use scoped_map::ScopedMap;
 use interner::*;
 
-#[deriving(Eq, TotalEq, Hash, Clone, Show)]
+#[deriving(Eq, TotalEq, Hash, Clone)]
 pub struct Name {
     pub name: InternedStr,
     pub uid: uint
@@ -12,6 +12,12 @@ pub struct Name {
 impl Str for Name {
     fn as_slice<'a>(&'a self) -> &'a str {
         self.name.as_slice()
+    }
+}
+
+impl ::std::fmt::Show for Name {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+        write!(f, "{}_{}", self.name, self.uid)
     }
 }
 

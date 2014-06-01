@@ -605,7 +605,6 @@ pub fn walk_pattern<Ident>(visitor: &mut Visitor<Ident>, pattern: &Pattern<Ident
         _ => ()
     }
 }
-
 struct Binds<'a, Ident> {
     vec: &'a [Binding<Ident>]
 }

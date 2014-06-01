@@ -106,7 +106,7 @@ pub struct Id<T = Name> {
 
 impl fmt::Show for Id {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}_{}", self.name.name, self.name.uid)
+        write!(f, "{}", self.name)
     }
 }
 
@@ -368,8 +368,9 @@ pub mod translate {
                 for bind in bindings.move_iter().rev() {
                     result = match bind {
                         module::DoExpr(e) => {
-                            let x = do_bind2_id(e.typ.clone(), result.get_type().clone());
-                            Apply(box Apply(box x, box translate_expr(e)), box result)
+                            let core = translate_expr(e);
+                            let x = do_bind2_id(core.get_type().clone(), result.get_type().clone());
+                            Apply(box Apply(box x, box core), box result)
                         }
                         module::DoBind(pattern, e) => {
                             do_bind_translate(pattern.node, translate_expr(e), result)
@@ -385,6 +386,7 @@ pub mod translate {
     }
 
     fn do_bind2_id(m_a: Type, m_b: Type) -> Expr<Id<Name>> {
+        debug!("m_a {}", m_a);
         let c = match *m_a.appl() {
             TypeVariable(ref var) => ~[Constraint { class: intern("Monad"), variables: ~[var.clone()] }],
             _ => ~[]

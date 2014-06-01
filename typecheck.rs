@@ -44,7 +44,7 @@ impl Types for Module<Name> {
     fn find_type<'a>(&'a self, name: &Name) -> Option<&'a Type> {
         for bind in self.bindings.iter() {
             if bind.name == *name {
-                return Some(&bind.expression.typ);
+                return Some(&bind.typeDecl.typ);
             }
         }
 
@@ -371,7 +371,8 @@ impl <'a> TypeEnvironment<'a> {
 
     pub fn typecheck_expr(&mut self, expr : &mut TypedExpr<Name>) {
         let mut subs = Substitution { subs: HashMap::new(), constraints: HashMap::new() }; 
-        self.typecheck(expr, &mut subs);
+        let mut typ = self.typecheck(expr, &mut subs);
+        unify_location(self, &mut subs, &expr.location, &mut typ, &mut expr.typ);
         self.substitute(&mut subs, expr);
     }
 
@@ -556,7 +557,7 @@ impl <'a> TypeEnvironment<'a> {
         self.new_var_kind(StarKind)
     }
 
-    fn typecheck(&mut self, expr : &mut TypedExpr<Name>, subs: &mut Substitution) {
+    fn typecheck(&mut self, expr : &mut TypedExpr<Name>, subs: &mut Substitution) -> Type {
         if expr.typ == Type::new_var(0) {
             expr.typ = self.new_var();
         }
@@ -584,66 +585,64 @@ impl <'a> TypeEnvironment<'a> {
                     Char(_) => {
                         expr.typ = char_type();
                     }
-                }   
+                }
+                expr.typ.clone()
             }
             &Identifier(ref name) => {
                 match self.fresh(name) {
                     Some(t) => {
-                        expr.typ = t;
+                        debug!("{} as {}", name, t);
+                        expr.typ = t.clone();
+                        t
                     }
                     None => fail!("Undefined identifier '{}' at {}", *name, expr.location)
                 }
             }
             &Apply(ref mut func, ref mut arg) => {
-                self.typecheck(*func, subs);
-                replace(&mut self.constraints, &mut func.typ, subs);
-                self.typecheck(*arg, subs);
-                replace(&mut self.constraints, &mut arg.typ, subs);
-                expr.typ = function_type(&arg.typ, &self.new_var());
-                unify_location(self, subs, &expr.location, &mut func.typ, &mut expr.typ);
-                expr.typ = match &expr.typ {
-                    &TypeApplication(_, ref x) => (**x).clone(),
-                    _ => fail!("Must be a type application (should be a function type), found {}", expr.typ)
+                let mut func_type = self.typecheck(*func, subs);
+                replace(&mut self.constraints, &mut func_type, subs);
+                let mut arg_type = self.typecheck(*arg, subs);
+                replace(&mut self.constraints, &mut arg_type, subs);
+                let mut result = function_type_(arg_type, self.new_var());
+                unify_location(self, subs, &expr.location, &mut func_type, &mut result);
+                result = match result {
+                    TypeApplication(_, ref x) => (**x).clone(),
+                    _ => fail!("Must be a type application (should be a function type), found {}", result)
                 };
+                result
             }
             &Lambda(ref arg, ref mut body) => {
                 let mut argType = self.new_var();
-                expr.typ = function_type(&argType, &self.new_var());
+                let mut result = function_type_(argType.clone(), self.new_var());
 
-                {
-                    self.typecheck_pattern(&expr.location, subs, arg, &mut argType);
-                    self.typecheck(*body, subs);
-                }
-                replace(&mut self.constraints, &mut expr.typ, subs);
-                with_arg_return(&mut expr.typ, |_, return_type| {
-                    *return_type = body.typ.clone();
+                self.typecheck_pattern(&expr.location, subs, arg, &mut argType);
+                let body_type = self.typecheck(*body, subs);
+                replace(&mut self.constraints, &mut result, subs);
+                with_arg_return(&mut result, |_, return_type| {
+                    *return_type = body_type.clone();
                 });
+                result
             }
             &Let(ref mut bindings, ref mut body) => {
-
-                {
-                    self.typecheck_local_bindings(subs, &mut BindingsWrapper { value: *bindings });
-                    self.apply_locals(subs);
-                    self.typecheck(*body, subs);
-                }
-
-                replace(&mut self.constraints, &mut body.typ, subs);
-                expr.typ = body.typ.clone();
+                self.typecheck_local_bindings(subs, &mut BindingsWrapper { value: *bindings });
+                self.apply_locals(subs);
+                let mut body_type = self.typecheck(*body, subs);
+                replace(&mut self.constraints, &mut body_type, subs);
+                body_type
             }
             &Case(ref mut case_expr, ref mut alts) => {
-                self.typecheck(*case_expr, subs);
-                self.typecheck_pattern(&alts[0].pattern.location, subs, &alts[0].pattern.node, &mut case_expr.typ);
-                self.typecheck(&mut alts[0].expression, subs);
-                let mut alt0_ = alts[0].expression.typ.clone();
+                let mut match_type = self.typecheck(*case_expr, subs);
+                self.typecheck_pattern(&alts[0].pattern.location, subs, &alts[0].pattern.node, &mut match_type);
+                let mut alt0_ = self.typecheck(&mut alts[0].expression, subs);
                 for alt in alts.mut_iter().skip(1) {
-                    self.typecheck_pattern(&alt.pattern.location, subs, &alt.pattern.node, &mut case_expr.typ);
-                    self.typecheck(&mut alt.expression, subs);
-                    unify_location(self, subs, &alt.expression.location, &mut alt0_, &mut alt.expression.typ);
-                    replace(&mut self.constraints, &mut alt.expression.typ, subs);
+                    self.typecheck_pattern(&alt.pattern.location, subs, &alt.pattern.node, &mut match_type);
+                    let mut alt_type = self.typecheck(&mut alt.expression, subs);
+                    unify_location(self, subs, &alt.expression.location, &mut alt0_, &mut alt_type);
+                    replace(&mut self.constraints, &mut alt_type, subs);
                 }
-                replace(&mut self.constraints, &mut alts[0].expression.typ, subs);
-                replace(&mut self.constraints, &mut case_expr.typ, subs);
-                expr.typ = alt0_;
+                replace(&mut self.constraints, &mut alt0_, subs);
+                replace(&mut self.constraints, &mut match_type, subs);
+                alt0_
             }
             &Do(ref mut bindings, ref mut last_expr) => {
                 let mut previous = self.new_var_kind(KindFunction(box StarKind, box StarKind));
@@ -652,19 +651,20 @@ impl <'a> TypeEnvironment<'a> {
                 for bind in bindings.mut_iter() {
                     match *bind {
                         DoExpr(ref mut e) => {
-                            self.typecheck(e, subs);
-                            unify_location(self, subs, &e.location, &mut e.typ, &mut previous);
+                            let mut typ = self.typecheck(e, subs);
+                            println!(">>>>>> {} {} {}", typ, e.typ, e);
+                            unify_location(self, subs, &e.location, &mut typ, &mut previous);
                         }
                         DoLet(ref mut bindings) => {
                             self.typecheck_local_bindings(subs, &mut BindingsWrapper { value: *bindings });
                             self.apply_locals(subs);
                         }
                         DoBind(ref mut pattern, ref mut e) => {
-                            self.typecheck(e, subs);
-                            unify_location(self, subs, &e.location, &mut e.typ, &mut previous);
-                            let inner_type = match e.typ {
+                            let mut typ = self.typecheck(e, subs);
+                            unify_location(self, subs, &e.location, &mut typ, &mut previous);
+                            let inner_type = match typ {
                                 TypeApplication(_, ref mut t) => t,
-                                _ => fail!("Not a monadic type: {}", e.typ)
+                                _ => fail!("Not a monadic type: {}", typ)
                             };
                             self.typecheck_pattern(&pattern.location, subs, &pattern.node, *inner_type);
                         }
@@ -676,11 +676,11 @@ impl <'a> TypeEnvironment<'a> {
                         _ => fail!()
                     }
                 }
-                self.typecheck(*last_expr, subs);
-                unify_location(self, subs, &last_expr.location, &mut last_expr.typ, &mut previous);
-                expr.typ.clone_from(&last_expr.typ);
+                let mut typ = self.typecheck(*last_expr, subs);
+                unify_location(self, subs, &last_expr.location, &mut typ, &mut previous);
+                typ
             }
-        };
+        }
     }
 
     fn typecheck_pattern(&mut self, location: &Location, subs: &mut Substitution, pattern: &Pattern<Name>, match_type: &mut Type) {
@@ -732,10 +732,13 @@ impl <'a> TypeEnvironment<'a> {
     }
 
     fn typecheck_binding_group(&mut self, subs: &mut Substitution, bindings: &mut [Binding<Name>]) {
-        debug!("Begin typecheck {} :: {}", bindings[0].name, bindings[0].expression.typ);
+        debug!("Begin typecheck {} :: {}", bindings[0].name, bindings[0].typeDecl.typ);
         let mut argument_types = Vec::from_fn(bindings[0].arguments.len(), |_| self.new_var());
         for bind in bindings.mut_iter() {
-            let type_var = bind.expression.typ.var().clone();
+            let type_var = match bind.typeDecl.typ {
+                TypeVariable(ref var) => Some(var.clone()),
+                _ => None
+            };
             if argument_types.len() != bind.arguments.len() {
                 fail!("{} Binding {} do not have the same number of arguments", bind.expression.location, bind.name);
             }
@@ -746,13 +749,19 @@ impl <'a> TypeEnvironment<'a> {
                 if arguments.len() == 0 { expr.clone() }
                 else { function_type_(arguments[0].clone(), make_function(arguments.slice_from(1), expr)) }
             }
-            self.typecheck(&mut bind.expression, subs);
-            bind.expression.typ = make_function(argument_types.as_slice(), &bind.expression.typ);
-            unify_location(self, subs, &bind.expression.location, &mut bind.typeDecl.typ, &mut bind.expression.typ);
+            let mut typ = self.typecheck(&mut bind.expression, subs);
+            unify_location(self, subs, &bind.expression.location, &mut typ, &mut bind.expression.typ);
+            typ = make_function(argument_types.as_slice(), &typ);
+            unify_location(self, subs, &bind.expression.location, &mut bind.typeDecl.typ, &mut typ);
             self.substitute(subs, &mut bind.expression);
-            subs.subs.insert(type_var, bind.expression.typ.clone());
+            replace(&mut self.constraints, &mut typ, subs);
+
+            match type_var {
+                Some(var) => { subs.subs.insert(var, typ.clone()); }
+                None => ()
+            }
         }
-        debug!("End typecheck {} :: {}", bindings[0].name, bindings[0].expression.typ);
+        debug!("End typecheck {} :: {}", bindings[0].name, bindings[0].typeDecl.typ);
     }
 
     pub fn typecheck_mutually_recursive_bindings<'a>
@@ -776,10 +785,10 @@ impl <'a> TypeEnvironment<'a> {
                     }
                 }
                 if is_global {
-                    self.namedTypes.insert(binds[0].name.clone(), binds[0].expression.typ.clone());
+                    self.namedTypes.insert(binds[0].name.clone(), binds[0].typeDecl.typ.clone());
                 }
                 else {
-                    self.local_types.insert(binds[0].name.clone(), binds[0].expression.typ.clone());
+                    self.local_types.insert(binds[0].name.clone(), binds[0].typeDecl.typ.clone());
                 }
             }
             for index in group.iter() {
@@ -806,16 +815,19 @@ impl <'a> TypeEnvironment<'a> {
                 let bindIndex = graph.get_vertex(*index).value;
                 let binds = bindings.get_mut(bindIndex);
                 for bind in binds.mut_iter() {
-                    bind.typeDecl.typ = bind.expression.typ.clone();
-                    bind.typeDecl.context = self.find_constraints(&bind.typeDecl.typ);
-                    let typ = if is_global {
-                        self.namedTypes.get_mut(&bind.name)
+                    {
+                        let typ = if is_global {
+                            self.namedTypes.get_mut(&bind.name)
+                        }
+                        else {
+                            self.local_types.get_mut(&bind.name)
+                        };
+                        bind.typeDecl.typ = typ.clone();
+                        quantify(start_var_index, typ);
                     }
-                    else {
-                        self.local_types.get_mut(&bind.name)
-                    };
-                    quantify(start_var_index, typ);
+                    bind.typeDecl.context = self.find_constraints(&bind.typeDecl.typ);
                 }
+                debug!("End typecheck {} :: {}", binds[0].name, binds[0].typeDecl.typ);
             }
         }
     }
@@ -1413,7 +1425,7 @@ test x = True";
     let module = do_typecheck(file);
 
     let typ = function_type_(Type::new_var(0), bool_type());
-    let bind_type0 = module.bindings[0].expression.typ;
+    let bind_type0 = module.bindings[0].typeDecl.typ;
     assert_eq!(bind_type0, typ);
 }
 
@@ -1482,7 +1494,7 @@ main x y = primIntAdd (test x) (test y)".chars());
     let mut env = TypeEnvironment::new();
     env.typecheck_module(&mut module);
 
-    let typ = &module.bindings[0].expression.typ;
+    let typ = &module.bindings[0].typeDecl.typ;
     let test = function_type_(Type::new_var(-1), function_type_(Type::new_var(-2), int_type()));
     assert_eq!(typ, &test);
     let test_cons = vec![intern("Test")];
@@ -1534,7 +1546,7 @@ instance Eq a => Eq [a] where
     let mut env = TypeEnvironment::new();
     env.typecheck_module(&mut module);
 
-    let typ = &module.instances[0].bindings[0].expression.typ;
+    let typ = &module.instances[0].bindings[0].typeDecl.typ;
     let list_type = list_type(Type::new_var(100));
     assert_eq!(*typ, function_type_(list_type.clone(), function_type_(list_type, bool_type())));
     let var = typ.appl().appr().appr().var();
@@ -1550,7 +1562,7 @@ r"test x = primDoubleAdd 0 x";
     let module = do_typecheck(file);
 
     let typ = function_type_(double_type(), double_type());
-    let bind_type0 = module.bindings[0].expression.typ;
+    let bind_type0 = module.bindings[0].typeDecl.typ;
     assert_eq!(bind_type0, typ);
 }
 
@@ -1602,7 +1614,7 @@ fn typecheck_prelude() {
     let id = module.bindings.iter().find(|bind| bind.name.as_slice() == "id");
     assert!(id != None);
     let id_bind = id.unwrap();
-    assert_eq!(id_bind.expression.typ, function_type_(Type::new_var(0), Type::new_var(0)));
+    assert_eq!(id_bind.typeDecl.typ, function_type_(Type::new_var(0), Type::new_var(0)));
 }
 
 #[test]
@@ -1637,8 +1649,8 @@ class Test a where
 instance Test Int where
     test x = x
 
-test :: Test a => a -> Int -> Int
-test x y = primIntAdd (test x) y";
+test2 :: Test a => a -> Int -> Int
+test2 x y = primIntAdd (test x) y";
     let module = do_typecheck(input);
 
     assert_eq!(module.bindings[0].typeDecl.typ, module.typeDeclarations[0].typ);
@@ -1661,7 +1673,7 @@ test x = do
 ";
     let module = do_typecheck_with(file, [&prelude as &DataTypes]);
 
-    assert_eq!(module.bindings[0].expression.typ, function_type_(list_type(char_type()), io(unit())));
+    assert_eq!(module.bindings[0].typeDecl.typ, function_type_(list_type(char_type()), io(unit())));
 }
 
 #[test]
@@ -1683,7 +1695,7 @@ test x = do
 
     let var = Type::new_var(0);
     let t = function_type_(Type::new_var_args(2, ~[list_type(var.clone())]), Type::new_var_args(2, ~[var.clone()]));
-    assert_eq!(module.bindings[0].expression.typ, t);
+    assert_eq!(module.bindings[0].typeDecl.typ, t);
     assert_eq!(module.bindings[0].typeDecl.context[0].class, intern("Monad"));
 }
 
@@ -1696,7 +1708,7 @@ test _ [] = []
     let a = Type::new_var(0);
     let b = Type::new_var(1);
     let test = function_type_(function_type_(a.clone(), b.clone()), function_type_(list_type(a), list_type(b)));
-    assert_eq!(module.bindings[0].expression.typ, test);
+    assert_eq!(module.bindings[0].typeDecl.typ, test);
 }
 
 #[test]
