@@ -1084,7 +1084,7 @@ r"test x y = (primIntAdd 0 1, x, y)";
 fn compile_case() {
     let file =
 r"main = case [primIntAdd 1 0] of
-    : x xs -> x
+    x:xs -> x
     [] -> 2";
     let assembly = compile(file);
 
@@ -1098,7 +1098,7 @@ r"main = case [primIntAdd 1 0] of
 fn compile_nested_case() {
     let file =
 r"main = case [primIntAdd 1 0] of
-    : 1 xs -> primIntAdd 1 1
+    1:xs -> primIntAdd 1 1
     [] -> 2";
     let assembly = compile(file);
 
@@ -1192,7 +1192,7 @@ showInt i =
 #[test]
 fn binding_pattern() {
     compile(r"
-test f (: x xs) = f x : test f xs
+test f (x:xs) = f x : test f xs
 test _ [] = []
 ");
 }

@@ -48,7 +48,7 @@ instance Eq Int where
     (/=) x y = not (x == y)
 
 instance Eq a => Eq [a] where
-    (==) (: x xs) (: y ys) = (x == y) && (xs == ys)
+    (==) (x:xs) (y:ys) = (x == y) && (xs == ys)
     (==) [] [] = True
     (==) x y = False
 
@@ -273,11 +273,11 @@ until p f x = case p x of
     False -> until p f (f x)
 
 map :: (a -> b) -> [a] -> [b]
-map f (: y ys) = f y : map f ys
+map f (y:ys) = f y : map f ys
 map f [] = []
 
 foldl :: (b -> a -> b) -> b -> [a] -> b
-foldl f x (: y ys) = foldl f (f x y) ys
+foldl f x (y:ys) = foldl f (f x y) ys
 foldl f x [] = x
 
 undefined :: a
@@ -285,43 +285,43 @@ undefined = error "undefined"
 
 head :: [a] -> a
 head xs = case xs of
-    : y ys -> y
+    y:ys -> y
     [] -> error "head called on empty list"
 
 last :: [a] -> a
 last xs = case xs of
-    : y ys -> case ys of
-        : _ zs -> last ys
+    y:ys -> case ys of
+        _:zs -> last ys
         [] -> y
     [] -> error "last called on empty list"
 
 tail :: [a] -> [a]
 tail xs = case xs of
-    : y ys -> ys
+    y:ys -> ys
     [] -> error "tail called on empty list"
 
 init :: [a] -> [a]
 init xs = case xs of
-    : y ys -> case ys of
-        : _ zs -> y : init ys
+    y:ys -> case ys of
+        _:zs -> y : init ys
         [] -> []
     [] -> error "init called on empty list"
 
 sum :: Num a => [a] -> a
 sum xs = case xs of
-    : y ys -> y + sum ys
+    y:ys -> y + sum ys
     [] -> 0
 
 (!!) :: [a] -> Int -> a
 (!!) xs n = case xs of
-    : y ys -> case n of
+    y:ys -> case n of
         0 -> y
         _ -> ys !! (n-1)
     [] -> error "(!!) index to large"
 
 reverse_ :: [a] -> [a] -> [a]
 reverse_ xs ys = case xs of
-    : z zs -> reverse_ zs (z : ys)
+    z:zs -> reverse_ zs (z : ys)
     [] -> ys
 
 reverse :: [a] -> [a]
@@ -329,29 +329,29 @@ reverse xs = reverse_ xs []
 
 (++) :: [a] -> [a] -> [a]
 (++) xs ys = case xs of
-    : x2 xs2 -> x2 : (xs2 ++ ys)
+    x2:xs2 -> x2 : (xs2 ++ ys)
     [] -> ys
 
 filter :: (a -> Bool) -> [a] -> [a]
 filter p xs = case xs of
-    : y ys -> case p y of
+    y:ys -> case p y of
         True -> y : filter p ys
         False -> filter p ys
     [] -> []
 
 null :: [a] -> Bool
 null xs = case xs of
-    : y ys -> False
+    y:ys -> False
     [] -> True
 
 length :: [a] -> Int
 length xs = case xs of
-    : _ ys -> 1 + length ys
+    _:ys -> 1 + length ys
     [] -> 0
 
 concat :: [[a]] -> [a]
 concat xs = case xs of
-    : y ys -> y ++ concat ys
+    y:ys -> y ++ concat ys
     [] -> []
 
 

@@ -563,7 +563,7 @@ fn pattern(&mut self) -> Pattern {
             }
             ConstructorPattern(intern("[]"), ~[])
         }
-        NAME | OPERATOR => self.make_pattern(name, |this| this.patternParameter()),
+        NAME => self.make_pattern(name, |this| this.patternParameter()),
         NUMBER => NumberPattern(from_str(name.as_slice()).unwrap()),
         LPARENS => {
             let tupleArgs = self.sepBy1(|this| this.pattern(), COMMA);
@@ -1086,7 +1086,7 @@ in test - 2".chars());
 fn parse_case() {
     let mut parser = Parser::new(
 r"case [] of
-    : x xs -> x
+    x:xs -> x
     [] -> 2
 ".chars());
     let expression = parser.expression_();

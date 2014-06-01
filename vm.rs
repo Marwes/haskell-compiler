@@ -652,7 +652,7 @@ fn test_case()
 r"mult2 x = primIntMultiply x 2
 
 main = case [mult2 123, 0] of
-    : x xs -> x
+    x:xs -> x
     [] -> 10";
     assert_eq!(execute_main(module.chars()), Some(IntResult(246)));
 }
@@ -663,7 +663,7 @@ fn test_nested_case() {
 r"mult2 x = primIntMultiply x 2
 
 main = case [mult2 123, 0] of
-    : 246 xs -> primIntAdd 0 246
+    246:xs -> primIntAdd 0 246
     [] -> 10";
     assert_eq!(execute_main(module.chars()), Some(IntResult(246)));
 }
@@ -674,8 +674,8 @@ fn test_nested_case2() {
 r"mult2 x = primIntMultiply x 2
 
 main = case [mult2 123, 0] of
-    : 246 [] -> primIntAdd 0 246
-    : x xs -> 20
+    246:[] -> primIntAdd 0 246
+    x:xs -> 20
     [] -> 10";
     assert_eq!(execute_main(module.chars()), Some(IntResult(20)));
 }
@@ -839,8 +839,8 @@ fn pattern_bind() {
 r"data Bool = True | False
 
 test :: [Bool] -> Bool
-test (: True []) = False
-test (: True (:y ys)) = y
+test (True:[]) = False
+test (True:y:ys) = y
 test [] = False
 
 main = test [True, True]

@@ -1348,7 +1348,7 @@ fn typecheck_case() {
     let mut env = TypeEnvironment::new();
     let type_int = int_type();
 
-    let mut parser = Parser::new(r"case [] of { : x xs -> primIntAdd x 2 ; [] -> 3}".chars());
+    let mut parser = Parser::new(r"case [] of { x:xs -> primIntAdd x 2 ; [] -> 3}".chars());
     let mut expr = rename_expr(parser.expression_());
     env.typecheck_expr(&mut expr);
 
@@ -1367,7 +1367,7 @@ fn typecheck_list() {
 r"mult2 x = primIntMultiply x 2
 
 main = case [mult2 123, 0] of
-    : x xs -> x
+    x:xs -> x
     [] -> 10";
     let module = do_typecheck(file);
 
@@ -1509,11 +1509,11 @@ class Eq a where
 
 instance Eq a => Eq [a] where
     (==) xs ys = case xs of
-        : x2 xs2 -> case ys of
-            : y2 ys2 -> (x2 == y2) && (xs2 == ys2)
+        x2:xs2 -> case ys of
+            y2:ys2 -> (x2 == y2) && (xs2 == ys2)
             [] -> False
         [] -> case ys of
-            : y2 ys2 -> False
+            y2:ys2 -> False
             [] -> True
 
 (&&) :: Bool -> Bool -> Bool
@@ -1669,7 +1669,7 @@ fn do_expr_pattern() {
     let file = 
 r"
 test x = do
-    : y ys <- x
+    y:ys <- x
     return y
 ";
     let module = do_typecheck_with(file, [&prelude as &DataTypes]);
@@ -1683,7 +1683,7 @@ test x = do
 #[test]
 fn binding_pattern() {
     let module = do_typecheck(r"
-test f (: x xs) = f x : test f xs
+test f (x:xs) = f x : test f xs
 test _ [] = []
 ");
     let a = Type::new_var(0);
