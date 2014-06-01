@@ -600,13 +600,11 @@ impl <'a> TypeEnvironment<'a> {
             }
             &Apply(ref mut func, ref mut arg) => {
                 let mut func_type = self.typecheck(*func, subs);
-                replace(&mut self.constraints, &mut func_type, subs);
                 let mut arg_type = self.typecheck(*arg, subs);
-                replace(&mut self.constraints, &mut arg_type, subs);
                 let mut result = function_type_(arg_type, self.new_var());
-                unify_location(self, subs, &expr.location, &mut func_type, &mut result);
+                result = unify_location(self, subs, &expr.location, &mut func_type, &mut result);
                 result = match result {
-                    TypeApplication(_, ref x) => (**x).clone(),
+                    TypeApplication(_, x) => *x,
                     _ => fail!("Must be a type application (should be a function type), found {}", result)
                 };
                 result
@@ -617,7 +615,6 @@ impl <'a> TypeEnvironment<'a> {
 
                 self.typecheck_pattern(&expr.location, subs, arg, &mut argType);
                 let body_type = self.typecheck(*body, subs);
-                replace(&mut self.constraints, &mut result, subs);
                 with_arg_return(&mut result, |_, return_type| {
                     *return_type = body_type.clone();
                 });
@@ -626,9 +623,7 @@ impl <'a> TypeEnvironment<'a> {
             &Let(ref mut bindings, ref mut body) => {
                 self.typecheck_local_bindings(subs, &mut BindingsWrapper { value: *bindings });
                 self.apply_locals(subs);
-                let mut body_type = self.typecheck(*body, subs);
-                replace(&mut self.constraints, &mut body_type, subs);
-                body_type
+                self.typecheck(*body, subs)
             }
             &Case(ref mut case_expr, ref mut alts) => {
                 let mut match_type = self.typecheck(*case_expr, subs);
@@ -637,11 +632,8 @@ impl <'a> TypeEnvironment<'a> {
                 for alt in alts.mut_iter().skip(1) {
                     self.typecheck_pattern(&alt.pattern.location, subs, &alt.pattern.node, &mut match_type);
                     let mut alt_type = self.typecheck(&mut alt.expression, subs);
-                    unify_location(self, subs, &alt.expression.location, &mut alt0_, &mut alt_type);
-                    replace(&mut self.constraints, &mut alt_type, subs);
+                    alt0_ = unify_location(self, subs, &alt.expression.location, &mut alt0_, &mut alt_type);
                 }
-                replace(&mut self.constraints, &mut alt0_, subs);
-                replace(&mut self.constraints, &mut match_type, subs);
                 alt0_
             }
             &Do(ref mut bindings, ref mut last_expr) => {
@@ -661,7 +653,7 @@ impl <'a> TypeEnvironment<'a> {
                         }
                         DoBind(ref mut pattern, ref mut e) => {
                             let mut typ = self.typecheck(e, subs);
-                            unify_location(self, subs, &e.location, &mut typ, &mut previous);
+                            typ = unify_location(self, subs, &e.location, &mut typ, &mut previous);
                             let inner_type = match typ {
                                 TypeApplication(_, ref mut t) => t,
                                 _ => fail!("Not a monadic type: {}", typ)
@@ -677,8 +669,7 @@ impl <'a> TypeEnvironment<'a> {
                     }
                 }
                 let mut typ = self.typecheck(*last_expr, subs);
-                unify_location(self, subs, &last_expr.location, &mut typ, &mut previous);
-                typ
+                unify_location(self, subs, &last_expr.location, &mut typ, &mut previous)
             }
         }
     }
@@ -686,37 +677,22 @@ impl <'a> TypeEnvironment<'a> {
     fn typecheck_pattern(&mut self, location: &Location, subs: &mut Substitution, pattern: &Pattern<Name>, match_type: &mut Type) {
         match pattern {
             &IdentifierPattern(ref ident) => {
-                let mut typ = self.new_var();
-                {
-                    unify_location(self, subs, location, &mut typ, match_type);
-                    replace(&mut self.constraints, match_type, subs);
-                    replace(&mut self.constraints, &mut typ, subs);
-                }
-                self.local_types.insert(ident.clone(), typ.clone());
+                self.local_types.insert(ident.clone(), match_type.clone());
             }
             &NumberPattern(_) => {
                 let mut typ = int_type();
-                {
-                    unify_location(self, subs, location, &mut typ, match_type);
-                    replace(&mut self.constraints, match_type, subs);
-                    replace(&mut self.constraints, &mut typ, subs);
-                }
+                unify_location(self, subs, location, &mut typ, match_type);
             }
             &ConstructorPattern(ref ctorname, ref patterns) => {
                 let mut t = self.fresh(ctorname).expect(format!("Undefined constructer '{}' when matching pattern", *ctorname));
                 let mut data_type = get_returntype(&t);
                 
                 unify_location(self, subs, location, &mut data_type, match_type);
-                replace(&mut self.constraints, match_type, subs);
                 replace(&mut self.constraints, &mut t, subs);
                 self.apply_locals(subs);
                 self.pattern_rec(0, location, subs, *patterns, &mut t);
             }
             &WildCardPattern => {
-                let mut typ = self.new_var();
-                unify_location(self, subs, location, &mut typ, match_type);
-                replace(&mut self.constraints, match_type, subs);
-                replace(&mut self.constraints, &mut typ, subs);
             }
         }
     }
@@ -1021,7 +997,7 @@ fn freshen_var(env: &mut TypeEnvironment, subs: &mut Substitution, id: &TypeVari
 }
 
 ///Takes two types and attempts to make them the same type
-fn unify_location(env: &mut TypeEnvironment, subs: &mut Substitution, location: &Location, lhs: &mut Type, rhs: &mut Type) {
+fn unify_location(env: &mut TypeEnvironment, subs: &mut Substitution, location: &Location, lhs: &mut Type, rhs: &mut Type) -> Type {
     debug!("Unifying {} <-> {}", *lhs, *rhs);
     match unify(env, subs, lhs.clone(), rhs.clone()) {
         Ok(typ) => {
@@ -1033,8 +1009,7 @@ fn unify_location(env: &mut TypeEnvironment, subs: &mut Substitution, location: 
             for (_, ref mut typ) in subs.subs.mut_iter() {
                 replace(&mut env.constraints, *typ, subs2);
             }
-            *lhs = typ.clone();
-            *rhs = typ;
+            typ
         }
         Err(error) => match error {
             UnifyFail => fail!("{} Error: Could not unify types {}\nand\n{}", location, *lhs, *rhs),
@@ -1045,7 +1020,6 @@ fn unify_location(env: &mut TypeEnvironment, subs: &mut Substitution, location: 
             MissingInstance(class, typ, id) => fail!("{} Error: The instance {} {} was not found as required by {} when unifying {}\nand\n{}", location, class, typ, id, *lhs, *rhs)
         }
     }
-    debug!("Unify end");
 }
 
 enum TypeError {
