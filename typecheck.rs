@@ -602,7 +602,7 @@ impl <'a> TypeEnvironment<'a> {
                 let mut func_type = self.typecheck(*func, subs);
                 let mut arg_type = self.typecheck(*arg, subs);
                 let mut result = function_type_(arg_type, self.new_var());
-                result = unify_location(self, subs, &expr.location, &mut func_type, &mut result);
+                unify_location(self, subs, &expr.location, &mut func_type, &mut result);
                 result = match result {
                     TypeApplication(_, x) => *x,
                     _ => fail!("Must be a type application (should be a function type), found {}", result)
@@ -632,7 +632,7 @@ impl <'a> TypeEnvironment<'a> {
                 for alt in alts.mut_iter().skip(1) {
                     self.typecheck_pattern(&alt.pattern.location, subs, &alt.pattern.node, &mut match_type);
                     let mut alt_type = self.typecheck(&mut alt.expression, subs);
-                    alt0_ = unify_location(self, subs, &alt.expression.location, &mut alt0_, &mut alt_type);
+                    unify_location(self, subs, &alt.expression.location, &mut alt0_, &mut alt_type);
                 }
                 alt0_
             }
@@ -653,7 +653,7 @@ impl <'a> TypeEnvironment<'a> {
                         }
                         DoBind(ref mut pattern, ref mut e) => {
                             let mut typ = self.typecheck(e, subs);
-                            typ = unify_location(self, subs, &e.location, &mut typ, &mut previous);
+                            unify_location(self, subs, &e.location, &mut typ, &mut previous);
                             let inner_type = match typ {
                                 TypeApplication(_, ref mut t) => t,
                                 _ => fail!("Not a monadic type: {}", typ)
@@ -669,7 +669,8 @@ impl <'a> TypeEnvironment<'a> {
                     }
                 }
                 let mut typ = self.typecheck(*last_expr, subs);
-                unify_location(self, subs, &last_expr.location, &mut typ, &mut previous)
+                unify_location(self, subs, &last_expr.location, &mut typ, &mut previous);
+                typ
             }
         }
     }
@@ -997,10 +998,10 @@ fn freshen_var(env: &mut TypeEnvironment, subs: &mut Substitution, id: &TypeVari
 }
 
 ///Takes two types and attempts to make them the same type
-fn unify_location(env: &mut TypeEnvironment, subs: &mut Substitution, location: &Location, lhs: &mut Type, rhs: &mut Type) -> Type {
+fn unify_location(env: &mut TypeEnvironment, subs: &mut Substitution, location: &Location, lhs: &mut Type, rhs: &mut Type) {
     debug!("Unifying {} <-> {}", *lhs, *rhs);
-    match unify(env, subs, lhs.clone(), rhs.clone()) {
-        Ok(typ) => {
+    match unify(env, subs, lhs, rhs) {
+        Ok(()) => {
             //Using unsafe here to avoid a very expensive copy of the substitution
             //Since 'subs.subs' is never resized but only has its elements modified
             //and calling find on 'subs2' will only return None for variables in 'typ'
@@ -1009,7 +1010,6 @@ fn unify_location(env: &mut TypeEnvironment, subs: &mut Substitution, location: 
             for (_, ref mut typ) in subs.subs.mut_iter() {
                 replace(&mut env.constraints, *typ, subs2);
             }
-            typ
         }
         Err(error) => match error {
             UnifyFail => fail!("{} Error: Could not unify types {}\nand\n{}", location, *lhs, *rhs),
@@ -1029,13 +1029,13 @@ enum TypeError {
     MissingInstance(InternedStr, Type, TypeVariable)
 }
 
-fn unify(env: &mut TypeEnvironment, subs: &mut Substitution, lhs: Type, rhs: Type) -> Result<Type, TypeError> {
-    fn bind_variable(env: &mut TypeEnvironment, subs: &mut Substitution, var: TypeVariable, typ: Type) -> Result<Type, TypeError> {
-        let x = match typ {
+fn unify(env: &mut TypeEnvironment, subs: &mut Substitution, lhs: &mut Type, rhs: &mut Type) -> Result<(), TypeError> {
+    fn bind_variable(env: &mut TypeEnvironment, subs: &mut Substitution, var: &TypeVariable, typ: &Type) -> Result<(), TypeError> {
+        match *typ {
             TypeVariable(ref var2) => {
-                if var != *var2 {
+                if var != var2 {
                     subs.subs.insert(var.clone(), typ.clone());
-                    match env.constraints.pop(&var) {
+                    match env.constraints.pop(var) {
                         Some(constraints) => {
                             let to_update = env.constraints.find_or_insert(var2.clone(), Vec::new());
                             for c in constraints.iter() {
@@ -1050,7 +1050,7 @@ fn unify(env: &mut TypeEnvironment, subs: &mut Substitution, lhs: Type, rhs: Typ
                 Ok(())
             }
             _ => {
-                if occurs(&var, &typ) {
+                if occurs(var, typ) {
                     return Err(RecursiveUnification);
                 }
                 else if var.kind != *typ.kind() && var.kind != star_kind {
@@ -1058,14 +1058,14 @@ fn unify(env: &mut TypeEnvironment, subs: &mut Substitution, lhs: Type, rhs: Typ
                 }
                 else {
                     for (_, replaced) in subs.subs.mut_iter() {
-                        replace_var(replaced, &var, &typ);
+                        replace_var(replaced, var, typ);
                     }
                     subs.subs.insert(var.clone(), typ.clone());
-                    match env.constraints.find(&var) {
+                    match env.constraints.find(var) {
                         Some(constraints) => {
                             for c in constraints.iter() {
-                                if !env.has_instance(*c, &typ) {
-                                    match typ {
+                                if !env.has_instance(*c, typ) {
+                                    match *typ {
                                         TypeOperator(ref op) => {
                                             if *c == intern("Num") && (op.name == intern("Int") || op.name == intern("Double")) && *typ.kind() == star_kind {
                                                 continue;
@@ -1076,7 +1076,7 @@ fn unify(env: &mut TypeEnvironment, subs: &mut Substitution, lhs: Type, rhs: Typ
                                         }
                                         _ => ()
                                     }
-                                    return Err(MissingInstance(c.clone(), typ.clone(), var));
+                                    return Err(MissingInstance(c.clone(), typ.clone(), var.clone()));
                                 }
                             }
                         }
@@ -1085,46 +1085,53 @@ fn unify(env: &mut TypeEnvironment, subs: &mut Substitution, lhs: Type, rhs: Typ
                     Ok(())
                 }
             }
-        };
-        match x {
-            Ok(_) => Ok(typ),
-            Err(e) => Err(e)
         }
     }
     match (lhs, rhs) {
-        (TypeApplication(l1, mut r1), TypeApplication(l2, mut r2)) => {
-            match unify(env, subs, *l1, *l2) {
-                Ok(arg) => {
-                    replace(&mut env.constraints, r1, subs);
-                    replace(&mut env.constraints, r2, subs);
-                    match unify(env, subs, *r1, *r2) {
-                        Ok(typ) => Ok(TypeApplication(box arg, box typ)),
-                        Err(e) => Err(e)
-                    }
-                }
-                Err(e) => Err(e)
-            }
+        (&TypeApplication(ref mut l1, ref mut r1), &TypeApplication(ref mut l2, ref mut r2)) => {
+            unify(env, subs, *l1, *l2).and_then(|_| {
+                replace(&mut env.constraints, *r1, subs);
+                replace(&mut env.constraints, *r2, subs);
+                unify(env, subs, *r1, *r2)
+            })
         }
-        (TypeVariable(lhs), TypeVariable(rhs)) => {
+        (&TypeVariable(ref mut lhs), &TypeVariable(ref mut rhs)) => {
             //If both are variables we choose that they younger variable is replaced by the oldest
             //This is because when doing the quantifying, only variables that are created during
             //the inference of mutually recursive bindings should be quantified, but if a newly
             //created variable is unified with one from an outer scope we need to prefer the older
             //so that the variable does not get quantified
             if lhs.id > rhs.id {
-                bind_variable(env, subs, lhs, TypeVariable(rhs))
+                let x = bind_variable(env, subs, lhs, &TypeVariable(rhs.clone()));
+                *lhs = rhs.clone();
+                x
             }
             else {
-                bind_variable(env, subs, rhs, TypeVariable(lhs))
+                let x = bind_variable(env, subs, rhs, &TypeVariable(lhs.clone()));
+                *rhs = lhs.clone();
+                x
             }
         }
-        (TypeVariable(var), rhs) => { bind_variable(env, subs, var, rhs) }
-        (lhs, TypeVariable(var)) => { bind_variable(env, subs, var, lhs) }
-        (TypeOperator(lhs), TypeOperator(rhs)) =>
-            if lhs.name == rhs.name { Ok(TypeOperator(lhs)) } else { Err(UnifyFail) },
-        _ => Err(UnifyFail)
+        (&TypeOperator(ref lhs), &TypeOperator(ref rhs)) =>
+            if lhs.name == rhs.name { Ok(()) } else { Err(UnifyFail) },
+        (lhs, rhs) => {
+            let x = match lhs {
+                &TypeVariable(ref mut var) => bind_variable(env, subs, var, rhs),
+                lhs => {
+                    let y = match rhs {
+                        &TypeVariable(ref mut var) => bind_variable(env, subs, var, lhs),
+                        _ => return Err(UnifyFail)
+                    };
+                    *rhs = lhs.clone();
+                    return y;
+                }
+            };
+            *lhs = rhs.clone();
+            x
+        }
     }
 }
+
 
 ///Creates a graph containing a vertex for each binding and edges for each 
 fn build_graph(bindings: &Bindings) -> Graph<(uint, uint)> {
