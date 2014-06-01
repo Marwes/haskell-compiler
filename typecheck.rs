@@ -1053,7 +1053,7 @@ fn unify(env: &mut TypeEnvironment, subs: &mut Substitution, lhs: &mut Type, rhs
                 if occurs(var, typ) {
                     return Err(RecursiveUnification);
                 }
-                else if var.kind != *typ.kind() && var.kind != star_kind {
+                else if var.kind != *typ.kind() {
                     return Err(WrongArity(TypeVariable(var.clone()), typ.clone()));
                 }
                 else {
