@@ -9,27 +9,7 @@ extern crate getopts;
 extern crate test;
 
 #[cfg(not(test))]
-use module::{Type, TypeApplication, TypeOperator};
-#[cfg(not(test))]
-use parser::Parser;
-#[cfg(not(test))]
-use compiler::{Compiler, Instruction, PushInt, Mkap};
-#[cfg(not(test))]
-use typecheck::{DataTypes, TypeEnvironment};
-#[cfg(not(test))]
-use vm::{VM, evaluate, execute_main_module, compile_file};
-#[cfg(not(test))]
-use core::{Module};
-#[cfg(not(test))]
-use core::translate::{translate_expr};
-#[cfg(not(test))]
-use lambda_lift::do_lambda_lift;
-#[cfg(not(test))]
-use renamer::{rename_expr, Name};
-#[cfg(not(test))]
-use interner::intern;
-#[cfg(not(test))]
-use std::vec::FromVec;
+use vm::execute_main_module;
 #[cfg(not(test))]
 use getopts::{optopt, optflag, getopts, usage};
 
@@ -73,23 +53,14 @@ mod lambda_lift;
 mod renamer;
 mod primitive;
 mod interner;
-
 #[cfg(not(test))]
-fn is_io(typ: &Type) -> bool {
-    match *typ {
-        TypeApplication(ref lhs, _) => 
-            match **lhs {
-                TypeOperator(ref op) => op.name.as_slice() == "IO",
-                _ => false
-            },
-        _ => false
-    }
-}
+mod repl;
 
 #[cfg(not(test))]
 fn main() {
     let opts = [
         optopt("l", "", "Input file", "Module name"),
+        optflag("i", "interactive", "Starts the REPL"),
         optflag("h", "help", "Print help")
     ];
     let matches = {
@@ -113,45 +84,11 @@ fn main() {
         }
         None => ()
     }
+    if matches.opt_present("i") {
+        repl::start();
+        return;
+    }
     let expr_str = matches.free.get(0).as_slice();
-    let prelude = compile_file("Prelude.hs");
-    let assembly = {
-        let mut parser = Parser::new(expr_str.chars());
-        let mut expr = rename_expr(parser.expression_());
-
-        let mut type_env = TypeEnvironment::new();
-        type_env.add_types(&prelude as &DataTypes);
-        type_env.typecheck_expr(&mut expr);
-        let temp_module = Module::from_expr(translate_expr(expr));
-        let m = do_lambda_lift(temp_module);
-        
-        let mut compiler = Compiler::new(&type_env);
-        compiler.assemblies.push(&prelude);
-        compiler.compileModule(&m)
-    };
-    let mut vm = VM::new();
-    vm.add_assembly(prelude);
-    let (instructions, type_decl) = assembly.superCombinators.iter()
-        .find(|sc| sc.name == Name { name: intern("main"), uid: 0 })
-        .map(|sc| {
-            if is_io(&sc.type_declaration.typ) {
-                //If the expression we compiled is IO we need to add an extra argument
-                //'RealWorld' which can be any dumb value (42 here), len - 3 is used because
-                //it is currently 3 instructions Eval, Update(0), Unwind at the end of each instruction list
-                //to finish the expression
-                let mut vec: Vec<Instruction> = sc.instructions.iter().map(|x| x.clone()).collect();
-                let len = vec.len();
-                vec.insert(len - 3, Mkap);
-                vec.insert(0, PushInt(42));//Realworld
-                (FromVec::from_vec(vec), sc.type_declaration.clone())
-            }
-            else {
-                (sc.instructions.clone(), sc.type_declaration.clone())
-            }
-        })
-        .expect("Expected main function");
-    let assembly_index = vm.add_assembly(assembly);
-    let result = evaluate(&vm, instructions, assembly_index);//TODO 0 is not necessarily correct
-    println!("{}  {}", result, type_decl);
+    repl::run_and_print_expr(expr_str);
 }
 
