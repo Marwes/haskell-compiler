@@ -182,8 +182,8 @@ impl <'a> Bindings for BindingsWrapper<'a> {
 fn insertTo(map: &mut HashMap<Name, Type>, name: &str, typ: Type) {
     map.insert(Name { name: intern(name), uid: 0 }, typ);
 }
-fn prim(typename: &str, op: &str) -> StrBuf {
-    let mut b = StrBuf::from_str("prim");
+fn prim(typename: &str, op: &str) -> String {
+    let mut b = String::from_str("prim");
     b.push_str(typename);
     b.push_str(op);
     b
@@ -498,7 +498,15 @@ impl <'a> TypeEnvironment<'a> {
             &Case(ref mut case_expr, ref mut alts) => {
                 self.substitute(subs, *case_expr);
                 for alt in alts.mut_iter() {
-                    self.substitute(subs, &mut alt.expression);
+                    match alt.matches {
+                        Simple(ref mut e) => self.substitute(subs, e),
+                        Guards(ref mut gs) => {
+                            for guard in gs.mut_iter() {
+                                self.substitute(subs, &mut guard.predicate);
+                                self.substitute(subs, &mut guard.expression);
+                            }
+                        }
+                    }
                 }
             }
             &Lambda(_, ref mut body) => self.substitute(subs, *body),
@@ -584,12 +592,14 @@ impl <'a> TypeEnvironment<'a> {
                 let mut typ = None;
                 for guard in gs.mut_iter() {
                     let mut typ2 = self.typecheck(&mut guard.expression, subs);
+                    unify_location(self, subs, &guard.expression.location, &mut typ2, &mut guard.expression.typ);
                     match typ {
-                        Some(mut typ) => unify_location(self, subs, &guard.expression.location, &mut typ, &mut guard.expression.typ),
+                        Some(mut typ) => unify_location(self, subs, &guard.expression.location, &mut typ, &mut typ2),
                         None => ()
                     }
                     typ = Some(typ2);
                     let mut predicate = self.typecheck(&mut guard.predicate, subs);
+                    unify_location(self, subs, &guard.predicate.location, &mut predicate, &mut bool_type());
                     unify_location(self, subs, &guard.predicate.location, &mut predicate, &mut guard.predicate.typ);
                 }
                 typ.unwrap()
@@ -639,7 +649,7 @@ impl <'a> TypeEnvironment<'a> {
             }
             &Apply(ref mut func, ref mut arg) => {
                 let mut func_type = self.typecheck(*func, subs);
-                let mut arg_type = self.typecheck(*arg, subs);
+                let arg_type = self.typecheck(*arg, subs);
                 let mut result = function_type_(arg_type, self.new_var());
                 unify_location(self, subs, &expr.location, &mut func_type, &mut result);
                 result = match result {
@@ -667,11 +677,11 @@ impl <'a> TypeEnvironment<'a> {
             &Case(ref mut case_expr, ref mut alts) => {
                 let mut match_type = self.typecheck(*case_expr, subs);
                 self.typecheck_pattern(&alts[0].pattern.location, subs, &alts[0].pattern.node, &mut match_type);
-                let mut alt0_ = self.typecheck(&mut alts[0].expression, subs);
+                let mut alt0_ = self.typecheck_match(&mut alts[0].matches, subs);
                 for alt in alts.mut_iter().skip(1) {
                     self.typecheck_pattern(&alt.pattern.location, subs, &alt.pattern.node, &mut match_type);
-                    let mut alt_type = self.typecheck(&mut alt.expression, subs);
-                    unify_location(self, subs, &alt.expression.location, &mut alt0_, &mut alt_type);
+                    let mut alt_type = self.typecheck_match(&mut alt.matches, subs);
+                    unify_location(self, subs, &Location::eof(), &mut alt0_, &mut alt_type);
                 }
                 alt0_
             }
@@ -769,7 +779,12 @@ impl <'a> TypeEnvironment<'a> {
             unify_location(self, subs, &Location::eof(), &mut bind.typeDecl.typ, &mut typ);
             match bind.matches {
                 Simple(ref mut e) => self.substitute(subs, e),
-                _ => fail!()
+                Guards(ref mut gs) => {
+                    for g in gs.mut_iter() {
+                        self.substitute(subs, &mut g.predicate);
+                        self.substitute(subs, &mut g.expression);
+                    }
+                }
             }
             replace(&mut self.constraints, &mut typ, subs);
 
@@ -1184,7 +1199,12 @@ fn build_graph(bindings: &Bindings) -> Graph<(uint, uint)> {
         for bind in binds.iter() {
             match bind.matches {
                 Simple(ref e) => add_edges(&mut graph, &map, *map.get(&bind.name), e),
-                _ => fail!()
+                Guards(ref gs) => {
+                    for g in gs.iter() {
+                        add_edges(&mut graph, &map, *map.get(&bind.name), &g.predicate);
+                        add_edges(&mut graph, &map, *map.get(&bind.name), &g.expression);
+                    }
+                }
             }
         }
     });
@@ -1738,13 +1758,17 @@ test _ [] = []
 fn guards() {
     let module = do_typecheck(r"
 
-compare :: Int -> Int -> Int
-compare x y
-    | x < y = -1
-    | x > y = 1
-    | otherwise = 0
+data Bool = True | False
+
+if_ p x y
+    | p = x
+    | True = y
 ");
-    let test = function_type_(int_type(), function_type_(int_type(), int_type()));
+    let var = Type::new_var(0);
+    let test = function_type_(bool_type()
+             , function_type_(var.clone()
+             , function_type_(var.clone(),
+                              var.clone())));
     assert_eq!(module.bindings[0].typeDecl.typ, test);
 }
 

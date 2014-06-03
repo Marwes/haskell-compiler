@@ -3,7 +3,7 @@ use module::*;
 use scoped_map::ScopedMap;
 use interner::*;
 
-#[deriving(Eq, TotalEq, Hash, Clone)]
+#[deriving(PartialEq, Eq, Hash, Clone)]
 pub struct Name {
     pub name: InternedStr,
     pub uid: uint
@@ -47,7 +47,7 @@ impl <T: ::std::fmt::Show> Errors<T> {
 struct Renamer {
     uniques: ScopedMap<InternedStr, Name>,
     unique_id: uint,
-    errors: Errors<StrBuf>
+    errors: Errors<String>
 }
 
 impl Renamer {
@@ -101,11 +101,11 @@ impl Renamer {
             }
             Case(expr, alts) => {
                 let a: Vec<Alternative<Name>> = alts.move_iter().map(
-                    |Alternative { pattern: Located { location: loc, node: pattern }, expression: expression }| {
+                    |Alternative { pattern: Located { location: loc, node: pattern }, matches: matches }| {
                     self.uniques.enter_scope();
                     let a = Alternative {
                         pattern: Located { location: loc, node: self.rename_pattern(pattern) },
-                        expression: self.rename(expression)
+                        matches: self.rename_matches(matches)
                     };
                     self.uniques.exit_scope();
                     a
@@ -150,29 +150,13 @@ impl Renamer {
         }
     }
 
-    fn rename_binding(&mut self, binding: Binding<InternedStr>) -> Binding<Name> {
-        let Binding { name: name, arguments: arguments, matches: matches, typeDecl: td, arity: a } = binding;
-        self.make_unique(name);
-        self.uniques.find_mut(&name).unwrap().uid = 0;
-        self.uniques.enter_scope();
-        let b = Binding {
-            name: Name { name: name, uid: 0 },
-            arguments: self.rename_arguments(arguments),
-            matches: self.rename_matches(matches),
-            typeDecl: td,
-            arity: a
-        };
-        self.uniques.exit_scope();
-        b
-    }
-
     fn rename_matches(&mut self, matches: Match<InternedStr>) -> Match<Name> {
         match matches {
             Simple(e) => Simple(self.rename(e)),
             Guards(gs) => Guards(FromVec::<Guard<Name>>::from_vec(
                 gs.move_iter()
                 .map(|Guard { predicate: p, expression: e }| 
-                      Guard { predicate: rename_expr(p), expression: rename_expr(e) }
+                      Guard { predicate: self.rename(p), expression: self.rename(e) }
                 )
                 .collect()))
         }

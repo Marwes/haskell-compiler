@@ -10,7 +10,7 @@ pub struct ScopedMap<K, V> {
 }
 
 #[allow(dead_code)]
-impl <K: TotalEq + Hash + Clone, V> ScopedMap<K, V> {
+impl <K: Eq + Hash + Clone, V> ScopedMap<K, V> {
     pub fn new() -> ScopedMap<K, V> {
         ScopedMap { map: HashMap::new(), scopes: Vec::new() }
     }
@@ -62,21 +62,21 @@ impl <K: TotalEq + Hash + Clone, V> ScopedMap<K, V> {
     }
 }
 
-impl <K: TotalEq + Hash, V> Map<K, V> for ScopedMap<K, V> {
+impl <K: Eq + Hash, V> Map<K, V> for ScopedMap<K, V> {
     fn find<'a>(&'a self, k: &K) -> Option<&'a V> {
         self.map.find(k).and_then(|x| x.last())
     }
 }
-impl <K: TotalEq + Hash, V> Container for ScopedMap<K, V> {
+impl <K: Eq + Hash, V> Container for ScopedMap<K, V> {
     fn len(&self) -> uint { self.map.len() }
 }
-impl <K: TotalEq + Hash, V> Mutable for ScopedMap<K, V> {
+impl <K: Eq + Hash, V> Mutable for ScopedMap<K, V> {
     fn clear(&mut self) {
         self.map.clear();
         self.scopes.clear();
     }
 }
-impl <K: TotalEq + Hash + Clone, V> MutableMap<K, V> for ScopedMap<K, V> {
+impl <K: Eq + Hash + Clone, V> MutableMap<K, V> for ScopedMap<K, V> {
     fn swap(&mut self, k: K, v: V) -> Option<V> {
         let vec = self.map.find_or_insert(k.clone(), Vec::new());
         if vec.len() != 0 {

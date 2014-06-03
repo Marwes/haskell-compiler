@@ -170,8 +170,8 @@ pub fn lift_lambdas<T: ::std::fmt::Show>(mut module: Module<T>) -> Module<T> {
 }
 
 fn update<T>(x: &mut T, f: |T| -> T) {
-    use std::mem::{swap, forget, uninit};
-    let mut temp = unsafe { uninit() };
+    use std::mem::{swap, forget, uninitialized};
+    let mut temp = unsafe { uninitialized() };
     swap(x, &mut temp);
     temp = f(temp);
     swap(x, &mut temp);

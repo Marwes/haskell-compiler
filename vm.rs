@@ -110,7 +110,7 @@ impl <'a> fmt::Show for Node_<'a> {
                     write!(f, "\\}")
                 }
             }
-            &Dictionary(ref dict) => write!(f, "{:?}", dict),
+            &Dictionary(ref dict) => write!(f, "{}", dict),
             &PrimitiveFunction(..) => write!(f, "<extern function>")
         }
     }
@@ -174,7 +174,7 @@ impl <'a> VM {
         debug!("");
         let mut i = 0;
         while i < code.len() {
-            debug!("Executing instruction {} : {:?}", i, code[i]);
+            debug!("Executing instruction {} : {}", i, code[i]);
             match &code[i] {
                 &Add => primitive(stack, |l, r| { l + r }),
                 &Sub => primitive(stack, |l, r| { l - r }),
@@ -379,7 +379,7 @@ impl <'a> VM {
                     };
                     stack.push(Node::new(Combinator(sc)));
                 }
-                //undefined => fail!("Use of undefined instruction {:?}", undefined)
+                //undefined => fail!("Use of undefined instruction {}", undefined)
             }
             i += 1;
         }
@@ -408,7 +408,7 @@ fn primitive(stack: &mut Vec<Node>, f: |int, int| -> int) {
     primitive_int(stack, |l, r| Int(f(l, r)))
 }
 
-#[deriving(Eq, Show)]
+#[deriving(PartialEq, Show)]
 enum VMResult {
     IntResult(int),
     DoubleResult(f64),
@@ -557,8 +557,8 @@ mod primitive {
         println!("{}", msg);
         Node::new(Constructor(0, vec!(Node::new(Constructor(0, vec!())), stack[1].clone())))
     }
-    fn get_string<'a>(node: &Node_<'a>) -> StrBuf {
-        fn get_string_<'a>(buffer: &mut StrBuf, node: &Node_<'a>) {
+    fn get_string<'a>(node: &Node_<'a>) -> String {
+        fn get_string_<'a>(buffer: &mut String, node: &Node_<'a>) {
             match *node {
                 Constructor(_, ref args) => {
                     if args.len() == 2 {
@@ -572,7 +572,7 @@ mod primitive {
                 _ => fail!("Unevaluated list")
             }
         }
-        let mut buffer = StrBuf::new();
+        let mut buffer = String::new();
         get_string_(&mut buffer, node);
         buffer
     }

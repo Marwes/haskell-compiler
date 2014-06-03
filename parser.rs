@@ -112,7 +112,7 @@ pub fn module(&mut self) -> Module {
 			break;
 		}
 		let semicolon = self.lexer.next();
-        debug!("More bindings? {:?}", semicolon.token);
+        debug!("More bindings? {}", semicolon.token);
 	    if semicolon.token != SEMICOLON {
             break;
         }
@@ -123,7 +123,7 @@ pub fn module(&mut self) -> Module {
 
 	let eof = self.lexer.next();
 	if eof.token != EOF {
-		fail!("Unexpected token after end of module, {:?}", eof.token);
+		fail!("Unexpected token after end of module, {}", eof.token);
 	}
 
 	for decl in typeDeclarations.mut_iter() {
@@ -372,22 +372,30 @@ fn let_bindings(&mut self) -> ~[Binding] {
 fn alternative(&mut self) -> Alternative {
 	let pat = self.located_pattern();
 
-	self.requireNext(ARROW);
+    let matches = match self.lexer.next().token {
+        ARROW => Simple(self.expression_()),
+        PIPE => {
+            let g = Guards(self.sepBy1(|this| this.guard(ARROW), PIPE));
+            self.lexer.backtrack();
+            g
+        }
+        _ => fail!(ParseError2(&self.lexer, [EQUALSSIGN, PIPE]))
+    };
 
-	Alternative { pattern : pat, expression : self.expression_() }
+	Alternative { pattern : pat, matches: matches }
 }
 
 fn parseOperatorExpression(&mut self, inL : Option<TypedExpr>, minPrecedence : int) -> Option<TypedExpr> {
 	let mut lhs = inL;
     self.lexer.next();
-    debug!("Parse operator exression, {:?}", self.lexer.current());
+    debug!("Parse operator exression, {}", self.lexer.current());
 	while self.lexer.valid() && self.lexer.current().token == OPERATOR
 		&& precedence(self.lexer.current().value.as_slice()) >= minPrecedence
 	{
 		let op = (*self.lexer.current()).clone();
 		let mut rhs = self.application();
 		self.lexer.next();
-        debug!("Parsing operator? {:?}", self.lexer.current());
+        debug!("Parsing operator? {}", self.lexer.current());
 		while self.lexer.valid() && self.lexer.current().token == OPERATOR
 			&& precedence(self.lexer.current().value.as_slice()) >= precedence(op.value.as_slice())
 		{
@@ -476,7 +484,7 @@ fn binding(&mut self) -> Binding {
 		//Parse a name within parentheses
 		let functionName = self.lexer.next().token;
 		if functionName != NAME && functionName != OPERATOR {
-			fail!("Expected NAME or OPERATOR on left side of binding {:?}", self.lexer.current().token);
+			fail!("Expected NAME or OPERATOR on left side of binding {}", self.lexer.current().token);
 		}
 		name = self.lexer.current().value.clone();
 
@@ -494,7 +502,7 @@ fn binding(&mut self) -> Binding {
     let matches = match self.lexer.next().token {
         EQUALSSIGN => Simple(self.expression_()),
         PIPE => {
-            let g = Guards(self.sepBy1(|this| this.guard(), PIPE));
+            let g = Guards(self.sepBy1(|this| this.guard(EQUALSSIGN), PIPE));
             self.lexer.backtrack();
             g
         }
@@ -514,9 +522,9 @@ fn binding(&mut self) -> Binding {
     }
 }
 
-fn guard(&mut self) -> Guard {
+fn guard(&mut self, end_token: TokenEnum) -> Guard {
     let p = self.expression_();
-    self.requireNext(EQUALSSIGN);
+    self.requireNext(end_token);
     Guard { predicate: p, expression: self.expression_() }
 }
 
@@ -618,7 +626,7 @@ fn typeDeclaration_(&mut self, typeVariableMapping : &mut HashMap<InternedStr, i
             //Parse a name within parentheses
             let functionName = self.lexer.next().token;
             if functionName != NAME && functionName != OPERATOR {
-                fail!("Expected NAME or OPERATOR on left side of binding {:?}", functionName);
+                fail!("Expected NAME or OPERATOR on left side of binding {}", functionName);
             }
             name = self.lexer.current().value.clone();
             let rParens = self.lexer.next().token;
@@ -678,7 +686,7 @@ fn constructorType(&mut self, arity : &mut int, dataDef: &DataDefinition, mappin
 		let arg = if self.lexer.current().value.as_slice().char_at(0).is_lowercase() {
 			match mapping.find(&self.lexer.current().value) {
                 Some(existingVariable) => Type::new_var(*existingVariable),
-                None => fail!("Undefined type parameter {:?}", self.lexer.current().value)
+                None => fail!("Undefined type parameter {}", self.lexer.current().value)
             }
 		}
 		else {
@@ -822,7 +830,7 @@ fn parse_type_(&mut self, variableIndex: &mut int, typeVariableMapping : &mut Ha
 			};
 			self.parse_return_type(thisType, variableIndex, typeVariableMapping)
 		}
-	    _ => fail!("Unexpected token when parsing type {:?}", self.lexer.current())
+	    _ => fail!("Unexpected token when parsing type {}", self.lexer.current())
 	}
 }
 
@@ -881,43 +889,8 @@ fn make_constraints(types: ~[Type]) -> ~[Constraint] {
     }).collect())
 }
 
-
-
-fn toplevelError(t : &Token) -> bool {
-	return t.token != NAME
-		&& t.token != RBRACKET
-		&& t.token != SEMICOLON
-		&& t.token != DATA
-		&& t.token != LPARENS
-		&& t.token != CLASS
-		&& t.token != INSTANCE;
-}
-
-fn toplevelNewBindError(t : &Token) -> bool {
-	return t.token != RBRACKET
-		&& t.token != SEMICOLON;
-}
-
-fn bindingError(t : &Token) -> bool {
-	return t.token != EQUALSSIGN
-		&& t.token != NAME
-		&& t.token != TYPEDECL
-		&& t.token != OPERATOR
-        && t.token != LPARENS
-		&& t.token != RPARENS
-        && t.token != LBRACKET
-        && t.token != RBRACKET;
-}
-
-fn constructorError(tok : &Token) -> bool {
-	return tok.token != NAME
-		&& tok.token != OPERATOR
-		&& tok.token != LPARENS
-        && tok.token != PIPE;
-}
-
 fn tuple_name(size : uint) -> InternedStr {
-	let mut name = StrBuf::with_capacity(size+1);
+	let mut name = String::with_capacity(size+1);
     name.push_char('(');
     for _ in range(1, size) {
         name.push_char(',');
@@ -950,39 +923,6 @@ fn newTuple(arguments : ~[TypedExpr]) -> TypedExpr {
 	makeApplication(name, arguments.move_iter())
 }
 
-fn letExpressionEndError(t : &Token) -> bool {
-	t.token != IN
-}
-
-fn applicationError(t :&Token) -> bool {
-	return t.token != LPARENS
-		&& t.token != RPARENS
-		&& t.token != LBRACKET
-		&& t.token != RBRACKET
-		&& t.token != LET
-		&& t.token != OF
-		&& t.token != NAME
-		&& t.token != NUMBER
-		&& t.token != FLOAT
-		&& t.token != OPERATOR
-		&& t.token != SEMICOLON
-		&& t.token != COMMA
-        && t.token != CHAR
-        && t.token != STRING;
-}
-
-
-fn errorIfNotNameOrLParens(tok : &Token) -> bool {
-    tok.token != NAME && tok.token != LPARENS
-}
-fn errorIfNotNameOrOperator(tok : &Token) -> bool {
-	tok.token != NAME && tok.token != OPERATOR
-}
-
-fn errorIfNotRParens(tok : &Token) -> bool {
-	tok.token != RPARENS
-}
-
 fn extract_applied_type<'a>(typ: &'a Type) -> &'a Type {
     match typ {
         &TypeApplication(ref lhs, _) => extract_applied_type(*lhs),
@@ -999,15 +939,15 @@ fn tupleType(types : ~[Type]) -> Type {
     }
 }
 
-fn ParseError2<Iter : Iterator<char>>(lexer : &Lexer<Iter>, expected : &[TokenEnum]) -> StrBuf {
-    format!("Expected {:?} but found {:?}\\{{}\\}, at {}", expected, lexer.current().token, lexer.current().value.as_slice(), lexer.current().location)
+fn ParseError2<Iter : Iterator<char>>(lexer : &Lexer<Iter>, expected : &[TokenEnum]) -> String {
+    format!("Expected {} but found {}\\{{}\\}, at {}", expected, lexer.current().token, lexer.current().value.as_slice(), lexer.current().location)
     
 }
-fn ParseError<Iter : Iterator<char>>(lexer : &Lexer<Iter>, expected : TokenEnum) -> StrBuf {
-    format!("Expected {:?} but found {:?}\\{{}\\}, at {}", expected, lexer.current().token, lexer.current().value.as_slice(), lexer.current().location)
+fn ParseError<Iter : Iterator<char>>(lexer : &Lexer<Iter>, expected : TokenEnum) -> String {
+    format!("Expected {} but found {}\\{{}\\}, at {}", expected, lexer.current().token, lexer.current().value.as_slice(), lexer.current().location)
 }
 fn encodeBindingIdentifier(instancename : InternedStr, bindingname : InternedStr) -> InternedStr {
-    let mut buffer = StrBuf::new();
+    let mut buffer = String::new();
     buffer.push_str("#");
     buffer.push_str(instancename.clone().as_slice());
     buffer.push_str(bindingname.clone().as_slice());
@@ -1022,7 +962,7 @@ pub fn parse_modules(modulename: &str) -> IoResult<Vec<Module>> {
 }
 pub fn parse_modules_(visited: &mut HashSet<InternedStr>, modules: &mut Vec<Module>, modulename: &str) -> IoResult<()> {
     let contents = {
-        let mut filename = StrBuf::from_str(modulename);
+        let mut filename = String::from_str(modulename);
         filename.push_str(".hs");
         let mut file = File::open(&Path::new(filename.as_slice()));
         try!(file.read_to_str())
@@ -1109,10 +1049,10 @@ r"case [] of
             location: Location::eof(),
             node: ConstructorPattern(intern(":"), ~[IdentifierPattern(intern("x")), IdentifierPattern(intern("xs"))])
         },
-        expression: identifier("x") };
+        matches: Simple(identifier("x")) };
     let alt2 = Alternative {
         pattern: Located { location: Location::eof(), node: ConstructorPattern(intern("[]"), ~[]) },
-        expression: number(2) };
+        matches: Simple(number(2)) };
     assert_eq!(expression, case(identifier("[]"), ~[alt, alt2]));
 }
 

@@ -25,13 +25,13 @@ impl Module<Id> {
     }
 }
 
-#[deriving(Eq)]
+#[deriving(PartialEq)]
 pub struct Binding<Ident> {
     pub name: Ident,
     pub expression: Expr<Ident>
 }
 
-#[deriving(Eq)]
+#[deriving(PartialEq)]
 pub struct Alternative<Ident> {
     pub pattern : Pattern<Ident>,
     pub expression : Expr<Ident>
@@ -39,7 +39,7 @@ pub struct Alternative<Ident> {
 
 pub type Pattern<Ident> = module::Pattern<Ident>;
 
-#[deriving(Eq)]
+#[deriving(PartialEq)]
 pub struct Literal {
     pub typ: Type,
     pub value: Literal_
@@ -47,7 +47,7 @@ pub struct Literal {
 
 pub type Literal_ = module::Literal;
 
-#[deriving(Eq)]
+#[deriving(PartialEq)]
 pub enum Expr<Ident> {
     Identifier(Ident),
     Apply(Box<Expr<Ident>>, Box<Expr<Ident>>),
@@ -74,6 +74,12 @@ impl <T: fmt::Show> fmt::Show for Expr<T> {
         write_core_expr!(*self, f,)
     }
 }
+impl <T: fmt::Show> fmt::Show for Alternative<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{} -> {}", self.pattern, self.expression)
+    }
+}
+
 
 pub trait Typed {
     fn get_type<'a>(&'a self) -> &'a Type;
@@ -103,7 +109,7 @@ impl <'a> Equiv<&'a str> for Name {
     }
 }
 
-#[deriving(Eq, TotalEq, Hash, Clone)]
+#[deriving(PartialEq, Eq, Hash, Clone)]
 pub struct Id<T = Name> {
     pub name: T,
     pub typ: Type,
@@ -370,9 +376,9 @@ pub mod translate {
             }
             module::Case(expr, alts) => {
                 let a = FromVec::<Alternative<Id<Name>>>::from_vec(alts.move_iter().map(|alt| {
-                    let module::Alternative { pattern: pattern, expression: expr} = alt;
+                    let module::Alternative { pattern: pattern, matches: matches} = alt;
                     let p = translate_pattern(pattern.node);
-                    Alternative { pattern: p, expression:translate_expr(expr) }
+                    Alternative { pattern: p, expression:translate_match(matches) }
                 }).collect());
                 Case(box translate_expr(*expr), a)
             }

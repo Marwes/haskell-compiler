@@ -31,7 +31,7 @@ macro_rules! write_core_expr(
             Case(ref expr, ref alts) => {
                 try!(write!($f, "case {} of \\{\n", *expr));
                 for alt in alts.iter() {
-                    try!(write!($f, "; {} -> {}\n", alt.pattern, alt.expression));
+                    try!(write!($f, "; {}\n", alt));
                 }
                 write!($f, "\\}\n")
             }
@@ -77,8 +77,8 @@ fn main() {
         Some(modulename) => {
             let result = execute_main_module(modulename.as_slice()).unwrap();
             match result {
-                Some(x) => println!("{:?}", x),
-                None => println!("Error running module {:?}", modulename)
+                Some(x) => println!("{}", x),
+                None => println!("Error running module {}", modulename)
             }
             return;
         }

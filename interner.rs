@@ -3,12 +3,12 @@ use std::rc::Rc;
 use std::cell::RefCell;
 use std::fmt;
 
-#[deriving(TotalEq, Eq, Clone, Default, Hash)]
+#[deriving(Eq, PartialEq, Clone, Default, Hash)]
 pub struct InternedStr(uint);
 
 pub struct Interner {
-    indexes: HashMap<StrBuf, uint>,
-    strings: Vec<StrBuf>
+    indexes: HashMap<String, uint>,
+    strings: Vec<String>
 }
 
 impl Interner {
@@ -22,8 +22,8 @@ impl Interner {
             Some(index) => InternedStr(index),
             None => {
                 let index = self.strings.len();
-                self.indexes.insert(s.to_owned(), index);
-                self.strings.push(s.to_owned());
+                self.indexes.insert(s.to_string(), index);
+                self.strings.push(s.to_string());
                 InternedStr(index)
             }
         }

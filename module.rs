@@ -37,7 +37,7 @@ pub struct Instance<Ident = InternedStr> {
     pub classname : InternedStr
 }
 
-#[deriving(Clone, Eq)]
+#[deriving(Clone, PartialEq)]
 pub struct Binding<Ident = InternedStr> {
     pub name : Ident,
     pub arguments: ~[Pattern<Ident>],
@@ -46,7 +46,7 @@ pub struct Binding<Ident = InternedStr> {
     pub arity : uint
 }
 
-#[deriving(Eq, TotalEq, Clone, Show)]
+#[deriving(PartialEq, Eq, Clone, Show)]
 pub struct Constructor<Ident = InternedStr> {
     pub name : Ident,
     pub typ : Type,
@@ -54,31 +54,31 @@ pub struct Constructor<Ident = InternedStr> {
     pub arity : int
 }
 
-#[deriving(Eq, Clone)]
+#[deriving(PartialEq, Clone)]
 pub struct DataDefinition<Ident = InternedStr> {
     pub constructors : ~[Constructor<Ident>],
     pub typ : Type,
     pub parameters : HashMap<InternedStr, int>
 }
 
-#[deriving(Clone, Eq, TotalEq, Default)]
+#[deriving(Clone, PartialEq, Eq, Default)]
 pub struct TypeDeclaration {
     pub context : ~[Constraint],
     pub typ : Type,
     pub name : InternedStr
 }
 
-#[deriving(Clone, Default, Eq, TotalEq, Hash)]
+#[deriving(Clone, Default, PartialEq, Eq, Hash)]
 pub struct TypeOperator {
     pub name : InternedStr,
     pub kind : Kind
 }
-#[deriving(Clone, Eq, TotalEq, Default)]
+#[deriving(Clone, PartialEq, Eq, Default)]
 pub struct TypeVariable {
     pub id : int,
     pub kind : Kind
 }
-#[deriving(Clone, TotalEq, Hash)]
+#[deriving(Clone, Eq, Hash)]
 pub enum Type {
     TypeVariable(TypeVariable),
     TypeOperator(TypeOperator),
@@ -175,12 +175,12 @@ impl <S: Writer> ::std::hash::Hash<S> for TypeVariable {
     }
 }
 
-pub fn tuple_type(size: uint) -> (StrBuf, Type) {
+pub fn tuple_type(size: uint) -> (String, Type) {
     let mut var_list = Vec::new();
     for i in range(0, size) {
         var_list.push(Generic(Type::new_var_kind(i as int, star_kind.clone()).var().clone()));
     }
-    let mut ident = StrBuf::from_char(1, '(');
+    let mut ident = String::from_char(1, '(');
     for _ in range(1, size) {
         ident.push_char(',');
     }
@@ -189,7 +189,7 @@ pub fn tuple_type(size: uint) -> (StrBuf, Type) {
     for i in range_step(size as int - 1, -1, -1) {
         typ = function_type_(Generic(Type::new_var(i).var().clone()), typ);
     }
-    (ident.into_owned(), typ)
+    (ident, typ)
 }
 
 pub fn list_type(typ: Type) -> Type {
@@ -225,13 +225,13 @@ pub fn unit() -> Type {
 }
 
 
-#[deriving(Clone, Eq, TotalEq, Hash)]
+#[deriving(Clone, PartialEq, Eq, Hash)]
 pub struct Constraint {
     pub class : InternedStr,
     pub variables : ~[TypeVariable]
 }
 
-#[deriving(Clone, Eq, TotalEq, Hash)]
+#[deriving(Clone, PartialEq, Eq, Hash)]
 pub enum Kind {
     KindFunction(Box<Kind>, Box<Kind>),
     StarKind
@@ -279,7 +279,7 @@ impl fmt::Show for TypeOperator {
     }
 }
 
-#[deriving(Eq, Ord)]
+#[deriving(PartialEq, PartialOrd)]
 enum Prec_ {
     Top,
     Function,
@@ -393,7 +393,7 @@ fn type_eq<'a>(mapping: &mut HashMap<&'a TypeVariable, &'a TypeVariable>, lhs: &
     }
 }
 
-impl Eq for Type {
+impl PartialEq for Type {
     fn eq(&self, other: &Type) -> bool {
         let mut mapping = HashMap::new();
         type_eq(&mut mapping, self, other)
@@ -408,7 +408,7 @@ pub struct TypedExpr<Ident = InternedStr> {
     pub location : Location
 }
 
-impl <T: Eq> Eq for TypedExpr<T> {
+impl <T: PartialEq> PartialEq for TypedExpr<T> {
     fn eq(&self, other : &TypedExpr<T>) -> bool {
         self.expr == other.expr
     }
@@ -429,13 +429,13 @@ impl TypedExpr {
     }
 }
 
-#[deriving(Clone, Eq)]
+#[deriving(Clone, PartialEq)]
 pub struct Alternative<Ident = InternedStr> {
     pub pattern : Located<Pattern<Ident>>,
-    pub expression : TypedExpr<Ident>
+    pub matches: Match<Ident>,
 }
 
-#[deriving(Clone, Eq, TotalEq)]
+#[deriving(Clone, PartialEq, Eq)]
 pub enum Pattern<Ident = InternedStr> {
     NumberPattern(int),
     IdentifierPattern(Ident),
@@ -443,32 +443,32 @@ pub enum Pattern<Ident = InternedStr> {
     WildCardPattern
 }
 
-#[deriving(Clone, Eq, Show)]
+#[deriving(Clone, PartialEq)]
 pub enum Match<Ident = InternedStr> {
     Guards(~[Guard<Ident>]),
     Simple(TypedExpr<Ident>)
 }
-#[deriving(Clone, Eq, Show)]
+#[deriving(Clone, PartialEq, Show)]
 pub struct Guard<Ident = InternedStr> {
     pub predicate: TypedExpr<Ident>,
     pub expression: TypedExpr<Ident>
 }
 
-#[deriving(Clone, Eq)]
+#[deriving(Clone, PartialEq)]
 pub enum DoBinding<Ident = InternedStr> {
     DoLet(~[Binding<Ident>]),
     DoBind(Located<Pattern<Ident>>, TypedExpr<Ident>),
     DoExpr(TypedExpr<Ident>)
 }
 
-#[deriving(Clone, Eq)]
+#[deriving(Clone, PartialEq)]
 pub enum Literal {
     Integral(int),
     Fractional(f64),
     String(InternedStr),
     Char(char)
 }
-#[deriving(Clone, Eq)]
+#[deriving(Clone, PartialEq)]
 pub enum Expr<Ident = InternedStr> {
     Identifier(Ident),
     Apply(Box<TypedExpr<Ident>>, Box<TypedExpr<Ident>>),
@@ -522,6 +522,25 @@ impl <T: fmt::Show> fmt::Show for Pattern<T> {
                 write!(f, ")")
             }
             &WildCardPattern => write!(f, "_")
+        }
+    }
+}
+
+impl <T: fmt::Show> fmt::Show for Alternative<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{} -> {}", self.pattern.node, self.matches)
+    }
+}
+impl <T: fmt::Show> fmt::Show for Match<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            Simple(ref e) => write!(f, "{}", *e),
+            Guards(ref gs) => {
+                for g in gs.iter() {
+                    try!(write!(f, "| {} -> {}\n", g.predicate, g.expression));
+                }
+                Ok(())
+            }
         }
     }
 }
@@ -611,7 +630,15 @@ pub fn walk_expr<Ident>(visitor: &mut Visitor<Ident>, expr: &TypedExpr<Ident>) {
 }
 
 pub fn walk_alternative<Ident>(visitor: &mut Visitor<Ident>, alt: &Alternative<Ident>) {
-    visitor.visit_expr(&alt.expression);
+    match alt.matches {
+        Simple(ref e) => visitor.visit_expr(e),
+        Guards(ref gs) => {
+            for g in gs.iter() {
+                visitor.visit_expr(&g.predicate);
+                visitor.visit_expr(&g.expression);
+            }
+        }
+    }
 }
 
 pub fn walk_pattern<Ident>(visitor: &mut Visitor<Ident>, pattern: &Pattern<Ident>) {

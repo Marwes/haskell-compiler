@@ -5,7 +5,7 @@ use std::rc::Rc;
 use std::cell::RefCell;
 use interner::*;
 
-#[deriving(Clone, Eq, Show)]
+#[deriving(Clone, PartialEq, Show)]
 pub enum TokenEnum {
 	EOF,
 	NAME,
@@ -44,7 +44,7 @@ pub enum TokenEnum {
     IMPORT
 }
 
-#[deriving(Clone, Eq)]
+#[deriving(Clone, PartialEq)]
 pub struct Location {
     pub column : int,
     pub row : int,
@@ -62,7 +62,7 @@ pub struct Located<T> {
     pub node: T
 }
 
-impl <T: Eq> Eq for Located<T> {
+impl <T: PartialEq> PartialEq for Located<T> {
     fn eq(&self, o: &Located<T>) -> bool {
         self.node == o.node
     }
@@ -101,7 +101,7 @@ impl Token {
     }
 }
 
-impl Eq for Token {
+impl PartialEq for Token {
     fn eq(&self, rhs : &Token) -> bool {
         self.token == rhs.token && self.value == rhs.value
     }
@@ -232,8 +232,8 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
         }
     }
 
-    fn scan_digits(&mut self) -> StrBuf {
-        let mut result = StrBuf::new();
+    fn scan_digits(&mut self) -> String {
+        let mut result = String::new();
         loop {
             match self.peek() {
                 Some(x) => {
@@ -250,7 +250,7 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
     }
 
     fn scan_number(&mut self, c : char, location : Location) -> Token {
-        let mut number = StrBuf::from_char(1, c);
+        let mut number = String::from_char(1, c);
         number.push_str(self.scan_digits().as_slice());
         let mut token = NUMBER;
         match self.peek() {
@@ -266,7 +266,7 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
     }
 
     fn scan_identifier(&mut self, c: char, startLocation: Location) -> Token {
-        let mut result = StrBuf::from_char(1, c);
+        let mut result = String::from_char(1, c);
         loop {
             match self.peek() {
                 Some(ch) => {
@@ -291,7 +291,7 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
                 //L (t:ts) (m:ms) 	= 	} : (L (t:ts) ms) 	if m /= 0 and parse-error(t)
                 let m = *self.indentLevels.get(self.indentLevels.len() - 1);
                 if m != 0 {//If not a explicit '}'
-                    debug!("ParseError on token {:?}, inserting \\}", self.current().token);
+                    debug!("ParseError on token {}, inserting \\}", self.current().token);
                     self.indentLevels.pop();
                     let loc = self.current().location;
                     self.tokens.push_back(Token::new(&self.interner, RBRACE, "}", loc));
@@ -444,7 +444,7 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
         //Decide how to tokenize depending on what the first char is
         //ie if its an operator then more operators will follow
         if is_operator(c) {
-            let mut result = StrBuf::from_char(1, c);
+            let mut result = String::from_char(1, c);
             loop {
                 match self.peek() {
                     Some(ch) => {
@@ -490,7 +490,7 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
             return token;
         }
         else if c == '"' {
-            let mut string = StrBuf::new();
+            let mut string = String::new();
             loop {
                 match self.read_char() {
                     Some('"') => return Token::new(&self.interner, STRING, string.as_slice(), startLocation),

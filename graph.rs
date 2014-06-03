@@ -1,9 +1,9 @@
 use std::cmp::min;
 use std::vec::FromVec;
 
-#[deriving(Eq, Show)]
+#[deriving(PartialEq, Show)]
 pub struct VertexIndex(uint);
-#[deriving(Eq)]
+#[deriving(PartialEq)]
 pub struct EdgeIndex(uint);
 
 impl VertexIndex {

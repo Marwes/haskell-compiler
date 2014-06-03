@@ -13,7 +13,7 @@ use lambda_lift::do_lambda_lift;
 use renamer::rename_module;
 use primitive::primitives;
 
-#[deriving(Eq, Clone, Show)]
+#[deriving(PartialEq, Clone, Show)]
 pub enum Instruction {
     Add,
     Sub,
@@ -725,7 +725,7 @@ impl <'a> Compiler<'a> {
         match try_find_instance_type(var, typ, actual_type) {
             Some(typename) => {
                 //We should be able to retrieve the instance directly
-                let mut b = StrBuf::from_str("#");
+                let mut b = String::from_str("#");
                 b.push_str(typename);
                 b.push_str(name.as_slice());
                 let instance_fn_name = Name { name: intern(b.as_slice()), uid: 0 };
@@ -786,7 +786,7 @@ impl <'a> Compiler<'a> {
                         }
                     }
                 }
-                None => fail!("Undefined instance {:?}", c)
+                None => fail!("Undefined instance {}", c)
             }
         }
         None
@@ -824,7 +824,7 @@ impl <'a> Compiler<'a> {
                             &TypeOperator(ref x) => x,
                             _ => fail!("{}", typ)
                         };
-                        let mut b = StrBuf::from_str("#");
+                        let mut b = String::from_str("#");
                         b.push_str(x.name.as_slice());
                         b.push_str(decl.name.as_slice());
                         let f = intern(b.as_slice());
