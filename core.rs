@@ -1,5 +1,5 @@
 use std::fmt;
-pub use module::{Type, TypeApplication, TypeOperator, TypeVariable, IdentifierPattern, ConstructorPattern, WildCardPattern, NumberPattern, Constraint, Class, DataDefinition, TypeDeclaration, function_type_, Integral, Fractional, String, Char};
+pub use module::{Type, TypeApplication, TypeOperator, TypeVariable, Match, Simple, IdentifierPattern, ConstructorPattern, WildCardPattern, NumberPattern, Constraint, Class, DataDefinition, TypeDeclaration, function_type_, Integral, Fractional, String, Char};
 use module;
 use interner::*;
 pub use renamer::Name;
@@ -60,6 +60,12 @@ pub enum Expr<Ident> {
 impl fmt::Show for Literal {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.value)
+    }
+}
+
+impl <T: fmt::Show> fmt::Show for Binding<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{} = {}", self.name, self.expression)
     }
 }
 
@@ -309,6 +315,13 @@ pub mod translate {
         }
     }
 
+    fn translate_match(matches: module::Match<Name>) -> Expr<Id<Name>> {
+        match matches {
+            Simple(e) => translate_expr(e),
+            _ => fail!()
+        }
+    }
+
     pub fn translate_expr(input_expr: module::TypedExpr<Name>) -> Expr<Id<Name>> {
         //Checks if the expression is lambda not bound by a let binding
         //if it is then we wrap the lambda in a let binding
@@ -448,16 +461,16 @@ pub mod translate {
         let expr = if bindings.get(0).arguments.len() == 0 {
             let module::Binding {
                 name: bind_name, arguments: _arguments,
-                expression: expression, typeDecl: type_decl, ..
+                matches: matches, typeDecl: type_decl, ..
             } = bindings.pop().unwrap();
             name = bind_name;
             context = type_decl.context;
-            translate_expr(expression)
+            translate_match(matches)
         }
         else if bindings.len() == 1 && simple_binding(bindings.get(0)) {
             let module::Binding {
                 name: bind_name, arguments: arguments,
-                expression: expression, typeDecl: type_decl, ..
+                matches: matches, typeDecl: type_decl, ..
             } = bindings.pop().unwrap();
             name = bind_name;
             context = type_decl.context.clone();
@@ -476,7 +489,7 @@ pub mod translate {
                 };
                 p
             });
-            make_lambda(arg_names, translate_expr(expression))
+            make_lambda(arg_names, translate_match(matches))
         }
         else {
             let arg_len = bindings.get(0).arguments.len();
@@ -506,10 +519,10 @@ pub mod translate {
                 }
             };
             let alts: Vec<Alternative<Id<Name>>> = bindings.move_iter().map(|bind| {
-                let module::Binding { name: bind_name, arguments: arguments, expression: expression, typeDecl: type_decl, .. } = bind;
+                let module::Binding { name: bind_name, arguments: arguments, matches: matches, typeDecl: type_decl, .. } = bind;
                 name = bind_name;
                 context = type_decl.context;
-                make_alternative(arguments, translate_expr(expression))
+                make_alternative(arguments, translate_match(matches))
             }).collect();
             make_lambda(args.move_iter(), Case(box match_expr, FromVec::from_vec(alts)))
         };

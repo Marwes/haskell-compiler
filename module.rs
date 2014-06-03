@@ -41,7 +41,7 @@ pub struct Instance<Ident = InternedStr> {
 pub struct Binding<Ident = InternedStr> {
     pub name : Ident,
     pub arguments: ~[Pattern<Ident>],
-    pub expression : TypedExpr<Ident>,
+    pub matches: Match<Ident>,
     pub typeDecl : TypeDeclaration,
     pub arity : uint
 }
@@ -443,6 +443,17 @@ pub enum Pattern<Ident = InternedStr> {
     WildCardPattern
 }
 
+#[deriving(Clone, Eq, Show)]
+pub enum Match<Ident = InternedStr> {
+    Guards(~[Guard<Ident>]),
+    Simple(TypedExpr<Ident>)
+}
+#[deriving(Clone, Eq, Show)]
+pub struct Guard<Ident = InternedStr> {
+    pub predicate: TypedExpr<Ident>,
+    pub expression: TypedExpr<Ident>
+}
+
 #[deriving(Clone, Eq)]
 pub enum DoBinding<Ident = InternedStr> {
     DoLet(~[Binding<Ident>]),
@@ -467,6 +478,11 @@ pub enum Expr<Ident = InternedStr> {
     Case(Box<TypedExpr<Ident>>, ~[Alternative<Ident>]),
     Do(~[DoBinding<Ident>], Box<TypedExpr<Ident>>)
 }
+impl <T: fmt::Show> fmt::Show for Binding<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{} = {}", self.name, self.matches)
+    }
+}
 
 impl <T: fmt::Show> fmt::Show for Expr<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -479,7 +495,7 @@ impl <T: fmt::Show> fmt::Show for Expr<T> {
                         DoLet(ref bindings) => {
                             try!(write!(f, "let \\{\n"));
                             for bind in bindings.iter() {
-                                try!(write!(f, "; {} = {}\n", bind.name, bind.expression));
+                                try!(write!(f, "; {} = {}\n", bind.name, bind.matches));
                             }
                             try!(write!(f, "\\}\n"));
                         }
@@ -548,7 +564,10 @@ pub fn walk_module<Ident>(visitor: &mut Visitor<Ident>, module: &Module<Ident>) 
 }
 
 pub fn walk_binding<Ident>(visitor: &mut Visitor<Ident>, binding: &Binding<Ident>) {
-    visitor.visit_expr(&binding.expression);
+    match binding.matches {
+        Simple(ref e) => visitor.visit_expr(e),
+        _ => fail!()
+    }
 }
 
 pub fn walk_expr<Ident>(visitor: &mut Visitor<Ident>, expr: &TypedExpr<Ident>) {

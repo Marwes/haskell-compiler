@@ -24,7 +24,7 @@ macro_rules! write_core_expr(
             Let(ref bindings, ref body) => {
                 try!(write!($f, "let \\{\n"));
                 for bind in bindings.iter() {
-                    try!(write!($f, "; {} = {}\n", bind.name, bind.expression));
+                    try!(write!($f, "; {}\n", bind));
                 }
                 write!($f, "\\} in {}\n", *body)
             }

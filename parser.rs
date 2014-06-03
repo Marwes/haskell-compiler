@@ -491,7 +491,11 @@ fn binding(&mut self) -> Binding {
 
 	//Parse the arguments for the binding
 	let arguments = self.patternParameter();
-    self.requireNext(EQUALSSIGN);
+    let matches = match self.lexer.next_().token {
+        EQUALSSIGN => Simple(self.expression_()),
+        PIPE => Guards(self.sepBy1(|this| this.guard(), PIPE)),
+        _ => fail!(ParseError2(&self.lexer, [EQUALSSIGN, PIPE]))
+    };
 
     Binding {
         name : name.clone(),
@@ -502,8 +506,14 @@ fn binding(&mut self) -> Binding {
         },
         arity : arguments.len(),
         arguments: arguments,
-        expression : self.expression_(),
+        matches : matches,
     }
+}
+
+fn guard(&mut self) -> Guard {
+    let p = self.expression_();
+    self.requireNext(EQUALSSIGN);
+    Guard { predicate: p, expression: self.expression_() }
 }
 
 fn make_pattern(&mut self, name: InternedStr, args: |&mut Parser<Iter>| -> ~[Pattern]) -> Pattern {
@@ -1055,7 +1065,7 @@ fn binding()
     let mut parser = Parser::new("test x = x + 3".chars());
     let bind = parser.binding();
     assert_eq!(bind.arguments, ~[IdentifierPattern(intern("x"))]);
-    assert_eq!(bind.expression, apply(apply(identifier("+"), identifier("x")), number(3)));
+    assert_eq!(bind.matches, Simple(apply(apply(identifier("+"), identifier("x")), number(3))));
     assert_eq!(bind.name, intern("test"));
 }
 
@@ -1064,7 +1074,7 @@ fn double()
 {
     let mut parser = Parser::new("test = 3.14".chars());
     let bind = parser.binding();
-    assert_eq!(bind.expression, rational(3.14));
+    assert_eq!(bind.matches, Simple(rational(3.14)));
     assert_eq!(bind.name, intern("test"));
 }
 
@@ -1077,7 +1087,7 @@ let
 in test - 2".chars());
     let expr = parser.expression_();
     let mut bind = Binding { arity: 0, arguments: ~[], name: intern("test"), typeDecl:Default::default(),
-        expression: apply(apply(identifier("add"), number(3)), number(2)) };
+        matches: Simple(apply(apply(identifier("add"), number(3)), number(2))) };
     bind.typeDecl.name = intern("test");
     assert_eq!(expr, let_(~[bind], apply(apply(identifier("-"), identifier("test")), number(2))));
 }
@@ -1188,7 +1198,7 @@ r"main = do
         DoExpr(apply(identifier("putStrLn"), identifier("test"))),
         DoBind(Located { location: Location::eof(), node: IdentifierPattern(intern("s")) }, identifier("getContents"))
         ], box apply(identifier("return"), identifier("s"))));
-    assert_eq!(module.bindings[0].expression, b);
+    assert_eq!(module.bindings[0].matches, Simple(b));
 }
 #[test]
 fn lambda_pattern() {
@@ -1219,6 +1229,25 @@ fn parse_module_imports() {
     assert_eq!(modules.get(0).name.as_slice(), "Prelude");
     assert_eq!(modules.get(1).name.as_slice(), "Test");
     assert_eq!(modules.get(1).imports[0].module.as_slice(), "Prelude");
+}
+
+#[test]
+fn parse_guards() {
+    let mut parser = Parser::new(
+r"
+test x
+    | x = 1
+    | otherwise = 0
+".chars());
+    let binding = parser.binding();
+    let mut b2 = Binding { arity: 1, arguments: ~[IdentifierPattern(intern("x"))], name: intern("test"), typeDecl:Default::default(),
+        matches: Guards(~[
+            Guard { predicate: identifier("x"), expression: number(1) },
+            Guard { predicate: identifier("otherwise"), expression: number(0) },
+        ])
+    };
+    b2.typeDecl.name = intern("test");
+    assert_eq!(binding, b2);
 }
 
 #[test]

@@ -483,7 +483,15 @@ impl <'a> TypeEnvironment<'a> {
             }
             &Let(ref mut bindings, ref mut let_expr) => {
                 for bind in bindings.mut_iter() {
-                    self.substitute(subs, &mut bind.expression);
+                    match bind.matches {
+                        Simple(ref mut e) => self.substitute(subs, e),
+                        Guards(ref mut gs) => {
+                            for guard in gs.mut_iter() {
+                                self.substitute(subs, &mut guard.predicate);
+                                self.substitute(subs, &mut guard.expression);
+                            }
+                        }
+                    }
                 }
                 self.substitute(subs, *let_expr);
             }
@@ -501,7 +509,15 @@ impl <'a> TypeEnvironment<'a> {
                         DoBind(_, ref mut expr) => self.substitute(subs, expr),
                         DoLet(ref mut bindings) => {
                             for bind in bindings.mut_iter() {
-                                self.substitute(subs, &mut bind.expression);
+                                match bind.matches {
+                                    Simple(ref mut e) => self.substitute(subs, e),
+                                    Guards(ref mut gs) => {
+                                        for guard in gs.mut_iter() {
+                                            self.substitute(subs, &mut guard.predicate);
+                                            self.substitute(subs, &mut guard.expression);
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -557,6 +573,29 @@ impl <'a> TypeEnvironment<'a> {
         self.new_var_kind(StarKind)
     }
 
+    fn typecheck_match(&mut self, matches: &mut Match<Name>, subs: &mut Substitution) -> Type {
+        match *matches {
+            Simple(ref mut e) => {
+                let mut typ = self.typecheck(e, subs);
+                unify_location(self, subs, &e.location, &mut typ, &mut e.typ);
+                typ
+            }
+            Guards(ref mut gs) => {
+                let mut typ = None;
+                for guard in gs.mut_iter() {
+                    let mut typ2 = self.typecheck(&mut guard.expression, subs);
+                    match typ {
+                        Some(mut typ) => unify_location(self, subs, &guard.expression.location, &mut typ, &mut guard.expression.typ),
+                        None => ()
+                    }
+                    typ = Some(typ2);
+                    let mut predicate = self.typecheck(&mut guard.predicate, subs);
+                    unify_location(self, subs, &guard.predicate.location, &mut predicate, &mut guard.predicate.typ);
+                }
+                typ.unwrap()
+            }
+        }
+    }
     fn typecheck(&mut self, expr : &mut TypedExpr<Name>, subs: &mut Substitution) -> Type {
         if expr.typ == Type::new_var(0) {
             expr.typ = self.new_var();
@@ -644,7 +683,6 @@ impl <'a> TypeEnvironment<'a> {
                     match *bind {
                         DoExpr(ref mut e) => {
                             let mut typ = self.typecheck(e, subs);
-                            println!(">>>>>> {} {} {}", typ, e.typ, e);
                             unify_location(self, subs, &e.location, &mut typ, &mut previous);
                         }
                         DoLet(ref mut bindings) => {
@@ -717,20 +755,22 @@ impl <'a> TypeEnvironment<'a> {
                 _ => None
             };
             if argument_types.len() != bind.arguments.len() {
-                fail!("{} Binding {} do not have the same number of arguments", bind.expression.location, bind.name);
+                fail!("Binding {} do not have the same number of arguments", bind.name);//TODO re add location
             }
             for (arg, typ) in bind.arguments.mut_iter().zip(argument_types.mut_iter()) {
-                self.typecheck_pattern(&bind.expression.location, subs, arg, typ);
+                self.typecheck_pattern(&Location::eof(), subs, arg, typ);
             }
             fn make_function(arguments: &[Type], expr: &Type) -> Type {
                 if arguments.len() == 0 { expr.clone() }
                 else { function_type_(arguments[0].clone(), make_function(arguments.slice_from(1), expr)) }
             }
-            let mut typ = self.typecheck(&mut bind.expression, subs);
-            unify_location(self, subs, &bind.expression.location, &mut typ, &mut bind.expression.typ);
+            let mut typ = self.typecheck_match(&mut bind.matches, subs);
             typ = make_function(argument_types.as_slice(), &typ);
-            unify_location(self, subs, &bind.expression.location, &mut bind.typeDecl.typ, &mut typ);
-            self.substitute(subs, &mut bind.expression);
+            unify_location(self, subs, &Location::eof(), &mut bind.typeDecl.typ, &mut typ);
+            match bind.matches {
+                Simple(ref mut e) => self.substitute(subs, e),
+                _ => fail!()
+            }
             replace(&mut self.constraints, &mut typ, subs);
 
             match type_var {
@@ -756,7 +796,6 @@ impl <'a> TypeEnvironment<'a> {
                 let bindIndex = graph.get_vertex(*index).value;
                 let binds = bindings.get_mut(bindIndex);
                 for bind in binds.mut_iter() {
-                    bind.expression.typ = self.new_var();
                     if bind.typeDecl.typ == Type::new_var(0) {
                         bind.typeDecl.typ = self.new_var();
                     }
@@ -1143,7 +1182,10 @@ fn build_graph(bindings: &Bindings) -> Graph<(uint, uint)> {
     });
     bindings.each_binding(|binds, _| {
         for bind in binds.iter() {
-            add_edges(&mut graph, &map, *map.get(&bind.name), &bind.expression);
+            match bind.matches {
+                Simple(ref e) => add_edges(&mut graph, &map, *map.get(&bind.name), e),
+                _ => fail!()
+            }
         }
     });
     graph
@@ -1336,7 +1378,7 @@ fn typecheck_let() {
 
     //let test x = add x in test
     let unary_bind = lambda("x", apply(apply(identifier("primIntAdd"), identifier("x")), number(1)));
-    let e = let_(~[Binding { arity: 0, arguments: ~[], name: intern("test"), expression: unary_bind, typeDecl: Default::default() }], identifier("test"));
+    let e = let_(~[Binding { arity: 0, arguments: ~[], name: intern("test"), matches: Simple(unary_bind), typeDecl: Default::default() }], identifier("test"));
     let mut expr = rename_expr(e);
     env.typecheck_expr(&mut expr);
 
@@ -1371,7 +1413,7 @@ main = case [mult2 123, 0] of
     [] -> 10";
     let module = do_typecheck(file);
 
-    assert_eq!(module.bindings[1].expression.typ, int_type());
+    assert_eq!(module.bindings[1].typeDecl.typ, int_type());
 }
 
 #[test]
@@ -1432,9 +1474,9 @@ in b".chars());
         &Let(ref binds, _) => {
             assert_eq!(binds.len(), 4);
             assert_eq!(binds[0].name.as_slice(), "a");
-            assert_eq!(binds[0].expression.typ, int_type);
+            assert_eq!(binds[0].typeDecl.typ, int_type);
             assert_eq!(binds[1].name.as_slice(), "test");
-            assert_eq!(binds[1].expression.typ, list_type);
+            assert_eq!(binds[1].typeDecl.typ, list_type);
         }
         _ => fail!("Error")
     }
@@ -1453,7 +1495,7 @@ main = test 1";
 
     let module = do_typecheck(file);
 
-    let typ = &module.bindings[0].expression.typ;
+    let typ = &module.bindings[0].typeDecl.typ;
     assert_eq!(typ, &int_type());
 }
 
@@ -1565,7 +1607,7 @@ main = fmap add2 (Just 3)";
     let module = do_typecheck(file);
 
     let main = &module.bindings[1];
-    assert_eq!(main.expression.typ, Type::new_op(intern("Maybe"), ~[int_type()]));
+    assert_eq!(main.typeDecl.typ, Type::new_op(intern("Maybe"), ~[int_type()]));
 }
 #[should_fail]
 #[test]
@@ -1614,9 +1656,9 @@ test2 = id (primIntAdd 2 0)";
     let module = do_typecheck_with(file, [&prelude as &DataTypes]);
 
     assert_eq!(module.bindings[0].name.as_slice(), "test1");
-    assert_eq!(module.bindings[0].expression.typ, list_type(bool_type()));
+    assert_eq!(module.bindings[0].typeDecl.typ, list_type(bool_type()));
     assert_eq!(module.bindings[1].name.as_slice(), "test2");
-    assert_eq!(module.bindings[1].expression.typ, int_type());
+    assert_eq!(module.bindings[1].typeDecl.typ, int_type());
 }
 
 #[test]
@@ -1691,6 +1733,21 @@ test _ [] = []
     let test = function_type_(function_type_(a.clone(), b.clone()), function_type_(list_type(a), list_type(b)));
     assert_eq!(module.bindings[0].typeDecl.typ, test);
 }
+
+#[test]
+fn guards() {
+    let module = do_typecheck(r"
+
+compare :: Int -> Int -> Int
+compare x y
+    | x < y = -1
+    | x > y = 1
+    | otherwise = 0
+");
+    let test = function_type_(int_type(), function_type_(int_type(), int_type()));
+    assert_eq!(module.bindings[0].typeDecl.typ, test);
+}
+
 
 #[test]
 #[should_fail]
