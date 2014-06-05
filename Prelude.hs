@@ -268,9 +268,9 @@ const x _ = x
 ($) f x = f x
 
 until :: (a -> Bool) -> (a -> a) -> a -> a
-until p f x = case p x of
-    True -> x
-    False -> until p f (f x)
+until p f x
+    | p x = x
+    | otherwise = until p f (f x)
 
 map :: (a -> b) -> [a] -> [b]
 map f (y:ys) = f y : map f ys

@@ -44,15 +44,39 @@ impl <T: ::std::fmt::Show> Errors<T> {
     }
 }
 
+pub struct NameSupply {
+    unique_id: uint
+}
+impl NameSupply {
+    
+    pub fn new() -> NameSupply {
+        NameSupply { unique_id: 0 }
+    }
+    
+    pub fn anonymous(&mut self) -> Name {
+        self.from_str("_a")
+    }
+    pub fn from_str(&mut self, s: &str) -> Name {
+        self.from_interned(intern(s))
+    }
+    pub fn from_interned(&mut self, s: InternedStr) -> Name {
+        Name { name: s, uid: self.next_id() }
+    }
+    pub fn next_id(&mut self) -> uint {
+        self.unique_id += 1;
+        self.unique_id
+    }
+}
+
 struct Renamer {
     uniques: ScopedMap<InternedStr, Name>,
-    unique_id: uint,
+    name_supply: NameSupply,
     errors: Errors<String>
 }
 
 impl Renamer {
     fn new() -> Renamer {
-        Renamer { uniques: ScopedMap::new(), unique_id: 1, errors: Errors::new() }
+        Renamer { uniques: ScopedMap::new(), name_supply: NameSupply::new(), errors: Errors::new() }
     }
 
     fn rename_bindings(&mut self, bindings: ~[Binding<InternedStr>], is_global: bool) -> ~[Binding<Name>] {
@@ -172,8 +196,7 @@ impl Renamer {
             self.uniques.find(&name).map(|x| x.clone()).unwrap()
         }
         else {
-            self.unique_id += 1;
-            let u = Name { name: name.clone(), uid: self.unique_id};
+            let u = self.name_supply.from_interned(name.clone());
             self.uniques.insert(name, u.clone());
             u
         }

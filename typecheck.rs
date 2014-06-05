@@ -733,7 +733,8 @@ impl <'a> TypeEnvironment<'a> {
                 unify_location(self, subs, location, &mut typ, match_type);
             }
             &ConstructorPattern(ref ctorname, ref patterns) => {
-                let mut t = self.fresh(ctorname).expect(format!("Undefined constructer '{}' when matching pattern", *ctorname));
+                let mut t = self.fresh(ctorname)
+	.expect(format!("Undefined constructer '{}' when matching pattern", *ctorname));
                 let mut data_type = get_returntype(&t);
                 
                 unify_location(self, subs, location, &mut data_type, match_type);

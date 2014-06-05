@@ -435,7 +435,7 @@ pub struct Alternative<Ident = InternedStr> {
     pub matches: Match<Ident>,
 }
 
-#[deriving(Clone, PartialEq, Eq)]
+#[deriving(Clone, PartialOrd, PartialEq, Eq)]
 pub enum Pattern<Ident = InternedStr> {
     NumberPattern(int),
     IdentifierPattern(Ident),

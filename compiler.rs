@@ -57,6 +57,7 @@ pub enum Instruction {
     PushDictionaryMember(uint),
     PushPrimitive(uint)
 }
+#[deriving(Show)]
 enum Var<'a> {
     StackVariable(uint),
     GlobalVariable(uint),
@@ -113,7 +114,7 @@ impl Globals for Assembly {
         let mut index = 0;
         for sc in self.superCombinators.iter() {
             if *name == sc.name {
-                if sc.constraints.len() > 0 {
+                if sc.type_declaration.context.len() > 0 {
                     return Some(ConstraintVariable(self.offset + index, &sc.type_declaration.typ, sc.constraints));
                 }
                 else {
@@ -319,7 +320,7 @@ impl Types for Assembly {
     }
     fn each_constraint_list(&self, func: |&[Constraint]|) {
         for sc in self.superCombinators.iter() {
-            func(sc.constraints);
+            func(sc.type_declaration.context);
         }
         
         for class in self.classes.iter() {
@@ -423,7 +424,6 @@ impl <'a> Compiler<'a> {
     }
 
     fn compileBinding(&mut self, bind : &Binding<Id>) -> SuperCombinator {
-        debug!("Compiling binding {}", bind.name);
         let mut comb = SuperCombinator::new();
         comb.assembly_id = self.assemblies.len();
         comb.type_declaration = TypeDeclaration {
@@ -431,6 +431,7 @@ impl <'a> Compiler<'a> {
             typ: bind.name.typ.clone(),
             context: bind.name.constraints.clone()
         };
+        debug!("Compiling binding {}", comb.type_declaration);
         comb.constraints = bind.name.constraints.clone();
         let dict_arg = if bind.name.constraints.len() > 0 { 1 } else { 0 };
         let mut instructions = Vec::new();
@@ -448,7 +449,7 @@ impl <'a> Compiler<'a> {
             instructions.push(Unwind);
         });
         comb.instructions = FromVec::from_vec(instructions);
-        debug!("{} compiled as:\n{}", bind.name, comb.instructions);
+        debug!("{} compiled as:\n{}", comb.type_declaration, comb.instructions);
         comb
     }
 
@@ -570,6 +571,7 @@ impl <'a> Compiler<'a> {
                 let maybe_new_dict = match self.find(&name.name) {
                     None => fail!("Error: Undefined variable {}", *name),
                     Some(var) => {
+                        debug!("{}", var);
                         match var {
                             StackVariable(index) => { instructions.push(Push(index)); None }
                             GlobalVariable(index) => { instructions.push(PushGlobal(index)); None }
@@ -675,6 +677,7 @@ impl <'a> Compiler<'a> {
             }
             &Case(ref body, ref alternatives) => {
                 self.compile(*body, instructions, true);
+                self.stackSize += 1;
                 //Dummy variable for the case expression
                 //Storage for all the jumps that should go to the end of the case expression
                 let mut end_branches = Vec::new();
@@ -684,9 +687,8 @@ impl <'a> Compiler<'a> {
                     self.scope(|this| {
                         let pattern_start = instructions.len() as int;
                         let mut branches = Vec::new();
-                        let stack_increase = this.compile_pattern(&alt.pattern, &mut branches, instructions, this.stackSize);
+                        let stack_increase = this.compile_pattern(&alt.pattern, &mut branches, instructions, this.stackSize - 1);
                         let pattern_end = instructions.len() as int;
-
                         this.compile(&alt.expression, instructions, strict);
                         instructions.push(Slide(stack_increase));
                         instructions.push(Jump(0));//Should jump to the end
@@ -924,11 +926,10 @@ impl <'a> Compiler<'a> {
                 }
                 instructions.push(Split(patterns.len()));
                 self.stackSize += patterns.len();
-                let mut size = 0;
                 for (i, p) in patterns.iter().enumerate() {
-                    size += self.compile_pattern(p, branches, instructions, self.stackSize + 1 - patterns.len() + i);
+                    self.new_var_at(p.name.clone(), self.stackSize - patterns.len() + i);
                 }
-                size + patterns.len()
+                patterns.len()
             }
             &NumberPattern(number) => {
                 self.new_var_at(Name { name: intern(stack_size.to_str().as_slice()), uid: 0 }, stack_size);
@@ -1093,29 +1094,6 @@ r"main = case [primIntAdd 1 0] of
         Push(0), CaseJump(1), Jump(14), Split(2), Push(1), Eval, Slide(2), Jump(22), Pop(2),
         Push(0), CaseJump(0), Jump(22), Split(0), PushInt(2), Slide(0), Jump(22), Pop(0), Slide(1), Eval, Update(0), Unwind]);
 }
-
-#[test]
-fn compile_nested_case() {
-    let file =
-r"main = case [primIntAdd 1 0] of
-    1:xs -> primIntAdd 1 1
-    [] -> 2";
-    let assembly = compile(file);
-
-    assert_eq!(assembly.superCombinators[0].instructions, ~[Pack(0, 0), PushInt(0), PushInt(1), Add, Pack(1, 2),
-        Push(0), CaseJump(1), Jump(20), Split(2), Push(1), Eval, PushInt(1), IntEQ, JumpFalse(19), PushInt(1), PushInt(1), Add, Slide(2), Jump(28), Pop(2),
-        Push(0), CaseJump(0), Jump(28), Split(0), PushInt(2), Slide(0), Jump(28), Pop(0), Slide(1), Eval, Update(0), Unwind]);
-}
-
-#[test]
-fn compile_let_as_argument() {
-    let file =
-r"main = primIntAdd (let x = primIntAdd 0 3 in x) 2";
-    let assembly = compile(file);
-
-    assert_eq!(assembly.superCombinators[0].instructions, ~[PushInt(2), PushInt(3), PushInt(0), Add, Push(1), Eval, Slide(1), Add, Update(0), Unwind]);
-}
-
 
 #[test]
 fn compile_class_constraints() {

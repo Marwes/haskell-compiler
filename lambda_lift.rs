@@ -19,7 +19,7 @@ fn each_pattern_variables(pattern: &Pattern<Id>, f: &mut |&Name|) {
         IdentifierPattern(ref ident) => (*f)(&ident.name),
         ConstructorPattern(_, ref patterns) => {
             for p in patterns.iter() {
-                each_pattern_variables(p, f);
+                (*f)(&p.name);
             }
         }
         _ => ()
@@ -203,6 +203,7 @@ mod tests {
     use core::*;
     use core::translate::translate_module;
     use renamer::rename_module;
+    use typecheck::TypeEnvironment;
 
     struct CheckUniques {
         found: HashSet<Id>
@@ -310,7 +311,9 @@ test2 x =
             let g y = add x (f y)
             in add x test
     in f x".chars());
-        let m = translate_module(rename_module(parser.module()));
+	let mut module = rename_module(parser.module());
+	TypeEnvironment::new().typecheck_module(&mut module);
+        let m = translate_module(module);
         let module = abstract_module(m);
         (&mut visitor as &mut Visitor<Id>).visit_module(&module);
         assert_eq!(visitor.count, 2);

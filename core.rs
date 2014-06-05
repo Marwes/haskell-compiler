@@ -1,5 +1,5 @@
 use std::fmt;
-pub use module::{Type, TypeApplication, TypeOperator, TypeVariable, Match, Simple, IdentifierPattern, ConstructorPattern, WildCardPattern, NumberPattern, Constraint, Class, DataDefinition, TypeDeclaration, function_type_, Integral, Fractional, String, Char};
+pub use module::{Type, TypeApplication, TypeOperator, TypeVariable, Match, Simple, Guards, Constraint, Class, DataDefinition, TypeDeclaration, function_type_, Integral, Fractional, String, Char, bool_type};
 use module;
 use interner::*;
 pub use renamer::Name;
@@ -25,21 +25,27 @@ impl Module<Id> {
     }
 }
 
-#[deriving(PartialEq)]
+#[deriving(Clone, PartialEq)]
 pub struct Binding<Ident> {
     pub name: Ident,
     pub expression: Expr<Ident>
 }
 
-#[deriving(PartialEq)]
+#[deriving(Clone, PartialEq)]
 pub struct Alternative<Ident> {
     pub pattern : Pattern<Ident>,
     pub expression : Expr<Ident>
 }
 
-pub type Pattern<Ident> = module::Pattern<Ident>;
+#[deriving(Clone, PartialEq)]
+pub enum Pattern<Ident> {
+    ConstructorPattern(Ident, ~[Ident]),
+    IdentifierPattern(Ident),
+    NumberPattern(int),
+    WildCardPattern
+}
 
-#[deriving(PartialEq)]
+#[deriving(Clone, PartialEq)]
 pub struct Literal {
     pub typ: Type,
     pub value: Literal_
@@ -47,7 +53,7 @@ pub struct Literal {
 
 pub type Literal_ = module::Literal;
 
-#[deriving(PartialEq)]
+#[deriving(Clone, PartialEq)]
 pub enum Expr<Ident> {
     Identifier(Ident),
     Apply(Box<Expr<Ident>>, Box<Expr<Ident>>),
@@ -79,6 +85,22 @@ impl <T: fmt::Show> fmt::Show for Alternative<T> {
         write!(f, "{} -> {}", self.pattern, self.expression)
     }
 }
+impl <T: fmt::Show> fmt::Show for Pattern<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            IdentifierPattern(ref s) => write!(f, "{}", s),
+            NumberPattern(ref i) => write!(f, "{}", i),
+            ConstructorPattern(ref name, ref patterns) => {
+                try!(write!(f, "({} ", name));
+                for p in patterns.iter() {
+                    try!(write!(f, " {}", p));
+                }
+                write!(f, ")")
+            }
+            WildCardPattern => write!(f, "_")
+        }
+    }
+}
 
 
 pub trait Typed {
@@ -93,12 +115,22 @@ impl <Ident: Typed> Typed for Expr<Ident> {
             &Apply(ref func, _) => {
                 match func.get_type() {
                     &TypeApplication(_, ref a) => { let a2: &Type = *a; a2 }
-                    _ => fail!("The function in Apply must be a type application")
+                    x => fail!("The function in Apply must be a type application, found {}", x)
                 }
             }
             &Lambda(ref arg, _) => arg.get_type(),
             &Let(_, ref body) => body.get_type(),
             &Case(_, ref alts) => alts[0].expression.get_type()
+        }
+    }
+}
+impl <Ident: Typed> Typed for Pattern<Ident> {
+    fn get_type<'a>(&'a self) -> &'a Type {
+        match *self {
+            IdentifierPattern(ref name) => name.get_type(),
+            ConstructorPattern(ref name, _) => name.get_type(),
+            NumberPattern(_) => fail!(),
+            WildCardPattern(..) => fail!()
         }
     }
 }
@@ -148,8 +180,7 @@ pub trait Visitor<Ident> {
     fn visit_alternative(&mut self, alt: &Alternative<Ident>) {
         walk_alternative(self, alt)
     }
-    fn visit_pattern(&mut self, pattern: &Pattern<Ident>) {
-        walk_pattern(self, pattern)
+    fn visit_pattern(&mut self, _pattern: &Pattern<Ident>) {
     }
     fn visit_binding(&mut self, binding: &Binding<Ident>) {
         walk_binding(self, binding);
@@ -196,17 +227,6 @@ pub fn walk_alternative<Ident>(visitor: &mut Visitor<Ident>, alt: &Alternative<I
     visitor.visit_expr(&alt.expression);
 }
 
-pub fn walk_pattern<Ident>(visitor: &mut Visitor<Ident>, pattern: &Pattern<Ident>) {
-    match pattern {
-        &ConstructorPattern(_, ref ps) => {
-            for p in ps.iter() {
-                visitor.visit_pattern(p);
-            }
-        }
-        _ => ()
-    }
-}
-
 pub mod result {
     use core::*;
     use std::vec::FromVec;
@@ -219,7 +239,7 @@ pub mod result {
             walk_alternative(self, alt)
         }
         fn visit_pattern(&mut self, pattern: Pattern<Ident>) -> Pattern<Ident> {
-            walk_pattern(self, pattern)
+            pattern
         }
         fn visit_binding(&mut self, binding: Binding<Ident>) -> Binding<Ident> {
             walk_binding(self, binding)
@@ -275,18 +295,6 @@ pub mod result {
         let Alternative { pattern: pattern, expression: expression } = alt;
         Alternative { pattern: visitor.visit_pattern(pattern), expression: visitor.visit_expr(expression) }
     }
-
-    pub fn walk_pattern<Ident>(visitor: &mut Visitor<Ident>, pattern: Pattern<Ident>) -> Pattern<Ident> {
-        match pattern {
-            ConstructorPattern(x, ps) => {
-                let ps2: Vec<Pattern<Ident>> = ps.move_iter().map(|p| {
-                    visitor.visit_pattern(p)
-                }).collect();
-                ConstructorPattern(x, FromVec::from_vec(ps2))
-            }
-            _ => pattern
-        }
-    }
 }
 
 pub mod translate {
@@ -294,8 +302,20 @@ pub mod translate {
     use module::{function_type_, char_type, list_type};
     use core::*;
     use interner::*;
+    use renamer::NameSupply;
     use std::vec::FromVec;
-        
+
+    struct Translator {
+        name_supply: NameSupply
+    }
+    
+    #[deriving(Show)]
+    struct Equation<'a>(&'a [(Id<Name>, Pattern<Id<Name>>)], &'a module::Match<Name>);
+
+    pub fn translate_expr(expr: module::TypedExpr<Name>) -> Expr<Id<Name>> {
+        let mut translator = Translator { name_supply: NameSupply::new() };
+        translator.translate_expr(expr)
+    }
     pub fn translate_module(module: module::Module<Name>) -> Module<Id<Name>> {
         let module::Module { name : _name,
             imports : _imports,
@@ -306,13 +326,15 @@ pub mod translate {
             dataDefinitions : dataDefinitions
         } = module;
 
+        let mut translator = Translator { name_supply: NameSupply::new() };
+
         let mut instance_functions = Vec::new();
         let mut new_instances = Vec::new();
         for module::Instance {classname: classname, typ: typ, constraints: constraints, bindings: bindings } in instances.move_iter() {
             new_instances.push((constraints.clone(), Type::new_op(classname, ~[typ])));
-            instance_functions.extend(translate_bindings(bindings).move_iter());
+            instance_functions.extend(translator.translate_bindings(bindings).move_iter());
         }
-        instance_functions.extend(translate_bindings(bindings).move_iter());
+        instance_functions.extend(translator.translate_bindings(bindings).move_iter());
         Module {
             classes: classes,
             data_definitions: dataDefinitions,
@@ -320,15 +342,15 @@ pub mod translate {
             instances: FromVec::from_vec(new_instances)
         }
     }
-
-    fn translate_match(matches: module::Match<Name>) -> Expr<Id<Name>> {
+impl Translator {
+    fn translate_match(&mut self, matches: module::Match<Name>) -> Expr<Id<Name>> {
         match matches {
-            Simple(e) => translate_expr(e),
-            _ => fail!()
+            Simple(e) => self.translate_expr(e),
+            Guards(ref gs) => self.translate_guards(unmatched_guard(), *gs)
         }
     }
 
-    pub fn translate_expr(input_expr: module::TypedExpr<Name>) -> Expr<Id<Name>> {
+    pub fn translate_expr(&mut self, input_expr: module::TypedExpr<Name>) -> Expr<Id<Name>> {
         //Checks if the expression is lambda not bound by a let binding
         //if it is then we wrap the lambda in a let binding
         let is_lambda = match &input_expr.expr {
@@ -341,61 +363,65 @@ pub mod translate {
                 module::Lambda(arg, body) => {
                     //TODO need to make unique names for the lambdas created here
                     let argname = match arg {
-                        IdentifierPattern(arg) => arg,
-                        WildCardPattern => Name { name: intern("_"), uid: -1 },
+                        module::IdentifierPattern(arg) => arg,
+                        module::WildCardPattern => Name { name: intern("_"), uid: -1 },
                         _ => fail!("Core translation of pattern matches in lambdas are not implemented")
                     };
-                    let l = Lambda(Id::new(argname, typ.clone(), ~[]), box translate_expr_rest(*body));
-                    let bind = Binding { name: Id::new(Name { name: intern("#lambda"), uid: 0 }, typ.clone(), ~[]), expression: l };
-                    Let(~[bind], box Identifier(Id::new(Name { name: intern("#lambda"), uid: 0 }, typ.clone(), ~[])))
+                    let l = Lambda(Id::new(argname, typ.clone(), ~[]), box self.translate_expr_rest(*body));
+                    let id = Id::new(self.name_supply.from_str("#lambda"), typ.clone(), ~[]);
+                    let bind = Binding { name: id.clone(), expression: l };
+                    Let(~[bind], box Identifier(id))
                 }
                 _ => fail!()
             }
         }
         else {
-            translate_expr_rest(input_expr)
+            self.translate_expr_rest(input_expr)
         }
     }
 
-    fn translate_expr_rest(input_expr: module::TypedExpr<Name>) -> Expr<Id<Name>> {
+    fn translate_expr_rest(&mut self, input_expr: module::TypedExpr<Name>) -> Expr<Id<Name>> {
         let module::TypedExpr { typ: typ, expr: expr, ..} = input_expr;
         match expr {
             module::Identifier(s) => Identifier(Id::new(s, typ, ~[])),
-            module::Apply(func, arg) => Apply(box translate_expr(*func), box translate_expr(*arg)),
+            module::Apply(func, arg) => Apply(box self.translate_expr(*func), box self.translate_expr(*arg)),
             module::Literal(l) => Literal(Literal { typ: typ, value: l }),
             module::Lambda(arg, body) => {
                 match arg {
-                    IdentifierPattern(arg) => Lambda(Id::new(arg, typ, ~[]), box translate_expr_rest(*body)),
-                    WildCardPattern => Lambda(Id::new(Name { name: intern("_"), uid: -1 }, typ, ~[]), box translate_expr_rest(*body)),
+                    module::IdentifierPattern(arg) => Lambda(Id::new(arg, typ, ~[]), box self.translate_expr_rest(*body)),
+                    module::WildCardPattern => Lambda(Id::new(Name { name: intern("_"), uid: -1 }, typ, ~[]), box self.translate_expr_rest(*body)),
                     _ => fail!("Core translation of pattern matches in lambdas are not implemented")
                 }
             }
             module::Let(bindings, body) => {
-                let bs = translate_bindings(bindings);
-                Let(bs, box translate_expr(*body))
+                let bs = self.translate_bindings(bindings);
+                Let(bs, box self.translate_expr(*body))
             }
             module::Case(expr, alts) => {
-                let a = FromVec::<Alternative<Id<Name>>>::from_vec(alts.move_iter().map(|alt| {
-                    let module::Alternative { pattern: pattern, matches: matches} = alt;
-                    let p = translate_pattern(pattern.node);
-                    Alternative { pattern: p, expression:translate_match(matches) }
-                }).collect());
-                Case(box translate_expr(*expr), a)
+                let mut x = self.make_equation(alts);
+                match x {
+                    Case(ref mut body, _) => {
+                        **body = self.translate_expr(*expr);
+                    }
+                    _ => fail!("Not case")
+                }
+                x
             }
             module::Do(bindings, expr) => {
-                let mut result = translate_expr(*expr);
+                let mut result = self.translate_expr(*expr);
                 for bind in bindings.move_iter().rev() {
                     result = match bind {
                         module::DoExpr(e) => {
-                            let core = translate_expr(e);
-                            let x = do_bind2_id(core.get_type().clone(), result.get_type().clone());
+                            let core = self.translate_expr(e);
+                            let x = self.do_bind2_id(core.get_type().clone(), result.get_type().clone());
                             Apply(box Apply(box x, box core), box result)
                         }
                         module::DoBind(pattern, e) => {
-                            do_bind_translate(pattern.node, translate_expr(e), result)
+                            let e2 = self.translate_expr(e);
+                            self.do_bind_translate(pattern.node, e2, result)
                         }
                         module::DoLet(bs) => {
-                            Let(translate_bindings(bs), box result)
+                            Let(self.translate_bindings(bs), box result)
                         }
                     };
                 }
@@ -404,7 +430,7 @@ pub mod translate {
         }
     }
 
-    fn do_bind2_id(m_a: Type, m_b: Type) -> Expr<Id<Name>> {
+    fn do_bind2_id(&mut self, m_a: Type, m_b: Type) -> Expr<Id<Name>> {
         debug!("m_a {}", m_a);
         let c = match *m_a.appl() {
             TypeVariable(ref var) => ~[Constraint { class: intern("Monad"), variables: ~[var.clone()] }],
@@ -413,7 +439,7 @@ pub mod translate {
         let typ = function_type_(m_a, function_type_(m_b.clone(), m_b));
         Identifier(Id::new(Name { name: intern(">>"), uid: 0}, typ, c))
     }
-    fn do_bind_translate(pattern: Pattern<Name>, expr: Expr<Id<Name>>, result: Expr<Id<Name>>) -> Expr<Id<Name>> {
+    fn do_bind_translate(&mut self, pattern: module::Pattern<Name>, expr: Expr<Id<Name>>, result: Expr<Id<Name>>) -> Expr<Id<Name>> {
         //do {p <- e; stmts} 	=
         //    let ok p = do {stmts}
 		//        ok _ = fail "..."
@@ -432,125 +458,347 @@ pub mod translate {
 
         //Create ok binding
         let func_ident = Id::new(
-            Name { name: intern("#ok"), uid: 0 },
+            self.name_supply.from_str("#ok"),
             arg2_type.clone(),
             c.clone()
         );//TODO unique id
-        let var = Id::new(Name { name: intern("p"), uid: 0 }, function_type_(a, m_b.clone()), c.clone());//Constraints for a
+        let var = Id::new(self.name_supply.from_str("p"), function_type_(a, m_b.clone()), c.clone());//Constraints for a
         let fail_ident = Identifier(Id::new(Name { name: intern("fail"), uid: 0 }, function_type_(list_type(char_type()), m_b), c));
         let func = Lambda(var.clone(), box Case(box Identifier(var), 
-            ~[Alternative { pattern: translate_pattern(pattern), expression: result }
+            ~[Alternative { pattern: self.translate_pattern(pattern), expression: result }
             , Alternative { pattern: WildCardPattern, expression: Apply(box fail_ident, box string("Unmatched pattern in let")) } ]));
         let bind = Binding { name: func_ident.clone(), expression: func };
         
-        Let(~[bind], box mkApply(bind_ident, ~[expr, Identifier(func_ident)]))
+        Let(~[bind], box apply(bind_ident, (~[expr, Identifier(func_ident)]).move_iter()))
     }
 
-    fn translate_bindings(bindings: ~[module::Binding<Name>]) -> ~[Binding<Id<Name>>] {
+    fn translate_bindings(&mut self, bindings: ~[module::Binding<Name>]) -> ~[Binding<Id<Name>>] {
         let mut result = Vec::new();
         let mut vec: Vec<module::Binding<Name>> = Vec::new();
         for bind in bindings.move_iter() {
             if vec.len() > 0 && vec.get(0).name != bind.name {
-                result.push(translate_binding_group(vec));
+                result.push(self.translate_matching_groups(vec));
                 vec = Vec::new();
             }
             vec.push(bind);
         }
         if vec.len() > 0 {
-            result.push(translate_binding_group(vec));
+            result.push(self.translate_matching_groups(vec));
         }
         FromVec::from_vec(result)
     }
-    fn translate_binding_group(mut bindings: Vec<module::Binding<Name>>) -> Binding<Id<Name>> {
-        let mut name = Name { name: intern(""), uid: -1 };
-        let mut context = ~[];
-        let expr = if bindings.get(0).arguments.len() == 0 {
-            let module::Binding {
-                name: bind_name, arguments: _arguments,
-                matches: matches, typeDecl: type_decl, ..
-            } = bindings.pop().unwrap();
-            name = bind_name;
-            context = type_decl.context;
-            translate_match(matches)
+
+    fn mk(&mut self, uid: uint, id: Id<Name>, pattern: module::Pattern<Name>, result: &mut Vec<(Id<Name>, Pattern<Id<Name>>)>) {
+        match pattern {
+            module::ConstructorPattern(ctor_name, mut patterns) => {
+                let index = result.len();
+                let mut name = String::from_str(id.name.name.as_slice());
+                let base_length = name.len();
+                result.push((id, NumberPattern(0)));//Dummy
+                for (i, p) in patterns.mut_iter().enumerate() {
+                    let x = match *p {
+                        module::ConstructorPattern(..) | module::NumberPattern(..) => {
+                            //HACK, by making the variable have the same uid as
+                            //the index the newly generated pattern will be recognized
+                            //as the same since their binding variable are the same
+                            name.truncate(base_length);
+                            name.push_char('_');
+                            name.push_str(i.to_str().as_slice());
+
+                            let n = Name { name: intern(name.as_slice()), uid: uid };
+                            Some(module::IdentifierPattern(n))
+                        }
+                        _ => None
+                    };
+                    match x {
+                        Some(mut x) => {
+                            ::std::mem::swap(p, &mut x);
+                            let id = match *p {
+                                module::IdentifierPattern(ref n) => Id::new(n.clone(), Type::new_var(777), ~[]),
+                                _ => fail!()
+                            };
+                            self.mk(uid, id, x, result);
+                        }
+                        None => ()
+                    }
+                }
+                *result.get_mut(index).mut1() = self.translate_pattern(module::ConstructorPattern(ctor_name, patterns));
+            }
+            _ => result.push((id, self.translate_pattern(pattern)))
         }
-        else if bindings.len() == 1 && simple_binding(bindings.get(0)) {
+    }
+    fn unwrap_patterns(&mut self, uid: uint, arg_ids: &[Id<Name>], arguments: &[module::Pattern<Name>]) -> Vec<(Id<Name>, Pattern<Id<Name>>)> {
+        let mut result = Vec::new();
+        for (p, id) in arguments.iter().zip(arg_ids.iter()) {
+            self.mk(uid, id.clone(), p.clone(), &mut result);
+        }
+        result
+    }
+
+    fn make_equation(&mut self, alts: ~[module::Alternative<Name>]) -> Expr<Id<Name>> {
+        let mut vec = Vec::new();
+        let dummy_var = [Id::new(self.name_supply.anonymous(), Type::new_var(0), ~[])];
+        let uid = self.name_supply.next_id();
+        for module::Alternative { pattern: pattern, matches: matches } in alts.move_iter() {
+            vec.push((self.unwrap_patterns(uid, dummy_var, [pattern.node]), matches));
+        }
+        self.translate_equations_(vec)
+    }
+    //Translate a binding group such as
+    //map f (x:xs) = e1
+    //map f [] = e2
+    fn translate_matching_groups(&mut self, mut bindings: Vec<module::Binding<Name>>) -> Binding<Id<Name>> {
+        if bindings.len() == 1 && simple_binding(bindings.get(0)) {
             let module::Binding {
-                name: bind_name, arguments: arguments,
-                matches: matches, typeDecl: type_decl, ..
+                name: name,
+                arguments: arguments, matches: matches,
+                typeDecl: type_decl,
+                ..
             } = bindings.pop().unwrap();
-            name = bind_name;
-            context = type_decl.context.clone();
-            let mut typ = &type_decl.typ;
-            let arg_names = arguments.move_iter().map(|pattern| {
-                let mut p = match translate_pattern(pattern) {
-                    IdentifierPattern(name) => name,
-                    WildCardPattern => Id::new(Name { name: intern("_"), uid: -1 }, Type::new_var(99999), ~[]),
-                    _ => fail!()
-                };
-                p.typ = typ.clone();
+            let arg_iterator = arguments.move_iter().map(|p| {
+                match p {
+                    module::IdentifierPattern(n) => n,
+                    module::WildCardPattern => Name { name: intern("_"), uid: -1 },
+                    _ => fail!("simple_binding fail")
+                }
+            });
+            let lambda_ids = lambda_iterator(&type_decl.typ)
+                .zip(arg_iterator)
+                .map(|(typ, arg)| {
+                Id::new(arg, typ.clone(), ~[])
+            });
+            let expr = make_lambda(lambda_ids, self.translate_match(matches));
+            return Binding {
+                name: Id::new(name, type_decl.typ.clone(), type_decl.context.clone()),
+                expression: expr
+            }
+        }
+        let binding0 = bindings.get(0);
+        //Generate new names for each of the arguments (since it is likely that not all arguments have a name)
+        let mut arg_ids = Vec::new();
+        {
+            let mut typ = &binding0.typeDecl.typ;
+            for _ in range(0, binding0.arguments.len()) {
+                arg_ids.push(Id::new(self.name_supply.from_str("arg"), typ.clone(), ~[]));
                 typ = match *typ {
                     TypeApplication(_, ref next) => &**next,
                     _ => typ//We dont actually have a function type which we need, so we are likely in a unittest
                             //just reuse the same type so we do not crash
                 };
-                p
-            });
-            make_lambda(arg_names, translate_match(matches))
+            }
         }
-        else {
-            let arg_len = bindings.get(0).arguments.len();
-            let match_expr : Expr<Id<Name>> = {
-                let (name, tuple_typ) = module::tuple_type(arg_len);
-                let id = Id::new(Name { name: intern(name.as_slice()), uid: 0 }, tuple_typ, ~[]);
-                Identifier(id.clone())
-            };
-            let args: Vec<Id<Name>> = {
-                let mut typ = &bindings.get(0).typeDecl.typ;
-                make_arguments(range(0, bindings.get(0).arguments.len()).map(|_| {
-                    let f = typ;
-                    typ = match *typ {
-                        TypeApplication(_, ref next) => &**next,
-                        _ => typ
-                    };
-                    f
-                })).collect()
-            };
-            let match_expr = {
-                let mut args = make_arguments(arg_iterator(&bindings.get(0).typeDecl.typ)).map(|id| Identifier(id));
-                if bindings.get(0).arguments.len() == 1 {//Avoid tuple single argument functions
-                    args.next().unwrap()
-                }
-                else {
-                    apply(match_expr, args)
-                }
-            };
-            let alts: Vec<Alternative<Id<Name>>> = bindings.move_iter().map(|bind| {
-                let module::Binding { name: bind_name, arguments: arguments, matches: matches, typeDecl: type_decl, .. } = bind;
-                name = bind_name;
-                context = type_decl.context;
-                make_alternative(arguments, translate_match(matches))
-            }).collect();
-            make_lambda(args.move_iter(), Case(box match_expr, FromVec::from_vec(alts)))
-        };
+        //First we flatten all the patterns that occur in each equation
+        //(2:xs) -> [(x:xs), 2]
+        let uid = self.name_supply.next_id();
+        let equations: Vec<(Vec<(Id<Name>, Pattern<Id<Name>>)>, module::Match<Name>)> = bindings.iter().map(|bind| {
+            (self.unwrap_patterns(uid, arg_ids.as_slice(), bind.arguments), bind.matches.clone())
+        }).collect();
+        let mut expr = self.translate_equations_(equations);
+        expr = make_lambda(arg_ids.move_iter(), expr);
+        debug!("Desugared {}\n {}", binding0.typeDecl, expr);
         Binding {
-            name: Id::new(name, expr.get_type().clone(), context),
+            name: Id::new(binding0.name.clone(), binding0.typeDecl.typ.clone(), binding0.typeDecl.context.clone()),
             expression: expr
         }
     }
-    
-    struct ArgIterator<'a> {
+    fn translate_equations_(&mut self, equations: Vec<(Vec<(Id<Name>, Pattern<Id<Name>>)>, module::Match<Name>)>) -> Expr<Id<Name>> {
+        let mut eqs: Vec<Equation> = Vec::new();
+        for &(ref ps, ref e) in equations.iter() {
+            eqs.push(Equation(ps.as_slice(), e));
+        }
+        for e in eqs.iter() {
+            debug!("{}", e);
+        }
+        self.translate_equations(eqs.as_slice())
+    }
+
+    ///Translates a list of guards, if no guards matches then the result argument will be the result
+    fn translate_guards(&mut self, mut result: Expr<Id<Name>>, guards: &[module::Guard<Name>]) -> Expr<Id<Name>> {
+        for guard in guards.iter().rev() {
+            let predicate = box self.translate_expr(guard.predicate.clone());
+            result = Case(predicate, ~[
+                Alternative { pattern: ConstructorPattern(Id::new(Name { name: intern("True"), uid: 0 }, bool_type(), ~[]), ~[]),
+                              expression: self.translate_expr(guard.expression.clone()) },
+                Alternative { pattern: ConstructorPattern(Id::new(Name { name: intern("False"), uid: 0 }, bool_type(), ~[]), ~[]),
+                              expression: result },
+            ]);
+        }
+        result
+    }
+
+    fn translate_equations(&mut self, equations: &[Equation]) -> Expr<Id<Name>> {
+        ///Returns true if the two patterns would match for the same values
+        fn matching<T: PartialEq>(lhs: &(T, Pattern<T>), rhs: &(T, Pattern<T>)) -> bool {
+            if lhs.ref0() != rhs.ref0() {
+                return false;
+            }
+            match (lhs.ref1(), rhs.ref1()) {
+                (&ConstructorPattern(ref l, _), &ConstructorPattern(ref r, _)) => *l == *r,
+                (&ConstructorPattern(..), &NumberPattern(..)) => false,
+                (&NumberPattern(..), &ConstructorPattern(..)) => false,
+                _ => true
+            }
+        }
+        debug!("In {}", equations);
+        let &Equation(ps, e) = &equations[0];
+        if ps.len() == 0 {
+            assert_eq!(equations.len(), 1);//Otherwise multiple matches for this group
+            return self.translate_match((*e).clone());
+        }
+        if ps.len() == 1 {
+            //When there is only one pattern we simply
+            let mut alts: Vec<Alternative<Id<Name>>> = Vec::new();
+            for (i, &Equation(ps, m)) in equations.iter().enumerate() {
+                match *m {
+                    Simple(ref e) => {
+                        let alt = if ps.len() == 0 {
+                            Alternative { pattern: WildCardPattern, expression: self.translate_expr((*e).clone()) }
+                        }
+                        else {
+                            Alternative { pattern: ps[0].ref1().clone(), expression: self.translate_expr((*e).clone()) }
+                        };
+                        alts.push(alt);
+                    }
+                    Guards(ref guards) => {
+                        let fallthrough = if equations.len() == i + 1 {
+                            unmatched_guard()
+                        }
+                        else {
+                            self.translate_equations(equations.slice_from(i + 1))
+                        };
+                        alts.push(Alternative {
+                            pattern: ps[0].ref1().clone(),
+                            expression: self.translate_guards(fallthrough, *guards)
+                        });
+                    }
+                }
+            }
+            let body = box Identifier(ps[0].ref0().clone());
+            return Case(body, FromVec::from_vec(alts));
+        }
+        
+        let mut last_index = 0;
+        let mut vec: Vec<Equation> = Vec::new();
+        let mut alts: Vec<Alternative<Id<Name>>> = Vec::new();
+        let mut visited = Vec::new();
+        loop {
+            //Find the first pattern which does a test and is not already used
+            let mut pattern_test = None;
+            while last_index < equations.len() {
+                let &Equation(ps, _) = &equations[last_index];
+                if ps.len() > 0  {
+                    match *ps[0].ref1() {
+                        ConstructorPattern(..) | NumberPattern(..)
+                        if visited.iter().find(|x| matching(**x, &ps[0])).is_none() => {
+                            pattern_test = Some(&ps[0]);
+                            visited.push(&ps[0]);
+                            last_index += 1;
+                            break;
+                        }
+                        _ => ()
+                    }
+                }
+                last_index += 1;
+            }
+            match pattern_test {
+                Some(pattern_test) => {
+                    vec.clear();
+                    let mut variable_bindings = Vec::new();
+                    //Gather all patterns which matches the pattern
+                    for &Equation(patterns, expr) in equations.iter() {
+                        if patterns.len() > 0 && matching(pattern_test, &patterns[0]) {
+                            vec.push(Equation(patterns.slice_from(1), expr));
+                            //If the patter_test is a constructor we need to add the variables
+                            //of the other patterns in a let binding to make sure that all names exist
+                            match (patterns[0].ref1(), pattern_test.ref1()) {
+                                (&ConstructorPattern(_, ref l_vars), &ConstructorPattern(_, ref r_vars)) => {
+                                    for (l_var, r_var) in l_vars.iter().zip(r_vars.iter()) {
+                                        if l_var != r_var {
+                                            variable_bindings.push(Binding { name: l_var.clone(), expression: Identifier(r_var.clone()) });
+                                        }
+                                    }
+                                }
+                                _ => ()
+                            }
+                        }
+                        else if patterns.len() == 0 {
+                            vec.push(Equation(patterns, expr));
+                        }
+                    }
+                    //For all the pattern that match the pattern we need to generate new case expressions
+                    let e = make_let(variable_bindings, self.translate_equations(vec.as_slice()));
+
+                    let arg_id = ps[0].ref0();
+                    let bs = needed_variables(arg_id, equations);
+                    alts.push(Alternative {
+                        pattern: pattern_test.ref1().clone(),
+                        expression: make_let(bs, e)
+                    });
+                }
+                None => break
+            }
+        }
+        if alts.len() == 0 {
+            for &Equation(patterns, expr) in equations.iter() {
+                vec.push(Equation(patterns.slice_from(1), expr));
+            }
+            let &Equation(ps, _) = &equations[0];
+            let arg_id = ps[0].ref0();
+            let bs = needed_variables(arg_id, equations);
+            make_let(bs, self.translate_equations(vec.as_slice()))
+        }
+        else {
+            let defaults: Vec<Equation> = equations.iter()
+                .filter(|& &Equation(ps, _)| ps.len() > 0 && (match *ps[0].ref1() { WildCardPattern | IdentifierPattern(..) => true, _ => false }))
+                .map(|&Equation(ps, e)| Equation(ps.slice_from(1), e))
+                .collect();
+            if defaults.len() != 0 {
+                let arg_id = ps[0].ref0();
+                let bs = needed_variables(arg_id, equations);
+                let e = make_let(bs, self.translate_equations(defaults.as_slice()));
+                alts.push(Alternative {
+                    pattern: WildCardPattern,
+                    expression: e
+                });
+            }
+            let &Equation(ps, _) = &equations[0];
+            let body = box Identifier(ps[0].ref0().clone());
+            Case(body, FromVec::from_vec(alts))
+        }
+    }
+
+    fn translate_pattern(&mut self, pattern: module::Pattern<Name>) -> Pattern<Id<Name>> {
+        match pattern {
+            module::IdentifierPattern(i) => IdentifierPattern(Id::new(i, Type::new_var(1213), ~[])),
+            module::NumberPattern(n) => NumberPattern(n),
+            module::ConstructorPattern(name, patterns) => {
+                let ps = FromVec::<Id<Name>>::from_vec(patterns.move_iter().map(|pat| {
+                    match pat {
+                        module::IdentifierPattern(name) => Id::new(name, Type::new_var(1213), ~[]),
+                        module::WildCardPattern => Id::new(Name { name: intern("_"), uid: -1 }, Type::new_var(123), ~[]),
+                        _ => fail!("Nested pattern")
+                    }
+                }).collect());
+                ConstructorPattern(Id::new(name, Type::new_var(444), ~[]), ps)
+            }
+            module::WildCardPattern => WildCardPattern
+        }
+    }
+}
+    struct LambdaIterator<'a> {
         typ: &'a Type
     }
-    impl <'a> Iterator<&'a Type> for ArgIterator<'a> {
+    impl <'a> Iterator<&'a Type> for LambdaIterator<'a> {
         fn next(&mut self) -> Option<&'a Type> {
             match *self.typ {
                 TypeApplication(ref lhs, ref rhs) => {
                     match **lhs {
-                        TypeApplication(ref func, ref arg) => {
+                        TypeApplication(ref func, _) => {
                             match **func {
                                 TypeOperator(ref op) if op.name.as_slice() == "->" => {
+                                    let func = self.typ;
                                     self.typ = &**rhs;
-                                    Some(&**arg)
+                                    Some(func)
                                 }
                                 _ => None
                             }
@@ -562,31 +810,20 @@ pub mod translate {
             }
         }
     }
-    fn arg_iterator<'a>(typ: &'a Type) -> ArgIterator<'a> {
-        ArgIterator { typ: typ }
-    }
-
-    fn make_arguments<'a, 'b, I : Iterator<&'b Type>>(iter: I) -> ::std::iter::Map<'a, (uint, &'b Type), Id<Name>, ::std::iter::Enumerate<I>> {
-        iter.enumerate().map(|(index, typ)| {
-            let arg_name = Name { name: intern(index.to_str().as_slice()), uid: -100 };
-            Id::new(arg_name, typ.clone(), ~[])
-        })
+    //Creates an iterator which walks through all the function types that are needed
+    //when creating a lambda with make_lambda
+    //Ex: (a -> b -> c) generates [(a -> b -> c), (b -> c)]
+    fn lambda_iterator<'a>(typ: &'a Type) -> LambdaIterator<'a> {
+        LambdaIterator { typ: typ }
     }
 
     fn simple_binding(binding: &module::Binding<Name>) -> bool {
         binding.arguments.iter().all(|arg| {
             match *arg {
-                WildCardPattern | IdentifierPattern(..) => true,
+                module::WildCardPattern | module::IdentifierPattern(..) => true,
                 _ => false
             }
         })
-    }
-
-    fn apply<T, I: Iterator<Expr<T>>>(mut func: Expr<T>, mut iter: I) -> Expr<T> {
-        for arg in iter {
-            func = Apply(box func, box arg);
-        }
-        func
     }
 
     fn make_lambda<T, I: Iterator<T>>(mut iter: I, body: Expr<T>) -> Expr<T> {
@@ -595,40 +832,44 @@ pub mod translate {
             None => body
         }
     }
-    
+    fn apply<T, I: Iterator<Expr<T>>>(mut func: Expr<T>, mut iter: I) -> Expr<T> {
+        for arg in iter {
+            func = Apply(box func, box arg);
+        }
+        func
+    }
 
-    fn make_alternative(arguments: ~[Pattern<Name>], body: Expr<Id<Name>>) -> Alternative<Id<Name>> {
-        if arguments.len() == 1 {
-            Alternative { pattern: translate_pattern(arguments[0]), expression: body }
+    fn make_let<T>(bindings: Vec<Binding<T>>, expr: Expr<T>) -> Expr<T> {
+        if bindings.len() == 0 {
+            expr
         }
         else {
-            let (tuple_name, tuple_typ) = module::tuple_type(arguments.len());
-            let tuple_id = Id::new(Name { name: intern(tuple_name.as_slice()), uid: 0 }, tuple_typ, ~[]);
-            let patterns: Vec<Pattern<Id<Name>>> = arguments.move_iter().map(|arg| translate_pattern(arg)).collect();
-            Alternative { pattern: ConstructorPattern(tuple_id, FromVec::from_vec(patterns)), expression: body }
+            Let(FromVec::from_vec(bindings), box expr)
         }
     }
 
-    fn translate_pattern(pattern: module::Pattern<Name>) -> Pattern<Id<Name>> {
-        match pattern {
-            IdentifierPattern(i) => IdentifierPattern(Id::new(i, Type::new_var(1213), ~[])),
-            NumberPattern(n) => NumberPattern(n),
-            ConstructorPattern(name, patterns) =>
-                ConstructorPattern(
-                    Id::new(name, Type::new_var(444), ~[]),
-                    FromVec::<Pattern<Id<Name>>>::from_vec(patterns.move_iter().map(translate_pattern).collect())),
-            WildCardPattern => WildCardPattern
-        }
+    ///Takes a id of the variable passed to the case and returns a vector
+    ///of bindings which need to be added to make sure no variables are missing
+    fn needed_variables(arg_id: &Id<Name>, equations: &[Equation]) -> Vec<Binding<Id<Name>>> {
+        equations.iter()
+            .filter(|& &Equation(ps, _)| ps.len() > 0 && (match *ps[0].ref1() { WildCardPattern | IdentifierPattern(..) => true, _ => false }))
+            .map(|eq| {
+            let &Equation(ps, _) = eq;
+            let other_id = match *ps[0].ref1() {
+                IdentifierPattern(ref name) => name.clone(),
+                WildCardPattern => Id::new(Name { name: intern("_"), uid: -1 }, Type::new_var(99999), ~[]),
+                _ => fail!()
+            };
+            Binding { name: other_id, expression: Identifier(arg_id.clone()) }
+        }).collect()
     }
 
     fn string(s: &str) -> Expr<Id<Name>> {
         Literal(Literal { typ: list_type(char_type()), value: String(intern(s)) })
     }
-    fn mkApply(func: Expr<Id<Name>>, args: ~[Expr<Id<Name>>]) -> Expr<Id<Name>> {
-        let mut result = func;
-        for arg in args.move_iter() {
-            result = Apply(box result, box arg);
-        }
-        result
+    fn unmatched_guard() -> Expr<Id<Name>> {
+        let error_ident = Identifier(Id::new(Name { name: intern("error"), uid: 0 }, function_type_(list_type(char_type()), Type::new_var(-1)), ~[]));
+        Apply(box error_ident, box string("Unmatched guard"))
     }
+
 }

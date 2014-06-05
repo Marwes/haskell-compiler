@@ -850,5 +850,42 @@ main = test [True, True]
 ".chars());
     assert_eq!(result, Some(ConstructorResult(0, Vec::new())));
 }
+#[test]
+fn pattern_guards() {
+    let result = execute_main(
+r"
+data Bool = True | False
+
+test :: Int -> [a] -> Int
+test 2 _ = 2
+test x []
+    | primIntLT x 0 = primIntSubtract 0 1
+    | primIntGT x 0 = 1
+test x _ = x
+
+main = (test 2 [], test 100 [], test 100 ['c'])
+
+".chars());
+    assert_eq!(result, Some(ConstructorResult(0, vec!(IntResult(2), IntResult(1), IntResult(100)))));
+}
+
+#[test]
+fn pattern_guards_nested() {
+    let result = execute_main(
+r"
+data Bool = True | False
+
+test :: Int -> [Int] -> Int
+test 2 _ = 2
+test x (0:[])
+    | primIntLT x 0 = primIntSubtract 0 1
+    | primIntGT x 0 = 1
+test x _ = x
+
+main = (test 2 [], test 100 [0], test 100 [0, 123])
+
+".chars());
+    assert_eq!(result, Some(ConstructorResult(0, vec!(IntResult(2), IntResult(1), IntResult(100)))));
+}
 
 }
