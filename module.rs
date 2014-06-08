@@ -85,6 +85,11 @@ pub enum Type {
     TypeApplication(Box<Type>, Box<Type>),
     Generic(TypeVariable)
 }
+#[deriving(Clone, Eq, PartialEq, Hash)]
+pub struct Qualified<T> {
+    pub constraints: ~[Constraint],
+    pub value: T
+}
 
 impl Type {
 
@@ -476,7 +481,8 @@ pub enum Expr<Ident = InternedStr> {
     Lambda(Pattern<Ident>, Box<TypedExpr<Ident>>),
     Let(~[Binding<Ident>], Box<TypedExpr<Ident>>),
     Case(Box<TypedExpr<Ident>>, ~[Alternative<Ident>]),
-    Do(~[DoBinding<Ident>], Box<TypedExpr<Ident>>)
+    Do(~[DoBinding<Ident>], Box<TypedExpr<Ident>>),
+    TypeSig(Box<TypedExpr<Ident>>, Qualified<Type>)
 }
 impl <T: fmt::Show> fmt::Show for Binding<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -625,7 +631,8 @@ pub fn walk_expr<Ident>(visitor: &mut Visitor<Ident>, expr: &TypedExpr<Ident>) {
             }
             visitor.visit_expr(*expr);
         }
-        _ => ()
+        &TypeSig(ref expr, _) => visitor.visit_expr(*expr),
+        &Literal(..) | &Identifier(..) => ()
     }
 }
 

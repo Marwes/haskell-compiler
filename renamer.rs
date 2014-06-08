@@ -150,6 +150,9 @@ impl Renamer {
                 }).collect();
                 Do(FromVec::from_vec(bs), box self.rename(*expr))
             }
+            TypeSig(expr, sig) => {
+                TypeSig(box self.rename(*expr), sig)
+            }
         };
         let mut t = TypedExpr::with_location(e, location);
         t.typ = typ;

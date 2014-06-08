@@ -471,6 +471,7 @@ pub fn execute_main_module(modulename: &str) -> IoResult<Option<VMResult>> {
     }
 }
 
+#[allow(non_snake_case_functions)]
 mod primitive {
 
     use std::io::fs::File;

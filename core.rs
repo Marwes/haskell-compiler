@@ -427,6 +427,7 @@ impl Translator {
                 }
                 result
             }
+            module::TypeSig(expr, _) => self.translate_expr(*expr)
         }
     }
 

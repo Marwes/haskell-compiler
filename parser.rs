@@ -210,6 +210,20 @@ pub fn expression_(&mut self) -> TypedExpr {
 pub fn expression(&mut self) -> Option<TypedExpr> {
 	let app = self.application();
 	self.parseOperatorExpression(app, 0)
+        .map(|expr| {
+        if self.lexer.next().token == TYPEDECL {
+            let mut mapping = HashMap::new();
+            let (constraints, typ) = self.constrained_type(&mut mapping);
+            let loc = expr.location;
+            TypedExpr::with_location(
+                TypeSig(box expr, Qualified { constraints: constraints, value: typ }),
+                loc)
+        }
+        else {
+            self.lexer.backtrack();
+            expr
+        }
+    })
 }
 
 

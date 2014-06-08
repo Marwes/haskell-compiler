@@ -579,6 +579,7 @@ impl <'a> Compiler<'a> {
                             PrimitiveVariable(index) => { instructions.push(PushPrimitive(index)); None }
                             ClassVariable(typ, var) => self.compile_instance_variable(expr.get_type(), instructions, &name.name, typ, var),
                             ConstraintVariable(index, bind_type, constraints) => {
+                                debug!("{} {} {}", name.as_slice(), bind_type, constraints);
                                 let x = self.compile_with_constraints(&name.name, expr.get_type(), bind_type, constraints, instructions);
                                 instructions.push(PushGlobal(index));
                                 instructions.push(Mkap);
@@ -737,6 +738,7 @@ impl <'a> Compiler<'a> {
                         None
                     }
                     Some(ConstraintVariable(index, function_type, constraints)) => {
+                        debug!("xxx {} {} {} {}", instance_fn_name.as_slice(), actual_type, function_type, constraints);
                         let dict = self.compile_with_constraints(&instance_fn_name, actual_type, function_type, constraints, instructions);
                         instructions.push(PushGlobal(index));
                         instructions.push(Mkap);
@@ -747,6 +749,7 @@ impl <'a> Compiler<'a> {
             }
             None => {
                 let constraints = self.type_env.find_constraints(actual_type);
+                debug!("aaa {} {} {}\n {}", var, typ, actual_type, constraints);
                 self.compile_with_constraints(name, actual_type, typ, constraints, instructions)
             }
         }
