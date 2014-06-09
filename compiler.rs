@@ -1,6 +1,6 @@
 use interner::*;
 use core::*;
-use module::{int_type, double_type, function_type, Qualified};
+use module::{int_type, double_type, function_type, Qualified, qualified};
 use typecheck::{Types, DataTypes, TypeEnvironment};
 use scoped_map::ScopedMap;
 use std::iter::range_step;
@@ -158,7 +158,7 @@ fn find_global<'a>(module: &'a Module<Id>, offset: uint, name: &Name) -> Option<
     for bind in module.bindings.iter() {
         if bind.name.name == *name {
             let typ = bind.expression.get_type();
-            let constraints = &bind.name.constraints;
+            let constraints = &bind.name.typ.constraints;
             if constraints.len() > 0 {
                 return Some(ConstraintVariable(offset + global_index, typ, *constraints));
             }
@@ -184,24 +184,24 @@ fn find_constructor(module: &Module<Id>, name: InternedStr) -> Option<(u16, u16)
 }
 
 impl Types for Module<Id> {
-    fn find_type<'a>(&'a self, name: &Name) -> Option<&'a Type> {
+    fn find_type<'a>(&'a self, name: &Name) -> Option<&'a Qualified<Type>> {
         for bind in self.bindings.iter() {
             if bind.name.name == *name {
-                return Some(bind.expression.get_type());
+                return Some(&bind.name.typ);
             }
         }
 
         for class in self.classes.iter() {
             for decl in class.declarations.iter() {
                 if name.name == decl.name {
-                    return Some(&decl.typ.value);
+                    return Some(&decl.typ);
                 }
             }
         }
         for data in self.data_definitions.iter() {
             for ctor in data.constructors.iter() {
                 if *name == ctor.name {
-                    return Some(&ctor.typ.value);
+                    return Some(&ctor.typ);
                 }
             }
         }
@@ -242,7 +242,7 @@ impl Types for Module<Id> {
 
     fn each_constraint_list(&self, func: |&[Constraint]|) {
         for bind in self.bindings.iter() {
-            func(bind.name.constraints);
+            func(bind.name.typ.constraints);
         }
 
         for class in self.classes.iter() {
@@ -262,17 +262,17 @@ fn extract_applied_type<'a>(typ: &'a Type) -> &'a Type {
 
 impl Types for Assembly {
     ///Lookup a type
-    fn find_type<'a>(&'a self, name: &Name) -> Option<&'a Type> {
+    fn find_type<'a>(&'a self, name: &Name) -> Option<&'a Qualified<Type>> {
         for sc in self.superCombinators.iter() {
             if sc.name == *name {
-                return Some(&sc.typ.value);
+                return Some(&sc.typ);
             }
         }
         
         for class in self.classes.iter() {
             for decl in class.declarations.iter() {
                 if name.name == decl.name {
-                    return Some(&decl.typ.value);
+                    return Some(&decl.typ);
                 }
             }
         }
@@ -280,7 +280,7 @@ impl Types for Assembly {
         for data_def in self.data_definitions.iter() {
             for ctor in data_def.constructors.iter() {
                 if *name == ctor.name {
-                    return Some(&ctor.typ.value);
+                    return Some(&ctor.typ);
                 }
             }
         }
@@ -424,12 +424,9 @@ impl <'a> Compiler<'a> {
     fn compileBinding(&mut self, bind : &Binding<Id>) -> SuperCombinator {
         let mut comb = SuperCombinator::new();
         comb.assembly_id = self.assemblies.len();
-        comb.typ = Qualified {
-            constraints: bind.name.constraints.clone(),
-            value: bind.name.typ.clone(),
-        };
+        comb.typ = bind.name.typ.clone();
         debug!("Compiling binding {} :: {}", comb.name, comb.typ);
-        let dict_arg = if bind.name.constraints.len() > 0 { 1 } else { 0 };
+        let dict_arg = if bind.name.typ.constraints.len() > 0 { 1 } else { 0 };
         let mut instructions = Vec::new();
         self.scope(|this| {
             if dict_arg == 1 {
@@ -604,8 +601,7 @@ impl <'a> Compiler<'a> {
                         else {
                             let fromInteger = Identifier(Id {
                                 name: Name { name: intern("fromInteger"), uid: 999999 }, 
-                                typ: function_type_(int_type(), literal.typ.clone()),
-                                constraints: ~[]
+                                typ: qualified(~[], function_type_(int_type(), literal.typ.clone())),
                             });
                             let number = Literal(Literal { typ: int_type(), value: Integral(i) });
                             let apply = Apply(box fromInteger, box number);
@@ -619,8 +615,7 @@ impl <'a> Compiler<'a> {
                         else {
                             let fromRational = Identifier(Id {
                                 name: Name { name: intern("fromRational"), uid: 999999 }, 
-                                typ: function_type_(double_type(), literal.typ.clone()),
-                                constraints: ~[]
+                                typ: qualified(~[], function_type_(double_type(), literal.typ.clone())),
                             });
                             let number = Literal(Literal {
                                 typ: double_type(),

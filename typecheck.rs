@@ -16,7 +16,7 @@ use module::Alternative;
 
 ///Trait which can be implemented by types where types can be looked up by name
 pub trait Types {
-    fn find_type<'a>(&'a self, name: &Name) -> Option<&'a Type>;
+    fn find_type<'a>(&'a self, name: &Name) -> Option<&'a Qualified<Type>>;
     fn find_class<'a>(&'a self, name: InternedStr) -> Option<&'a Class>;
     fn has_instance(&self, classname: InternedStr, typ: &Type) -> bool {
         match self.find_instance(classname, typ) {
@@ -41,24 +41,24 @@ fn extract_applied_type<'a>(typ: &'a Type) -> &'a Type {
 }
 
 impl Types for Module<Name> {
-    fn find_type<'a>(&'a self, name: &Name) -> Option<&'a Type> {
+    fn find_type<'a>(&'a self, name: &Name) -> Option<&'a Qualified<Type>> {
         for bind in self.bindings.iter() {
             if bind.name == *name {
-                return Some(&bind.typ.value);
+                return Some(&bind.typ);
             }
         }
 
         for class in self.classes.iter() {
             for decl in class.declarations.iter() {
                 if name.name == decl.name {
-                    return Some(&decl.typ.value);
+                    return Some(&decl.typ);
                 }
             }
         }
         for data in self.dataDefinitions.iter() {
             for ctor in data.constructors.iter() {
                 if *name == ctor.name {
-                    return Some(&ctor.typ.value);
+                    return Some(&ctor.typ);
                 }
             }
         }
@@ -382,7 +382,7 @@ impl <'a> TypeEnvironment<'a> {
             for types in self.assemblies.iter() {
                 let v = types.find_type(ident);
                 if v != None {
-                    return v;
+                    return v.map(|typ| &typ.value);
                 }
             }
             None

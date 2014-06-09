@@ -1,5 +1,5 @@
 use std::fmt;
-pub use module::{Type, TypeApplication, TypeOperator, TypeVariable, Match, Simple, Guards, Constraint, Class, DataDefinition, TypeDeclaration, function_type_, Integral, Fractional, String, Char, bool_type};
+pub use module::{Qualified, Type, TypeApplication, TypeOperator, TypeVariable, Match, Simple, Guards, Constraint, Class, DataDefinition, TypeDeclaration, function_type_, Integral, Fractional, String, Char, bool_type};
 use module;
 use interner::*;
 pub use renamer::Name;
@@ -144,8 +144,7 @@ impl <'a> Equiv<&'a str> for Name {
 #[deriving(PartialEq, Eq, Hash, Clone)]
 pub struct Id<T = Name> {
     pub name: T,
-    pub typ: Type,
-    pub constraints: ~[Constraint]
+    pub typ: Qualified<Type>
 }
 
 impl fmt::Show for Id {
@@ -156,7 +155,7 @@ impl fmt::Show for Id {
 
 impl <T> Id<T> {
     pub fn new(name: T, typ: Type, constraints: ~[Constraint]) -> Id<T> {
-        Id { name: name, typ: typ, constraints: constraints }
+        Id { name: name, typ: module::qualified(constraints, typ) }
     }
 }
 
@@ -168,7 +167,7 @@ impl Str for Id {
 
 impl <T> Typed for Id<T> {
     fn get_type<'a>(&'a self) -> &'a Type {
-        &self.typ
+        &self.typ.value
     }
 }
 
