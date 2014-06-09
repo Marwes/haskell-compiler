@@ -1,6 +1,6 @@
 use interner::*;
 use core::*;
-use module::{int_type, double_type, function_type};
+use module::{int_type, double_type, function_type, Qualified};
 use typecheck::{Types, DataTypes, TypeEnvironment};
 use scoped_map::ScopedMap;
 use std::iter::range_step;
@@ -85,12 +85,11 @@ pub struct SuperCombinator {
     pub name: Name,
     pub assembly_id: uint,
     pub instructions : ~[Instruction],
-    pub type_declaration: TypeDeclaration,
-    pub constraints: ~[Constraint]
+    pub typ: Qualified<Type>
 }
 impl SuperCombinator {
     fn new() -> SuperCombinator {
-        SuperCombinator { arity : 0, name: Name { name: intern(""), uid: 0}, instructions : ~[], type_declaration: Default::default(), constraints: ~[], assembly_id: 0 }
+        SuperCombinator { arity : 0, name: Name { name: intern(""), uid: 0}, instructions : ~[], typ: Default::default(), assembly_id: 0 }
     }
 }
 
@@ -114,8 +113,8 @@ impl Globals for Assembly {
         let mut index = 0;
         for sc in self.superCombinators.iter() {
             if *name == sc.name {
-                if sc.type_declaration.context.len() > 0 {
-                    return Some(ConstraintVariable(self.offset + index, &sc.type_declaration.typ, sc.constraints));
+                if sc.typ.constraints.len() > 0 {
+                    return Some(ConstraintVariable(self.offset + index, &sc.typ.value, sc.typ.constraints));
                 }
                 else {
                     return Some(GlobalVariable(self.offset + index));
@@ -126,7 +125,7 @@ impl Globals for Assembly {
         for class in self.classes.iter() {
             for decl in class.declarations.iter() {
                 if decl.name == name.name {
-                    return Some(ClassVariable(&decl.typ, &class.variable));
+                    return Some(ClassVariable(&decl.typ.value, &class.variable));
                 }
             }
         }
@@ -150,7 +149,7 @@ fn find_global<'a>(module: &'a Module<Id>, offset: uint, name: &Name) -> Option<
     for class in module.classes.iter() {
         for decl in class.declarations.iter() {
             if decl.name == name.name {
-                return Some(ClassVariable(&decl.typ, &class.variable));
+                return Some(ClassVariable(&decl.typ.value, &class.variable));
             }
         }
     }
@@ -195,7 +194,7 @@ impl Types for Module<Id> {
         for class in self.classes.iter() {
             for decl in class.declarations.iter() {
                 if name.name == decl.name {
-                    return Some(&decl.typ);
+                    return Some(&decl.typ.value);
                 }
             }
         }
@@ -248,7 +247,7 @@ impl Types for Module<Id> {
 
         for class in self.classes.iter() {
             for decl in class.declarations.iter() {
-                func(decl.context);
+                func(decl.typ.constraints);
             }
         }
     }
@@ -266,14 +265,14 @@ impl Types for Assembly {
     fn find_type<'a>(&'a self, name: &Name) -> Option<&'a Type> {
         for sc in self.superCombinators.iter() {
             if sc.name == *name {
-                return Some(&sc.type_declaration.typ);
+                return Some(&sc.typ.value);
             }
         }
         
         for class in self.classes.iter() {
             for decl in class.declarations.iter() {
                 if name.name == decl.name {
-                    return Some(&decl.typ);
+                    return Some(&decl.typ.value);
                 }
             }
         }
@@ -320,12 +319,12 @@ impl Types for Assembly {
     }
     fn each_constraint_list(&self, func: |&[Constraint]|) {
         for sc in self.superCombinators.iter() {
-            func(sc.type_declaration.context);
+            func(sc.typ.constraints);
         }
         
         for class in self.classes.iter() {
             for decl in class.declarations.iter() {
-                func(decl.context);
+                func(decl.typ.constraints);
             }
         }
     }
@@ -404,7 +403,6 @@ impl <'a> Compiler<'a> {
         for bind in module.bindings.iter() {
             let mut sc = self.compileBinding(bind);
             let constraints = self.type_env.find_constraints(bind.expression.get_type());
-            sc.constraints = constraints;
             sc.name = bind.name.name.clone();
             superCombinators.push(sc);
         }
@@ -426,13 +424,11 @@ impl <'a> Compiler<'a> {
     fn compileBinding(&mut self, bind : &Binding<Id>) -> SuperCombinator {
         let mut comb = SuperCombinator::new();
         comb.assembly_id = self.assemblies.len();
-        comb.type_declaration = TypeDeclaration {
-            name: bind.name.name.name.clone(),
-            typ: bind.name.typ.clone(),
-            context: bind.name.constraints.clone()
+        comb.typ = Qualified {
+            constraints: bind.name.constraints.clone(),
+            value: bind.name.typ.clone(),
         };
-        debug!("Compiling binding {}", comb.type_declaration);
-        comb.constraints = bind.name.constraints.clone();
+        debug!("Compiling binding {} :: {}", comb.name, comb.typ);
         let dict_arg = if bind.name.constraints.len() > 0 { 1 } else { 0 };
         let mut instructions = Vec::new();
         self.scope(|this| {
@@ -449,7 +445,7 @@ impl <'a> Compiler<'a> {
             instructions.push(Unwind);
         });
         comb.instructions = FromVec::from_vec(instructions);
-        debug!("{} compiled as:\n{}", comb.type_declaration, comb.instructions);
+        debug!("{} :: {} compiled as:\n{}", comb.name, comb.typ, comb.instructions);
         comb
     }
 

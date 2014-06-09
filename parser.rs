@@ -645,7 +645,7 @@ fn typeDeclaration_(&mut self, typeVariableMapping : &mut HashMap<InternedStr, i
 		fail!(ParseError(&self.lexer, TYPEDECL));
 	}
     let (context, typ) = self.constrained_type(typeVariableMapping);
-	TypeDeclaration { name : name, typ : typ, context : context }
+	TypeDeclaration { name : name, typ : Qualified { constraints : context, value: typ } }
 }
 
 fn constrained_type(&mut self, typeVariableMapping : &mut HashMap<InternedStr, int>) -> (~[Constraint], Type) {
@@ -1061,7 +1061,7 @@ r"(.) :: (b -> c) -> (a -> b) -> (a -> c)".chars());
     let f = function_type(&function_type(b, c), &function_type(&function_type(a, b), &function_type(a, c)));
 
     assert_eq!(typeDecl.name, intern("."));
-    assert_eq!(typeDecl.typ, f);
+    assert_eq!(typeDecl.typ.value, f);
 }
 #[test]
 fn parse_data() {

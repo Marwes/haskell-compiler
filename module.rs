@@ -62,8 +62,7 @@ pub struct DataDefinition<Ident = InternedStr> {
 
 #[deriving(Clone, PartialEq, Eq, Default)]
 pub struct TypeDeclaration {
-    pub context : ~[Constraint],
-    pub typ : Type,
+    pub typ : Qualified<Type>,
     pub name : InternedStr
 }
 
@@ -380,14 +379,7 @@ impl fmt::Show for Constraint {
 }
 impl fmt::Show for TypeDeclaration {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        try!(write!(f, "{} :: ", self.name));
-        for constraint in self.context.iter() {
-            try!(write!(f, "{} ", *constraint));
-        }
-        if self.context.len() > 0 {
-            try!(write!(f, "=> "));
-        }
-        write!(f, "{}", self.typ)
+        write!(f, "{} :: {}", self.name, self.typ)
     }
 }
 

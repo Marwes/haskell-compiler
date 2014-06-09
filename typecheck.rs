@@ -51,7 +51,7 @@ impl Types for Module<Name> {
         for class in self.classes.iter() {
             for decl in class.declarations.iter() {
                 if name.name == decl.name {
-                    return Some(&decl.typ);
+                    return Some(&decl.typ.value);
                 }
             }
         }
@@ -86,7 +86,7 @@ impl Types for Module<Name> {
 
         for class in self.classes.iter() {
             for decl in class.declarations.iter() {
-                func(decl.context);
+                func(decl.typ.constraints);
             }
         }
     }
@@ -270,7 +270,7 @@ impl <'a> TypeEnvironment<'a> {
             class.variable = new.var().clone();
             let mut var_kind = None;
             for type_decl in class.declarations.mut_iter() {
-                var_kind = match find_kind(&replaced, var_kind, &type_decl.typ) {
+                var_kind = match find_kind(&replaced, var_kind, &type_decl.typ.value) {
                     Ok(k) => k,
                     Err(msg) => fail!("{}", msg)
                 };
@@ -288,15 +288,15 @@ impl <'a> TypeEnvironment<'a> {
                 let c = Constraint { class: class.name.clone(), variables: ~[class.variable.clone()] };
                 let mut mapping = HashMap::new();
                 mapping.insert(replaced.clone(), TypeVariable(class.variable.clone()));
-                self.freshen_declaration2(type_decl, mapping);
+                self.freshen_qualified_type(&mut type_decl.typ, mapping);
                 {//Workaround to add the class's constraints directyly to the declaration
                     let mut context = ~[];
-                    swap(&mut context, &mut type_decl.context);
+                    swap(&mut context, &mut type_decl.typ.constraints);
                     let mut vec_context: Vec<Constraint> = context.move_iter().collect();
                     vec_context.push(c);
-                    type_decl.context = FromVec::from_vec(vec_context);
+                    type_decl.typ.constraints = FromVec::from_vec(vec_context);
                 }
-                let mut t = type_decl.typ.clone();
+                let mut t = type_decl.typ.value.clone();
                 quantify(0, &mut t);
                 self.namedTypes.insert(Name { name: type_decl.name.clone(), uid: 0 }, t);
             }
@@ -327,8 +327,7 @@ impl <'a> TypeEnvironment<'a> {
             for binding in instance.bindings.mut_iter() {
                 let decl = class.declarations.iter().find(|decl| binding.name.as_slice().ends_with(decl.name.as_slice()))
                     .expect(format!("Could not find {} in class {}", binding.name, class.name));
-                binding.typ.value = decl.typ.clone();
-                binding.typ.constraints = decl.context.clone();
+                binding.typ = decl.typ.clone();
                 replace_var(&mut binding.typ.value, &class.variable, &instance.typ);
                 {
                     let mut context = ~[];
@@ -339,7 +338,7 @@ impl <'a> TypeEnvironment<'a> {
                     }
                     binding.typ.constraints = FromVec::from_vec(vec_context);
                 }
-                self.freshen_constrained_type(binding.typ.constraints, &mut binding.typ.value, HashMap::new());
+                self.freshen_qualified_type(&mut binding.typ, HashMap::new());
                 for constraint in binding.typ.constraints.iter() {
                     self.constraints.find_or_insert(constraint.variables[0].clone(), Vec::new())
                         .push(constraint.class.clone());
@@ -349,12 +348,11 @@ impl <'a> TypeEnvironment<'a> {
         }
         
         for type_decl in module.typeDeclarations.mut_iter() {
-            self.freshen_declaration(type_decl);
+            self.freshen_qualified_type(&mut type_decl.typ, HashMap::new());
 
             match module.bindings.mut_iter().find(|bind| bind.name.name == type_decl.name) {
                 Some(bind) => {
-                    bind.typ.value = type_decl.typ.clone();
-                    bind.typ.constraints = type_decl.context.clone();
+                    bind.typ = type_decl.typ.clone();
                 }
                 None => fail!("Error: Type declaration for '{}' has no binding", type_decl.name)
             }
@@ -454,23 +452,15 @@ impl <'a> TypeEnvironment<'a> {
         }
     }
 
-    fn freshen_declaration2(&mut self, decl: &mut TypeDeclaration, mut mapping: HashMap<TypeVariable, Type>) {
-        self.freshen_constrained_type(decl.context, &mut decl.typ, mapping);
-    }
-    fn freshen_constrained_type(&mut self, constraints: &mut [Constraint], typ: &mut Type, mut mapping: HashMap<TypeVariable, Type>) {
-        for constraint in constraints.mut_iter() {
+    fn freshen_qualified_type(&mut self, typ: &mut Qualified<Type>, mut mapping: HashMap<TypeVariable, Type>) {
+        for constraint in typ.constraints.mut_iter() {
             let old = constraint.variables[0].clone();
             let new = mapping.find_or_insert(old.clone(), self.new_var_kind(old.kind.clone()));
             constraint.variables[0] = new.var().clone();
         }
         let mut subs = Substitution { subs: mapping, constraints: HashMap::new() };
-        freshen_all(self, &mut subs, typ);
+        freshen_all(self, &mut subs, &mut typ.value);
     }
-    fn freshen_declaration(&mut self, decl: &mut TypeDeclaration) {
-        let mapping = HashMap::new();
-        self.freshen_declaration2(decl, mapping);
-    }
-
     fn apply_locals(&mut self, subs: &Substitution) {
         for (_, typ) in self.local_types.mut_iter() {
             replace(&mut self.constraints, typ, subs);
@@ -733,7 +723,7 @@ impl <'a> TypeEnvironment<'a> {
             }
             &TypeSig(ref mut expr, ref mut qualified_type) => {
                 let mut typ = self.typecheck(*expr, subs);
-                self.freshen_constrained_type(qualified_type.constraints, &mut qualified_type.value, HashMap::new());
+                self.freshen_qualified_type(qualified_type, HashMap::new());
                 match_or_fail(self, subs, &expr.location, &mut typ, &mut qualified_type.value);
                 typ
             }
@@ -1776,7 +1766,7 @@ test2 :: Test a => a -> Int -> Int
 test2 x y = primIntAdd (test x) y";
     let module = do_typecheck(input);
 
-    assert_eq!(module.bindings[0].typ.value, module.typeDeclarations[0].typ);
+    assert_eq!(module.bindings[0].typ, module.typeDeclarations[0].typ);
 }
 
 #[test]
