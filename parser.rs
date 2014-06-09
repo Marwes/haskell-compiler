@@ -126,13 +126,6 @@ pub fn module(&mut self) -> Module {
 		fail!("Unexpected token after end of module, {}", eof.token);
 	}
 
-	for decl in typeDeclarations.mut_iter() {
-		for bind in bindings.mut_iter() {
-			if decl.name == bind.name {
-				bind.typeDecl = (*decl).clone();
-			}
-		}
-	}
     Module {
         name : modulename,
         imports : FromVec::from_vec(imports),
@@ -525,12 +518,7 @@ fn binding(&mut self) -> Binding {
 
     Binding {
         name : name.clone(),
-        typeDecl : TypeDeclaration {
-            context : box [],
-            typ : Type::new_var(-1),
-            name : name
-        },
-        arity : arguments.len(),
+        typ: Default::default(),
         arguments: arguments,
         matches : matches,
     }
@@ -1044,9 +1032,8 @@ let
     test = add 3 2
 in test - 2".chars());
     let expr = parser.expression_();
-    let mut bind = Binding { arity: 0, arguments: ~[], name: intern("test"), typeDecl:Default::default(),
+    let mut bind = Binding { arguments: ~[], name: intern("test"), typ: Default::default(),
         matches: Simple(apply(apply(identifier("add"), number(3)), number(2))) };
-    bind.typeDecl.name = intern("test");
     assert_eq!(expr, let_(~[bind], apply(apply(identifier("-"), identifier("test")), number(2))));
 }
 
@@ -1198,13 +1185,12 @@ test x
     | otherwise = 0
 ".chars());
     let binding = parser.binding();
-    let mut b2 = Binding { arity: 1, arguments: ~[IdentifierPattern(intern("x"))], name: intern("test"), typeDecl:Default::default(),
+    let mut b2 = Binding { arguments: ~[IdentifierPattern(intern("x"))], name: intern("test"), typ: Default::default(),
         matches: Guards(~[
             Guard { predicate: identifier("x"), expression: number(1) },
             Guard { predicate: identifier("otherwise"), expression: number(0) },
         ])
     };
-    b2.typeDecl.name = intern("test");
     assert_eq!(binding, b2);
 }
 

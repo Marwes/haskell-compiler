@@ -42,8 +42,7 @@ pub struct Binding<Ident = InternedStr> {
     pub name : Ident,
     pub arguments: ~[Pattern<Ident>],
     pub matches: Match<Ident>,
-    pub typeDecl : TypeDeclaration,
-    pub arity : uint
+    pub typ: Qualified<Type>
 }
 
 #[deriving(PartialEq, Eq, Clone, Show)]
@@ -85,7 +84,7 @@ pub enum Type {
     TypeApplication(Box<Type>, Box<Type>),
     Generic(TypeVariable)
 }
-#[deriving(Clone, Eq, PartialEq, Hash)]
+#[deriving(Clone, Default, Eq, PartialEq, Hash)]
 pub struct Qualified<T> {
     pub constraints: ~[Constraint],
     pub value: T
@@ -281,6 +280,12 @@ impl fmt::Show for TypeVariable {
 impl fmt::Show for TypeOperator {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.name)
+    }
+}
+
+impl <T: fmt::Show> fmt::Show for Qualified<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{} => {}", self.constraints, self.value)
     }
 }
 

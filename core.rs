@@ -553,7 +553,7 @@ impl Translator {
             let module::Binding {
                 name: name,
                 arguments: arguments, matches: matches,
-                typeDecl: type_decl,
+                typ: module::Qualified { constraints: constraints, value: typ, },
                 ..
             } = bindings.pop().unwrap();
             let arg_iterator = arguments.move_iter().map(|p| {
@@ -563,14 +563,16 @@ impl Translator {
                     _ => fail!("simple_binding fail")
                 }
             });
-            let lambda_ids = lambda_iterator(&type_decl.typ)
-                .zip(arg_iterator)
-                .map(|(typ, arg)| {
-                Id::new(arg, typ.clone(), ~[])
-            });
-            let expr = make_lambda(lambda_ids, self.translate_match(matches));
+            let expr = {
+                let lambda_ids = lambda_iterator(&typ)
+                    .zip(arg_iterator)
+                    .map(|(typ, arg)| {
+                    Id::new(arg, typ.clone(), ~[])
+                });
+                make_lambda(lambda_ids, self.translate_match(matches))
+            };
             return Binding {
-                name: Id::new(name, type_decl.typ.clone(), type_decl.context.clone()),
+                name: Id::new(name, typ, constraints),
                 expression: expr
             }
         }
@@ -578,7 +580,7 @@ impl Translator {
         //Generate new names for each of the arguments (since it is likely that not all arguments have a name)
         let mut arg_ids = Vec::new();
         {
-            let mut typ = &binding0.typeDecl.typ;
+            let mut typ = &binding0.typ.value;
             for _ in range(0, binding0.arguments.len()) {
                 arg_ids.push(Id::new(self.name_supply.from_str("arg"), typ.clone(), ~[]));
                 typ = match *typ {
@@ -596,9 +598,9 @@ impl Translator {
         }).collect();
         let mut expr = self.translate_equations_(equations);
         expr = make_lambda(arg_ids.move_iter(), expr);
-        debug!("Desugared {}\n {}", binding0.typeDecl, expr);
+        debug!("Desugared {} :: {}\n {}", binding0.name, binding0.typ, expr);
         Binding {
-            name: Id::new(binding0.name.clone(), binding0.typeDecl.typ.clone(), binding0.typeDecl.context.clone()),
+            name: Id::new(binding0.name.clone(), binding0.typ.value.clone(), binding0.typ.constraints.clone()),
             expression: expr
         }
     }

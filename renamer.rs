@@ -88,7 +88,7 @@ impl Renamer {
             }
         }
         FromVec::<Binding<Name>>::from_vec(bindings.move_iter().map(|binding| {
-            let Binding { name: name, arguments: arguments, matches: matches, typeDecl: typeDecl, arity: arity  } = binding;
+            let Binding { name: name, arguments: arguments, matches: matches, typ: typ  } = binding;
             let n = self.uniques.find(&name).map(|u| u.clone())
                 .expect(format!("Error: lambda_lift: Undefined variable {}", name));
             self.uniques.enter_scope();
@@ -96,8 +96,7 @@ impl Renamer {
                 name: n,
                 arguments: self.rename_arguments(arguments),
                 matches: self.rename_matches(matches),
-                typeDecl: typeDecl,
-                arity: arity
+                typ: typ
             };
             self.uniques.exit_scope();
             b
