@@ -477,7 +477,7 @@ fn constructor(&mut self, dataDef : &DataDefinition) -> Constructor {
     let mut mapping = dataDef.parameters.clone();
 	let typ = self.constructorType(&mut arity, dataDef, &mut mapping);
 	self.lexer.backtrack();
-	Constructor { name : name, typ : typ, tag : 0, arity : arity }
+	Constructor { name : name, typ : qualified(~[], typ), tag : 0, arity : arity }
 }
 
 fn binding(&mut self) -> Binding {
@@ -701,7 +701,7 @@ fn constructorType(&mut self, arity : &mut int, dataDef: &DataDefinition, mappin
         function_type_(arg, self.constructorType(arity, dataDef, mapping))
     }
     else {
-		dataDef.typ.clone()
+		dataDef.typ.value.clone()
 	}
 }
 
@@ -712,7 +712,7 @@ fn dataDefinition(&mut self) -> DataDefinition {
 
 	let mut definition = DataDefinition {
         constructors : box [],
-        typ : Type::new_var(intern("a")),
+        typ : qualified(~[], Type::new_var(intern("a"))),
         parameters : HashMap::new()
     };
     let mut typ = TypeOperator(TypeOperator { name: dataName, kind: star_kind.clone() });
@@ -721,8 +721,8 @@ fn dataDefinition(&mut self) -> DataDefinition {
 		typ = TypeApplication(box typ, box Type::new_var(self.lexer.current().value));
 		definition.parameters.insert(self.lexer.current().value.clone(), -1);
 	}
-    definition.typ = typ;
-    Parser::<Iter>::set_kind(&mut definition.typ, 1);
+    definition.typ.value = typ;
+    Parser::<Iter>::set_kind(&mut definition.typ.value, 1);
 
 	let equalToken = self.lexer.current().token;
 	if equalToken != EQUALSSIGN {
@@ -1069,7 +1069,7 @@ fn parse_data() {
 r"data Bool = True | False".chars());
     let data = parser.dataDefinition();
 
-    let b = bool_type();
+    let b = qualified(~[], bool_type());
     let t = Constructor { name: intern("True"), tag:0, arity:0, typ: b.clone() };
     let f = Constructor { name: intern("False"), tag:1, arity:0, typ: b.clone() };
     assert_eq!(data.typ, b);
@@ -1084,9 +1084,9 @@ r"data List a = Cons a (List a) | Nil".chars());
     let data = parser.dataDefinition();
 
     let list = Type::new_op(intern("List"), ~[Type::new_var(intern("a"))]);
-    let cons = Constructor { name: intern("Cons"), tag:0, arity:2, typ: function_type(&Type::new_var(intern("a")), &function_type(&list, &list))};
-    let nil = Constructor { name: intern("Nil"), tag:1, arity:0, typ: list.clone() };
-    assert_eq!(data.typ, list);
+    let cons = Constructor { name: intern("Cons"), tag:0, arity:2, typ: qualified(~[], function_type(&Type::new_var(intern("a")), &function_type(&list, &list))) };
+    let nil = Constructor { name: intern("Nil"), tag:1, arity:0, typ: qualified(~[], list.clone()) };
+    assert_eq!(data.typ.value, list);
     assert_eq!(data.constructors[0], cons);
     assert_eq!(data.constructors[1], nil);
 }

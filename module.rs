@@ -48,7 +48,7 @@ pub struct Binding<Ident = InternedStr> {
 #[deriving(PartialEq, Eq, Clone, Show)]
 pub struct Constructor<Ident = InternedStr> {
     pub name : Ident,
-    pub typ : Type,
+    pub typ : Qualified<Type>,
     pub tag : int,
     pub arity : int
 }
@@ -56,7 +56,7 @@ pub struct Constructor<Ident = InternedStr> {
 #[deriving(PartialEq, Clone)]
 pub struct DataDefinition<Ident = InternedStr> {
     pub constructors : ~[Constructor<Ident>],
-    pub typ : Type,
+    pub typ : Qualified<Type>,
     pub parameters : HashMap<InternedStr, int>
 }
 
@@ -90,6 +90,9 @@ pub enum Type {
 pub struct Qualified<T> {
     pub constraints: ~[Constraint],
     pub value: T
+}
+pub fn qualified(constraints: ~[Constraint], typ: Type) -> Qualified<Type> {
+    Qualified { constraints: constraints, value: typ }
 }
 
 impl Type {

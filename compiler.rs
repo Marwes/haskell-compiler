@@ -201,7 +201,7 @@ impl Types for Module<Id> {
         for data in self.data_definitions.iter() {
             for ctor in data.constructors.iter() {
                 if *name == ctor.name {
-                    return Some(&ctor.typ);
+                    return Some(&ctor.typ.value);
                 }
             }
         }
@@ -280,7 +280,7 @@ impl Types for Assembly {
         for data_def in self.data_definitions.iter() {
             for ctor in data_def.constructors.iter() {
                 if *name == ctor.name {
-                    return Some(&ctor.typ);
+                    return Some(&ctor.typ.value);
                 }
             }
         }
@@ -333,7 +333,7 @@ impl Types for Assembly {
 impl DataTypes for Assembly {
     fn find_data_type<'a>(&'a self, name: InternedStr) -> Option<&'a DataDefinition<Name>> {
         for data in self.data_definitions.iter() {
-            if name == extract_applied_type(&data.typ).op().name {
+            if name == extract_applied_type(&data.typ.value).op().name {
                 return Some(data);
             }
         }

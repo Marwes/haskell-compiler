@@ -58,7 +58,7 @@ impl Types for Module<Name> {
         for data in self.dataDefinitions.iter() {
             for ctor in data.constructors.iter() {
                 if *name == ctor.name {
-                    return Some(&ctor.typ);
+                    return Some(&ctor.typ.value);
                 }
             }
         }
@@ -95,7 +95,7 @@ impl Types for Module<Name> {
 impl DataTypes for Module<Name> {
     fn find_data_type<'a>(&'a self, name: InternedStr) -> Option<&'a DataDefinition<Name>> {
         for data in self.dataDefinitions.iter() {
-            if name == extract_applied_type(&data.typ).op().name {
+            if name == extract_applied_type(&data.typ.value).op().name {
                 return Some(data);
             }
         }
@@ -255,10 +255,10 @@ impl <'a> TypeEnvironment<'a> {
     pub fn typecheck_module(&mut self, module: &mut Module<Name>) {
         for data_def in module.dataDefinitions.mut_iter() {
             let mut subs = Substitution { subs: HashMap::new(), constraints: HashMap::new() };
-            freshen_all(self, &mut subs, &mut data_def.typ);
+            freshen_all(self, &mut subs, &mut data_def.typ.value);
             for constructor in data_def.constructors.mut_iter() {
-                replace(&mut self.constraints, &mut constructor.typ, &subs);
-                let mut typ = constructor.typ.clone();
+                replace(&mut self.constraints, &mut constructor.typ.value, &subs);
+                let mut typ = constructor.typ.value.clone();
                 quantify(0, &mut typ);
                 self.namedTypes.insert(constructor.name.clone(), typ);
             }
@@ -316,8 +316,8 @@ impl <'a> TypeEnvironment<'a> {
                         let maybe_data = self.assemblies.iter().filter_map(|a| a.find_data_type(op.name))
                             .next();
                         op.kind = maybe_data
-                            .or_else(|| data_definitions.iter().find(|data| op.name == extract_applied_type(&data.typ).op().name))
-                            .map(|data| extract_applied_type(&data.typ).kind().clone())
+                            .or_else(|| data_definitions.iter().find(|data| op.name == extract_applied_type(&data.typ.value).op().name))
+                            .map(|data| extract_applied_type(&data.typ.value).kind().clone())
                             .unwrap_or_else(|| if intern("[]") == op.name { KindFunction(box StarKind, box StarKind) } else { StarKind });
                     }
                     _ => ()
