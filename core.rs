@@ -515,7 +515,7 @@ impl Translator {
                         Some(mut x) => {
                             ::std::mem::swap(p, &mut x);
                             let id = match *p {
-                                module::IdentifierPattern(ref n) => Id::new(n.clone(), Type::new_var(777), ~[]),
+                                module::IdentifierPattern(ref n) => Id::new(n.clone(), Type::new_var(intern("a")), ~[]),
                                 _ => fail!()
                             };
                             self.mk(uid, id, x, result);
@@ -538,7 +538,7 @@ impl Translator {
 
     fn make_equation(&mut self, alts: ~[module::Alternative<Name>]) -> Expr<Id<Name>> {
         let mut vec = Vec::new();
-        let dummy_var = [Id::new(self.name_supply.anonymous(), Type::new_var(0), ~[])];
+        let dummy_var = [Id::new(self.name_supply.anonymous(), Type::new_var(intern("a")), ~[])];
         let uid = self.name_supply.next_id();
         for module::Alternative { pattern: pattern, matches: matches } in alts.move_iter() {
             vec.push((self.unwrap_patterns(uid, dummy_var, [pattern.node]), matches));
@@ -772,17 +772,17 @@ impl Translator {
 
     fn translate_pattern(&mut self, pattern: module::Pattern<Name>) -> Pattern<Id<Name>> {
         match pattern {
-            module::IdentifierPattern(i) => IdentifierPattern(Id::new(i, Type::new_var(1213), ~[])),
+            module::IdentifierPattern(i) => IdentifierPattern(Id::new(i, Type::new_var(intern("a")), ~[])),
             module::NumberPattern(n) => NumberPattern(n),
             module::ConstructorPattern(name, patterns) => {
                 let ps = FromVec::<Id<Name>>::from_vec(patterns.move_iter().map(|pat| {
                     match pat {
-                        module::IdentifierPattern(name) => Id::new(name, Type::new_var(1213), ~[]),
-                        module::WildCardPattern => Id::new(Name { name: intern("_"), uid: -1 }, Type::new_var(123), ~[]),
+                        module::IdentifierPattern(name) => Id::new(name, Type::new_var(intern("a")), ~[]),
+                        module::WildCardPattern => Id::new(Name { name: intern("_"), uid: -1 }, Type::new_var(intern("a")), ~[]),
                         _ => fail!("Nested pattern")
                     }
                 }).collect());
-                ConstructorPattern(Id::new(name, Type::new_var(444), ~[]), ps)
+                ConstructorPattern(Id::new(name, Type::new_var(intern("a")), ~[]), ps)
             }
             module::WildCardPattern => WildCardPattern
         }
@@ -860,7 +860,7 @@ impl Translator {
             let &Equation(ps, _) = eq;
             let other_id = match *ps[0].ref1() {
                 IdentifierPattern(ref name) => name.clone(),
-                WildCardPattern => Id::new(Name { name: intern("_"), uid: -1 }, Type::new_var(99999), ~[]),
+                WildCardPattern => Id::new(Name { name: intern("_"), uid: -1 }, Type::new_var(intern("a")), ~[]),
                 _ => fail!()
             };
             Binding { name: other_id, expression: Identifier(arg_id.clone()) }
@@ -871,7 +871,7 @@ impl Translator {
         Literal(Literal { typ: list_type(char_type()), value: String(intern(s)) })
     }
     fn unmatched_guard() -> Expr<Id<Name>> {
-        let error_ident = Identifier(Id::new(Name { name: intern("error"), uid: 0 }, function_type_(list_type(char_type()), Type::new_var(-1)), ~[]));
+        let error_ident = Identifier(Id::new(Name { name: intern("error"), uid: 0 }, function_type_(list_type(char_type()), Type::new_var(intern("a"))), ~[]));
         Apply(box error_ident, box string("Unmatched guard"))
     }
 

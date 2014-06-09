@@ -160,7 +160,7 @@ fn class(&mut self) -> Class {
 	self.requireNext(RBRACE);
 
     //TODO infer kind from class?
-	Class { name : classname, variable: TypeVariable { id: typeVariable, kind: unknown_kind.clone() }, declarations : declarations }
+	Class { name : classname, variable: TypeVariable { id: typeVariableName, kind: unknown_kind.clone(), age: 0 }, declarations : declarations }
 }
 
 fn instance(&mut self) -> Instance {
@@ -686,10 +686,7 @@ fn constructorType(&mut self, arity : &mut int, dataDef: &DataDefinition, mappin
 	if token == NAME {
 		*arity += 1;
 		let arg = if self.lexer.current().value.as_slice().char_at(0).is_lowercase() {
-			match mapping.find(&self.lexer.current().value) {
-                Some(existingVariable) => Type::new_var(*existingVariable),
-                None => fail!("Undefined type parameter {}", self.lexer.current().value)
-            }
+            Type::new_var(self.lexer.current().value)
 		}
 		else {
 			Type::new_op(self.lexer.current().value.clone(), box [])
@@ -715,13 +712,13 @@ fn dataDefinition(&mut self) -> DataDefinition {
 
 	let mut definition = DataDefinition {
         constructors : box [],
-        typ : Type::new_var(0),
+        typ : Type::new_var(intern("a")),
         parameters : HashMap::new()
     };
     let mut typ = TypeOperator(TypeOperator { name: dataName, kind: star_kind.clone() });
 	while self.lexer.next().token == NAME {
         //TODO use new variables isntead of only  -1
-		typ = TypeApplication(box typ, box Type::new_var(-1));
+		typ = TypeApplication(box typ, box Type::new_var(self.lexer.current().value));
 		definition.parameters.insert(self.lexer.current().value.clone(), -1);
 	}
     definition.typ = typ;
@@ -767,9 +764,7 @@ fn sub_type(&mut self, variableIndex: &mut int, typeVariableMapping: &mut HashMa
 				Some(Type::new_op(token.value, box []))
 			}
 			else {
-                let t = typeVariableMapping.find_or_insert(token.value, *variableIndex);
-                *variableIndex += 1;
-				Some(Type::new_var(*t))
+				Some(Type::new_var(token.value))
 			}
 		}
         _ => { self.lexer.backtrack(); None }
@@ -826,9 +821,7 @@ fn parse_type_(&mut self, variableIndex: &mut int, typeVariableMapping : &mut Ha
 				Type::new_op(token.value, FromVec::from_vec(typeArguments))
 			}
 			else {
-                let t = typeVariableMapping.find_or_insert(token.value, *variableIndex);
-                *variableIndex += 1;
-                Type::new_var_args(*t, FromVec::from_vec(typeArguments))
+                Type::new_var_args(token.value, FromVec::from_vec(typeArguments))
 			};
 			self.parse_return_type(thisType, variableIndex, typeVariableMapping)
 		}
@@ -1062,9 +1055,9 @@ fn parse_type() {
     let mut parser = Parser::new(
 r"(.) :: (b -> c) -> (a -> b) -> (a -> c)".chars());
     let typeDecl = parser.typeDeclaration();
-    let a = &Type::new_var(0);
-    let b = &Type::new_var(1);
-    let c = &Type::new_var(2);
+    let a = &Type::new_var(intern("a"));
+    let b = &Type::new_var(intern("b"));
+    let c = &Type::new_var(intern("c"));
     let f = function_type(&function_type(b, c), &function_type(&function_type(a, b), &function_type(a, c)));
 
     assert_eq!(typeDecl.name, intern("."));
@@ -1090,8 +1083,8 @@ fn parse_data_2() {
 r"data List a = Cons a (List a) | Nil".chars());
     let data = parser.dataDefinition();
 
-    let list = Type::new_op(intern("List"), ~[Type::new_var(0)]);
-    let cons = Constructor { name: intern("Cons"), tag:0, arity:2, typ: function_type(&Type::new_var(0), &function_type(&list, &list))};
+    let list = Type::new_op(intern("List"), ~[Type::new_var(intern("a"))]);
+    let cons = Constructor { name: intern("Cons"), tag:0, arity:2, typ: function_type(&Type::new_var(intern("a")), &function_type(&list, &list))};
     let nil = Constructor { name: intern("Nil"), tag:1, arity:0, typ: list.clone() };
     assert_eq!(data.typ, list);
     assert_eq!(data.constructors[0], cons);
@@ -1127,7 +1120,7 @@ instance Eq a => Eq [a] where
     assert_eq!(module.classes[0].name, intern("Eq"));
     assert_eq!(module.instances[0].classname, intern("Eq"));
     assert_eq!(module.instances[0].constraints[0].class, intern("Eq"));
-    assert_eq!(module.instances[0].typ, list_type(Type::new_var(0)));
+    assert_eq!(module.instances[0].typ, list_type(Type::new_var(intern("a"))));
 }
 #[test]
 fn parse_do_expr() {

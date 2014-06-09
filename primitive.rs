@@ -1,9 +1,10 @@
 use module::*;
 use typecheck::function_type_;
+use interner::intern;
 
 pub fn primitives() -> ~[(&'static str, Type)] {
-    let var = Generic(TypeVariable { id: 0, kind: StarKind } );
-    let var2 = Generic(TypeVariable { id: 1, kind: StarKind } );
+    let var = Generic(TypeVariable { id: intern("a"), kind: StarKind, age: 0 } );
+    let var2 = Generic(TypeVariable { id: intern("b"), kind: StarKind, age: 0 } );
     ~[("error", function_type_(list_type(char_type()), var.clone())),
       ("seq", function_type_(var.clone(), function_type_(var2.clone(), var2.clone()))),
       ("readFile", function_type_(list_type(char_type()), io(list_type(char_type())))),

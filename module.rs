@@ -72,10 +72,13 @@ pub struct TypeOperator {
     pub name : InternedStr,
     pub kind : Kind
 }
+
+pub type TyVar = InternedStr;
 #[deriving(Clone, PartialEq, Eq, Default)]
 pub struct TypeVariable {
-    pub id : int,
-    pub kind : Kind
+    pub id : InternedStr,
+    pub kind : Kind,
+    pub age: int
 }
 #[deriving(Clone, Eq, Hash)]
 pub enum Type {
@@ -92,18 +95,18 @@ pub struct Qualified<T> {
 
 impl Type {
 
-    pub fn new_var(id : int) -> Type {
-        TypeVariable(TypeVariable { id : id, kind: unknown_kind.clone() })
+    pub fn new_var(id : TyVar) -> Type {
+        TypeVariable(TypeVariable { id : id, kind: unknown_kind.clone(), age: 0 })
     }
-    pub fn new_var_args(id: int, types : ~[Type]) -> Type {
-        let mut result = TypeVariable(TypeVariable { id : id, kind: Kind::new(types.len() as int + 1) });
+    pub fn new_var_args(id: TyVar, types : ~[Type]) -> Type {
+        let mut result = TypeVariable(TypeVariable { id : id, kind: Kind::new(types.len() as int + 1) , age: 0 });
         for typ in types.move_iter() {
             result = TypeApplication(box result, box typ);
         }
         result
     }
-    pub fn new_var_kind(id : int, kind: Kind) -> Type {
-        TypeVariable(TypeVariable { id : id, kind: kind })
+    pub fn new_var_kind(id : TyVar, kind: Kind) -> Type {
+        TypeVariable(TypeVariable { id : id, kind: kind, age: 0 })
     }
     pub fn new_op(name : InternedStr, types : ~[Type]) -> Type {
         let mut result = TypeOperator(TypeOperator { name : name, kind: Kind::new(types.len() as int + 1) });
@@ -181,8 +184,10 @@ impl <S: Writer> ::std::hash::Hash<S> for TypeVariable {
 
 pub fn tuple_type(size: uint) -> (String, Type) {
     let mut var_list = Vec::new();
+    assert!(size < 26);
     for i in range(0, size) {
-        var_list.push(Generic(Type::new_var_kind(i as int, star_kind.clone()).var().clone()));
+        let c = (('a' as u8) + i as u8) as char;
+        var_list.push(Generic(Type::new_var_kind(intern(c.to_str().as_slice()), star_kind.clone()).var().clone()));
     }
     let mut ident = String::from_char(1, '(');
     for _ in range(1, size) {
@@ -191,7 +196,8 @@ pub fn tuple_type(size: uint) -> (String, Type) {
     ident.push_char(')');
     let mut typ = Type::new_op(intern(ident.as_slice()), FromVec::from_vec(var_list));
     for i in range_step(size as int - 1, -1, -1) {
-        typ = function_type_(Generic(Type::new_var(i).var().clone()), typ);
+        let c = (('a' as u8) + i as u8) as char;
+        typ = function_type_(Generic(Type::new_var(intern(c.to_str().as_slice())).var().clone()), typ);
     }
     (ident, typ)
 }
@@ -269,7 +275,7 @@ pub static star_kind : Kind = StarKind;
 
 impl Default for Type {
     fn default() -> Type {
-        Type::new_var(-1)
+        Type::new_var(intern("a"))
     }
 }
 impl fmt::Show for TypeVariable {
@@ -432,10 +438,10 @@ impl <T: fmt::Show> fmt::Show for TypedExpr<T> {
 
 impl TypedExpr {
     pub fn new<T>(expr : Expr<T>) -> TypedExpr<T> {
-        TypedExpr { expr : expr, typ : Type::new_var(0), location : Location { column : -1, row : -1, absolute : -1 } }
+        TypedExpr { expr : expr, typ : Type::new_var(intern("a")), location : Location { column : -1, row : -1, absolute : -1 } }
     }
     pub fn with_location<T>(expr : Expr<T>, loc : Location) -> TypedExpr<T> {
-        TypedExpr { expr : expr, typ : Type::new_var(0), location : loc }
+        TypedExpr { expr : expr, typ : Type::new_var(intern("a")), location : loc }
     }
 }
 
