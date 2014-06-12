@@ -564,7 +564,6 @@ impl <'a> Compiler<'a> {
                 let maybe_new_dict = match self.find(&name.name) {
                     None => fail!("Error: Undefined variable {}", *name),
                     Some(var) => {
-                        debug!("{}", var);
                         match var {
                             StackVariable(index) => { instructions.push(Push(index)); None }
                             GlobalVariable(index) => { instructions.push(PushGlobal(index)); None }
@@ -572,7 +571,6 @@ impl <'a> Compiler<'a> {
                             PrimitiveVariable(index) => { instructions.push(PushPrimitive(index)); None }
                             ClassVariable(typ, var) => self.compile_instance_variable(expr.get_type(), instructions, &name.name, typ, var),
                             ConstraintVariable(index, bind_type, constraints) => {
-                                debug!("{} {} {}", name.as_slice(), bind_type, constraints);
                                 let x = self.compile_with_constraints(&name.name, expr.get_type(), bind_type, constraints, instructions);
                                 instructions.push(PushGlobal(index));
                                 instructions.push(Mkap);
@@ -729,7 +727,6 @@ impl <'a> Compiler<'a> {
                         None
                     }
                     Some(ConstraintVariable(index, function_type, constraints)) => {
-                        debug!("xxx {} {} {} {}", instance_fn_name.as_slice(), actual_type, function_type, constraints);
                         let dict = self.compile_with_constraints(&instance_fn_name, actual_type, function_type, constraints, instructions);
                         instructions.push(PushGlobal(index));
                         instructions.push(Mkap);
@@ -740,7 +737,6 @@ impl <'a> Compiler<'a> {
             }
             None => {
                 let constraints = self.type_env.find_constraints(actual_type);
-                debug!("aaa {} {} {}\n {}", var, typ, actual_type, constraints);
                 self.compile_with_constraints(name, actual_type, typ, constraints, instructions)
             }
         }
@@ -760,7 +756,7 @@ impl <'a> Compiler<'a> {
             _ => {
                 //get dictionary index
                 //push dictionary
-                let dictionary_key = self.type_env.find_specialized_instances(function_type, actual_type);
+                let dictionary_key = self.type_env.find_specialized_instances(function_type, actual_type, constraints);
                 let (index, dict) = self.find_dictionary_index(dictionary_key);
                 instructions.push(PushDictionary(index));
                 dict

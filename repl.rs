@@ -35,11 +35,11 @@ fn compile_expr(prelude: &Assembly, expr_str: &str) -> Assembly {
     compiler.compileModule(&m)
 }
 
-fn find_main(assembly: &Assembly) -> (~[Instruction], TypeDeclaration) {
+fn find_main(assembly: &Assembly) -> (~[Instruction], Qualified<Type>) {
     assembly.superCombinators.iter()
         .find(|sc| sc.name == Name { name: intern("main"), uid: 0 })
         .map(|sc| {
-            if is_io(&sc.type_declaration.typ) {
+            if is_io(&sc.typ.value) {
                 //If the expression we compiled is IO we need to add an extra argument
                 //'RealWorld' which can be any dumb value (42 here), len - 3 is used because
                 //it is currently 3 instructions Eval, Update(0), Unwind at the end of each instruction list
@@ -48,10 +48,10 @@ fn find_main(assembly: &Assembly) -> (~[Instruction], TypeDeclaration) {
                 let len = vec.len();
                 vec.insert(len - 3, Mkap);
                 vec.insert(0, PushInt(42));//Realworld
-                (FromVec::from_vec(vec), sc.type_declaration.clone())
+                (FromVec::from_vec(vec), sc.typ.clone())
             }
             else {
-                (sc.instructions.clone(), sc.type_declaration.clone())
+                (sc.instructions.clone(), sc.typ.clone())
             }
         })
         .expect("Expected main function")
@@ -78,9 +78,9 @@ pub fn start() {
             Err(e) => fail!("Reading line failed with '{}'", e)
         };
         let assembly = compile_expr(vm.get_assembly(0), expr_str.as_slice());
-        let (instructions, type_decl) = find_main(&assembly);
+        let (instructions, typ) = find_main(&assembly);
         let assembly_index = vm.add_assembly(assembly);
         let result = evaluate(&vm, instructions, assembly_index);//TODO 0 is not necessarily correct
-        println!("{}  {}", result, type_decl);
+        println!("{}  {}", result, typ);
     }
 }
