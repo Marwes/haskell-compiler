@@ -9,17 +9,19 @@ use lambda_lift::*;
 use parser::Parser;
 use renamer::{Name, rename_expr};
 
+///Returns whether the type in question is an IO action
 fn is_io(typ: &Type) -> bool {
     match *typ {
         TypeApplication(ref lhs, _) => 
             match **lhs {
-                TypeOperator(ref op) => op.name.as_slice() == "IO",
+                TypeConstructor(ref op) => op.name.as_slice() == "IO",
                 _ => false
             },
         _ => false
     }
 }
 
+///Compiles an expression into an assembly
 fn compile_expr(prelude: &Assembly, expr_str: &str) -> Assembly {
     let mut parser = Parser::new(expr_str.chars());
     let mut expr = rename_expr(parser.expression_());
@@ -32,9 +34,10 @@ fn compile_expr(prelude: &Assembly, expr_str: &str) -> Assembly {
     
     let mut compiler = Compiler::new(&type_env);
     compiler.assemblies.push(prelude);
-    compiler.compileModule(&m)
+    compiler.compile_module(&m)
 }
 
+///Finds the main function and if it is an IO function, adds instructions to push the "RealWorld" argument
 fn find_main(assembly: &Assembly) -> (~[Instruction], Qualified<Type>) {
     assembly.superCombinators.iter()
         .find(|sc| sc.name == Name { name: intern("main"), uid: 0 })
@@ -68,6 +71,7 @@ pub fn run_and_print_expr(expr_str: &str) {
     println!("{}  {}", result, type_decl);
 }
 
+///Starts the REPL
 pub fn start() {
     let prelude = compile_file("Prelude.hs");
     let mut vm = VM::new();

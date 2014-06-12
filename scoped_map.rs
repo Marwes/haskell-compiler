@@ -4,8 +4,16 @@ use collections::hashmap::MutEntries;
 use std::hash::Hash;
 use std::hash::sip::SipHasher;
 
+///A map struct which allows for the introduction of different scopes
+///Introducing a new scope will make it possible to introduce additional
+///variables with names already defined, shadowing the old name
+///After exiting a scope the shadowed variable will again be re introduced
 pub struct ScopedMap<K, V> {
+    ///A hashmap storing a key -> value mapping
+    ///Stores a vector of values in which the value at the top is value returned from 'find'
     map: HashMap<K, Vec<V>, SipHasher>,
+    ///A vector of scopes, when entering a scope, None is added as a marker
+    ///when later exiting a scope, values are removed from the map until the marker is found
     scopes: Vec<Option<K>>
 }
 
@@ -14,9 +22,12 @@ impl <K: Eq + Hash + Clone, V> ScopedMap<K, V> {
     pub fn new() -> ScopedMap<K, V> {
         ScopedMap { map: HashMap::new(), scopes: Vec::new() }
     }
+    ///Introduces a new scope
     pub fn enter_scope(&mut self) {
         self.scopes.push(None);
     }
+    ///Exits the current scope, removing anything inserted since the
+    ///matching enter_scope call
     pub fn exit_scope(&mut self) {
         loop {
             match self.scopes.pop() {
@@ -25,7 +36,7 @@ impl <K: Eq + Hash + Clone, V> ScopedMap<K, V> {
             }
         }
     }
-
+    ///Removes a previusly inserted value from the map.
     pub fn remove(&mut self, k: &K) -> bool {
         match self.map.find_mut(k).map(|x| x.pop()) {
             Some(..) => {
@@ -42,10 +53,12 @@ impl <K: Eq + Hash + Clone, V> ScopedMap<K, V> {
         }
     }
 
+    ///Like find but uses equiv to compare the keys
     pub fn find_equiv<'a, Q: Hash + Equiv<K>>(&'a self, k: &Q) -> Option<&'a V> {
         self.map.find_equiv(k).and_then(|x| x.last())
     }
 
+    ///Returns true if the key has a value declared in the last declared scope
     pub fn in_current_scope(&self, k: &K) -> bool {
         for n in self.scopes.iter().rev() {
             match *n {
@@ -56,27 +69,32 @@ impl <K: Eq + Hash + Clone, V> ScopedMap<K, V> {
         }
         false
     }
-
+    ///Returns an iterator of the (key, values) pairs inserted in the map
     pub fn mut_iter<'a>(&'a mut self) -> MutEntries<'a, K, Vec<V>> {
         self.map.mut_iter()
     }
 }
 
 impl <K: Eq + Hash, V> Map<K, V> for ScopedMap<K, V> {
+    ///Returns a reference to the last inserted value corresponding to the key
     fn find<'a>(&'a self, k: &K) -> Option<&'a V> {
         self.map.find(k).and_then(|x| x.last())
     }
 }
 impl <K: Eq + Hash, V> Container for ScopedMap<K, V> {
+    ///Returns the number of elements in the container.
+    ///Shadowed elements are not counted
     fn len(&self) -> uint { self.map.len() }
 }
 impl <K: Eq + Hash, V> Mutable for ScopedMap<K, V> {
+    ///Removes all elements
     fn clear(&mut self) {
         self.map.clear();
         self.scopes.clear();
     }
 }
 impl <K: Eq + Hash + Clone, V> MutableMap<K, V> for ScopedMap<K, V> {
+    ///Swaps the value stored at key, or inserts it if it is not present
     fn swap(&mut self, k: K, v: V) -> Option<V> {
         let vec = self.map.find_or_insert(k.clone(), Vec::new());
         if vec.len() != 0 {

@@ -45,6 +45,7 @@ struct Node<'a> {
 }
 
 impl <'a> Node<'a> {
+    ///Creates a new node
     fn new<'a>(n : Node_<'a>) -> Node<'a> {
         Node { node: Rc::new(RefCell::new(n)) }
     }
@@ -117,7 +118,9 @@ impl <'a> fmt::Show for Node_<'a> {
 }
 
 pub struct VM {
+    ///Vector of all assemblies which are loaded.
     assembly : Vec<Assembly>,
+    ///A pair of (assembly_index, function_index).
     globals: Vec<(uint, uint)>,
 }
 
@@ -130,24 +133,24 @@ impl <'a> VM {
     pub fn add_assembly(&mut self, assembly: Assembly) -> uint {
         self.assembly.push(assembly);
         let assembly_index = self.assembly.len() - 1;
-        let mut index = 0;
-        for _ in self.assembly.last().unwrap().superCombinators.iter() {
+        for index in range(0, self.assembly.last().unwrap().superCombinators.len()) {
             self.globals.push((assembly_index, index));
-            index += 1;
         }
         assembly_index
     }
-    
+    ///Returns a reference to the assembly at the index
     pub fn get_assembly<'a>(&'a self, index: uint) -> &'a Assembly {
         self.assembly.get(index)
     }
 }
+    ///Evaluates the code into Head Normal Form (HNF)
     pub fn evaluate<'a>(self_: &'a VM, code: &[Instruction], assembly_id: uint) -> Node_<'a> {
         let mut stack = Vec::new();
         execute(self_, &mut stack, code, assembly_id);
         deepseq(self_, stack, assembly_id)
     }
-
+    
+    ///Evaluates the what is at the top of the stack into HNF
     fn deepseq<'a>(self_: &'a VM, mut stack: Vec<Node<'a>>, assembly_id: uint) -> Node_<'a> {
         static evalCode : &'static [Instruction] = &[Eval];
         execute(self_, &mut stack, evalCode, assembly_id);
@@ -165,6 +168,7 @@ impl <'a> VM {
         }
     }
 
+    ///Executes a sequence of instructions, leaving the result on the top of the stack
     pub fn execute<'a>(self_: &'a VM, stack: &mut Vec<Node<'a>>, code: &[Instruction], assembly_id: uint) {
         debug!("----------------------------");
         debug!("Entering frame with stack");
@@ -175,45 +179,45 @@ impl <'a> VM {
         let mut i = 0;
         while i < code.len() {
             debug!("Executing instruction {} : {}", i, code[i]);
-            match &code[i] {
-                &Add => primitive(stack, |l, r| { l + r }),
-                &Sub => primitive(stack, |l, r| { l - r }),
-                &Multiply => primitive(stack, |l, r| { l * r }),
-                &Divide => primitive(stack, |l, r| { l / r }),
-                &Remainder => primitive(stack, |l, r| { l % r }),
-                &IntEQ => primitive_int(stack, |l, r| { if l == r { Constructor(0, Vec::new()) } else { Constructor(1, Vec::new()) } }),
-                &IntLT => primitive_int(stack, |l, r| { if l < r { Constructor(0, Vec::new()) } else { Constructor(1, Vec::new()) } }),
-                &IntLE => primitive_int(stack, |l, r| { if l <= r { Constructor(0, Vec::new()) } else { Constructor(1, Vec::new()) } }),
-                &IntGT => primitive_int(stack, |l, r| { if l > r { Constructor(0, Vec::new()) } else { Constructor(1, Vec::new()) } }),
-                &IntGE => primitive_int(stack, |l, r| { if l >= r { Constructor(0, Vec::new()) } else { Constructor(1, Vec::new()) } }),
-                &DoubleAdd => primitive_float(stack, |l, r| { Float(l + r) }),
-                &DoubleSub => primitive_float(stack, |l, r| { Float(l - r) }),
-                &DoubleMultiply => primitive_float(stack, |l, r| { Float(l * r) }),
-                &DoubleDivide => primitive_float(stack, |l, r| { Float(l / r) }),
-                &DoubleRemainder => primitive_float(stack, |l, r| { Float(l % r) }),
-                &DoubleEQ => primitive_float(stack, |l, r| { if l == r { Constructor(0, Vec::new()) } else { Constructor(1, Vec::new()) } }),
-                &DoubleLT => primitive_float(stack, |l, r| { if l < r { Constructor(0, Vec::new()) } else { Constructor(1, Vec::new()) } }),
-                &DoubleLE => primitive_float(stack, |l, r| { if l <= r { Constructor(0, Vec::new()) } else { Constructor(1, Vec::new()) } }),
-                &DoubleGT => primitive_float(stack, |l, r| { if l > r { Constructor(0, Vec::new()) } else { Constructor(1, Vec::new()) } }),
-                &DoubleGE => primitive_float(stack, |l, r| { if l >= r { Constructor(0, Vec::new()) } else { Constructor(1, Vec::new()) } }),
-                &IntToDouble => {
+            match code[i] {
+                Add => primitive(stack, |l, r| { l + r }),
+                Sub => primitive(stack, |l, r| { l - r }),
+                Multiply => primitive(stack, |l, r| { l * r }),
+                Divide => primitive(stack, |l, r| { l / r }),
+                Remainder => primitive(stack, |l, r| { l % r }),
+                IntEQ => primitive_int(stack, |l, r| { if l == r { Constructor(0, Vec::new()) } else { Constructor(1, Vec::new()) } }),
+                IntLT => primitive_int(stack, |l, r| { if l < r { Constructor(0, Vec::new()) } else { Constructor(1, Vec::new()) } }),
+                IntLE => primitive_int(stack, |l, r| { if l <= r { Constructor(0, Vec::new()) } else { Constructor(1, Vec::new()) } }),
+                IntGT => primitive_int(stack, |l, r| { if l > r { Constructor(0, Vec::new()) } else { Constructor(1, Vec::new()) } }),
+                IntGE => primitive_int(stack, |l, r| { if l >= r { Constructor(0, Vec::new()) } else { Constructor(1, Vec::new()) } }),
+                DoubleAdd => primitive_float(stack, |l, r| { Float(l + r) }),
+                DoubleSub => primitive_float(stack, |l, r| { Float(l - r) }),
+                DoubleMultiply => primitive_float(stack, |l, r| { Float(l * r) }),
+                DoubleDivide => primitive_float(stack, |l, r| { Float(l / r) }),
+                DoubleRemainder => primitive_float(stack, |l, r| { Float(l % r) }),
+                DoubleEQ => primitive_float(stack, |l, r| { if l == r { Constructor(0, Vec::new()) } else { Constructor(1, Vec::new()) } }),
+                DoubleLT => primitive_float(stack, |l, r| { if l < r { Constructor(0, Vec::new()) } else { Constructor(1, Vec::new()) } }),
+                DoubleLE => primitive_float(stack, |l, r| { if l <= r { Constructor(0, Vec::new()) } else { Constructor(1, Vec::new()) } }),
+                DoubleGT => primitive_float(stack, |l, r| { if l > r { Constructor(0, Vec::new()) } else { Constructor(1, Vec::new()) } }),
+                DoubleGE => primitive_float(stack, |l, r| { if l >= r { Constructor(0, Vec::new()) } else { Constructor(1, Vec::new()) } }),
+                IntToDouble => {
                     let top = stack.pop().unwrap();
                     stack.push(match *top.borrow() {
                         Int(i) => Node::new(Float(i as f64)),
                         _ => fail!("Excpected Int in Int -> Double cast")
                     });
                 }
-                &DoubleToInt => {
+                DoubleToInt => {
                     let top = stack.pop().unwrap();
                     stack.push(match *top.borrow() {
                         Float(f) => Node::new(Int(f as int)),
                         _ => fail!("Excpected Double in Double -> Int cast")
                     });
                 }
-                &PushInt(value) => { stack.push(Node::new(Int(value))); }
-                &PushFloat(value) => { stack.push(Node::new(Float(value))); }
-                &PushChar(value) => { stack.push(Node::new(Char(value))); }
-                &Push(index) => {
+                PushInt(value) => { stack.push(Node::new(Int(value))); }
+                PushFloat(value) => { stack.push(Node::new(Float(value))); }
+                PushChar(value) => { stack.push(Node::new(Char(value))); }
+                Push(index) => {
                     let x = stack.get(index).clone();
                     debug!("Pushed {}", *x.borrow());
                     for j in range(0, stack.len()) {
@@ -221,23 +225,23 @@ impl <'a> VM {
                     }
                     stack.push(x);
                 }
-                &PushGlobal(index) => {
+                PushGlobal(index) => {
                     let &(assembly_index, index) = self_.globals.get(index);
                     let sc = &self_.assembly.get(assembly_index).superCombinators[index];
                     stack.push(Node::new(Combinator(sc)));
                 }
-                &PushPrimitive(index) => {
+                PushPrimitive(index) => {
                     let (arity, f) = get_primitive(index);
                     stack.push(Node::new(PrimitiveFunction(arity, f)));
                 }
-                &Mkap => {
+                Mkap => {
                     assert!(stack.len() >= 2);
                     let func = stack.pop().unwrap();
                     let arg = stack.pop().unwrap();
                     debug!("Mkap {} {}", *func.borrow(), *arg.borrow());
                     stack.push(Node::new(Application(func, arg)));
                 }
-                &Eval => {
+                Eval => {
                     static unwindCode : &'static [Instruction] = &[Unwind];
                     let old = stack.pop().unwrap();
                     let mut newStack = vec!(old.clone());
@@ -248,15 +252,15 @@ impl <'a> VM {
                     *(*old.node).borrow_mut() = new;
                     debug!("{}", stack.as_slice());
                 }
-                &Pop(num) => {
+                Pop(num) => {
                     for _ in range(0, num) {
                         stack.pop();
                     }
                 }
-                &Update(index) => {
+                Update(index) => {
                     *stack.get_mut(index) = Node::new(Indirection(stack.last().unwrap().clone()));
                 }
-                &Unwind => {
+                Unwind => {
                     fn unwind<'a>(i_ptr: &mut uint, arity: uint, stack: &mut Vec<Node<'a>>, f: |&mut Vec<Node<'a>>| -> Node<'a>) {
                         if stack.len() - 1 < arity {
                             while stack.len() > 1 {
@@ -309,14 +313,14 @@ impl <'a> VM {
                         _ => ()
                     }
                 }
-                &Slide(size) => {
+                Slide(size) => {
                     let top = stack.pop().unwrap();
                     for _ in range(0, size) {
                         stack.pop();
                     }
                     stack.push(top);
                 }
-                &Split(_) => {
+                Split(_) => {
                     match *stack.pop().unwrap().borrow() {
                         Constructor(_, ref fields) => {
                             for field in fields.iter() {
@@ -326,14 +330,14 @@ impl <'a> VM {
                         _ => fail!("Expected constructor in Split instruction")
                     }
                 }
-                &Pack(tag, arity) => {
+                Pack(tag, arity) => {
                     let mut args = Vec::new();
                     for _ in range(0, arity) {
                         args.push(stack.pop().unwrap());
                     }
                     stack.push(Node::new(Constructor(tag, args)));
                 }
-                &JumpFalse(address) => {
+                JumpFalse(address) => {
                     match *stack.last().unwrap().borrow() {
                         Constructor(0, _) => (),
                         Constructor(1, _) => i = address - 1,
@@ -341,7 +345,7 @@ impl <'a> VM {
                     }
                     stack.pop();
                 }
-                &CaseJump(jump_tag) => {
+                CaseJump(jump_tag) => {
                     let jumped = match *stack.last().unwrap().borrow() {
                         Constructor(tag, _) => {
                             if jump_tag == tag as uint {
@@ -358,15 +362,15 @@ impl <'a> VM {
                         stack.pop();
                     }
                 }
-                &Jump(to) => {
+                Jump(to) => {
                     i = to - 1;
                 }
-                &PushDictionary(index) => {
+                PushDictionary(index) => {
                     let assembly = self_.assembly.get(assembly_id);
                     let dict : &[uint] = assembly.instance_dictionaries[index];
                     stack.push(Node::new(Dictionary(dict)));
                 }
-                &PushDictionaryMember(index) => {
+                PushDictionaryMember(index) => {
                     let sc = {
                         let x = stack.get(0).borrow();
                         let dict = match *x {
@@ -379,7 +383,6 @@ impl <'a> VM {
                     };
                     stack.push(Node::new(Combinator(sc)));
                 }
-                //undefined => fail!("Use of undefined instruction {}", undefined)
             }
             i += 1;
         }
@@ -388,6 +391,7 @@ impl <'a> VM {
     }
 
 
+///Exucutes a binary primitive instruction taking two integers
 fn primitive_int(stack: &mut Vec<Node>, f: |int, int| -> Node_) {
     let l = stack.pop().unwrap();
     let r = stack.pop().unwrap();
@@ -396,6 +400,7 @@ fn primitive_int(stack: &mut Vec<Node>, f: |int, int| -> Node_) {
         (lhs, rhs) => fail!("Expected fully evaluted numbers in primitive instruction\n LHS: {}\nRHS: {} ", lhs, rhs)
     }
 }
+///Exucutes a binary primitive instruction taking two doubles
 fn primitive_float(stack: &mut Vec<Node>, f: |f64, f64| -> Node_) {
     let l = stack.pop().unwrap();
     let r = stack.pop().unwrap();
@@ -424,9 +429,10 @@ fn compile_iter<T : Iterator<char>>(iterator: T) -> Assembly {
     let core_module = do_lambda_lift(translate_module(module));
     
     let mut compiler = Compiler::new(&typer);
-    compiler.compileModule(&core_module)
+    compiler.compile_module(&core_module)
 }
 
+///Compiles a single file
 pub fn compile_file(filename: &str) -> Assembly {
     let path = &Path::new(filename);
     let contents = File::open(path).read_to_str().unwrap();
@@ -454,6 +460,8 @@ fn extract_result(node: Node_) -> Option<VMResult> {
     }
 }
 
+///Takes a module with a main function and compiles it and all its imported modules
+///and then executes the main function
 pub fn execute_main_module(modulename: &str) -> IoResult<Option<VMResult>> {
     let assemblies = try!(compile_module(modulename));
     let mut vm = VM::new();
@@ -471,6 +479,7 @@ pub fn execute_main_module(modulename: &str) -> IoResult<Option<VMResult>> {
     }
 }
 
+//We mirror the naming scheme from Haskell here which is camelCase
 #[allow(non_snake_case_functions)]
 mod primitive {
 

@@ -6,6 +6,13 @@ use lexer::*;
 use module::*;
 use interner::*;
 
+///The Parser is a recursive descent parser which has a method for each production
+///in the AST. By calling such a production method it is expected that the parser is
+///in a position where it starts at the first token of that production and can parse the production
+///completely otherwise it will call fail with an appropriate error message.
+///If the methods returns an Option it will instead return None.
+///In any case it is expected that a production method will place the parser in a position where
+///it can continue parsing without having to move the lexer's position.
 pub struct Parser<Iter> {
     lexer : Lexer<Iter>,
 }
@@ -16,7 +23,7 @@ pub fn new(iterator : Iter) -> Parser<Iter> {
     Parser { lexer : Lexer::new(iterator) }
 }
 
-fn requireNext<'a>(&'a mut self, expected : TokenEnum) -> &'a Token {
+fn require_next<'a>(&'a mut self, expected : TokenEnum) -> &'a Token {
     let tok = if expected == RBRACE {
         self.lexer.next_end().token
     }
@@ -24,7 +31,7 @@ fn requireNext<'a>(&'a mut self, expected : TokenEnum) -> &'a Token {
         self.lexer.next().token
     };
 	if tok != expected {
-		fail!(ParseError(&self.lexer, expected));
+		fail!(parse_error(&self.lexer, expected));
     }
 	return self.lexer.current();
 }
@@ -33,16 +40,16 @@ pub fn module(&mut self) -> Module {
 	let lBracketOrModule = self.lexer.module_next().token;//tokenizeModule??
 	let modulename = match lBracketOrModule {
         MODULE => {
-            let modulename = self.requireNext(NAME).value.clone();
-            self.requireNext(WHERE);
-            self.requireNext(LBRACE);
+            let modulename = self.require_next(NAME).value.clone();
+            self.require_next(WHERE);
+            self.require_next(LBRACE);
             modulename
 	    }
         LBRACE => {
 		    //No module declaration was found so default to Main
 		    intern("Main")
 	    }
-        _ => fail!(ParseError(&self.lexer, LBRACE))
+        _ => fail!(parse_error(&self.lexer, LBRACE))
     };
 
     let mut imports = Vec::new();
@@ -63,15 +70,17 @@ pub fn module(&mut self) -> Module {
     let mut classes = Vec::new();
     let mut bindings = Vec::new();
     let mut instances = Vec::new();
-    let mut typeDeclarations = Vec::new();
-    let mut dataDefinitions = Vec::new();
+    let mut type_declarations = Vec::new();
+    let mut data_definitions = Vec::new();
 	loop {
 		//Do a lookahead to see what the next top level binding is
 		let token = self.lexer.next().token;
 		if token == NAME || token == LPARENS {
+            //Since the token indicates an identifier it will be a function declaration or a function definition
+            //We can disambiguate this by looking wether the '::' token appear.
             let maybe_type_decl = if token == LPARENS {
                 self.lexer.next();//
-                self.requireNext(RPARENS);
+                self.require_next(RPARENS);
                 let tok = self.lexer.next().token;
                 self.lexer.backtrack();
                 self.lexer.backtrack();
@@ -87,8 +96,8 @@ pub fn module(&mut self) -> Module {
             };
 
 			if maybe_type_decl == TYPEDECL {
-				let bind = self.typeDeclaration();
-				typeDeclarations.push(bind);
+				let bind = self.type_declaration();
+				type_declarations.push(bind);
 			}
 			else {
 				let bind = self.binding();
@@ -106,7 +115,7 @@ pub fn module(&mut self) -> Module {
 		}
 		else if token == DATA {
 			self.lexer.backtrack();
-			dataDefinitions.push(self.dataDefinition());
+			data_definitions.push(self.data_definition());
 		}
 		else {
 			break;
@@ -119,7 +128,7 @@ pub fn module(&mut self) -> Module {
     }
 
     self.lexer.backtrack();
-    self.requireNext(RBRACE);
+    self.require_next(RBRACE);
 
 	let eof = self.lexer.next();
 	if eof.token != EOF {
@@ -130,63 +139,59 @@ pub fn module(&mut self) -> Module {
         name : modulename,
         imports : FromVec::from_vec(imports),
         bindings : FromVec::from_vec(bindings),
-        typeDeclarations : FromVec::from_vec(typeDeclarations),
+        typeDeclarations : FromVec::from_vec(type_declarations),
         classes : FromVec::from_vec(classes),
         instances : FromVec::from_vec(instances),
-        dataDefinitions : FromVec::from_vec(dataDefinitions)
+        dataDefinitions : FromVec::from_vec(data_definitions)
     }
 }
 
 fn import(&mut self) -> Import {
-    self.requireNext(IMPORT);
-    let tok = self.requireNext(NAME);
+    self.require_next(IMPORT);
+    let tok = self.require_next(NAME);
     Import { module: tok.value }
 }
 
 fn class(&mut self) -> Class {
-	self.requireNext(CLASS);
+	self.require_next(CLASS);
 
-	let classname = self.requireNext(NAME).value.clone();
-	let typeVariableName = self.requireNext(NAME).value.clone();
-    let typeVariable = 1000000;
+	let classname = self.require_next(NAME).value.clone();
+	let typeVariableName = self.require_next(NAME).value.clone();
 
-	self.requireNext(WHERE);
-	self.requireNext(LBRACE);
-	let mut typeVariableMapping = HashMap::new();
-	typeVariableMapping.insert(typeVariableName, typeVariable);
-	let declarations = self.sepBy1(|this| this.typeDeclaration_(&mut typeVariableMapping), SEMICOLON);
+	self.require_next(WHERE);
+	self.require_next(LBRACE);
+	let declarations = self.sep_by_1(|this| this.type_declaration(), SEMICOLON);
 	
 	self.lexer.backtrack();
-	self.requireNext(RBRACE);
+	self.require_next(RBRACE);
 
     //TODO infer kind from class?
 	Class { name : classname, variable: TypeVariable { id: typeVariableName, kind: unknown_kind.clone(), age: 0 }, declarations : declarations }
 }
 
 fn instance(&mut self) -> Instance {
-	self.requireNext(INSTANCE);
+	self.require_next(INSTANCE);
 
-    let mut mapping = HashMap::new();
-    let (constraints, instance_type) = self.constrained_type(&mut mapping);
+    let (constraints, instance_type) = self.constrained_type();
     match instance_type {
         TypeApplication(op, arg) => {
             let classname = match *op {
-                TypeOperator(TypeOperator { name: classname, ..}) => classname,
+                TypeConstructor(TypeConstructor { name: classname, ..}) => classname,
                 _ => fail!("Expected type operator")
             };
-            self.requireNext(WHERE);
-            self.requireNext(LBRACE);
+            self.require_next(WHERE);
+            self.require_next(LBRACE);
 
-            let mut bindings = self.sepBy1(|this| this.binding(), SEMICOLON);
+            let mut bindings = self.sep_by_1(|this| this.binding(), SEMICOLON);
             {
                 let inner_type = extract_applied_type(arg);
                 for bind in bindings.mut_iter() {
-                    bind.name = encodeBindingIdentifier(inner_type.op().name, bind.name);
+                    bind.name = encode_binding_identifier(inner_type.ctor().name, bind.name);
                 }
             }
 
             self.lexer.backtrack();
-            self.requireNext(RBRACE);
+            self.require_next(RBRACE);
             Instance { typ : *arg, classname : classname, bindings : bindings, constraints: constraints }
         }
         _ => fail!("TypeVariable in instance")
@@ -202,11 +207,11 @@ pub fn expression_(&mut self) -> TypedExpr {
 
 pub fn expression(&mut self) -> Option<TypedExpr> {
 	let app = self.application();
-	self.parseOperatorExpression(app, 0)
+	self.binary_expression(app, 0)
         .map(|expr| {
+        //Try to parse a type signature on this expression
         if self.lexer.next().token == TYPEDECL {
-            let mut mapping = HashMap::new();
-            let (constraints, typ) = self.constrained_type(&mut mapping);
+            let (constraints, typ) = self.constrained_type();
             let loc = expr.location;
             TypedExpr::with_location(
                 TypeSig(box expr, Qualified { constraints: constraints, value: typ }),
@@ -220,7 +225,7 @@ pub fn expression(&mut self) -> Option<TypedExpr> {
 }
 
 
-fn parseList(&mut self) -> TypedExpr {
+fn list(&mut self) -> TypedExpr {
 	let mut expressions = Vec::new();
 	loop {
 		match self.expression() {
@@ -233,41 +238,41 @@ fn parseList(&mut self) -> TypedExpr {
             break;
         }
 	}
-    self.requireNext(RBRACKET);
+    self.require_next(RBRACKET);
 
 	let nil = TypedExpr::new(Identifier(intern("[]")));
     expressions.move_iter().rev().fold(nil, |application, expr| {
 		let arguments = ~[expr, application];
-		makeApplication(TypedExpr::new(Identifier(intern(":"))), arguments.move_iter())
+		make_application(TypedExpr::new(Identifier(intern(":"))), arguments.move_iter())
 	})
 }
 
-fn subExpression(&mut self) -> Option<TypedExpr> {
+fn sub_expression(&mut self) -> Option<TypedExpr> {
 	let token = self.lexer.next().token;
     debug!("Begin SubExpr {}", self.lexer.current());
 	match token {
 	    LPARENS => {
-			let expressions = self.sepBy1(|this| this.expression_(), COMMA);
+			let expressions = self.sep_by_1(|this| this.expression_(), COMMA);
 
 			let maybeParens = self.lexer.current();
 
 			if maybeParens.token != RPARENS {
-				fail!(ParseError(&self.lexer, RPARENS));
+				fail!(parse_error(&self.lexer, RPARENS));
 			}
 			if expressions.len() == 1 {
 				Some(expressions[0])
 			}
 			else {
-				Some(newTuple(expressions))
+				Some(new_tuple(expressions))
 			}
 		}
-	    LBRACKET => Some(self.parseList()),
+	    LBRACKET => Some(self.list()),
 	    LET => {
 			let binds = self.let_bindings();
 
 			let inToken = self.lexer.next().token;
 			if inToken != IN {
-				fail!(ParseError(&self.lexer, IN));
+				fail!(parse_error(&self.lexer, IN));
             }
 			match self.expression() {
                 Some(e) => {
@@ -280,28 +285,28 @@ fn subExpression(&mut self) -> Option<TypedExpr> {
             let location = self.lexer.current().location;
 			let expr = self.expression();
 
-			self.requireNext(OF);
-			self.requireNext(LBRACE);
+			self.require_next(OF);
+			self.require_next(LBRACE);
 
-			let alts = self.sepBy1(|this| this.alternative(), SEMICOLON);
+			let alts = self.sep_by_1(|this| this.alternative(), SEMICOLON);
             self.lexer.backtrack();
-            self.requireNext(RBRACE);
+            self.require_next(RBRACE);
 			match expr {
                 Some(e) => Some(TypedExpr::with_location(Case(box e, alts), location)),
                 None => None
             }
 		}
         LAMBDA => {
-            let args = self.patternParameter();
-            self.requireNext(ARROW);
-            Some(makeLambda(args.move_iter(), self.expression_()))
+            let args = self.pattern_arguments();
+            self.require_next(ARROW);
+            Some(make_lambda(args.move_iter(), self.expression_()))
         }
         DO => {
             let location = self.lexer.current().location;
-            self.requireNext(LBRACE);
-            let bindings = self.sepBy1(|this| this.do_binding(), SEMICOLON);
+            self.require_next(LBRACE);
+            let bindings = self.sep_by_1(|this| this.do_binding(), SEMICOLON);
             self.lexer.backtrack();
-            self.requireNext(RBRACE);
+            self.require_next(RBRACE);
             if bindings.len() == 0 {
                 fail!("{}: Parse error: Empty do", self.lexer.current().location);
             }
@@ -355,8 +360,7 @@ fn do_binding(&mut self) -> DoBinding {
             }
             LARROW => {
                 for _ in range(0, lookahead) { self.lexer.backtrack(); }
-                let loc = self.lexer.current().location;
-                let p = Located { location: loc, node: self.pattern() };
+                let p = self.located_pattern();
                 self.lexer.next();//Skip <-
                 return DoBind(p, self.expression_());
             }
@@ -368,9 +372,9 @@ fn do_binding(&mut self) -> DoBinding {
 
 fn let_bindings(&mut self) -> ~[Binding] {
 
-    self.requireNext(LBRACE);
+    self.require_next(LBRACE);
 
-    let binds = self.sepBy1(|this| this.binding(), SEMICOLON);
+    let binds = self.sep_by_1(|this| this.binding(), SEMICOLON);
     self.lexer.backtrack();
     self.lexer.next_end();
     binds
@@ -379,20 +383,11 @@ fn let_bindings(&mut self) -> ~[Binding] {
 fn alternative(&mut self) -> Alternative {
 	let pat = self.located_pattern();
 
-    let matches = match self.lexer.next().token {
-        ARROW => Simple(self.expression_()),
-        PIPE => {
-            let g = Guards(self.sepBy1(|this| this.guard(ARROW), PIPE));
-            self.lexer.backtrack();
-            g
-        }
-        _ => fail!(ParseError2(&self.lexer, [EQUALSSIGN, PIPE]))
-    };
-
+    let matches = self.expr_or_guards(ARROW);
 	Alternative { pattern : pat, matches: matches }
 }
 
-fn parseOperatorExpression(&mut self, inL : Option<TypedExpr>, minPrecedence : int) -> Option<TypedExpr> {
+fn binary_expression(&mut self, inL : Option<TypedExpr>, minPrecedence : int) -> Option<TypedExpr> {
 	let mut lhs = inL;
     self.lexer.next();
     debug!("Parse operator exression, {}", self.lexer.current());
@@ -408,7 +403,7 @@ fn parseOperatorExpression(&mut self, inL : Option<TypedExpr>, minPrecedence : i
 		{
 			let lookaheadPrecedence = precedence(self.lexer.current().value.as_slice());
 			self.lexer.backtrack();
-			rhs = self.parseOperatorExpression(rhs, lookaheadPrecedence);
+			rhs = self.binary_expression(rhs, lookaheadPrecedence);
             self.lexer.next();
 		}
 		let mut name = TypedExpr::with_location(Identifier(op.value.clone()), op.location);
@@ -419,7 +414,7 @@ fn parseOperatorExpression(&mut self, inL : Option<TypedExpr>, minPrecedence : i
         lhs = match (lhs, rhs) {
             (Some(lhs), Some(rhs)) => {
                 let args = box [lhs, rhs];
-                Some(makeApplication(name, args.move_iter()))
+                Some(make_application(name, args.move_iter()))
             }
             (Some(lhs), None) => {
                 Some(TypedExpr::with_location(Apply(box name, box lhs), loc))
@@ -431,14 +426,14 @@ fn parseOperatorExpression(&mut self, inL : Option<TypedExpr>, minPrecedence : i
                         _ => fail!("WTF")
                     }
                     let args = ~[rhs];
-                    Some(makeApplication(name, args.move_iter()))
+                    Some(make_application(name, args.move_iter()))
                 }
                 else {
                     let args = ~[TypedExpr::with_location(Identifier(intern("#")), loc), rhs];
-                    let mut apply = makeApplication(name, args.move_iter());
+                    let mut apply = make_application(name, args.move_iter());
                     apply.location = loc;
                     let params = ~[intern("#")];
-                    Some(makeLambda(params.move_iter().map(|a| IdentifierPattern(a)), apply))
+                    Some(make_lambda(params.move_iter().map(|a| IdentifierPattern(a)), apply))
                 }
             }
             (None, None) => return None
@@ -449,12 +444,12 @@ fn parseOperatorExpression(&mut self, inL : Option<TypedExpr>, minPrecedence : i
 }
 
 fn application(&mut self) -> Option<TypedExpr> {
-    let e = self.subExpression();
+    let e = self.sub_expression();
 	match e {
         Some(mut lhs) => {
             let mut expressions = Vec::new();
             loop {
-                let expr = self.subExpression();
+                let expr = self.sub_expression();
                 match expr {
                     Some(e) => expressions.push(e),
                     None => break
@@ -462,7 +457,7 @@ fn application(&mut self) -> Option<TypedExpr> {
             }
             if expressions.len() > 0 {
                 let loc = lhs.location;
-                lhs = makeApplication(lhs, expressions.move_iter());//, loc);
+                lhs = make_application(lhs, expressions.move_iter());//, loc);
                 lhs.location = loc;
             }
             Some(lhs)
@@ -472,10 +467,9 @@ fn application(&mut self) -> Option<TypedExpr> {
 }
 
 fn constructor(&mut self, dataDef : &DataDefinition) -> Constructor {
-	let name = self.requireNext(NAME).value.clone();
+	let name = self.require_next(NAME).value.clone();
 	let mut arity = 0;
-    let mut mapping = dataDef.parameters.clone();
-	let typ = self.constructorType(&mut arity, dataDef, &mut mapping);
+	let typ = self.constructor_type(&mut arity, dataDef);
 	self.lexer.backtrack();
 	Constructor { name : name, typ : qualified(~[], typ), tag : 0, arity : arity }
 }
@@ -497,25 +491,16 @@ fn binding(&mut self) -> Binding {
 
 		let rParens = self.lexer.next().token;
 		if rParens != RPARENS {
-			fail!(ParseError(&self.lexer, RPARENS));
+			fail!(parse_error(&self.lexer, RPARENS));
 		}
 	}
 	else if nameToken != NAME {
-		fail!(ParseError(&self.lexer, NAME));
+		fail!(parse_error(&self.lexer, NAME));
 	}
 
 	//Parse the arguments for the binding
-	let arguments = self.patternParameter();
-    let matches = match self.lexer.next().token {
-        EQUALSSIGN => Simple(self.expression_()),
-        PIPE => {
-            let g = Guards(self.sepBy1(|this| this.guard(EQUALSSIGN), PIPE));
-            self.lexer.backtrack();
-            g
-        }
-        _ => fail!(ParseError2(&self.lexer, [EQUALSSIGN, PIPE]))
-    };
-
+	let arguments = self.pattern_arguments();
+    let matches = self.expr_or_guards(EQUALSSIGN);
     Binding {
         name : name.clone(),
         typ: Default::default(),
@@ -524,9 +509,24 @@ fn binding(&mut self) -> Binding {
     }
 }
 
+fn expr_or_guards(&mut self, end_token: TokenEnum) -> Match {
+    let token = self.lexer.next().token;
+    if token == PIPE {
+        let g = Guards(self.sep_by_1(|this| this.guard(end_token), PIPE));
+        self.lexer.backtrack();
+        g
+    }
+    else if token == end_token {
+        Simple(self.expression_())
+    }
+    else {
+        fail!(parse_error2(&self.lexer, [end_token, PIPE]))
+    }
+}
+
 fn guard(&mut self, end_token: TokenEnum) -> Guard {
     let p = self.expression_();
-    self.requireNext(end_token);
+    self.require_next(end_token);
     Guard { predicate: p, expression: self.expression_() }
 }
 
@@ -543,7 +543,7 @@ fn make_pattern(&mut self, name: InternedStr, args: |&mut Parser<Iter>| -> ~[Pat
     }
 }
 
-fn patternParameter(&mut self) -> ~[Pattern] {
+fn pattern_arguments(&mut self) -> ~[Pattern] {
 	let mut parameters = Vec::new();
 	loop {
 		let token = self.lexer.next().token;
@@ -560,7 +560,7 @@ fn patternParameter(&mut self) -> ~[Pattern] {
 			}
             LBRACKET => {
                 if self.lexer.next().token != RBRACKET {
-                    fail!(ParseError(&self.lexer, RBRACKET));
+                    fail!(parse_error(&self.lexer, RBRACKET));
                 }
                 parameters.push(ConstructorPattern(intern("[]"), ~[]));
             }
@@ -583,23 +583,23 @@ fn pattern(&mut self) -> Pattern {
     let pat = match nameToken {
         LBRACKET => {
             if self.lexer.next().token != RBRACKET {
-                fail!(ParseError(&self.lexer, RBRACKET));
+                fail!(parse_error(&self.lexer, RBRACKET));
             }
             ConstructorPattern(intern("[]"), ~[])
         }
-        NAME => self.make_pattern(name, |this| this.patternParameter()),
+        NAME => self.make_pattern(name, |this| this.pattern_arguments()),
         NUMBER => NumberPattern(from_str(name.as_slice()).unwrap()),
         LPARENS => {
-            let tupleArgs = self.sepBy1(|this| this.pattern(), COMMA);
+            let tupleArgs = self.sep_by_1(|this| this.pattern(), COMMA);
             let rParens = self.lexer.current().token;
             if rParens != RPARENS {
-                fail!(ParseError(&self.lexer, RPARENS));
+                fail!(parse_error(&self.lexer, RPARENS));
             }
             if tupleArgs.len() == 1 {
                 tupleArgs[0]
             }
             else {
-                ConstructorPattern(tuple_name(tupleArgs.len()), tupleArgs)
+                ConstructorPattern(intern(tuple_name(tupleArgs.len()).as_slice()), tupleArgs)
             }
         }
         _ => { fail!("Error parsing pattern at token {}", self.lexer.current()) }
@@ -614,12 +614,7 @@ fn pattern(&mut self) -> Pattern {
     }
 }
 
-fn typeDeclaration(&mut self) -> TypeDeclaration {
-	let mut typeVariableMapping = HashMap::new();
-	self.typeDeclaration_(&mut typeVariableMapping)
-}
-
-fn typeDeclaration_(&mut self, typeVariableMapping : &mut HashMap<InternedStr, int>) -> TypeDeclaration {
+fn type_declaration(&mut self) -> TypeDeclaration {
     let mut name;
 	{
         let nameToken = self.lexer.next().token;
@@ -633,25 +628,24 @@ fn typeDeclaration_(&mut self, typeVariableMapping : &mut HashMap<InternedStr, i
             name = self.lexer.current().value.clone();
             let rParens = self.lexer.next().token;
             if rParens != RPARENS {
-                fail!(ParseError(&self.lexer, RPARENS));
+                fail!(parse_error(&self.lexer, RPARENS));
             }
         }
         else if nameToken != NAME {
-            fail!(ParseError(&self.lexer, NAME));
+            fail!(parse_error(&self.lexer, NAME));
         }
     }
 	let decl = self.lexer.next().token;
 	if decl != TYPEDECL {
-		fail!(ParseError(&self.lexer, TYPEDECL));
+		fail!(parse_error(&self.lexer, TYPEDECL));
 	}
-    let (context, typ) = self.constrained_type(typeVariableMapping);
+    let (context, typ) = self.constrained_type();
 	TypeDeclaration { name : name, typ : Qualified { constraints : context, value: typ } }
 }
 
-fn constrained_type(&mut self, typeVariableMapping : &mut HashMap<InternedStr, int>) -> (~[Constraint], Type) {
-    let mut variableIndex = 0;
+fn constrained_type(&mut self) -> (~[Constraint], Type) {
     let mut maybeConstraints = if self.lexer.next().token == LPARENS {
-        let t = self.sepBy1(|this| this.parse_type_(&mut variableIndex, typeVariableMapping), COMMA);
+        let t = self.sep_by_1(|this| this.parse_type(), COMMA);
         if self.lexer.current().token != RPARENS {
             fail!("Expected RPARENS");
         }
@@ -659,29 +653,29 @@ fn constrained_type(&mut self, typeVariableMapping : &mut HashMap<InternedStr, i
     }
     else {
         self.lexer.backtrack();
-        box [self.parse_type_(&mut variableIndex, typeVariableMapping)]
+        box [self.parse_type()]
     };
     let maybeContextArrow = self.lexer.next().token;
     //If there is => arrow we proceed to parse the type
     let typ = if maybeContextArrow == CONTEXTARROW {
-        self.parse_type_(&mut variableIndex, typeVariableMapping)
+        self.parse_type()
     }
     else if maybeContextArrow == ARROW {
 	    self.lexer.backtrack();
         let mut args = box [];
         swap(&mut args, &mut maybeConstraints);
-        self.parse_return_type(tupleType(args), &mut variableIndex, typeVariableMapping)
+        self.parse_return_type(make_tuple_type(args))
     }
     else {//If no => was found, translate the constraint list into a type
 	    self.lexer.backtrack();
         let mut args = box [];
         swap(&mut args, &mut maybeConstraints);
-        tupleType(args)
+        make_tuple_type(args)
     };
 	(make_constraints(maybeConstraints), typ)
 }
 
-fn constructorType(&mut self, arity : &mut int, dataDef: &DataDefinition, mapping : &mut HashMap<InternedStr, int>) -> Type {
+fn constructor_type(&mut self, arity : &mut int, dataDef: &DataDefinition) -> Type {
 	let token = self.lexer.next().token;
 	if token == NAME {
 		*arity += 1;
@@ -691,14 +685,13 @@ fn constructorType(&mut self, arity : &mut int, dataDef: &DataDefinition, mappin
 		else {
 			Type::new_op(self.lexer.current().value.clone(), box [])
         };
-        function_type_(arg, self.constructorType(arity, dataDef, mapping))
+        function_type_(arg, self.constructor_type(arity, dataDef))
 	}
 	else if token == LPARENS {
         *arity += 1;
-        let mut var = 100000;
-        let arg = self.parse_type_(&mut var, mapping);
-        self.requireNext(RPARENS);
-        function_type_(arg, self.constructorType(arity, dataDef, mapping))
+        let arg = self.parse_type();
+        self.require_next(RPARENS);
+        function_type_(arg, self.constructor_type(arity, dataDef))
     }
     else {
 		dataDef.typ.value.clone()
@@ -706,16 +699,16 @@ fn constructorType(&mut self, arity : &mut int, dataDef: &DataDefinition, mappin
 }
 
 
-fn dataDefinition(&mut self) -> DataDefinition {
-	self.requireNext(DATA);
-	let dataName = self.requireNext(NAME).value.clone();
+fn data_definition(&mut self) -> DataDefinition {
+	self.require_next(DATA);
+	let dataName = self.require_next(NAME).value.clone();
 
 	let mut definition = DataDefinition {
         constructors : box [],
         typ : qualified(~[], Type::new_var(intern("a"))),
         parameters : HashMap::new()
     };
-    let mut typ = TypeOperator(TypeOperator { name: dataName, kind: star_kind.clone() });
+    let mut typ = TypeConstructor(TypeConstructor { name: dataName, kind: star_kind.clone() });
 	while self.lexer.next().token == NAME {
         //TODO use new variables isntead of only  -1
 		typ = TypeApplication(box typ, box Type::new_var(self.lexer.current().value));
@@ -726,9 +719,9 @@ fn dataDefinition(&mut self) -> DataDefinition {
 
 	let equalToken = self.lexer.current().token;
 	if equalToken != EQUALSSIGN {
-		fail!(ParseError(&self.lexer, EQUALSSIGN));
+		fail!(parse_error(&self.lexer, EQUALSSIGN));
 	}
-	definition.constructors = self.sepBy1_func(|this| this.constructor(&definition),
+	definition.constructors = self.sep_by_1_func(|this| this.constructor(&definition),
 		|t : &Token| t.token == PIPE);
 	for ii in range(0, definition.constructors.len()) {
 		definition.constructors[ii].tag = ii as int;
@@ -748,16 +741,16 @@ fn set_kind(typ: &mut Type, kind: int) {
     }
 }
 
-fn sub_type(&mut self, variableIndex: &mut int, typeVariableMapping: &mut HashMap<InternedStr, int>) -> Option<Type> {
+fn sub_type(&mut self) -> Option<Type> {
 	let token = (*self.lexer.next()).clone();
 	match token.token {
 	    LBRACKET => {
             self.lexer.backtrack();
-            Some(self.parse_type_(variableIndex, typeVariableMapping))
+            Some(self.parse_type())
 		}
 	    LPARENS => {
             self.lexer.backtrack();
-			Some(self.parse_type_(variableIndex, typeVariableMapping))
+			Some(self.parse_type())
 		}
 	    NAME => {
 			if token.value.as_slice().char_at(0).is_uppercase() {
@@ -771,47 +764,47 @@ fn sub_type(&mut self, variableIndex: &mut int, typeVariableMapping: &mut HashMa
 	}
 }
 
-fn parse_type_(&mut self, variableIndex: &mut int, typeVariableMapping : &mut HashMap<InternedStr, int>) -> Type {
+fn parse_type(&mut self) -> Type {
 	let token = (*self.lexer.next()).clone();
 	match token.token {
 	    LBRACKET => {
             if self.lexer.next().token == RBRACKET {
                 let listType = Type::new_op_kind(intern("[]"), ~[], Kind::new(2));
-                self.parse_return_type(listType, variableIndex, typeVariableMapping)
+                self.parse_return_type(listType)
             }
             else {
                 self.lexer.backtrack();
-                let t = self.parse_type_(variableIndex, typeVariableMapping);
-                self.requireNext(RBRACKET);
+                let t = self.parse_type();
+                self.require_next(RBRACKET);
                 let listType = list_type(t);
                 
-                self.parse_return_type(listType, variableIndex, typeVariableMapping)
+                self.parse_return_type(listType)
             }
 		}
 	    LPARENS => {
-			let t = self.parse_type_(variableIndex, typeVariableMapping);
+			let t = self.parse_type();
 			let maybeComma = self.lexer.next().token;
 			if maybeComma == COMMA {
-				let mut tupleArgs: Vec<Type> = self.sepBy1(|this| this.parse_type_(variableIndex, typeVariableMapping), COMMA)
+				let mut tupleArgs: Vec<Type> = self.sep_by_1(|this| this.parse_type(), COMMA)
                     .move_iter()
                     .collect();
 				tupleArgs.unshift(t);
                 self.lexer.backtrack();
-                self.requireNext(RPARENS);
+                self.require_next(RPARENS);
 
-                self.parse_return_type(tupleType(FromVec::from_vec(tupleArgs)), variableIndex, typeVariableMapping)
+                self.parse_return_type(make_tuple_type(FromVec::from_vec(tupleArgs)))
 			}
 			else if maybeComma == RPARENS {
-                self.parse_return_type(t, variableIndex, typeVariableMapping)
+                self.parse_return_type(t)
 			}
             else {
-                fail!(ParseError2(&self.lexer, &[COMMA, RPARENS]))
+                fail!(parse_error2(&self.lexer, &[COMMA, RPARENS]))
             }
 		}
 	    NAME => {
 			let mut typeArguments = Vec::new();
             loop {
-                match self.sub_type(variableIndex, typeVariableMapping) {
+                match self.sub_type() {
                     Some(typ) => typeArguments.push(typ),
                     None => break
                 }
@@ -823,17 +816,16 @@ fn parse_type_(&mut self, variableIndex: &mut int, typeVariableMapping : &mut Ha
 			else {
                 Type::new_var_args(token.value, FromVec::from_vec(typeArguments))
 			};
-			self.parse_return_type(thisType, variableIndex, typeVariableMapping)
+			self.parse_return_type(thisType)
 		}
 	    _ => fail!("Unexpected token when parsing type {}", self.lexer.current())
 	}
 }
 
-fn parse_return_type(&mut self, typ : Type, variableIndex: &mut int, typeVariableMapping : &mut HashMap<InternedStr, int>) -> Type {
-
+fn parse_return_type(&mut self, typ : Type) -> Type {
     let arrow = self.lexer.next().token;
     if arrow == ARROW {
-        return function_type(&typ, &self.parse_type_(variableIndex, typeVariableMapping));
+        return function_type_(typ, self.parse_type());
     }
     else {
         self.lexer.backtrack();
@@ -841,11 +833,11 @@ fn parse_return_type(&mut self, typ : Type, variableIndex: &mut int, typeVariabl
     }
 }
 
-fn sepBy1<T>(&mut self, f : |&mut Parser<Iter>| -> T, sep : TokenEnum) -> ~[T] {
-    self.sepBy1_func(f, |tok| tok.token == sep)
+fn sep_by_1<T>(&mut self, f : |&mut Parser<Iter>| -> T, sep : TokenEnum) -> ~[T] {
+    self.sep_by_1_func(f, |tok| tok.token == sep)
 }
 
-fn sepBy1_func<T>(&mut self, f : |&mut Parser<Iter>| -> T, sep : |&Token| -> bool) -> ~[T] {
+fn sep_by_1_func<T>(&mut self, f : |&mut Parser<Iter>| -> T, sep : |&Token| -> bool) -> ~[T] {
     let mut result = Vec::new();
     loop {
         result.push(f(self));
@@ -877,24 +869,14 @@ fn make_constraints(types: ~[Type]) -> ~[Constraint] {
     FromVec::<Constraint>::from_vec(types.move_iter().map(|typ| {
         match typ {
             TypeApplication(lhs, rhs) => {
-                Constraint { class: lhs.op().name.clone(), variables: box [rhs.var().clone()] }
+                Constraint { class: lhs.ctor().name.clone(), variables: box [rhs.var().clone()] }
             }
             _ => fail!("Parse error in constraint, non applied type")
         }
     }).collect())
 }
 
-fn tuple_name(size : uint) -> InternedStr {
-	let mut name = String::with_capacity(size+1);
-    name.push_char('(');
-    for _ in range(1, size) {
-        name.push_char(',');
-    }
-	name.push_char(')');
-	intern(name.as_slice())
-}
-
-fn makeApplication<I: Iterator<TypedExpr>>(f : TypedExpr, mut args : I) -> TypedExpr {
+fn make_application<I: Iterator<TypedExpr>>(f : TypedExpr, mut args : I) -> TypedExpr {
     let mut func = f;
 	for a in args {
         let loc = func.location.clone();
@@ -903,7 +885,7 @@ fn makeApplication<I: Iterator<TypedExpr>>(f : TypedExpr, mut args : I) -> Typed
     func
 }
 
-fn makeLambda<Iter: DoubleEndedIterator<Pattern<InternedStr>>>(args : Iter, body : TypedExpr) -> TypedExpr {
+fn make_lambda<Iter: DoubleEndedIterator<Pattern<InternedStr>>>(args : Iter, body : TypedExpr) -> TypedExpr {
 	let mut body = body;
 	for a in args.rev() {
         let loc = body.location.clone();
@@ -913,9 +895,9 @@ fn makeLambda<Iter: DoubleEndedIterator<Pattern<InternedStr>>>(args : Iter, body
 }
 
 //Create a tuple with the constructor name inferred from the number of arguments passed in
-fn newTuple(arguments : ~[TypedExpr]) -> TypedExpr {
-	let name = TypedExpr::new(Identifier(tuple_name(arguments.len())));
-	makeApplication(name, arguments.move_iter())
+fn new_tuple(arguments : ~[TypedExpr]) -> TypedExpr {
+	let name = TypedExpr::new(Identifier(intern(tuple_name(arguments.len()).as_slice())));
+	make_application(name, arguments.move_iter())
 }
 
 fn extract_applied_type<'a>(typ: &'a Type) -> &'a Type {
@@ -925,23 +907,26 @@ fn extract_applied_type<'a>(typ: &'a Type) -> &'a Type {
     }
 }
 
-fn tupleType(types : ~[Type]) -> Type {
+fn make_tuple_type(types : ~[Type]) -> Type {
     if types.len() == 1 {
         types[0]
     }
     else {
-	    Type::new_op(tuple_name(types.len()), types)
+	    Type::new_op(intern(tuple_name(types.len()).as_slice()), types)
     }
 }
 
-fn ParseError2<Iter : Iterator<char>>(lexer : &Lexer<Iter>, expected : &[TokenEnum]) -> String {
+fn parse_error2<Iter : Iterator<char>>(lexer : &Lexer<Iter>, expected : &[TokenEnum]) -> String {
     format!("Expected {} but found {}\\{{}\\}, at {}", expected, lexer.current().token, lexer.current().value.as_slice(), lexer.current().location)
     
 }
-fn ParseError<Iter : Iterator<char>>(lexer : &Lexer<Iter>, expected : TokenEnum) -> String {
+fn parse_error<Iter : Iterator<char>>(lexer : &Lexer<Iter>, expected : TokenEnum) -> String {
     format!("Expected {} but found {}\\{{}\\}, at {}", expected, lexer.current().token, lexer.current().value.as_slice(), lexer.current().location)
 }
-fn encodeBindingIdentifier(instancename : InternedStr, bindingname : InternedStr) -> InternedStr {
+
+///Since bindings in instances have the same name as any other instance for the same class we
+///Give it a new name which is '# Type name' (no spaces)
+fn encode_binding_identifier(instancename : InternedStr, bindingname : InternedStr) -> InternedStr {
     let mut buffer = String::new();
     buffer.push_str("#");
     buffer.push_str(instancename.clone().as_slice());
@@ -949,13 +934,16 @@ fn encodeBindingIdentifier(instancename : InternedStr, bindingname : InternedStr
     intern(buffer.as_slice())
 }
 
+///Parses a module and all its imports
+///If the modules contain a cyclic dependency fail is called.
 pub fn parse_modules(modulename: &str) -> IoResult<Vec<Module>> {
     let mut modules = Vec::new();
     let mut visited = HashSet::new();
     try!(parse_modules_(&mut visited, &mut modules, modulename));
     Ok(modules)
 }
-pub fn parse_modules_(visited: &mut HashSet<InternedStr>, modules: &mut Vec<Module>, modulename: &str) -> IoResult<()> {
+
+fn parse_modules_(visited: &mut HashSet<InternedStr>, modules: &mut Vec<Module>, modulename: &str) -> IoResult<()> {
     let contents = {
         let mut filename = String::from_str(modulename);
         filename.push_str(".hs");
@@ -986,7 +974,7 @@ mod tests {
 use interner::*;
 use parser::*;
 use module::*;
-use typecheck::{function_type, identifier, apply, number, rational, lambda, let_, case};
+use typecheck::{identifier, apply, number, rational, lambda, let_, case};
 use std::io::File;
 use test::Bencher;
 
@@ -1025,7 +1013,7 @@ let
     test = add 3 2
 in test - 2".chars());
     let expr = parser.expression_();
-    let mut bind = Binding { arguments: ~[], name: intern("test"), typ: Default::default(),
+    let bind = Binding { arguments: ~[], name: intern("test"), typ: Default::default(),
         matches: Simple(apply(apply(identifier("add"), number(3)), number(2))) };
     assert_eq!(expr, let_(~[bind], apply(apply(identifier("-"), identifier("test")), number(2))));
 }
@@ -1054,7 +1042,7 @@ r"case [] of
 fn parse_type() {
     let mut parser = Parser::new(
 r"(.) :: (b -> c) -> (a -> b) -> (a -> c)".chars());
-    let typeDecl = parser.typeDeclaration();
+    let typeDecl = parser.type_declaration();
     let a = &Type::new_var(intern("a"));
     let b = &Type::new_var(intern("b"));
     let c = &Type::new_var(intern("c"));
@@ -1067,7 +1055,7 @@ r"(.) :: (b -> c) -> (a -> b) -> (a -> c)".chars());
 fn parse_data() {
     let mut parser = Parser::new(
 r"data Bool = True | False".chars());
-    let data = parser.dataDefinition();
+    let data = parser.data_definition();
 
     let b = qualified(~[], bool_type());
     let t = Constructor { name: intern("True"), tag:0, arity:0, typ: b.clone() };
@@ -1081,7 +1069,7 @@ r"data Bool = True | False".chars());
 fn parse_data_2() {
     let mut parser = Parser::new(
 r"data List a = Cons a (List a) | Nil".chars());
-    let data = parser.dataDefinition();
+    let data = parser.data_definition();
 
     let list = Type::new_op(intern("List"), ~[Type::new_var(intern("a"))]);
     let cons = Constructor { name: intern("Cons"), tag:0, arity:2, typ: qualified(~[], function_type(&Type::new_var(intern("a")), &function_type(&list, &list))) };
@@ -1178,7 +1166,7 @@ test x
     | otherwise = 0
 ".chars());
     let binding = parser.binding();
-    let mut b2 = Binding { arguments: ~[IdentifierPattern(intern("x"))], name: intern("test"), typ: Default::default(),
+    let b2 = Binding { arguments: ~[IdentifierPattern(intern("x"))], name: intern("test"), typ: Default::default(),
         matches: Guards(~[
             Guard { predicate: identifier("x"), expression: number(1) },
             Guard { predicate: identifier("otherwise"), expression: number(0) },

@@ -28,6 +28,7 @@ pub trait Types {
     fn each_constraint_list(&self, |&[Constraint]|);
 }
 
+///A trait which also allows for lookup of data types
 pub trait DataTypes : Types {
     fn find_data_type<'a>(&'a self, name: InternedStr) -> Option<&'a DataDefinition<Name>>;
 }
@@ -95,7 +96,7 @@ impl Types for Module<Name> {
 impl DataTypes for Module<Name> {
     fn find_data_type<'a>(&'a self, name: InternedStr) -> Option<&'a DataDefinition<Name>> {
         for data in self.dataDefinitions.iter() {
-            if name == extract_applied_type(&data.typ.value).op().name {
+            if name == extract_applied_type(&data.typ.value).ctor().name {
                 return Some(data);
             }
         }
@@ -103,21 +104,39 @@ impl DataTypes for Module<Name> {
     }
 }
 
+///The TypeEnvironment stores most data which is needed as typechecking is performed.
 pub struct TypeEnvironment<'a> {
+    ///Stores references to imported modules or assemblies
     assemblies: Vec<&'a DataTypes>,
+    ///A mapping of names to the type which those names are bound to.
     namedTypes : HashMap<Name, Qualified<Type>>,
+    ///A mapping used for any variables declared inside any global binding.
+    ///Used in conjuction to the global 'namedTypes' map since the local table can
+    ///be cleared once those bindings are no longer in used which gives an overall speed up.
     local_types : HashMap<Name, Qualified<Type>>,
+    ///Stores the constraints for each typevariable since the typevariables cannot themselves store this.
     constraints: HashMap<TypeVariable, Vec<InternedStr>>,
+    ///Stores data about the instances which are available.
+    ///1: Any constraints for the type which the instance is for
+    ///2: The name of the class
+    ///3: The Type which the instance is defined for
     instances: Vec<(~[Constraint], InternedStr, Type)>,
-    variableIndex : int,
+    ///The current age for newly created variables.
+    ///Age is used to determine whether variables need to be quantified or not.
+    variable_age : int,
 }
 
+///A Substitution is a mapping from typevariables to types.
 #[deriving(Clone)]
 struct Substitution {
+    ///A hashmap which contains what a typevariable is unified to.
     subs: HashMap<TypeVariable, Type>,
+    ///The constraints for the typevariables in the substitution
+    ///TODO potentially unused?
     constraints: HashMap<TypeVariable, ~[InternedStr]>
 }
 
+///Trait which provides access to the bindings in a struct.
 trait Bindings {
     fn get_mut<'a>(&'a mut self, idx: (uint, uint)) -> &'a mut [Binding<Name>];
 
@@ -179,7 +198,7 @@ impl <'a> Bindings for BindingsWrapper<'a> {
     }
 }
 
-fn insertTo(map: &mut HashMap<Name, Qualified<Type>>, name: &str, typ: Type) {
+fn insert_to(map: &mut HashMap<Name, Qualified<Type>>, name: &str, typ: Type) {
     map.insert(Name { name: intern(name), uid: 0 }, qualified(~[], typ));
 }
 fn prim(typename: &str, op: &str) -> String {
@@ -192,19 +211,19 @@ fn add_primitives(globals: &mut HashMap<Name, Qualified<Type>>, typename: &str) 
     let typ = Type::new_op(intern(typename), ~[]);
     {
         let binop = function_type(&typ, &function_type(&typ, &typ));
-        insertTo(globals, prim(typename, "Add").as_slice(), binop.clone());
-        insertTo(globals, prim(typename, "Subtract").as_slice(), binop.clone());
-        insertTo(globals, prim(typename, "Multiply").as_slice(), binop.clone());
-        insertTo(globals, prim(typename, "Divide").as_slice(), binop.clone());
-        insertTo(globals, prim(typename, "Remainder").as_slice(), binop.clone());
+        insert_to(globals, prim(typename, "Add").as_slice(), binop.clone());
+        insert_to(globals, prim(typename, "Subtract").as_slice(), binop.clone());
+        insert_to(globals, prim(typename, "Multiply").as_slice(), binop.clone());
+        insert_to(globals, prim(typename, "Divide").as_slice(), binop.clone());
+        insert_to(globals, prim(typename, "Remainder").as_slice(), binop.clone());
     }
     {
         let binop = function_type_(typ.clone(), function_type_(typ, bool_type()));
-        insertTo(globals, prim(typename, "EQ").as_slice(), binop.clone());
-        insertTo(globals, prim(typename, "LT").as_slice(), binop.clone());
-        insertTo(globals, prim(typename, "LE").as_slice(), binop.clone());
-        insertTo(globals, prim(typename, "GT").as_slice(), binop.clone());
-        insertTo(globals, prim(typename, "GE").as_slice(), binop.clone());
+        insert_to(globals, prim(typename, "EQ").as_slice(), binop.clone());
+        insert_to(globals, prim(typename, "LT").as_slice(), binop.clone());
+        insert_to(globals, prim(typename, "LE").as_slice(), binop.clone());
+        insert_to(globals, prim(typename, "GT").as_slice(), binop.clone());
+        insert_to(globals, prim(typename, "GE").as_slice(), binop.clone());
     }
 }
 
@@ -215,19 +234,19 @@ impl <'a> TypeEnvironment<'a> {
         let mut globals = HashMap::new();
         add_primitives(&mut globals, "Int");
         add_primitives(&mut globals, "Double");
-        insertTo(&mut globals,"primIntToDouble", function_type_(int_type(), double_type()));
-        insertTo(&mut globals, "primDoubleToInt", function_type_(double_type(), int_type()));
+        insert_to(&mut globals,"primIntToDouble", function_type_(int_type(), double_type()));
+        insert_to(&mut globals, "primDoubleToInt", function_type_(double_type(), int_type()));
         let var = Generic(Type::new_var_kind(intern("a"), star_kind.clone()).var().clone());
         
         for (name, typ) in primitives().move_iter() {
-            insertTo(&mut globals, name, typ);
+            insert_to(&mut globals, name, typ);
         }
         let list = list_type(var.clone());
-        insertTo(&mut globals, "[]", list.clone());
-        insertTo(&mut globals, ":", function_type(&var, &function_type(&list, &list)));
+        insert_to(&mut globals, "[]", list.clone());
+        insert_to(&mut globals, ":", function_type(&var, &function_type(&list, &list)));
         for i in range(0 as uint, 10) {
             let (name, typ) = tuple_type(i);
-            insertTo(&mut globals, name.as_slice(), typ);
+            insert_to(&mut globals, name.as_slice(), typ);
         }
         TypeEnvironment {
             assemblies: Vec::new(),
@@ -235,7 +254,7 @@ impl <'a> TypeEnvironment<'a> {
             local_types : HashMap::new(),
             constraints: HashMap::new(),
             instances: Vec::new(),
-            variableIndex : 0 ,
+            variable_age : 0 ,
         }
     }
 
@@ -243,9 +262,11 @@ impl <'a> TypeEnvironment<'a> {
         self.assemblies.push(types);
     }
 
-    ///Typechecks a module by updating all the types in place
+    ///Typechecks a module
+    ///If the typecheck is successful the types in the module are updated with the new types.
+    ///If any errors were found while typechecking fail! is called.
     pub fn typecheck_module(&mut self, module: &mut Module<Name>) {
-        let start_var_age = self.variableIndex + 1;
+        let start_var_age = self.variable_age + 1;
         for data_def in module.dataDefinitions.mut_iter() {
             let mut subs = Substitution { subs: HashMap::new(), constraints: HashMap::new() };
             freshen_all(self, &mut subs, &mut data_def.typ.value);
@@ -305,11 +326,11 @@ impl <'a> TypeEnvironment<'a> {
                     constraint.variables[0] = new.var().clone();
                 }
                 match instance.typ {
-                    TypeOperator(ref mut op) => {
+                    TypeConstructor(ref mut op) => {
                         let maybe_data = self.assemblies.iter().filter_map(|a| a.find_data_type(op.name))
                             .next();
                         op.kind = maybe_data
-                            .or_else(|| data_definitions.iter().find(|data| op.name == extract_applied_type(&data.typ.value).op().name))
+                            .or_else(|| data_definitions.iter().find(|data| op.name == extract_applied_type(&data.typ.value).ctor().name))
                             .map(|data| extract_applied_type(&data.typ.value).kind().clone())
                             .unwrap_or_else(|| if intern("[]") == op.name { KindFunction(box StarKind, box StarKind) } else { StarKind });
                     }
@@ -361,6 +382,9 @@ impl <'a> TypeEnvironment<'a> {
         //}
     }
 
+    ///Typechecks an expression.
+    ///The types in the expression are updated with the correct types.
+    ///If the expression has a type error, fail is called.
     pub fn typecheck_expr(&mut self, expr : &mut TypedExpr<Name>) {
         let mut subs = Substitution { subs: HashMap::new(), constraints: HashMap::new() }; 
         let mut typ = self.typecheck(expr, &mut subs);
@@ -368,6 +392,7 @@ impl <'a> TypeEnvironment<'a> {
         self.substitute(&mut subs, expr);
     }
 
+    ///Returns the type which is bound to the Name or None if the Name does not exist.
     pub fn find(&'a self, ident: &Name) -> Option<&'a Qualified<Type>> {
         self.local_types.find(ident)
             .or_else(|| self.namedTypes.find(ident))
@@ -453,12 +478,12 @@ impl <'a> TypeEnvironment<'a> {
     ///Walks through an expression and applies the substitution on each of its types
     fn substitute(&mut self, subs : &Substitution, expr: &mut TypedExpr<Name>) {
         replace(&mut self.constraints, &mut expr.typ, subs);
-        match &mut expr.expr {
-            &Apply(ref mut func, ref mut arg) => {
+        match expr.expr {
+            Apply(ref mut func, ref mut arg) => {
                 self.substitute(subs, *func);
                 self.substitute(subs, *arg);
             }
-            &Let(ref mut bindings, ref mut let_expr) => {
+            Let(ref mut bindings, ref mut let_expr) => {
                 for bind in bindings.mut_iter() {
                     match bind.matches {
                         Simple(ref mut e) => self.substitute(subs, e),
@@ -472,7 +497,7 @@ impl <'a> TypeEnvironment<'a> {
                 }
                 self.substitute(subs, *let_expr);
             }
-            &Case(ref mut case_expr, ref mut alts) => {
+            Case(ref mut case_expr, ref mut alts) => {
                 self.substitute(subs, *case_expr);
                 for alt in alts.mut_iter() {
                     match alt.matches {
@@ -486,8 +511,8 @@ impl <'a> TypeEnvironment<'a> {
                     }
                 }
             }
-            &Lambda(_, ref mut body) => self.substitute(subs, *body),
-            &Do(ref mut binds, ref mut expr) => {
+            Lambda(_, ref mut body) => self.substitute(subs, *body),
+            Do(ref mut binds, ref mut expr) => {
                 for bind in binds.mut_iter() {
                     match *bind {
                         DoExpr(ref mut expr) => self.substitute(subs, expr),
@@ -509,12 +534,12 @@ impl <'a> TypeEnvironment<'a> {
                 }
                 self.substitute(subs, *expr);
             }
-            &TypeSig(ref mut expr, ref mut typ) => self.substitute(subs, *expr),
-            _ => ()
+            TypeSig(ref mut expr, _) => self.substitute(subs, *expr),
+            Identifier(..) | Literal(..) => ()
         }
     }
 
-    ///Returns whether the type 'op' has an instance for 'class'
+    ///Returns whether the type 'searched_type' has an instance for 'class'
     fn has_instance(&self, class: InternedStr, searched_type: &Type) -> bool {
         for &(ref constraints, ref name, ref typ) in self.instances.iter() {
             if class == *name {
@@ -535,35 +560,39 @@ impl <'a> TypeEnvironment<'a> {
         false
     }
 
-    fn check_instance_constraints(&self, constraints: &[Constraint], vars: &Type, types: &Type) -> bool {
-        match (vars, types) {
-            (&TypeApplication(ref lvar, ref rvar), &TypeApplication(ref ltype, ref rtype)) => {
-                let maybeConstraint = constraints.iter().find(|c| c.variables[0] == *rvar.var());
+    ///Checks whether 'actual_type' fulfills all the constraints that the instance has.
+    fn check_instance_constraints(&self, constraints: &[Constraint], instance_type: &Type, actual_type: &Type) -> bool {
+        match (instance_type, actual_type) {
+            (&TypeApplication(ref lvar, box TypeVariable(ref rvar)), &TypeApplication(ref ltype, ref rtype)) => {
+                let maybeConstraint = constraints.iter().find(|c| c.variables[0] == *rvar);
                 match maybeConstraint {
                     Some(constraint) => self.has_instance(constraint.class, *rtype)
                                      && self.check_instance_constraints(constraints, *lvar, *ltype),
                     None => false//?
                 }
             }
-            (&TypeOperator(ref l), &TypeOperator(ref r)) => l.name == r.name,
+            (&TypeConstructor(ref l), &TypeConstructor(ref r)) => l.name == r.name,
             (_, &TypeVariable(_)) => true,
             _ => false
         }
     }
+    ///Creates a new type variable with a kind
     fn new_var_kind(&mut self, kind: Kind) -> Type {
-        self.variableIndex += 1;
-        let mut var = Type::new_var_kind(intern(self.variableIndex.to_str().as_slice()), kind);
+        self.variable_age += 1;
+        let mut var = Type::new_var_kind(intern(self.variable_age.to_str().as_slice()), kind);
         match var {
-            TypeVariable(ref mut var) => var.age = self.variableIndex,
+            TypeVariable(ref mut var) => var.age = self.variable_age,
             _ => ()
         }
         var
     }
 
+    ///Creates a new type variable with the kind StarKind
     fn new_var(&mut self) -> Type {
         self.new_var_kind(StarKind)
     }
 
+    ///Typechecks a Match
     fn typecheck_match(&mut self, matches: &mut Match<Name>, subs: &mut Substitution) -> Type {
         match *matches {
             Simple(ref mut e) => {
@@ -589,13 +618,15 @@ impl <'a> TypeEnvironment<'a> {
             }
         }
     }
+
+    ///Typechecks an expression
     fn typecheck(&mut self, expr : &mut TypedExpr<Name>, subs: &mut Substitution) -> Type {
         if expr.typ == Type::new_var(intern("a")) {
             expr.typ = self.new_var();
         }
 
-        match &mut expr.expr {
-            &Literal(ref lit) => {
+        match expr.expr {
+            Literal(ref lit) => {
                 match *lit {
                     Integral(_) => {
                         self.constraints.insert(expr.typ.var().clone(), vec![intern("Num")]);
@@ -620,7 +651,7 @@ impl <'a> TypeEnvironment<'a> {
                 }
                 expr.typ.clone()
             }
-            &Identifier(ref name) => {
+            Identifier(ref name) => {
                 match self.fresh(name) {
                     Some(t) => {
                         debug!("{} as {}", name, t);
@@ -630,7 +661,7 @@ impl <'a> TypeEnvironment<'a> {
                     None => fail!("Undefined identifier '{}' at {}", *name, expr.location)
                 }
             }
-            &Apply(ref mut func, ref mut arg) => {
+            Apply(ref mut func, ref mut arg) => {
                 let mut func_type = self.typecheck(*func, subs);
                 let arg_type = self.typecheck(*arg, subs);
                 let mut result = function_type_(arg_type, self.new_var());
@@ -641,7 +672,7 @@ impl <'a> TypeEnvironment<'a> {
                 };
                 result
             }
-            &Lambda(ref arg, ref mut body) => {
+            Lambda(ref arg, ref mut body) => {
                 let mut argType = self.new_var();
                 let mut result = function_type_(argType.clone(), self.new_var());
 
@@ -652,12 +683,12 @@ impl <'a> TypeEnvironment<'a> {
                 });
                 result
             }
-            &Let(ref mut bindings, ref mut body) => {
+            Let(ref mut bindings, ref mut body) => {
                 self.typecheck_local_bindings(subs, &mut BindingsWrapper { value: *bindings });
                 self.apply_locals(subs);
                 self.typecheck(*body, subs)
             }
-            &Case(ref mut case_expr, ref mut alts) => {
+            Case(ref mut case_expr, ref mut alts) => {
                 let mut match_type = self.typecheck(*case_expr, subs);
                 self.typecheck_pattern(&alts[0].pattern.location, subs, &alts[0].pattern.node, &mut match_type);
                 let mut alt0_ = self.typecheck_match(&mut alts[0].matches, subs);
@@ -668,7 +699,7 @@ impl <'a> TypeEnvironment<'a> {
                 }
                 alt0_
             }
-            &Do(ref mut bindings, ref mut last_expr) => {
+            Do(ref mut bindings, ref mut last_expr) => {
                 let mut previous = self.new_var_kind(KindFunction(box StarKind, box StarKind));
                 self.constraints.insert(previous.var().clone(), vec!(intern("Monad")));
                 previous = TypeApplication(box previous, box self.new_var());
@@ -703,7 +734,7 @@ impl <'a> TypeEnvironment<'a> {
                 unify_location(self, subs, &last_expr.location, &mut typ, &mut previous);
                 typ
             }
-            &TypeSig(ref mut expr, ref mut qualified_type) => {
+            TypeSig(ref mut expr, ref mut qualified_type) => {
                 let mut typ = self.typecheck(*expr, subs);
                 self.freshen_qualified_type(qualified_type, HashMap::new());
                 match_or_fail(self, subs, &expr.location, &mut typ, &mut qualified_type.value);
@@ -711,7 +742,8 @@ impl <'a> TypeEnvironment<'a> {
             }
         }
     }
-
+    ///Typechecks a pattern.
+    ///Checks that the pattern has the type 'match_type' and adds all variables in the pattern.
     fn typecheck_pattern(&mut self, location: &Location, subs: &mut Substitution, pattern: &Pattern<Name>, match_type: &mut Type) {
         match pattern {
             &IdentifierPattern(ref ident) => {
@@ -735,7 +767,7 @@ impl <'a> TypeEnvironment<'a> {
             }
         }
     }
-
+    ///Walks through the arguments of a pattern and typechecks each of them.
     fn pattern_rec(&mut self, i: uint, location: &Location, subs: &mut Substitution, patterns: &[Pattern<Name>], func_type: &mut Type) {
         if i < patterns.len() {
             let p = &patterns[i];
@@ -746,6 +778,9 @@ impl <'a> TypeEnvironment<'a> {
         }
     }
 
+    ///Typechecks a group of bindings such as
+    ///map f (x:xs) = ...
+    ///map f [] = ...
     fn typecheck_binding_group(&mut self, subs: &mut Substitution, bindings: &mut [Binding<Name>]) {
         debug!("Begin typecheck {} :: {}", bindings[0].name, bindings[0].typ);
         let mut argument_types = Vec::from_fn(bindings[0].arguments.len(), |_| self.new_var());
@@ -871,10 +906,11 @@ impl <'a> TypeEnvironment<'a> {
             }
         }
     }
-
+    ///Typechecks a group of local bindings (such as a let expression)
     fn typecheck_local_bindings(&mut self, subs: &mut Substitution, bindings: &mut Bindings) {
-        self.typecheck_mutually_recursive_bindings(self.variableIndex + 1, subs, bindings, false);
+        self.typecheck_mutually_recursive_bindings(self.variable_age + 1, subs, bindings, false);
     }
+    ///Typechecks a group of global bindings.
     fn typecheck_global_bindings(&mut self, start_var_age: int, subs: &mut Substitution, bindings: &mut Bindings) {
         self.typecheck_mutually_recursive_bindings(start_var_age, subs, bindings, true);
     }
@@ -912,6 +948,8 @@ impl <'a> TypeEnvironment<'a> {
 
 }
 
+///Quantifies all type variables with an age greater that start_var_age
+///A quantified variable will when it is instantiated have new type variables
 fn quantify(start_var_age: int, typ: &mut Qualified<Type>) {
     fn quantify_(start_var_age: int, typ: &mut Type) {
         let x = match typ {
@@ -936,7 +974,7 @@ fn quantify(start_var_age: int, typ: &mut Qualified<Type>) {
     quantify_(start_var_age, &mut typ.value);
 }
 
-
+///Replaces all occurences of 'var' in 'typ' with the the type 'replacement'
 fn replace_var(typ: &mut Type, var: &TypeVariable, replacement: &Type) {
     let new = match typ {
         &TypeVariable(ref v) => {
@@ -947,7 +985,7 @@ fn replace_var(typ: &mut Type, var: &TypeVariable, replacement: &Type) {
                 None
             }
         }
-        &TypeOperator(_) => None,
+        &TypeConstructor(_) => None,
         &TypeApplication(ref mut lhs, ref mut rhs) => {
             replace_var(*lhs, var, replacement);
             replace_var(*rhs, var, replacement);
@@ -962,7 +1000,7 @@ fn replace_var(typ: &mut Type, var: &TypeVariable, replacement: &Type) {
         None => ()
     }
 }
-
+///Returns true if the type is a function
 fn is_function(typ: &Type) -> bool {
     match typ {
         &TypeApplication(ref lhs, _) => {
@@ -971,7 +1009,7 @@ fn is_function(typ: &Type) -> bool {
                 &TypeApplication(ref lhs, _) => {
                     let l: &Type = *lhs;
                     match l {
-                        &TypeOperator(ref op) => op.name == intern("->"),
+                        &TypeConstructor(ref op) => op.name == intern("->"),
                         _ => false
                     }
                 }
@@ -981,7 +1019,7 @@ fn is_function(typ: &Type) -> bool {
         _ => false
     }
 }
-
+///Extracts the final return type of a type
 fn get_returntype(typ: &Type) -> Type {
     match typ {
         &TypeApplication(_, ref rhs) => {
@@ -1044,6 +1082,7 @@ fn occurs(type_var: &TypeVariable, inType: &Type) -> bool {
     }
 }
 
+///Freshen creates new type variables at every position where Generic(..) appears.
 fn freshen(env: &mut TypeEnvironment, subs: &mut Substitution, typ: &mut Qualified<Type>) {
     debug!("Freshen {}", typ);
     fn freshen_(env: &mut TypeEnvironment, subs: &mut Substitution, constraints: &[Constraint], typ: &mut Type) {
@@ -1069,6 +1108,7 @@ fn freshen(env: &mut TypeEnvironment, subs: &mut Substitution, typ: &mut Qualifi
         }
     }
 }
+///Walks through a type and updates it with new type variables.
 fn freshen_all(env: &mut TypeEnvironment, subs: &mut Substitution, typ: &mut Type) {
     let result = match typ {
         &TypeVariable(ref id) => freshen_var(env, subs, [], id),
@@ -1084,6 +1124,7 @@ fn freshen_all(env: &mut TypeEnvironment, subs: &mut Substitution, typ: &mut Typ
         None => ()
     }
 }
+///Updates the variable var, also making sure the constraints are updated appropriately
 fn freshen_var(env: &mut TypeEnvironment, subs: &mut Substitution, constraints: &[Constraint], id: &TypeVariable) -> Option<Type> {
     subs.subs.find(id)
         .map(|var| var.clone())
@@ -1095,7 +1136,6 @@ fn freshen_var(env: &mut TypeEnvironment, subs: &mut Substitution, constraints: 
         }
         subs.subs.insert(id.clone(), new.clone());
         {
-            debug!("{}", *id);
             let mut constraints_for_id = constraints.iter()
                 .filter(|c| c.variables[0] == *id)
                 .peekable();
@@ -1115,16 +1155,7 @@ fn freshen_var(env: &mut TypeEnvironment, subs: &mut Substitution, constraints: 
 fn unify_location(env: &mut TypeEnvironment, subs: &mut Substitution, location: &Location, lhs: &mut Type, rhs: &mut Type) {
     debug!("Unifying {} <-> {}", *lhs, *rhs);
     match unify(env, subs, lhs, rhs) {
-        Ok(()) => {
-            //Using unsafe here to avoid a very expensive copy of the substitution
-            //Since 'subs.subs' is never resized but only has its elements modified
-            //and calling find on 'subs2' will only return None for variables in 'typ'
-            //since we have checked for recursive unifiction in unify
-            //let subs2 = unsafe { ::std::mem::transmute::<&Substitution, &mut Substitution>(subs) };
-            //for (_, ref mut typ) in subs.subs.mut_iter() {
-            //    replace(&mut env.constraints, *typ, subs2);
-            //}
-        }
+        Ok(()) => (),
         Err(error) => fail_type_error(location, lhs, rhs, error)
     }
 }
@@ -1146,7 +1177,9 @@ enum TypeError {
     WrongArity(Type, Type),
     MissingInstance(InternedStr, Type, TypeVariable)
 }
-
+///Tries to bind the type to the variable.
+///Returns Ok if the binding was possible.
+///Returns Error if the binding was not possible and the reason for the error.
 fn bind_variable(env: &mut TypeEnvironment, subs: &mut Substitution, var: &TypeVariable, typ: &Type) -> Result<(), TypeError> {
     match *typ {
         TypeVariable(ref var2) => {
@@ -1186,7 +1219,7 @@ fn bind_variable(env: &mut TypeEnvironment, subs: &mut Substitution, var: &TypeV
                         for c in constraints.iter() {
                             if !env.has_instance(*c, typ) {
                                 match *typ {
-                                    TypeOperator(ref op) => {
+                                    TypeConstructor(ref op) => {
                                         if *c == intern("Num") && (op.name == intern("Int") || op.name == intern("Double")) && *typ.kind() == star_kind {
                                             continue;
                                         }
@@ -1208,7 +1241,8 @@ fn bind_variable(env: &mut TypeEnvironment, subs: &mut Substitution, var: &TypeV
     }
 }
 
-
+///Tries to unify two types, updating the substition as well as the types directly with
+///the new type values. 
 fn unify(env: &mut TypeEnvironment, subs: &mut Substitution, lhs: &mut Type, rhs: &mut Type) -> Result<(), TypeError> {
     match (lhs, rhs) {
         (&TypeApplication(ref mut l1, ref mut r1), &TypeApplication(ref mut l2, ref mut r2)) => {
@@ -1235,7 +1269,7 @@ fn unify(env: &mut TypeEnvironment, subs: &mut Substitution, lhs: &mut Type, rhs
                 x
             }
         }
-        (&TypeOperator(ref lhs), &TypeOperator(ref rhs)) =>
+        (&TypeConstructor(ref lhs), &TypeConstructor(ref rhs)) =>
             if lhs.name == rhs.name { Ok(()) } else { Err(UnifyFail) },
         (lhs, rhs) => {
             let x = match lhs {
@@ -1258,16 +1292,12 @@ fn unify(env: &mut TypeEnvironment, subs: &mut Substitution, lhs: &mut Type, rhs
 fn match_or_fail(env: &mut TypeEnvironment, subs: &mut Substitution, location: &Location, lhs: &mut Type, rhs: &Type) {
     debug!("Match {} --> {}", *lhs, *rhs);
     match match_(env, subs, lhs, rhs) {
-        Ok(()) => {
-            //let subs2 = unsafe { ::std::mem::transmute::<&Substitution, &mut Substitution>(subs) };
-            //for (_, ref mut typ) in subs.subs.mut_iter() {
-            //    replace(&mut env.constraints, *typ, subs2);
-            //}
-        }
+        Ok(()) => (),
         Err(error) => fail_type_error(location, lhs, rhs, error)
     }
 }
-
+///Match performs matching which is walks through the same process as unify but only allows
+///the updates to be one way (such as between a type and the type in a type signature).
 fn match_(env: &mut TypeEnvironment, subs: &mut Substitution, lhs: &mut Type, rhs: &Type) -> Result<(), TypeError> {
     match (lhs, rhs) {
         (&TypeApplication(ref mut l1, ref mut r1), &TypeApplication(ref l2, ref r2)) => {
@@ -1281,12 +1311,12 @@ fn match_(env: &mut TypeEnvironment, subs: &mut Substitution, lhs: &mut Type, rh
             *lhs = rhs.clone();
             x
         }
-        (&TypeOperator(ref lhs), &TypeOperator(ref rhs)) =>
+        (&TypeConstructor(ref lhs), &TypeConstructor(ref rhs)) =>
             if lhs.name == rhs.name { Ok(()) } else { Err(UnifyFail) },
         (lhs, rhs) => {
             let x = match lhs {
                 &TypeVariable(ref mut var) => bind_variable(env, subs, var, rhs),
-                lhs => return Err(UnifyFail)
+                _ => return Err(UnifyFail)
             };
             *lhs = rhs.clone();
             x
@@ -1295,7 +1325,8 @@ fn match_(env: &mut TypeEnvironment, subs: &mut Substitution, lhs: &mut Type, rh
 }
 
 
-///Creates a graph containing a vertex for each binding and edges for each 
+///Creates a graph containing a vertex for each binding and edges from every binding to every other
+///binding that it references
 fn build_graph(bindings: &Bindings) -> Graph<(uint, uint)> {
     let mut graph = Graph::new();
     let mut map = HashMap::new();
@@ -1319,6 +1350,7 @@ fn build_graph(bindings: &Bindings) -> Graph<(uint, uint)> {
     graph
 }
 
+///Adds an edge for each identifier which refers to a binding in the graph
 fn add_edges<T: 'static>(graph: &mut Graph<T>, map: &HashMap<Name, VertexIndex>, function_index: VertexIndex, expr: &TypedExpr<Name>) {
     struct EdgeVisitor<'a, T> {
         graph: &'a mut Graph<T>,
@@ -1341,13 +1373,14 @@ fn add_edges<T: 'static>(graph: &mut Graph<T>, map: &HashMap<Name, VertexIndex>,
     EdgeVisitor { graph: graph, map: map, function_index: function_index }.visit_expr(expr)
 }
 
-fn each_type(typ: &Type, mut var_fn: |&TypeVariable|, mut op_fn: |&TypeOperator|) {
+///Walks through the type and calls the functions on each variable and type constructor
+fn each_type(typ: &Type, mut var_fn: |&TypeVariable|, mut op_fn: |&TypeConstructor|) {
     each_type_(typ, &mut var_fn, &mut op_fn);
 }
-fn each_type_(typ: &Type, var_fn: &mut |&TypeVariable|, op_fn: &mut |&TypeOperator|) {
+fn each_type_(typ: &Type, var_fn: &mut |&TypeVariable|, op_fn: &mut |&TypeConstructor|) {
     match typ {
         &TypeVariable(ref var) => (*var_fn)(var),
-        &TypeOperator(ref op) => (*op_fn)(op),
+        &TypeConstructor(ref op) => (*op_fn)(op),
         &TypeApplication(ref lhs, ref rhs) => {
             each_type_(*lhs, var_fn, op_fn);
             each_type_(*rhs, var_fn, op_fn);
@@ -1384,14 +1417,9 @@ fn find_kind(test: &TypeVariable, expected: Option<Kind>, typ: &Type) -> Result<
     }
 }
 
-pub fn function_type(func : &Type, arg : &Type) -> Type {
-    Type::new_op(intern("->"), ~[func.clone(), arg.clone()])
-}
-
-pub fn function_type_(func : Type, arg : Type) -> Type {
-    Type::new_op(intern("->"), ~[func, arg])
-}
-
+///Takes a function type and calls the 'func' with the argument to the function and its
+///return type.
+///Returns true if the function was called.
 pub fn with_arg_return(func_type: &mut Type, func: |&mut Type, &mut Type|) -> bool {
     match func_type {
         &TypeApplication(ref mut lhs, ref mut return_type) => {
@@ -1450,6 +1478,8 @@ pub fn do_typecheck_with(input: &str, types: &[&DataTypes]) -> Module<Name> {
     env.typecheck_module(&mut module);
     module
 }
+
+///Parses a module, renames and typechecks it, as well as all of its imported modules
 pub fn typecheck_module(module: &str) -> IoResult<(Vec<Module<Name>>, TypeEnvironment)> {
     use parser::parse_modules;
     use renamer::rename_modules;

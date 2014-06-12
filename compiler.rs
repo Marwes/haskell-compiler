@@ -1,6 +1,6 @@
 use interner::*;
 use core::*;
-use module::{int_type, double_type, function_type, Qualified, qualified};
+use types::{int_type, double_type, function_type, function_type_, Qualified, qualified};
 use typecheck::{Types, DataTypes, TypeEnvironment};
 use scoped_map::ScopedMap;
 use std::iter::range_step;
@@ -217,15 +217,15 @@ impl Types for Module<Id> {
             match op {
                 &TypeApplication(ref op, ref t) => {
                     let x = match extract_applied_type(*op) {
-                        &TypeOperator(ref x) => x,
+                        &TypeConstructor(ref x) => x,
                         _ => fail!()
                     };
                     let y = match extract_applied_type(*t) {
-                        &TypeOperator(ref x) => x,
+                        &TypeConstructor(ref x) => x,
                         _ => fail!()
                     };
                     let z = match extract_applied_type(typ) {
-                        &TypeOperator(ref x) => x,
+                        &TypeConstructor(ref x) => x,
                         _ => fail!()
                     };
                     if classname == x.name && y.name == z.name {
@@ -295,15 +295,15 @@ impl Types for Assembly {
             match op {
                 &TypeApplication(ref op, ref t) => {
                     let x = match extract_applied_type(*op) {
-                        &TypeOperator(ref x) => x,
+                        &TypeConstructor(ref x) => x,
                         _ => fail!()
                     };
                     let y = match extract_applied_type(*t) {
-                        &TypeOperator(ref x) => x,
+                        &TypeConstructor(ref x) => x,
                         _ => fail!()
                     };
                     let z = match extract_applied_type(typ) {
-                        &TypeOperator(ref x) => x,
+                        &TypeConstructor(ref x) => x,
                         _ => fail!()
                     };
                     if classname == x.name && y.name == z.name {
@@ -333,7 +333,7 @@ impl Types for Assembly {
 impl DataTypes for Assembly {
     fn find_data_type<'a>(&'a self, name: InternedStr) -> Option<&'a DataDefinition<Name>> {
         for data in self.data_definitions.iter() {
-            if name == extract_applied_type(&data.typ.value).op().name {
+            if name == extract_applied_type(&data.typ.value).ctor().name {
                 return Some(data);
             }
         }
@@ -386,7 +386,7 @@ impl <'a> Compiler<'a> {
         }
     }
     
-    pub fn compileModule(&mut self, module : &'a Module<Id>) -> Assembly {
+    pub fn compile_module(&mut self, module : &'a Module<Id>) -> Assembly {
         self.module = Some(module);
         let mut superCombinators = Vec::new();
         let mut instance_dictionaries = Vec::new();
@@ -401,8 +401,7 @@ impl <'a> Compiler<'a> {
         }
 
         for bind in module.bindings.iter() {
-            let mut sc = self.compileBinding(bind);
-            let constraints = self.type_env.find_constraints(bind.expression.get_type());
+            let mut sc = self.compile_binding(bind);
             sc.name = bind.name.name.clone();
             superCombinators.push(sc);
         }
@@ -421,7 +420,7 @@ impl <'a> Compiler<'a> {
         }
     }
 
-    fn compileBinding(&mut self, bind : &Binding<Id>) -> SuperCombinator {
+    fn compile_binding(&mut self, bind : &Binding<Id>) -> SuperCombinator {
         let mut comb = SuperCombinator::new();
         comb.assembly_id = self.assemblies.len();
         comb.typ = bind.name.typ.clone();
@@ -430,7 +429,7 @@ impl <'a> Compiler<'a> {
         let mut instructions = Vec::new();
         self.scope(|this| {
             if dict_arg == 1 {
-                this.newStackVar(Name { name: intern("$dict"), uid: 0 });
+                this.new_stack_var(Name { name: intern("$dict"), uid: 0 });
             }
             debug!("{} {}\n {}", bind.name, dict_arg, bind.expression);
             let arity = this.compile_lambda_binding(&bind.expression, &mut instructions);
@@ -449,7 +448,7 @@ impl <'a> Compiler<'a> {
     fn compile_lambda_binding(&mut self, expr: &Expr<Id>, instructions: &mut Vec<Instruction>) -> uint {
         match expr {
             &Lambda(ref ident, ref body) => {
-                self.newStackVar(ident.name.clone());
+                self.new_stack_var(ident.name.clone());
                 1 + self.compile_lambda_binding(*body, instructions)
             }
             _ => {
@@ -539,7 +538,7 @@ impl <'a> Compiler<'a> {
         })
     }
 
-    fn newStackVar(&mut self, identifier : Name) {
+    fn new_stack_var(&mut self, identifier : Name) {
         self.variables.insert(identifier, StackVariable(self.stackSize));
         self.stackSize += 1;
     }
@@ -555,7 +554,7 @@ impl <'a> Compiler<'a> {
         self.variables.exit_scope();
     }
 
-    ///Compile an expression by appending instructions to the instructions array
+    ///Compile an expression by appending instructions to the instruction vector
     fn compile(&mut self, expr : &Expr<Id>, instructions : &mut Vec<Instruction>, strict: bool) {
         match expr {
             &Identifier(ref name) => {
@@ -654,7 +653,7 @@ impl <'a> Compiler<'a> {
             &Let(ref bindings, ref body) => {
                 self.scope(|this| {
                     for bind in bindings.iter() {
-                        this.newStackVar(bind.name.name.clone());
+                        this.new_stack_var(bind.name.name.clone());
                         //Workaround since this compiles non-recursive bindings
                         //The stack is not actually increased until after the binding is compiled
                         this.stackSize -= 1;
@@ -796,6 +795,7 @@ impl <'a> Compiler<'a> {
             }
         }
 
+        //Check if the dictionary already exist
         let dict_len = self.instance_dictionaries.len();
         for ii in range(0, dict_len) {
             if self.instance_dictionaries.get(ii).ref0().equiv(&constraints) {
@@ -813,7 +813,7 @@ impl <'a> Compiler<'a> {
                     assert!(class.declarations.len() > 0);
                     for decl in class.declarations.iter() {
                         let x = match extract_applied_type(typ) {
-                            &TypeOperator(ref x) => x,
+                            &TypeConstructor(ref x) => x,
                             _ => fail!("{}", typ)
                         };
                         let mut b = String::from_str("#");
@@ -901,6 +901,9 @@ impl <'a> Compiler<'a> {
         }
     }
 
+    ///Compiles a pattern.
+    ///An index to the Jump instruction which is taken when the match fails is stored in the branches vector
+    ///These instructions will need to be updated later with the correct jump location.
     fn compile_pattern(&mut self, pattern: &Pattern<Id>, branches: &mut Vec<uint>, instructions: &mut Vec<Instruction>, stack_size: uint) -> uint {
         debug!("Pattern {} at {}", pattern, stack_size);
         match pattern {
@@ -922,7 +925,6 @@ impl <'a> Compiler<'a> {
                 patterns.len()
             }
             &NumberPattern(number) => {
-                self.new_var_at(Name { name: intern(stack_size.to_str().as_slice()), uid: 0 }, stack_size);
                 instructions.push(Push(stack_size));
                 instructions.push(Eval);
                 instructions.push(PushInt(number));
@@ -947,11 +949,11 @@ fn try_find_instance_type<'a>(class_var: &TypeVariable, class_type: &Type, actua
         (&TypeVariable(ref var), _) if var == class_var => {
             //Found the class variable so return the name of the type
             match extract_applied_type(actual_type) {
-                &TypeOperator(ref op) => { Some(op.name.as_slice()) }
+                &TypeConstructor(ref op) => { Some(op.name.as_slice()) }
                 _ => None
             }
         }
-        (&TypeOperator(ref class_op), &TypeOperator(ref actual_op)) => {
+        (&TypeConstructor(ref class_op), &TypeConstructor(ref actual_op)) => {
             assert_eq!(class_op.name, actual_op.name);
             None
         }
@@ -983,9 +985,11 @@ pub fn compile_with_type_env(type_env: &mut TypeEnvironment, assemblies: &[&Asse
     for assem in assemblies.iter() {
         compiler.assemblies.push(*assem);
     }
-    compiler.compileModule(&core_module)
+    compiler.compile_module(&core_module)
 }
 
+///Takes a module name and does everything needed up to and including compiling the module
+///and its imported modules
 pub fn compile_module(module: &str) -> IoResult<Vec<Assembly>> {
     use typecheck::typecheck_module;
     use compiler::Compiler;
@@ -1000,7 +1004,7 @@ pub fn compile_module(module: &str) -> IoResult<Vec<Assembly>> {
             for a in assemblies.iter() {
                 compiler.assemblies.push(a);
             }
-            compiler.compileModule(module)
+            compiler.compile_module(module)
         };
         assemblies.push(x);
     }
@@ -1181,7 +1185,7 @@ fn bench_prelude(b: &mut Bencher) {
     let core_module = do_lambda_lift(translate_module(module));
     b.iter(|| {
         let mut compiler = Compiler::new(&type_env);
-        compiler.compileModule(&core_module)
+        compiler.compile_module(&core_module)
     });
 }
 }

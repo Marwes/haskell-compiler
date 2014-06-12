@@ -1,8 +1,8 @@
 use collections::hashmap::HashMap;
 use std::vec::FromVec;
 use core::*;
-use module::function_type_;
-use interner::*;
+use types::function_type_;
+use renamer::NameSupply;
 
 pub type TypeAndStr = Id;
 
@@ -11,7 +11,7 @@ pub fn do_lambda_lift(module: Module<TypeAndStr>) -> Module<Id> {
 }
 
 struct FreeVariables {
-    uid: uint
+    name_supply: NameSupply
 }
 
 fn each_pattern_variables(pattern: &Pattern<Id>, f: &mut |&Name|) {
@@ -92,7 +92,7 @@ fn free_variables(&mut self, variables: &mut HashMap<Name, int>, free_vars: &mut
         e => e
     }
 }
-
+///Adds the free variables, if any, to the expression
 fn abstract(&mut self, free_vars: &HashMap<Name, TypeAndStr>, input_expr: Expr<TypeAndStr>) -> Expr<TypeAndStr> {
     if free_vars.len() == 0 {
         input_expr
@@ -105,12 +105,12 @@ fn abstract(&mut self, free_vars: &HashMap<Name, TypeAndStr>, input_expr: Expr<T
                 rhs = Lambda(var.clone(), box rhs);
                 typ = function_type_(var.get_type().clone(), typ);
             }
-            self.uid += 1;
+            let id = Id::new(self.name_supply.from_str("#sc"), typ.clone(), box []);
             let bind = Binding {
-                name: Id::new(Name {name: intern("#sc"), uid: self.uid }, typ.clone(), box []),
+                name: id.clone(),
                 expression: rhs
             };
-            Let(~[bind], box Identifier(Id::new(Name { name: intern("#sc"), uid: self.uid }, typ.clone(), ~[])))
+            Let(~[bind], box Identifier(id))
         };
         for (_, var) in free_vars.iter() {
             e = Apply(box e, box Identifier(var.clone()));
@@ -120,6 +120,7 @@ fn abstract(&mut self, free_vars: &HashMap<Name, TypeAndStr>, input_expr: Expr<T
 }
 }
 
+///Lifts all lambdas in the expression to the top level of the program
 fn lift_lambdas_expr<T>(expr: Expr<T>, out_lambdas: &mut Vec<Binding<T>>) -> Expr<T> {
     match expr {
         Apply(func, arg) => Apply(box lift_lambdas_expr(*func, out_lambdas), box lift_lambdas_expr(*arg, out_lambdas)),
@@ -155,7 +156,7 @@ fn lift_lambdas_expr<T>(expr: Expr<T>, out_lambdas: &mut Vec<Binding<T>>) -> Exp
         _ => expr
     }
 }
-pub fn lift_lambdas<T: ::std::fmt::Show>(mut module: Module<T>) -> Module<T> {
+pub fn lift_lambdas<T>(mut module: Module<T>) -> Module<T> {
     update(&mut module.bindings, |bindings| {
         let mut new_bindings : Vec<Binding<T>> = Vec::new();
         let mut bindings2 : Vec<Binding<T>> = bindings.move_iter()
@@ -169,6 +170,7 @@ pub fn lift_lambdas<T: ::std::fmt::Show>(mut module: Module<T>) -> Module<T> {
     module
 }
 
+///TODO Not safe if the task fails since uninitalized memory will be freed
 fn update<T>(x: &mut T, f: |T| -> T) {
     use std::mem::{swap, forget, uninitialized};
     let mut temp = unsafe { uninitialized() };
@@ -178,6 +180,7 @@ fn update<T>(x: &mut T, f: |T| -> T) {
     unsafe { forget(temp) };
 }
 
+///Takes a module and adds all variables which are captured into a lambda to its arguments
 pub fn abstract_module(module: Module<TypeAndStr>) -> Module<TypeAndStr> {
     use core::result::*;
     impl Visitor<TypeAndStr> for FreeVariables {
@@ -189,7 +192,7 @@ pub fn abstract_module(module: Module<TypeAndStr>) -> Module<TypeAndStr> {
             Binding { name: name, expression: e }
         }
     }
-    let mut this = FreeVariables { uid: 1 };
+    let mut this = FreeVariables { name_supply: NameSupply::new() };
     this.visit_module(module)
 }
 

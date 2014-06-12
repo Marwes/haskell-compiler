@@ -107,6 +107,7 @@ impl PartialEq for Token {
     }
 }
 
+///Takes a string which can be an identifier or a keyword and returns the correct TokenEnum
 fn name_or_keyword(tok : &str) -> TokenEnum {
     match tok {
         "module" => MODULE,
@@ -124,7 +125,7 @@ fn name_or_keyword(tok : &str) -> TokenEnum {
         _ => NAME
     }
 }
-
+///Returns whether the character is a haskell operator
 fn is_operator(first_char : char) -> bool {
     match first_char {
         '+' | '-' | '*' | '/' | '.' | '$' |
@@ -134,18 +135,26 @@ fn is_operator(first_char : char) -> bool {
 }
 
 pub struct Lexer<Stream> {
+    ///The input which the lexer processes
     input : Peekable<char, Stream>,
+    ///The current location of the lexer
     location : Location,
+    ///All the current unprocessed tokens stored on a stack
     unprocessedTokens : Vec<Token>,
+    ///The token buffer which contains the last n produced tokens.
     tokens : RingBuf<Token>,
+    ///A stack which contains the indentation levels of automatically inserted '{'
     indentLevels : Vec<int>,
+    ///The offset into the token buffer at which the current token is at
     offset : uint,
+    ///The string interner, cached here for efficency
     interner: Rc<RefCell<Interner>>
 }
 
 
 impl <Stream : Iterator<char>> Lexer<Stream> {
     
+    ///Constructs a new lexer with a default sized token buffer and the local string interner
     pub fn new(input : Stream) -> Lexer<Stream> {
         let start = Location { column : 0, row : 0, absolute : 0};
         Lexer { 
@@ -158,6 +167,8 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
             interner: get_local_interner()
         }
     }
+    ///Returns a new token with some special rules necessary for the parsing of the module declaration
+    ///TODO check if this can be removed somehow
     pub fn module_next<'a>(&'a mut self) -> &'a Token {
         let mut newline = false;
         let n = self.next_indent_token(&mut newline);
@@ -175,9 +186,11 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
         self.layout_independent_token();
         self.current()
     }
-
+    
+    ///Returns the next token in the lexer
     pub fn next<'a>(&'a mut self) -> &'a Token {
         if self.offset > 0 {
+            //backtrack has been used so simply return the next token from the buffer
             self.offset -= 1;
             match self.tokens.iter().idx(self.tokens.len() - 1 - self.offset) {
                 Some(token) => token,
@@ -185,6 +198,7 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
             }
         }
         else if self.unprocessedTokens.len() > 0 {
+            //Some previous call to next produced more than one token so process those first
             self.layout_independent_token();
             self.tokens.back().unwrap()
         }
@@ -193,6 +207,7 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
         }
     }
 
+    ///Returns a reference to the current token
     pub fn current<'a>(&'a self) -> &'a Token {
         match self.tokens.iter().idx(self.tokens.len() - 1 - self.offset) {
             Some(token) => token,
@@ -200,18 +215,23 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
         }
     }
 
+    ///Moves the lexer back one token
+    ///TODO check for overflow in the buffer
     pub fn backtrack(&mut self) {
         self.offset += 1;
     }
 
+    ///Returns true if the lexer is still valid (it has not hit EOF)
     pub fn valid(&self) -> bool {
         self.offset > 0 || match self.tokens.back() { None => true, Some(x) => x.token != EOF }
     }
 
+    ///Peeks at the next character in the input
     fn peek(&mut self) -> Option<char> {
         self.input.peek().map(|c| *c)
     }
 
+    ///Reads a character from the input and increments the current position
     fn read_char(&mut self) -> Option<char> {
         match self.input.next() {
             Some(c) => {
@@ -232,6 +252,7 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
         }
     }
 
+    ///Scans digits into a string
     fn scan_digits(&mut self) -> String {
         let mut result = String::new();
         loop {
@@ -248,7 +269,7 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
         }
         result
     }
-
+    ///Scans a number, float or integer and returns the appropriate token
     fn scan_number(&mut self, c : char, location : Location) -> Token {
         let mut number = String::from_char(1, c);
         number.push_str(self.scan_digits().as_slice());
@@ -264,7 +285,7 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
         }
         Token::new(&self.interner, token, number.as_slice(), location)
     }
-
+    ///Scans an identifier or a keyword
     fn scan_identifier(&mut self, c: char, startLocation: Location) -> Token {
         let mut result = String::from_char(1, c);
         loop {
@@ -282,6 +303,7 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
         return Token::new(&self.interner, name_or_keyword(result.as_slice()), result.as_slice(), startLocation);
     }
 
+    ///Returns the next token but if it is not an '}' it will attempt to insert a '}' automatically
     pub fn next_end<'a>(&'a mut self) -> &'a Token {
         //If the next token is not an '}' and the starting '{' is not explicit we insert an '}'
         //before the current token and set the current token to the '}'
@@ -303,7 +325,8 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
         }
         self.current()
     }
- 
+    
+    ///Scans and returns the next token from the input stream, taking into account the indentation rules
     fn next_token<'a>(&'a mut self) -> &'a Token {
         let mut newline = false;
         let n = self.next_indent_token(&mut newline);
@@ -330,6 +353,8 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
         self.tokens.back().unwrap()
     }
 
+    ///Looks at the next unprocessed token and applies the indentation rules on it
+    ///and returns a token which is not affected by indentation
     fn layout_independent_token(&mut self) {
         if self.unprocessedTokens.len() > 0 {
             let tok = self.unprocessedTokens.get(self.unprocessedTokens.len() - 1).clone();//TODO dont use clone
@@ -424,7 +449,9 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
             }
         }
     }
-
+    
+    ///Scans the character stream for the next token
+    ///Return EOF token if the token stream has ehas ended
     fn next_indent_token(&mut self, newline : &mut bool) -> Token {
         let mut c = ' ';
         //Skip all whitespace before the token
@@ -526,7 +553,6 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
         };
         Token::new(&self.interner, tok, ::std::str::from_char(c).as_slice(), startLocation)
     }
-
 }
 
 #[cfg(test)]

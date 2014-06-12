@@ -67,12 +67,12 @@ pub struct TypeDeclaration {
 }
 
 #[deriving(Clone, Default, PartialEq, Eq, Hash)]
-pub struct TypeOperator {
+pub struct TypeConstructor {
     pub name : InternedStr,
     pub kind : Kind
 }
 
-pub type TyVar = InternedStr;
+pub type VarId = InternedStr;
 #[deriving(Clone, PartialEq, Eq, Default)]
 pub struct TypeVariable {
     pub id : InternedStr,
@@ -82,7 +82,7 @@ pub struct TypeVariable {
 #[deriving(Clone, Eq, Hash)]
 pub enum Type {
     TypeVariable(TypeVariable),
-    TypeOperator(TypeOperator),
+    TypeConstructor(TypeConstructor),
     TypeApplication(Box<Type>, Box<Type>),
     Generic(TypeVariable)
 }
@@ -97,47 +97,57 @@ pub fn qualified(constraints: ~[Constraint], typ: Type) -> Qualified<Type> {
 
 impl Type {
 
-    pub fn new_var(id : TyVar) -> Type {
-        TypeVariable(TypeVariable { id : id, kind: unknown_kind.clone(), age: 0 })
+    ///Creates a new type variable with the specified id
+    pub fn new_var(id : VarId) -> Type {
+        Type::new_var_kind(id, StarKind)
     }
-    pub fn new_var_args(id: TyVar, types : ~[Type]) -> Type {
-        let mut result = TypeVariable(TypeVariable { id : id, kind: Kind::new(types.len() as int + 1) , age: 0 });
-        for typ in types.move_iter() {
-            result = TypeApplication(box result, box typ);
-        }
-        result
+    ///Creates a new type which is a type variable which takes a number of types as arguments
+    ///Gives the typevariable the correct kind arity.
+    pub fn new_var_args(id: VarId, types : ~[Type]) -> Type {
+        Type::new_type_kind(TypeVariable(TypeVariable { id : id, kind: StarKind, age: 0 }), types)
     }
-    pub fn new_var_kind(id : TyVar, kind: Kind) -> Type {
+    ///Creates a new type variable with the specified kind
+    pub fn new_var_kind(id : VarId, kind: Kind) -> Type {
         TypeVariable(TypeVariable { id : id, kind: kind, age: 0 })
     }
+    ///Creates a new type constructor with the specified argument and kind
     pub fn new_op(name : InternedStr, types : ~[Type]) -> Type {
-        let mut result = TypeOperator(TypeOperator { name : name, kind: Kind::new(types.len() as int + 1) });
+        Type::new_type_kind(TypeConstructor(TypeConstructor { name : name, kind: StarKind }), types)
+    }
+    ///Creates a new type constructor applied to the types and with a specific kind
+    pub fn new_op_kind(name : InternedStr, types : ~[Type], kind: Kind) -> Type {
+        let mut result = TypeConstructor(TypeConstructor { name : name, kind: kind });
         for typ in types.move_iter() {
             result = TypeApplication(box result, box typ);
         }
         result
     }
-    pub fn new_op_kind(name : InternedStr, types : ~[Type], kind: Kind) -> Type {
-        let mut result = TypeOperator(TypeOperator { name : name, kind: kind });
+    fn new_type_kind(mut result: Type, types: ~[Type]) -> Type {
+        *result.mut_kind() = Kind::new(types.len() as int + 1);
         for typ in types.move_iter() {
             result = TypeApplication(box result, box typ);
         }
         result
     }
 
+    ///Returns a reference to the type variable or fails if it is not a variable
     pub fn var<'a>(&'a self) -> &'a TypeVariable {
         match self {
             &TypeVariable(ref var) => var,
             _ => fail!("Tried to unwrap {} as a TypeVariable", self)
         }
     }
+
+    ///Returns a reference to the type constructor or fails if it is not a constructor
     #[allow(dead_code)]
-    pub fn op<'a>(&'a self) -> &'a TypeOperator {
+    pub fn ctor<'a>(&'a self) -> &'a TypeConstructor {
         match self {
-            &TypeOperator(ref op) => op,
-            _ => fail!("Tried to unwrap {} as a TypeOperator", self)
+            &TypeConstructor(ref op) => op,
+            _ => fail!("Tried to unwrap {} as a TypeConstructor", self)
         }
     }
+
+    ///Returns a reference to the the type function or fails if it is not an application
     #[allow(dead_code)]
     pub fn appl<'a>(&'a self) -> &'a Type {
         match self {
@@ -146,6 +156,7 @@ impl Type {
         }
     }
     #[allow(dead_code)]
+    ///Returns a reference to the the type argument or fails if it is not an application
     pub fn appr<'a>(&'a self) -> &'a Type {
         match self {
             &TypeApplication(_, ref rhs) => { let r: &Type = *rhs; r }
@@ -153,10 +164,12 @@ impl Type {
         }
     }
 
+    ///Returns the kind of the type
+    ///Fails only if the type is a type application with an invalid kind
     pub fn kind<'a>(&'a self) -> &'a Kind {
         match self {
             &TypeVariable(ref v) => &v.kind,
-            &TypeOperator(ref v) => &v.kind,
+            &TypeConstructor(ref v) => &v.kind,
             &TypeApplication(ref lhs, _) => 
                 match lhs.kind() {
                     &KindFunction(_, ref k) => {
@@ -165,14 +178,23 @@ impl Type {
                     }
                     _ => fail!("Type application must have a kind of KindFunction, {}", self)
                 },
-            &Generic(_) => fail!("Generic has no kind")
+            &Generic(ref v) => &v.kind
         }
     }
+    ///Returns a mutable reference to the types kind
     pub fn mut_kind<'a>(&'a mut self) -> &'a mut Kind {
-        match self {
-            &TypeVariable(ref mut v) => &mut v.kind,
-            &TypeOperator(ref mut v) => &mut v.kind,
-            _ => fail!("Typeapplication has no kind")
+        match *self {
+            TypeVariable(ref mut v) => &mut v.kind,
+            TypeConstructor(ref mut v) => &mut v.kind,
+            TypeApplication(ref mut lhs, _) => 
+                match *lhs.mut_kind() {
+                    KindFunction(_, ref mut k) => {
+                        let kind: &mut Kind = *k;
+                        kind
+                    }
+                    _ => fail!("Type application must have a kind of KindFunction")
+                },
+            Generic(ref mut v) => &mut v.kind
         }
     }
 }
@@ -180,58 +202,71 @@ impl Type {
 impl <S: Writer> ::std::hash::Hash<S> for TypeVariable {
     #[inline]
     fn hash(&self, state: &mut S) {
+        //Only has the id since the kind should always be the same for two variables
         self.id.hash(state);
     }
 }
 
-pub fn tuple_type(size: uint) -> (String, Type) {
-    let mut var_list = Vec::new();
-    assert!(size < 26);
-    for i in range(0, size) {
-        let c = (('a' as u8) + i as u8) as char;
-        var_list.push(Generic(Type::new_var_kind(intern(c.to_str().as_slice()), star_kind.clone()).var().clone()));
-    }
+///Constructs a string which holds the name of an n-tuple
+pub fn tuple_name(n: uint) -> String {
     let mut ident = String::from_char(1, '(');
-    for _ in range(1, size) {
+    for _ in range(1, n) {
         ident.push_char(',');
     }
     ident.push_char(')');
+    ident
+}
+///Returns the type of an n-tuple constructor as well as the name of the tuple
+pub fn tuple_type(n: uint) -> (String, Type) {
+    let mut var_list = Vec::new();
+    assert!(n < 26);
+    for i in range(0, n) {
+        let c = (('a' as u8) + i as u8) as char;
+        var_list.push(Generic(Type::new_var_kind(intern(c.to_str().as_slice()), star_kind.clone()).var().clone()));
+    }
+    let ident = tuple_name(n);
     let mut typ = Type::new_op(intern(ident.as_slice()), FromVec::from_vec(var_list));
-    for i in range_step(size as int - 1, -1, -1) {
+    for i in range_step(n as int - 1, -1, -1) {
         let c = (('a' as u8) + i as u8) as char;
         typ = function_type_(Generic(Type::new_var(intern(c.to_str().as_slice())).var().clone()), typ);
     }
     (ident, typ)
 }
-
+///Constructs a list type which holds elements of type 'typ'
 pub fn list_type(typ: Type) -> Type {
     Type::new_op(intern("[]"), ~[typ])
 }
-
+///Returns the Type of the Char type
 pub fn char_type() -> Type {
     Type::new_op(intern("Char"), ~[])
 }
+///Returns the type for the Int type
 pub fn int_type() -> Type {
     Type::new_op(intern("Int"), ~[])
 }
+///Returns the type for the Bool type
 pub fn bool_type() -> Type {
     Type::new_op(intern("Bool"), ~[])
 }
+///Returns the type for the Double type
 pub fn double_type() -> Type {
     Type::new_op(intern("Double"), ~[])
 }
-
-pub fn function_type(func : &Type, arg : &Type) -> Type {
-    Type::new_op(intern("->"), ~[func.clone(), arg.clone()])
+///Creates a function type
+pub fn function_type(arg: &Type, result: &Type) -> Type {
+    function_type_(arg.clone(), result.clone())
 }
 
+///Creates a function type
 pub fn function_type_(func : Type, arg : Type) -> Type {
     Type::new_op(intern("->"), ~[func, arg])
 }
 
+///Creates a IO type
 pub fn io(typ: Type) -> Type {
     Type::new_op(intern("IO"), ~[typ])
 }
+///Returns the unit type '()'
 pub fn unit() -> Type {
     Type::new_op(intern("()"), ~[])
 }
@@ -285,7 +320,7 @@ impl fmt::Show for TypeVariable {
         write!(f, "{}", self.id)
     }
 }
-impl fmt::Show for TypeOperator {
+impl fmt::Show for TypeConstructor {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.name)
     }
@@ -305,6 +340,8 @@ enum Prec_ {
 }
 struct Prec<'a>(Prec_, &'a Type);
 
+///If the type is a function it returns the type of the argument and the result type,
+///otherwise it returns None
 fn try_get_function<'a>(typ: &'a Type) -> Option<(&'a Type, &'a Type)> {
     match *typ {
         TypeApplication(ref xx, ref result) => {
@@ -313,7 +350,7 @@ fn try_get_function<'a>(typ: &'a Type) -> Option<(&'a Type, &'a Type)> {
                 TypeApplication(ref xx, ref arg) => {
                     let x: &Type = *xx;
                     match x {
-                        &TypeOperator(ref op) if "->" == op.name.as_slice() => {
+                        &TypeConstructor(ref op) if "->" == op.name.as_slice() => {
                             let a: &Type = *arg;
                             let r: &Type = *result;
                             Some((a, r))
@@ -333,7 +370,7 @@ impl <'a> fmt::Show for Prec<'a> {
         let Prec(p, t) = *self;
         match *t {
             TypeVariable(ref var) => write!(f, "{}", *var),
-            TypeOperator(ref op) => write!(f, "{}", *op),
+            TypeConstructor(ref op) => write!(f, "{}", *op),
             Generic(ref var) => write!(f, "\\#{}", *var),
             TypeApplication(ref lhs, ref rhs) => {
                 match try_get_function(t) {
@@ -347,7 +384,7 @@ impl <'a> fmt::Show for Prec<'a> {
                     }
                     None => {
                         match **lhs {
-                            TypeOperator(ref op) if "[]" == op.name.as_slice() => {
+                            TypeConstructor(ref op) if "[]" == op.name.as_slice() => {
                                 write!(f, "[{}]", rhs)
                             }
                             _ => {
@@ -388,7 +425,7 @@ impl fmt::Show for TypeDeclaration {
 
 fn type_eq<'a>(mapping: &mut HashMap<&'a TypeVariable, &'a TypeVariable>, lhs: &'a Type, rhs: &'a Type) -> bool {
     match (lhs, rhs) {
-        (&TypeOperator(ref l), &TypeOperator(ref r)) => l.name == r.name,
+        (&TypeConstructor(ref l), &TypeConstructor(ref r)) => l.name == r.name,
         (&TypeVariable(ref r), &TypeVariable(ref l)) => {
             match mapping.find(&l) {
                 Some(x) => return x.id == r.id,
@@ -405,6 +442,9 @@ fn type_eq<'a>(mapping: &mut HashMap<&'a TypeVariable, &'a TypeVariable>, lhs: &
 }
 
 impl PartialEq for Type {
+    ///Compares two types, treating two type variables as equal as long as they always and only appear at the same place
+    ///a -> b == c -> d
+    ///a -> b != c -> c
     fn eq(&self, other: &Type) -> bool {
         let mut mapping = HashMap::new();
         type_eq(&mut mapping, self, other)
@@ -567,6 +607,10 @@ impl fmt::Show for Literal {
     }
 }
 
+///Trait which implements the visitor pattern.
+///The tree will be walked through automatically, calling the appropriate visit_ function
+///If a visit_ function is overridden it will need to call the appropriate walk_function to
+///recurse deeper into the AST
 pub trait Visitor<Ident> {
     fn visit_expr(&mut self, expr: &TypedExpr<Ident>) {
         walk_expr(self, expr)
@@ -684,6 +728,13 @@ impl <'a, Ident: Eq> Iterator<&'a [Binding<Ident>]> for Binds<'a, Ident> {
     }
 }
 
+///Returns an iterator which returns slices which contain bindings which are next
+///to eachother and have the same name.
+///Ex
+///not True = False
+///not False = True
+///undefined = ...
+///Produces  [[not True, not False], [undefined]]
 pub fn binding_groups<'a, Ident: Eq>(bindings: &'a [Binding<Ident>]) -> Binds<'a, Ident> {
     Binds { vec: bindings }
 }

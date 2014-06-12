@@ -3,6 +3,7 @@ use module::*;
 use scoped_map::ScopedMap;
 use interner::*;
 
+///A Name is a reference to a specific identifier in the program, guaranteed to be unique
 #[deriving(PartialEq, Eq, Hash, Clone)]
 pub struct Name {
     pub name: InternedStr,
@@ -21,6 +22,7 @@ impl ::std::fmt::Show for Name {
     }
 }
 
+///Generic struct which can store and report errors
 struct Errors<T> {
     errors: Vec<T>
 }
@@ -44,6 +46,7 @@ impl <T: ::std::fmt::Show> Errors<T> {
     }
 }
 
+///A NameSupply can turn simple strings into unique Names
 pub struct NameSupply {
     unique_id: uint
 }
@@ -52,13 +55,15 @@ impl NameSupply {
     pub fn new() -> NameSupply {
         NameSupply { unique_id: 0 }
     }
-    
+    ///Create a unique Name which are anonymous
     pub fn anonymous(&mut self) -> Name {
         self.from_str("_a")
     }
+    ///Takes a string and returns a new Name which is unique
     pub fn from_str(&mut self, s: &str) -> Name {
         self.from_interned(intern(s))
     }
+    ///Takes a string and returns a new Name which is unique
     pub fn from_interned(&mut self, s: InternedStr) -> Name {
         Name { name: s, uid: self.next_id() }
     }
@@ -68,9 +73,13 @@ impl NameSupply {
     }
 }
 
+///The renamer has methods which turns the ASTs identifiers from simple strings
+///into unique Names
 struct Renamer {
+    ///Mapping of strings into the unique name
     uniques: ScopedMap<InternedStr, Name>,
     name_supply: NameSupply,
+    ///All errors found while renaming are stored here
     errors: Errors<String>
 }
 
@@ -102,7 +111,7 @@ impl Renamer {
             b
         }).collect())
     }
-
+    
     fn rename(&mut self, input_expr: TypedExpr<InternedStr>) -> TypedExpr<Name> {
         let TypedExpr { expr: expr, typ: typ, location: location } = input_expr;
         let e = match expr {
@@ -169,6 +178,8 @@ impl Renamer {
             WildCardPattern => WildCardPattern
         }
     }
+    ///Turns the string into the Name which is currently in scope
+    ///If the name was not found it is assumed to be global
     fn get_name(&self, s: InternedStr) -> Name {
         match self.uniques.find(&s) {
             Some(&Name { uid: uid, .. }) => Name { name: s, uid: uid },
@@ -192,6 +203,8 @@ impl Renamer {
         FromVec::<Pattern<Name>>::from_vec(arguments.move_iter().map(|a| self.rename_pattern(a)).collect())
     }
 
+    ///Introduces a new Name to the current scope.
+    ///If the name was already declared in the current scope an error is added
     fn make_unique(&mut self, name: InternedStr) -> Name {
         if self.uniques.in_current_scope(&name) {
             self.errors.insert(format!("{} is defined multiple times", name));
@@ -281,6 +294,8 @@ pub fn rename_module_(renamer: &mut Renamer, module: Module<InternedStr>) -> Mod
     }
 }
 
+///Renames a vector of modules.
+///If any errors are encounterd while renaming, an error message is output and fail is called
 pub fn rename_modules(modules: Vec<Module<InternedStr>>) -> Vec<Module<Name>> {
     let mut renamer = Renamer::new();
     let ms = modules.move_iter().map(|module| {

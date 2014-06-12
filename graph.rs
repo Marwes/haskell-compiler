@@ -1,3 +1,6 @@
+///Graph module, contains a simple graph structure which is when typechecking to find
+///functions which are mutually recursive
+
 use std::cmp::min;
 use std::vec::FromVec;
 
@@ -28,34 +31,39 @@ pub struct Graph<T> {
 }
 
 impl <T> Graph<T> {
-
+    ///Creates a new graph
     pub fn new() -> Graph<T> {
         Graph { edges: Vec::new(), vertices: Vec::new() }
     }
-
+    ///Creates a new vertex and returns the index which refers to it
     pub fn new_vertex(&mut self, value: T) -> VertexIndex {
         self.vertices.push(Vertex { edges:Vec::new(), value: value });
         VertexIndex(self.vertices.len() - 1)
     }
-
+    
+    ///Connects two vertices with an edge
     pub fn connect(&mut self, from: VertexIndex, to: VertexIndex) {
         self.vertices.get_mut(from.get()).edges.push(EdgeIndex(self.edges.len()));
         self.edges.push(Edge { from: from, to: to });
     }
-
+    ///Returns the vertex at the index
     pub fn get_vertex<'a>(&'a self, v: VertexIndex) -> &'a Vertex<T> {
         self.vertices.get(v.get())
     }
 
+    ///Returns the edge at the index
     pub fn get_edge<'a>(&'a self, edge: EdgeIndex) -> &'a Edge<T> {
         self.edges.get(edge.get())
     }
 
+    ///Returns how many vertices are in the graph
     pub fn len(&self) -> uint {
         self.vertices.len()
     }
 }
 
+///Analyzes the graph for strongly connect components.
+///Returns a vector of indices where each group is a separte vector
 pub fn strongly_connected_components<T>(graph: &Graph<T>) -> ~[~[VertexIndex]] {
     
     let mut tarjan = TarjanComponents { graph: graph, index: 1, stack: Vec::new(), connections: Vec::new(),
@@ -82,7 +90,7 @@ struct TarjanComponents<'a, T>{
     stack: Vec<VertexIndex>,
     connections: Vec<Vec<VertexIndex>>
 }
-
+///Implementation of "Tarjan's strongly connected components algorithm"
 impl <'a, T> TarjanComponents<'a, T> {
     fn strong_connect(&mut self, v: VertexIndex) {
         *self.valid.get_mut(v.get()) = self.index;
