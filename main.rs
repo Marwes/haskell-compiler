@@ -40,6 +40,7 @@ macro_rules! write_core_expr(
     })
 )
 
+mod types;
 mod module;
 mod compiler;
 mod typecheck;
