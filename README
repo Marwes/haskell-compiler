@@ -1,0 +1,5 @@
+#Haskell compiler
+
+This is a compiler for Haskell created in the Rust programming language. It is a work in progress, developed in my spare time, as such it may be useful or interesting to study but as for the compiler itself it is not capable of much more than simple expressions such as what one may type in REPL.
+
+The project is licensed with the MIT license so feel free fork or poke around with it.
