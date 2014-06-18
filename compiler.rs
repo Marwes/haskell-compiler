@@ -486,17 +486,8 @@ impl <'a> Compiler<'a> {
             }
             None
         }).or_else(|| {
-            let identifier = identifier.name.as_slice();
-            if identifier.len() >= 3 && identifier.char_at(0) == '('
-            && identifier.char_at(identifier.len() - 1) == ')'
-            && identifier.chars().skip(1).take(identifier.len() - 2).all(|c| c == ',') {
-                return Some(ConstructorVariable(0, (identifier.len() - 1) as u16));
-            }
-            match identifier {
-                "[]" => Some(ConstructorVariable(0, 0)),
-                ":" => Some(ConstructorVariable(1, 2)),
-                _ => None
-            }
+            Compiler::find_builtin_constructor(identifier.name)
+                .map(|(x, y)| ConstructorVariable(x, y))
         })
     }
 
@@ -511,18 +502,25 @@ impl <'a> Compiler<'a> {
             }
             None
         }).or_else(|| {
-            let identifier = identifier.as_slice();
-            if identifier.len() >= 3 && identifier.char_at(0) == '('
-            && identifier.char_at(identifier.len() - 1) == ')'
-            && identifier.chars().skip(1).take(identifier.len() - 2).all(|c| c == ',') {
-                return Some((0, (identifier.len() - 1) as u16));
-            }
-            match identifier {
-                "[]" => Some((0, 0)),
-                ":" => Some((1, 2)),
-                _ => None
-            }
+            Compiler::find_builtin_constructor(identifier)
         })
+    }
+
+    fn find_builtin_constructor(identifier: InternedStr) -> Option<(u16, u16)> {
+        let identifier = identifier.as_slice();
+        if identifier.len() >= 2 && identifier.char_at(0) == '('
+        && identifier.char_at(identifier.len() - 1) == ')'
+        && identifier.chars().skip(1).take(identifier.len() - 2).all(|c| c == ',') {
+            let num_args =
+                if identifier.len() == 2 { 0 }//unit
+                else { identifier.len() - 1 };//tuple
+            return Some((0, num_args as u16));
+        }
+        match identifier {
+            "[]" => Some((0, 0)),
+            ":" => Some((1, 2)),
+            _ => None
+        }
     }
 
     fn find_class<'r>(&'r self, name: InternedStr) -> Option<&'r Class> {

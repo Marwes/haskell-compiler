@@ -186,6 +186,16 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
         self.layout_independent_token();
         self.current()
     }
+
+    pub fn peek<'a>(&'a mut self) -> &'a Token {
+        if self.offset == 0 {
+            self.next();
+            self.backtrack();
+        }
+        self.tokens.iter()
+            .idx(self.tokens.len() - self.offset)
+            .unwrap()
+    }
     
     ///Returns the next token in the lexer
     pub fn next<'a>(&'a mut self) -> &'a Token {
@@ -227,7 +237,7 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
     }
 
     ///Peeks at the next character in the input
-    fn peek(&mut self) -> Option<char> {
+    fn peek_char(&mut self) -> Option<char> {
         self.input.peek().map(|c| *c)
     }
 
@@ -256,7 +266,7 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
     fn scan_digits(&mut self) -> String {
         let mut result = String::new();
         loop {
-            match self.peek() {
+            match self.peek_char() {
                 Some(x) => {
                     if !x.is_digit() {
                         break;
@@ -274,7 +284,7 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
         let mut number = String::from_char(1, c);
         number.push_str(self.scan_digits().as_slice());
         let mut token = NUMBER;
-        match self.peek() {
+        match self.peek_char() {
             Some('.') => {
                 self.input.next();
                 token = FLOAT;
@@ -289,7 +299,7 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
     fn scan_identifier(&mut self, c: char, startLocation: Location) -> Token {
         let mut result = String::from_char(1, c);
         loop {
-            match self.peek() {
+            match self.peek_char() {
                 Some(ch) => {
                     if !ch.is_alphanumeric() && ch != '_' {
                         break;
@@ -473,7 +483,7 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
         if is_operator(c) {
             let mut result = String::from_char(1, c);
             loop {
-                match self.peek() {
+                match self.peek_char() {
                     Some(ch) => {
                         if !is_operator(ch) {
                             break;

@@ -252,19 +252,26 @@ fn sub_expression(&mut self) -> Option<TypedExpr> {
     debug!("Begin SubExpr {}", self.lexer.current());
 	match token {
 	    LPARENS => {
-			let expressions = self.sep_by_1(|this| this.expression_(), COMMA);
+            let location = self.lexer.current().location;
+            if self.lexer.peek().token == RPARENS {
+                self.lexer.next();
+                Some(TypedExpr::with_location(Identifier(intern("()")), location))
+            }
+            else {
+                let expressions = self.sep_by_1(|this| this.expression_(), COMMA);
 
-			let maybeParens = self.lexer.current();
+                let maybeParens = self.lexer.current();
 
-			if maybeParens.token != RPARENS {
-				fail!(parse_error(&self.lexer, RPARENS));
-			}
-			if expressions.len() == 1 {
-				Some(expressions[0])
-			}
-			else {
-				Some(new_tuple(expressions))
-			}
+                if maybeParens.token != RPARENS {
+                    fail!(parse_error(&self.lexer, RPARENS));
+                }
+                if expressions.len() == 1 {
+                    Some(expressions[0])
+                }
+                else {
+                    Some(new_tuple(expressions))
+                }
+            }
 		}
 	    LBRACKET => Some(self.list()),
 	    LET => {
@@ -590,16 +597,22 @@ fn pattern(&mut self) -> Pattern {
         NAME => self.make_pattern(name, |this| this.pattern_arguments()),
         NUMBER => NumberPattern(from_str(name.as_slice()).unwrap()),
         LPARENS => {
-            let tupleArgs = self.sep_by_1(|this| this.pattern(), COMMA);
-            let rParens = self.lexer.current().token;
-            if rParens != RPARENS {
-                fail!(parse_error(&self.lexer, RPARENS));
-            }
-            if tupleArgs.len() == 1 {
-                tupleArgs[0]
+            if self.lexer.peek().token == RPARENS {
+                self.lexer.next();
+                ConstructorPattern(intern("()"), ~[])
             }
             else {
-                ConstructorPattern(intern(tuple_name(tupleArgs.len()).as_slice()), tupleArgs)
+                let tupleArgs = self.sep_by_1(|this| this.pattern(), COMMA);
+                let rParens = self.lexer.current().token;
+                if rParens != RPARENS {
+                    fail!(parse_error(&self.lexer, RPARENS));
+                }
+                if tupleArgs.len() == 1 {
+                    tupleArgs[0]
+                }
+                else {
+                    ConstructorPattern(intern(tuple_name(tupleArgs.len()).as_slice()), tupleArgs)
+                }
             }
         }
         _ => { fail!("Error parsing pattern at token {}", self.lexer.current()) }
@@ -645,11 +658,17 @@ fn type_declaration(&mut self) -> TypeDeclaration {
 
 fn constrained_type(&mut self) -> (~[Constraint], Type) {
     let mut maybeConstraints = if self.lexer.next().token == LPARENS {
-        let t = self.sep_by_1(|this| this.parse_type(), COMMA);
-        if self.lexer.current().token != RPARENS {
-            fail!("Expected RPARENS");
+        if self.lexer.peek().token == RPARENS {
+            self.lexer.next();
+            ~[]
         }
-        t
+        else {
+            let t = self.sep_by_1(|this| this.parse_type(), COMMA);
+            if self.lexer.current().token != RPARENS {
+                fail!("Expected RPARENS");
+            }
+            t
+        }
     }
     else {
         self.lexer.backtrack();
@@ -782,23 +801,29 @@ fn parse_type(&mut self) -> Type {
             }
 		}
 	    LPARENS => {
-			let t = self.parse_type();
-			let maybeComma = self.lexer.next().token;
-			if maybeComma == COMMA {
-				let mut tupleArgs: Vec<Type> = self.sep_by_1(|this| this.parse_type(), COMMA)
-                    .move_iter()
-                    .collect();
-				tupleArgs.unshift(t);
-                self.lexer.backtrack();
-                self.require_next(RPARENS);
-
-                self.parse_return_type(make_tuple_type(FromVec::from_vec(tupleArgs)))
-			}
-			else if maybeComma == RPARENS {
-                self.parse_return_type(t)
-			}
+            if self.lexer.peek().token == RPARENS {
+                self.lexer.next();
+                self.parse_return_type(Type::new_op(intern("()"), ~[]))
+            }
             else {
-                fail!(parse_error2(&self.lexer, &[COMMA, RPARENS]))
+                let t = self.parse_type();
+                let maybeComma = self.lexer.next().token;
+                if maybeComma == COMMA {
+                    let mut tupleArgs: Vec<Type> = self.sep_by_1(|this| this.parse_type(), COMMA)
+                        .move_iter()
+                        .collect();
+                    tupleArgs.unshift(t);
+                    self.lexer.backtrack();
+                    self.require_next(RPARENS);
+
+                    self.parse_return_type(make_tuple_type(FromVec::from_vec(tupleArgs)))
+                }
+                else if maybeComma == RPARENS {
+                    self.parse_return_type(t)
+                }
+                else {
+                    fail!(parse_error2(&self.lexer, &[COMMA, RPARENS]))
+                }
             }
 		}
 	    NAME => {
@@ -1086,6 +1111,20 @@ r"(1, x)".chars());
     let expr = parser.expression_();
 
     assert_eq!(expr, apply(apply(identifier("(,)"), number(1)), identifier("x")));
+}
+
+#[test]
+fn parse_unit() {
+    let mut parser = Parser::new(
+r"case () :: () of
+    () -> 1".chars());
+    let expr = parser.expression_();
+
+    assert_eq!(expr, case(TypedExpr::new(TypeSig(box identifier("()"), qualified(~[], Type::new_op(intern("()"), ~[])))), 
+        ~[Alternative {
+        pattern: Located { location: Location::eof(), node: ConstructorPattern(intern("()"), ~[])  },
+        matches: Simple(number(1))
+    } ]));
 }
 
 #[test]

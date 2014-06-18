@@ -244,7 +244,8 @@ impl <'a> TypeEnvironment<'a> {
         let list = list_type(var.clone());
         insert_to(&mut globals, "[]", list.clone());
         insert_to(&mut globals, ":", function_type(&var, &function_type(&list, &list)));
-        for i in range(0 as uint, 10) {
+        insert_to(&mut globals, "()", unit());
+        for i in range(2 as uint, 10) {
             let (name, typ) = tuple_type(i);
             insert_to(&mut globals, name.as_slice(), typ);
         }
