@@ -25,7 +25,7 @@ pub enum Type {
     TypeApplication(Box<Type>, Box<Type>),
     Generic(TypeVariable)
 }
-#[deriving(Clone, Default, Eq, PartialEq, Hash)]
+#[deriving(Clone, Default, Hash)]
 pub struct Qualified<T> {
     pub constraints: ~[Constraint],
     pub value: T
@@ -359,19 +359,33 @@ impl fmt::Show for Constraint {
 fn type_eq<'a>(mapping: &mut HashMap<&'a TypeVariable, &'a TypeVariable>, lhs: &'a Type, rhs: &'a Type) -> bool {
     match (lhs, rhs) {
         (&TypeConstructor(ref l), &TypeConstructor(ref r)) => l.name == r.name,
-        (&TypeVariable(ref r), &TypeVariable(ref l)) => {
-            match mapping.find(&l) {
-                Some(x) => return x.id == r.id,
-                None => ()
-            }
-            mapping.insert(l, r);
-            true
-        }
+        (&TypeVariable(ref r), &TypeVariable(ref l)) => var_eq(mapping, r, l),
         (&TypeApplication(ref lhs1, ref rhs1), &TypeApplication(ref lhs2, ref rhs2)) => {
             type_eq(mapping, *lhs1, *lhs2) && type_eq(mapping, *rhs1, *rhs2)
         }
         _ => false
     }
+}
+
+fn var_eq<'a>(mapping: &mut HashMap<&'a TypeVariable, &'a TypeVariable>, l: &'a TypeVariable, r: &'a TypeVariable) -> bool {
+    match mapping.find(&l) {
+        Some(x) => return x.id == r.id,
+        None => ()
+    }
+    mapping.insert(l, r);
+    true
+}
+
+impl PartialEq for Qualified<Type> {
+    fn eq(&self, other: &Qualified<Type>) -> bool {
+        let mut mapping = HashMap::new();
+        self.constraints.iter()
+            .zip(other.constraints.iter())
+            .all(|(l, r)| l.class == r.class && var_eq(&mut mapping, &l.variables[0], &r.variables[0]))
+        && type_eq(&mut mapping, &self.value, &other.value)
+    }
+}
+impl Eq for Qualified<Type> {
 }
 
 impl PartialEq for Type {

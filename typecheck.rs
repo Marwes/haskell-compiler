@@ -130,10 +130,7 @@ pub struct TypeEnvironment<'a> {
 #[deriving(Clone)]
 struct Substitution {
     ///A hashmap which contains what a typevariable is unified to.
-    subs: HashMap<TypeVariable, Type>,
-    ///The constraints for the typevariables in the substitution
-    ///TODO potentially unused?
-    constraints: HashMap<TypeVariable, ~[InternedStr]>
+    subs: HashMap<TypeVariable, Type>
 }
 
 ///Trait which provides access to the bindings in a struct.
@@ -269,10 +266,7 @@ impl <'a> TypeEnvironment<'a> {
     pub fn typecheck_module(&mut self, module: &mut Module<Name>) {
         let start_var_age = self.variable_age + 1;
         for data_def in module.dataDefinitions.mut_iter() {
-            let mut subs = Substitution { subs: HashMap::new(), constraints: HashMap::new() };
-            freshen_all(self, &mut subs, &mut data_def.typ.value);
             for constructor in data_def.constructors.mut_iter() {
-                replace(&mut self.constraints, &mut constructor.typ.value, &subs);
                 let mut typ = constructor.typ.clone();
                 quantify(0, &mut typ);
                 self.namedTypes.insert(constructor.name.clone(), typ);
@@ -280,12 +274,9 @@ impl <'a> TypeEnvironment<'a> {
         }
         for class in module.classes.mut_iter() {
             //Instantiate a new variable and replace all occurances of the class variable with this
-            let mut replaced = class.variable.clone();
-            let new = self.new_var();
-            class.variable = new.var().clone();
             let mut var_kind = None;
             for type_decl in class.declarations.mut_iter() {
-                var_kind = match find_kind(&replaced, var_kind, &type_decl.typ.value) {
+                var_kind = match find_kind(&class.variable, var_kind, &type_decl.typ.value) {
                     Ok(k) => k,
                     Err(msg) => fail!("{}", msg)
                 };
@@ -293,17 +284,12 @@ impl <'a> TypeEnvironment<'a> {
                 //matters when looking for constraints, etc
                 match var_kind {
                     Some(ref k) => {
-                        replaced.kind.clone_from(k);
                         class.variable.kind.clone_from(k);
-                        self.constraints.insert(class.variable.clone(), vec![class.name.clone()]);
                     }
                     None => ()
                 }
                 
                 let c = Constraint { class: class.name.clone(), variables: ~[class.variable.clone()] };
-                let mut mapping = HashMap::new();
-                mapping.insert(replaced.clone(), TypeVariable(class.variable.clone()));
-                self.freshen_qualified_type(&mut type_decl.typ, mapping);
                 {//Workaround to add the class's constraints directyly to the declaration
                     let mut context = ~[];
                     swap(&mut context, &mut type_decl.typ.constraints);
@@ -320,30 +306,24 @@ impl <'a> TypeEnvironment<'a> {
         for instance in module.instances.mut_iter() {
             let class = module.classes.iter().find(|class| class.name == instance.classname)
                 .expect(format!("Could not find class {}", instance.classname));
-            {
-                let mut subs = Substitution { subs: HashMap::new(), constraints: HashMap::new() };
-                for constraint in instance.constraints.mut_iter() {
-                    let new = subs.subs.find_or_insert(constraint.variables[0].clone(), self.new_var_kind(constraint.variables[0].kind.clone()));
-                    constraint.variables[0] = new.var().clone();
+            //Update the kind of the type for the instance to be the same as the class kind (since we have no proper kind inference
+            match instance.typ {
+                TypeConstructor(ref mut op) => {
+                    let maybe_data = self.assemblies.iter().filter_map(|a| a.find_data_type(op.name))
+                        .next();
+                    op.kind = maybe_data
+                        .or_else(|| data_definitions.iter().find(|data| op.name == extract_applied_type(&data.typ.value).ctor().name))
+                        .map(|data| extract_applied_type(&data.typ.value).kind().clone())
+                        .unwrap_or_else(|| if intern("[]") == op.name { KindFunction(box StarKind, box StarKind) } else { StarKind });
                 }
-                match instance.typ {
-                    TypeConstructor(ref mut op) => {
-                        let maybe_data = self.assemblies.iter().filter_map(|a| a.find_data_type(op.name))
-                            .next();
-                        op.kind = maybe_data
-                            .or_else(|| data_definitions.iter().find(|data| op.name == extract_applied_type(&data.typ.value).ctor().name))
-                            .map(|data| extract_applied_type(&data.typ.value).kind().clone())
-                            .unwrap_or_else(|| if intern("[]") == op.name { KindFunction(box StarKind, box StarKind) } else { StarKind });
-                    }
-                    _ => ()
-                }
-                freshen_all(self, &mut subs, &mut instance.typ);
+                _ => ()
             }
             for binding in instance.bindings.mut_iter() {
                 let decl = class.declarations.iter().find(|decl| binding.name.as_slice().ends_with(decl.name.as_slice()))
                     .expect(format!("Could not find {} in class {}", binding.name, class.name));
                 binding.typ = decl.typ.clone();
                 replace_var(&mut binding.typ.value, &class.variable, &instance.typ);
+                self.freshen_qualified_type(&mut binding.typ, HashMap::new());
                 {
                     let mut context = ~[];
                     swap(&mut context, &mut binding.typ.constraints);
@@ -353,17 +333,11 @@ impl <'a> TypeEnvironment<'a> {
                     }
                     binding.typ.constraints = FromVec::from_vec(vec_context);
                 }
-                self.freshen_qualified_type(&mut binding.typ, HashMap::new());
-                for constraint in binding.typ.constraints.iter() {
-                    self.constraints.find_or_insert(constraint.variables[0].clone(), Vec::new())
-                        .push(constraint.class.clone());
-                }
             }
             self.instances.push((instance.constraints.clone(), instance.classname.clone(), instance.typ.clone()));
         }
         
         for type_decl in module.typeDeclarations.mut_iter() {
-            self.freshen_qualified_type(&mut type_decl.typ, HashMap::new());
 
             match module.bindings.mut_iter().find(|bind| bind.name.name == type_decl.name) {
                 Some(bind) => {
@@ -374,20 +348,16 @@ impl <'a> TypeEnvironment<'a> {
         }
 
         {
-            let mut subs = Substitution { subs: HashMap::new(), constraints: HashMap::new() }; 
+            let mut subs = Substitution { subs: HashMap::new() }; 
             self.typecheck_global_bindings(start_var_age, &mut subs, module);
         }
-        //FIXME
-        //for bind in module.bindings.iter() {
-        //    self.namedTypes.insert(bind.name.clone(), bind.expression.typ.clone());
-        //}
     }
 
     ///Typechecks an expression.
     ///The types in the expression are updated with the correct types.
     ///If the expression has a type error, fail is called.
     pub fn typecheck_expr(&mut self, expr : &mut TypedExpr<Name>) {
-        let mut subs = Substitution { subs: HashMap::new(), constraints: HashMap::new() }; 
+        let mut subs = Substitution { subs: HashMap::new() }; 
         let mut typ = self.typecheck(expr, &mut subs);
         unify_location(self, &mut subs, &expr.location, &mut typ, &mut expr.typ);
         self.substitute(&mut subs, expr);
@@ -416,7 +386,7 @@ impl <'a> TypeEnvironment<'a> {
             match self.constraints.find(var) {
                 Some(constraints) => {
                     for c in constraints.iter() {
-                        if result.iter().find(|x| x.class == *c) == None {
+                        if result.iter().find(|x| x.class == *c && x.variables[0] == *var) == None {
                             result.push(Constraint { class: c.clone(), variables: ~[var.clone()] });
                         }
                     }
@@ -428,46 +398,13 @@ impl <'a> TypeEnvironment<'a> {
         FromVec::from_vec(result)
     }
     
-    ///Searches through a type, comparing it with the type on the identifier, returning all the specialized constraints
-    pub fn find_specialized_instances(&self, typ: &Type, actual_type: &Type, constraints: &[Constraint]) -> ~[(InternedStr, Type)] {
-        let mut result = Vec::new();
-        self.find_specialized(&mut result, actual_type, typ, constraints);
-        if constraints.len() == 0 {
-            fail!("Could not find the specialized instance between {} <-> {}", typ, actual_type);
-        }
-        FromVec::from_vec(result)
-    }
-    fn find_specialized(&self, result: &mut Vec<(InternedStr, Type)>, actual_type: &Type, typ: &Type, constraints: &[Constraint]) {
-        match (actual_type, typ) {
-            (_, &TypeVariable(ref var)) => {
-                for c in constraints.iter().filter(|c| c.variables[0] == *var) {
-                    if result.iter().find(|x| *x.ref0() == c.class) == None {
-                        result.push((c.class.clone(), actual_type.clone()));
-                    }
-                }
-            }
-            (&TypeApplication(ref lhs1, ref rhs1), &TypeApplication(ref lhs2, ref rhs2)) => {
-                self.find_specialized(result, *lhs1, *lhs2, constraints);
-                self.find_specialized(result, *rhs1, *rhs2, constraints);
-            }
-            (_, &Generic(ref var)) => {
-                for c in constraints.iter().filter(|c| c.variables[0] == *var) {
-                    if result.iter().find(|x| *x.ref0() == c.class) == None {
-                        result.push((c.class.clone(), actual_type.clone()));
-                    }
-                }
-            }
-            _ => ()
-        }
-    }
-
     fn freshen_qualified_type(&mut self, typ: &mut Qualified<Type>, mut mapping: HashMap<TypeVariable, Type>) {
         for constraint in typ.constraints.mut_iter() {
             let old = constraint.variables[0].clone();
             let new = mapping.find_or_insert(old.clone(), self.new_var_kind(old.kind.clone()));
             constraint.variables[0] = new.var().clone();
         }
-        let mut subs = Substitution { subs: mapping, constraints: HashMap::new() };
+        let mut subs = Substitution { subs: mapping };
         freshen_all(self, &mut subs, &mut typ.value);
     }
     fn apply_locals(&mut self, subs: &Substitution) {
@@ -626,7 +563,7 @@ impl <'a> TypeEnvironment<'a> {
             expr.typ = self.new_var();
         }
 
-        match expr.expr {
+        let x = match expr.expr {
             Literal(ref lit) => {
                 match *lit {
                     Integral(_) => {
@@ -696,7 +633,7 @@ impl <'a> TypeEnvironment<'a> {
                 for alt in alts.mut_iter().skip(1) {
                     self.typecheck_pattern(&alt.pattern.location, subs, &alt.pattern.node, &mut match_type);
                     let mut alt_type = self.typecheck_match(&mut alt.matches, subs);
-                    unify_location(self, subs, &Location::eof(), &mut alt0_, &mut alt_type);
+                    unify_location(self, subs, &alt.pattern.location, &mut alt0_, &mut alt_type);
                 }
                 alt0_
             }
@@ -741,7 +678,9 @@ impl <'a> TypeEnvironment<'a> {
                 match_or_fail(self, subs, &expr.location, &mut typ, &mut qualified_type.value);
                 typ
             }
-        }
+        };
+        debug!("{}\nas\n{}", expr, x);
+        x
     }
     ///Typechecks a pattern.
     ///Checks that the pattern has the type 'match_type' and adds all variables in the pattern.
@@ -804,7 +743,7 @@ impl <'a> TypeEnvironment<'a> {
             let mut typ = self.typecheck_match(&mut bind.matches, subs);
             typ = make_function(argument_types.as_slice(), &typ);
             match previous_type {
-                Some(mut prev) => unify_location(self, subs, &Location::eof(), &mut typ, &mut prev),
+                Some(mut prev) => unify_location(self, subs, bind.matches.location(), &mut typ, &mut prev),
                 None => ()
             }
             replace(&mut self.constraints, &mut typ, subs);
@@ -883,13 +822,13 @@ impl <'a> TypeEnvironment<'a> {
                     self.apply_locals(subs);
                 }
             }
-            if is_global {
-                subs.subs.clear();
-                subs.constraints.clear();
-            }
             for index in group.iter() {
                 let bindIndex = graph.get_vertex(*index).value;
                 let binds = bindings.get_mut(bindIndex);
+                for constraint in binds[0].typ.constraints.iter() {
+                    self.constraints.find_or_insert(constraint.variables[0].clone(), Vec::new())
+                        .push(constraint.class.clone());
+                }
                 for bind in binds.mut_iter() {
                     {
                         let typ = if is_global {
@@ -904,6 +843,10 @@ impl <'a> TypeEnvironment<'a> {
                     bind.typ.constraints = self.find_constraints(&bind.typ.value);
                 }
                 debug!("End typecheck {} :: {}", binds[0].name, binds[0].typ);
+            }
+            if is_global {
+                subs.subs.clear();
+                self.constraints.clear();
             }
         }
     }
@@ -939,8 +882,12 @@ impl <'a> TypeEnvironment<'a> {
     fn fresh(&'a mut self, name: &Name) -> Option<Type> {
         match self.find_fresh(name) {
             Some(mut typ) => {
-                let mut subs = Substitution { subs: HashMap::new(), constraints: HashMap::new() };
+                let mut subs = Substitution { subs: HashMap::new() };
                 freshen(self, &mut subs, &mut typ);
+                for c in typ.constraints.iter() {
+                    self.constraints.find_or_insert(c.variables[0].clone(), Vec::new())
+                        .push(c.class.clone());
+                }
                 Some(typ.value)
             }
             None => None
@@ -949,12 +896,46 @@ impl <'a> TypeEnvironment<'a> {
 
 }
 
+
+///Searches through a type, comparing it with the type on the identifier, returning all the specialized constraints
+pub fn find_specialized_instances(typ: &Type, actual_type: &Type, constraints: &[Constraint]) -> ~[(InternedStr, Type)] {
+    let mut result = Vec::new();
+    find_specialized(&mut result, actual_type, typ, constraints);
+    if constraints.len() == 0 {
+        fail!("Could not find the specialized instance between {} <-> {}", typ, actual_type);
+    }
+    FromVec::from_vec(result)
+}
+fn find_specialized(result: &mut Vec<(InternedStr, Type)>, actual_type: &Type, typ: &Type, constraints: &[Constraint]) {
+    match (actual_type, typ) {
+        (_, &TypeVariable(ref var)) => {
+            for c in constraints.iter().filter(|c| c.variables[0] == *var) {
+                if result.iter().find(|x| *x.ref0() == c.class) == None {
+                    result.push((c.class.clone(), actual_type.clone()));
+                }
+            }
+        }
+        (&TypeApplication(ref lhs1, ref rhs1), &TypeApplication(ref lhs2, ref rhs2)) => {
+            find_specialized(result, *lhs1, *lhs2, constraints);
+            find_specialized(result, *rhs1, *rhs2, constraints);
+        }
+        (_, &Generic(ref var)) => {
+            for c in constraints.iter().filter(|c| c.variables[0] == *var) {
+                if result.iter().find(|x| *x.ref0() == c.class) == None {
+                    result.push((c.class.clone(), actual_type.clone()));
+                }
+            }
+        }
+        _ => ()
+    }
+}
+
 ///Quantifies all type variables with an age greater that start_var_age
 ///A quantified variable will when it is instantiated have new type variables
 fn quantify(start_var_age: int, typ: &mut Qualified<Type>) {
     fn quantify_(start_var_age: int, typ: &mut Type) {
         let x = match typ {
-            &TypeVariable(ref id) if id.age > start_var_age => Some(id.clone()),
+            &TypeVariable(ref id) if id.age >= start_var_age => Some(id.clone()),
             &TypeApplication(ref mut lhs, ref mut rhs) => {
                 quantify_(start_var_age, *lhs);
                 quantify_(start_var_age, *rhs);
@@ -1035,29 +1016,11 @@ fn get_returntype(typ: &Type) -> Type {
     }
 }
 
-///Update the constraints when replacing the variable 'old' with 'new'
-fn update_constraints(constraints: &mut HashMap<TypeVariable, Vec<InternedStr>>, old: &TypeVariable, new: &Type, subs: &Substitution) {
-    match new {
-        &TypeVariable(ref new_var) => {
-            subs.constraints.find(old).map(|subs_constraints| {
-                let to_update = constraints.find_or_insert(new_var.clone(), Vec::new());
-                for c in subs_constraints.iter() {
-                    if to_update.iter().find(|x| *x == c) == None {
-                        to_update.push(c.clone());
-                    }
-                }
-            });
-        }
-        _ => ()
-    }
-}
-
 ///Replace all typevariables using the substitution 'subs'
 fn replace(constraints: &mut HashMap<TypeVariable, Vec<InternedStr>>, old : &mut Type, subs : &Substitution) {
     let replaced = match *old {
         TypeVariable(ref id) => {
             subs.subs.find(id).map(|new| {
-                update_constraints(constraints, id, new, subs);
                 new.clone()
             })
         }
@@ -1154,7 +1117,7 @@ fn freshen_var(env: &mut TypeEnvironment, subs: &mut Substitution, constraints: 
 
 ///Takes two types and attempts to make them the same type
 fn unify_location(env: &mut TypeEnvironment, subs: &mut Substitution, location: &Location, lhs: &mut Type, rhs: &mut Type) {
-    debug!("Unifying {} <-> {}", *lhs, *rhs);
+    debug!("{} Unifying {} <-> {}", location, *lhs, *rhs);
     match unify(env, subs, lhs, rhs) {
         Ok(()) => (),
         Err(error) => fail_type_error(location, lhs, rhs, error)
@@ -1163,7 +1126,7 @@ fn unify_location(env: &mut TypeEnvironment, subs: &mut Substitution, location: 
 
 fn fail_type_error(location: &Location, lhs: &Type, rhs: &Type, error: TypeError) -> ! {
     match error {
-        UnifyFail => fail!("{} Error: Could not unify types {}\nand\n{}", location, *lhs, *rhs),
+        UnifyFail(l, r) => fail!("{} Error: Could not unify types\n{}\nand\n{}\nin types\n{}\nand\n{}", location, l, r, *lhs, *rhs),
         RecursiveUnification => fail!("{} Error: Recursive unification between {}\nand\n{}", location, *lhs, *rhs),
         WrongArity(l, r) =>
             fail!("{} Error: Types do not have the same arity.\n{} <-> {}\n{} <-> {}\n{}\nand\n{}"
@@ -1173,7 +1136,7 @@ fn fail_type_error(location: &Location, lhs: &Type, rhs: &Type, error: TypeError
 }
 
 enum TypeError {
-    UnifyFail,
+    UnifyFail(Type, Type),
     RecursiveUnification,
     WrongArity(Type, Type),
     MissingInstance(InternedStr, Type, TypeVariable)
@@ -1261,30 +1224,38 @@ fn unify(env: &mut TypeEnvironment, subs: &mut Substitution, lhs: &mut Type, rhs
             //so that the variable does not get quantified
             if lhs.age > rhs.age {
                 let x = bind_variable(env, subs, lhs, &TypeVariable(rhs.clone()));
-                *lhs = rhs.clone();
+                if x.is_ok() {
+                    *lhs = rhs.clone();
+                }
                 x
             }
             else {
                 let x = bind_variable(env, subs, rhs, &TypeVariable(lhs.clone()));
-                *rhs = lhs.clone();
+                if x.is_ok() {
+                    *rhs = lhs.clone();
+                }
                 x
             }
         }
         (&TypeConstructor(ref lhs), &TypeConstructor(ref rhs)) =>
-            if lhs.name == rhs.name { Ok(()) } else { Err(UnifyFail) },
+            if lhs.name == rhs.name { Ok(()) } else { Err(UnifyFail(TypeConstructor(lhs.clone()), TypeConstructor(rhs.clone()))) },
         (lhs, rhs) => {
             let x = match lhs {
                 &TypeVariable(ref mut var) => bind_variable(env, subs, var, rhs),
                 lhs => {
                     let y = match rhs {
                         &TypeVariable(ref mut var) => bind_variable(env, subs, var, lhs),
-                        _ => return Err(UnifyFail)
+                        _ => return Err(UnifyFail(lhs.clone(), rhs.clone()))
                     };
-                    *rhs = lhs.clone();
+                    if y.is_ok() {
+                        *rhs = lhs.clone();
+                    }
                     return y;
                 }
             };
-            *lhs = rhs.clone();
+            if x.is_ok() {
+                *lhs = rhs.clone();
+            }
             x
         }
     }
@@ -1313,11 +1284,11 @@ fn match_(env: &mut TypeEnvironment, subs: &mut Substitution, lhs: &mut Type, rh
             x
         }
         (&TypeConstructor(ref lhs), &TypeConstructor(ref rhs)) =>
-            if lhs.name == rhs.name { Ok(()) } else { Err(UnifyFail) },
+            if lhs.name == rhs.name { Ok(()) } else { Err(UnifyFail(TypeConstructor(lhs.clone()), TypeConstructor(rhs.clone()))) },
         (lhs, rhs) => {
             let x = match lhs {
                 &TypeVariable(ref mut var) => bind_variable(env, subs, var, rhs),
-                _ => return Err(UnifyFail)
+                _ => return Err(UnifyFail(lhs.clone(), rhs.clone()))
             };
             *lhs = rhs.clone();
             x
@@ -1676,13 +1647,13 @@ main x y = primIntAdd (test x) (test y)".chars());
     let mut env = TypeEnvironment::new();
     env.typecheck_module(&mut module);
 
-    let typ = &module.bindings[0].typ.value;
-    let test = function_type_(Type::new_var(intern("a")), function_type_(Type::new_var(intern("b")), int_type()));
-    assert_eq!(typ, &test);
-    let test_cons = vec![intern("Test")];
-    assert_eq!(env.constraints.find(typ.appl().appr().var()), Some(&test_cons));
-    let second_fn = &typ.appr();
-    assert_eq!(env.constraints.find(second_fn.appl().appr().var()), Some(&test_cons));
+    let typ = &module.bindings[0].typ;
+    let a = Type::new_var(intern("a"));
+    let b = Type::new_var(intern("b"));
+    let test = function_type_(a.clone(), function_type_(b.clone(), int_type()));
+    assert_eq!(&typ.value, &test);
+    assert_eq!(typ.constraints[0].class, intern("Test"));
+    assert_eq!(typ.constraints[1].class, intern("Test"));
 }
 
 #[test]
@@ -1728,12 +1699,11 @@ instance Eq a => Eq [a] where
     let mut env = TypeEnvironment::new();
     env.typecheck_module(&mut module);
 
-    let typ = &module.instances[0].bindings[0].typ.value;
+    let typ = &module.instances[0].bindings[0].typ;
     let list_type = list_type(Type::new_var(intern("a")));
-    assert_eq!(*typ, function_type_(list_type.clone(), function_type_(list_type, bool_type())));
-    let var = typ.appl().appr().appr().var();
-    let eq = vec![intern("Eq")];
-    assert_eq!(env.constraints.find(var), Some(&eq));
+    assert_eq!(typ.value, function_type_(list_type.clone(), function_type_(list_type, bool_type())));
+    let var = typ.value.appl().appr().appr().var();
+    assert_eq!(typ.constraints, box [Constraint { class: intern("Eq"), variables: box [var.clone()] }]);
 }
 
 #[test]

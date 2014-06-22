@@ -118,6 +118,15 @@ pub enum Match<Ident = InternedStr> {
     Guards(~[Guard<Ident>]),
     Simple(TypedExpr<Ident>)
 }
+impl <Ident> Match<Ident> {
+    pub fn location<'a>(&'a self) -> &'a Location {
+        match *self {
+            Guards(ref gs) => &gs[0].predicate.location,
+            Simple(ref e) => &e.location
+        }
+    }
+}
+
 #[deriving(Clone, PartialEq, Show)]
 pub struct Guard<Ident = InternedStr> {
     pub predicate: TypedExpr<Ident>,

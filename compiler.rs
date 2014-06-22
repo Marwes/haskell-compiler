@@ -1,7 +1,7 @@
 use interner::*;
 use core::*;
 use types::{int_type, double_type, function_type, function_type_, Qualified, qualified};
-use typecheck::{Types, DataTypes, TypeEnvironment};
+use typecheck::{Types, DataTypes, TypeEnvironment, find_specialized_instances};
 use scoped_map::ScopedMap;
 use std::iter::range_step;
 use std::default::Default;
@@ -62,7 +62,7 @@ enum Var<'a> {
     StackVariable(uint),
     GlobalVariable(uint),
     ConstructorVariable(u16, u16),
-    ClassVariable(&'a Type, &'a TypeVariable),
+    ClassVariable(&'a Type, &'a [Constraint], &'a TypeVariable),
     ConstraintVariable(uint, &'a Type, &'a[Constraint]),
     PrimitiveVariable(uint)
 }
@@ -73,7 +73,7 @@ impl <'a> Clone for Var<'a> {
             &StackVariable(x) => StackVariable(x),
             &GlobalVariable(x) => GlobalVariable(x),
             &ConstructorVariable(x, y) => ConstructorVariable(x, y),
-            &ClassVariable(x, y) => ClassVariable(x, y),
+            &ClassVariable(x, y, z) => ClassVariable(x, y, z),
             &ConstraintVariable(x, y, z) => ConstraintVariable(x, y, z),
             &PrimitiveVariable(x) => PrimitiveVariable(x)
         }
@@ -125,7 +125,7 @@ impl Globals for Assembly {
         for class in self.classes.iter() {
             for decl in class.declarations.iter() {
                 if decl.name == name.name {
-                    return Some(ClassVariable(&decl.typ.value, &class.variable));
+                    return Some(ClassVariable(&decl.typ.value, decl.typ.constraints, &class.variable));
                 }
             }
         }
@@ -149,7 +149,7 @@ fn find_global<'a>(module: &'a Module<Id>, offset: uint, name: &Name) -> Option<
     for class in module.classes.iter() {
         for decl in class.declarations.iter() {
             if decl.name == name.name {
-                return Some(ClassVariable(&decl.typ.value, &class.variable));
+                return Some(ClassVariable(&decl.typ.value, decl.typ.constraints, &class.variable));
             }
         }
     }
@@ -362,7 +362,6 @@ impl Instruction {
 }
 
 pub struct Compiler<'a> {
-    pub type_env: &'a TypeEnvironment<'a>,
     ///Hashmap containging class names mapped to the functions it contains
     pub instance_dictionaries: Vec<(~[(InternedStr, Type)], ~[uint])>,
     pub stackSize : uint,
@@ -374,12 +373,12 @@ pub struct Compiler<'a> {
 
 
 impl <'a> Compiler<'a> {
-    pub fn new(type_env: &'a TypeEnvironment) -> Compiler<'a> {
+    pub fn new() -> Compiler<'a> {
         let mut variables = ScopedMap::new();
         for (i, &(name, _)) in primitives().iter().enumerate() {
             variables.insert(Name { name: intern(name), uid: 0}, PrimitiveVariable(i));
         }
-        Compiler { type_env: type_env, instance_dictionaries: Vec::new(),
+        Compiler { instance_dictionaries: Vec::new(),
             stackSize : 0, assemblies: Vec::new(),
             module: None,
             variables: variables
@@ -424,6 +423,7 @@ impl <'a> Compiler<'a> {
         let mut comb = SuperCombinator::new();
         comb.assembly_id = self.assemblies.len();
         comb.typ = bind.name.typ.clone();
+        comb.name = bind.name.name.clone();
         debug!("Compiling binding {} :: {}", comb.name, comb.typ);
         let dict_arg = if bind.name.typ.constraints.len() > 0 { 1 } else { 0 };
         let mut instructions = Vec::new();
@@ -566,7 +566,7 @@ impl <'a> Compiler<'a> {
                             GlobalVariable(index) => { instructions.push(PushGlobal(index)); None }
                             ConstructorVariable(tag, arity) => { instructions.push(Pack(tag, arity)); None }
                             PrimitiveVariable(index) => { instructions.push(PushPrimitive(index)); None }
-                            ClassVariable(typ, var) => self.compile_instance_variable(expr.get_type(), instructions, &name.name, typ, var),
+                            ClassVariable(typ, constraints, var) => self.compile_instance_variable(expr.get_type(), instructions, &name.name, typ, constraints, var),
                             ConstraintVariable(index, bind_type, constraints) => {
                                 let x = self.compile_with_constraints(&name.name, expr.get_type(), bind_type, constraints, instructions);
                                 instructions.push(PushGlobal(index));
@@ -710,7 +710,7 @@ impl <'a> Compiler<'a> {
     }
 
     ///Compile a function which is defined in a class
-    fn compile_instance_variable(&self, actual_type: &Type, instructions: &mut Vec<Instruction>, name: &Name, typ: &Type, var: &TypeVariable) -> Option<(~[(InternedStr, Type)], ~[uint])> {
+    fn compile_instance_variable(&self, actual_type: &Type, instructions: &mut Vec<Instruction>, name: &Name, typ: &Type, constraints: &[Constraint], var: &TypeVariable) -> Option<(~[(InternedStr, Type)], ~[uint])> {
         match try_find_instance_type(var, typ, actual_type) {
             Some(typename) => {
                 //We should be able to retrieve the instance directly
@@ -733,7 +733,6 @@ impl <'a> Compiler<'a> {
                 }
             }
             None => {
-                let constraints = self.type_env.find_constraints(actual_type);
                 self.compile_with_constraints(name, actual_type, typ, constraints, instructions)
             }
         }
@@ -753,7 +752,7 @@ impl <'a> Compiler<'a> {
             _ => {
                 //get dictionary index
                 //push dictionary
-                let dictionary_key = self.type_env.find_specialized_instances(function_type, actual_type, constraints);
+                let dictionary_key = find_specialized_instances(function_type, actual_type, constraints);
                 let (index, dict) = self.find_dictionary_index(dictionary_key);
                 instructions.push(PushDictionary(index));
                 dict
@@ -979,7 +978,7 @@ pub fn compile_with_type_env(type_env: &mut TypeEnvironment, assemblies: &[&Asse
     }
     type_env.typecheck_module(&mut module);
     let core_module = do_lambda_lift(translate_module(module));
-    let mut compiler = Compiler::new(type_env);
+    let mut compiler = Compiler::new();
     for assem in assemblies.iter() {
         compiler.assemblies.push(*assem);
     }
@@ -998,7 +997,7 @@ pub fn compile_module(module: &str) -> IoResult<Vec<Assembly>> {
     let mut assemblies = Vec::new();
     for module in core_modules.iter() {
         let x = {
-            let mut compiler = Compiler::new(&mut type_env);
+            let mut compiler = Compiler::new();
             for a in assemblies.iter() {
                 compiler.assemblies.push(a);
             }
@@ -1182,7 +1181,7 @@ fn bench_prelude(b: &mut Bencher) {
     type_env.typecheck_module(&mut module);
     let core_module = do_lambda_lift(translate_module(module));
     b.iter(|| {
-        let mut compiler = Compiler::new(&type_env);
+        let mut compiler = Compiler::new();
         compiler.compile_module(&core_module)
     });
 }

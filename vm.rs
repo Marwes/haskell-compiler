@@ -428,7 +428,7 @@ fn compile_iter<T : Iterator<char>>(iterator: T) -> Assembly {
     typer.typecheck_module(&mut module);
     let core_module = do_lambda_lift(translate_module(module));
     
-    let mut compiler = Compiler::new(&typer);
+    let mut compiler = Compiler::new();
     compiler.compile_module(&core_module)
 }
 
