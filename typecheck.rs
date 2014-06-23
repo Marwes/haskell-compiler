@@ -121,6 +121,7 @@ pub struct TypeEnvironment<'a> {
     ///2: The name of the class
     ///3: The Type which the instance is defined for
     instances: Vec<(~[Constraint], InternedStr, Type)>,
+    classes: Vec<(~[Constraint], InternedStr)>,
     ///The current age for newly created variables.
     ///Age is used to determine whether variables need to be quantified or not.
     variable_age : int,
@@ -252,6 +253,7 @@ impl <'a> TypeEnvironment<'a> {
             local_types : HashMap::new(),
             constraints: HashMap::new(),
             instances: Vec::new(),
+            classes: Vec::new(),
             variable_age : 0 ,
         }
     }
@@ -301,6 +303,7 @@ impl <'a> TypeEnvironment<'a> {
                 quantify(0, &mut t);
                 self.namedTypes.insert(Name { name: type_decl.name.clone(), uid: 0 }, t);
             }
+            self.classes.push((class.constraints.clone(), class.name.clone()));
         }
         let data_definitions = module.dataDefinitions.clone();
         for instance in module.instances.mut_iter() {
@@ -478,7 +481,7 @@ impl <'a> TypeEnvironment<'a> {
     }
 
     ///Returns whether the type 'searched_type' has an instance for 'class'
-    fn has_instance(&self, class: InternedStr, searched_type: &Type) -> bool {
+    fn has_instance_(&self, class: InternedStr, searched_type: &Type) -> bool {
         for &(ref constraints, ref name, ref typ) in self.instances.iter() {
             if class == *name {
                 if self.check_instance_constraints(*constraints, typ, searched_type) {
@@ -496,6 +499,26 @@ impl <'a> TypeEnvironment<'a> {
             }
         }
         false
+    }
+
+    fn has_instance(&self, class: InternedStr, searched_type: &Type) -> bool {
+        if !self.has_instance_(class, searched_type) {
+            return false;
+        }
+        self.find_class_constraints(class)
+            .unwrap_or_else(|| fail!("Error: Missing class {}", class))
+            .iter()//Make sure we have an instance for all of the constraints
+            .all(|constraint| self.has_instance(constraint.class, searched_type))
+    }
+
+    fn find_class_constraints(&'a self, class: InternedStr) -> Option<&'a [Constraint]> {
+        self.classes.iter()
+            .find(|& &(_, ref name)| *name == class)
+            .map(|x| x.ref0().as_slice())
+            .or_else(|| self.assemblies.iter()
+                .filter_map(|types| types.find_class(class))//Find the class
+                .next()//next will get us the first class (but should only be one)
+                .map(|class| class.constraints.as_slice()))
     }
 
     ///Checks whether 'actual_type' fulfills all the constraints that the instance has.
@@ -826,8 +849,7 @@ impl <'a> TypeEnvironment<'a> {
                 let bindIndex = graph.get_vertex(*index).value;
                 let binds = bindings.get_mut(bindIndex);
                 for constraint in binds[0].typ.constraints.iter() {
-                    self.constraints.find_or_insert(constraint.variables[0].clone(), Vec::new())
-                        .push(constraint.class.clone());
+                    self.insert_constraint(&constraint.variables[0], constraint.class.clone());
                 }
                 for bind in binds.mut_iter() {
                     {
@@ -885,15 +907,49 @@ impl <'a> TypeEnvironment<'a> {
                 let mut subs = Substitution { subs: HashMap::new() };
                 freshen(self, &mut subs, &mut typ);
                 for c in typ.constraints.iter() {
-                    self.constraints.find_or_insert(c.variables[0].clone(), Vec::new())
-                        .push(c.class.clone());
+                    self.insert_constraint(&c.variables[0], c.class.clone());
                 }
                 Some(typ.value)
             }
             None => None
         }
     }
+    
+    
+    fn insert_constraint(&mut self, var: &TypeVariable, classname: InternedStr) {
+        let mut constraints = self.constraints.pop(var).unwrap_or(Vec::new());
+        self.insert_constraint_(&mut constraints, var, classname);
+        self.constraints.insert(var.clone(), constraints);
+    }
+    fn insert_constraint_(&mut self, constraints: &mut Vec<InternedStr>, var: &TypeVariable, classname: InternedStr) {
+        let mut ii = 0;
+        while ii < constraints.len() {
+            if *constraints.get(ii) == classname || self.exists_as_super_class(*constraints.get(ii), classname) {
+                //'classname' was already in the list, or existed as a sub class to the element
+                return;
+            }
+            if self.exists_as_super_class(classname, *constraints.get(ii)) {
+                //There is already a constraint which is a super class of classname,
+                //replace that class with this new one
+                *constraints.get_mut(ii) = classname;
+                return;
+            }
+            ii += 1;
+        }
+        constraints.push(classname);
+    }
 
+    ///Checks if 'classname' exists as a super class to any
+    fn exists_as_super_class(&self, constraint: InternedStr, classname: InternedStr) -> bool {
+        match self.find_class_constraints(constraint) {
+            Some(constraints) => {
+                constraints.iter()
+                    .any(|super_class| super_class.class == classname
+                                    || self.exists_as_super_class(super_class.class, classname))
+            }
+            None => false
+        }
+    }
 }
 
 
@@ -1101,14 +1157,10 @@ fn freshen_var(env: &mut TypeEnvironment, subs: &mut Substitution, constraints: 
         subs.subs.insert(id.clone(), new.clone());
         {
             let mut constraints_for_id = constraints.iter()
-                .filter(|c| c.variables[0] == *id)
-                .peekable();
+                .filter(|c| c.variables[0] == *id);
             //Add all the constraints to he environment for the 'new' variable
-            if !constraints_for_id.is_empty() {
-                let new_constraints = env.constraints.find_or_insert(new.var().clone(), Vec::new());
-                for c in constraints_for_id {
-                    new_constraints.push(c.class.clone());
-                }
+            for c in constraints_for_id {
+                env.insert_constraint(new.var(), c.class.clone());
             }
         }
         Some(new)
@@ -1154,11 +1206,8 @@ fn bind_variable(env: &mut TypeEnvironment, subs: &mut Substitution, var: &TypeV
                 }
                 match env.constraints.pop(var) {
                     Some(constraints) => {
-                        let to_update = env.constraints.find_or_insert(var2.clone(), Vec::new());
                         for c in constraints.iter() {
-                            if to_update.iter().find(|x| *x == c) == None {
-                                to_update.push(c.clone());
-                            }
+                            env.insert_constraint(var2, c.clone());
                         }
                     }
                     None => ()
@@ -1670,6 +1719,70 @@ instance Test Int where
 main = test [1]";
 
     do_typecheck(file);
+}
+
+#[test]
+fn typecheck_super_class() {
+    let mut parser = Parser::new(
+r"data Bool = True | False
+
+class Eq a where
+    (==) :: a -> a -> Bool
+
+class Eq a => Ord a where
+    (<) :: a -> a -> Bool
+
+instance Eq Bool where
+    (==) True True = True
+    (==) False False = True
+    (==) _ _ = False
+
+instance Ord Bool where
+    (<) False True = True
+    (<) _ _ = False
+
+test x y = case x < y of
+    True -> True
+    False -> x == y
+
+".chars());
+
+    let mut module = rename_module(parser.module());
+
+    let mut env = TypeEnvironment::new();
+    env.typecheck_module(&mut module);
+
+    let typ = &module.bindings[0].typ;
+    let a = Type::new_var(intern("a"));
+    assert_eq!(typ.value, function_type_(a.clone(), function_type_(a.clone(), bool_type())));
+    assert_eq!(typ.constraints.len(), 1);
+    assert_eq!(typ.constraints[0].class, intern("Ord"));
+}
+
+#[test]
+#[should_fail]
+fn typecheck_missing_super_class() {
+    let mut parser = Parser::new(
+r"data Bool = True | False
+
+class Eq a where
+    (==) :: a -> a -> Bool
+
+class Eq a => Ord a where
+    (<) :: a -> a -> Bool
+
+instance Ord Bool where
+    (<) False True = True
+    (<) _ _ = False
+
+test y = False < y
+
+".chars());
+
+    let mut module = rename_module(parser.module());
+
+    let mut env = TypeEnvironment::new();
+    env.typecheck_module(&mut module);
 }
 
 #[test]
