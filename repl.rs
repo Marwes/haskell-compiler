@@ -32,7 +32,7 @@ fn compile_expr(prelude: &Assembly, expr_str: &str) -> Assembly {
     let temp_module = Module::from_expr(translate_expr(expr));
     let m = do_lambda_lift(temp_module);
     
-    let mut compiler = Compiler::new(&type_env);
+    let mut compiler = Compiler::new();
     compiler.assemblies.push(prelude);
     compiler.compile_module(&m)
 }

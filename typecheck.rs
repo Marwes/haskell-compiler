@@ -1437,6 +1437,31 @@ pub fn case(expr : TypedExpr, alts: ~[Alternative]) -> TypedExpr {
     TypedExpr::new(Case(box expr, alts))
 }
 
+///Parses a module, renames and typechecks it, as well as all of its imported modules
+pub fn typecheck_module(module: &str) -> IoResult<Vec<Module<Name>>> {
+    use parser::parse_modules;
+    use renamer::rename_modules;
+    let mut modules = rename_modules(try!(parse_modules(module)));
+    let mut env = TypeEnvironment::new();
+    for module in modules.mut_iter() {
+        env.typecheck_module(module);
+    }
+    Ok(modules)
+}
+
+
+#[cfg(test)]
+pub mod test {
+use interner::*;
+use module::*;
+use typecheck::*;
+use renamer::*;
+
+use parser::Parser;
+use std::io::File;
+
+use test::Bencher;
+
 pub fn do_typecheck(input: &str) -> Module<Name> {
     do_typecheck_with(input, [])
 }
@@ -1451,30 +1476,6 @@ pub fn do_typecheck_with(input: &str, types: &[&DataTypes]) -> Module<Name> {
     module
 }
 
-///Parses a module, renames and typechecks it, as well as all of its imported modules
-pub fn typecheck_module(module: &str) -> IoResult<(Vec<Module<Name>>, TypeEnvironment)> {
-    use parser::parse_modules;
-    use renamer::rename_modules;
-    let mut modules = rename_modules(try!(parse_modules(module)));
-    let mut env = TypeEnvironment::new();
-    for module in modules.mut_iter() {
-        env.typecheck_module(module);
-    }
-    Ok((modules, env))
-}
-
-
-#[cfg(test)]
-mod test {
-use interner::*;
-use module::*;
-use typecheck::*;
-use renamer::*;
-
-use parser::Parser;
-use std::io::File;
-
-use test::Bencher;
 
 #[test]
 fn application() {

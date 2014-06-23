@@ -990,7 +990,7 @@ pub fn compile_with_type_env(type_env: &mut TypeEnvironment, assemblies: &[&Asse
 pub fn compile_module(module: &str) -> IoResult<Vec<Assembly>> {
     use typecheck::typecheck_module;
     use compiler::Compiler;
-    let (modules, mut type_env) = try!(typecheck_module(module));
+    let modules = try!(typecheck_module(module));
     let core_modules: Vec<Module<Id<Name>>> = modules.move_iter()
         .map(|module| do_lambda_lift(translate_module(module)))
         .collect();
