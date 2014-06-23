@@ -154,9 +154,7 @@ fn import(&mut self) -> Import {
 
 fn class(&mut self) -> Class {
 	self.require_next(CLASS);
-
-	let classname = self.require_next(NAME).value.clone();
-	let typeVariableName = self.require_next(NAME).value.clone();
+    let (constraints, typ) = self.constrained_type();
 
 	self.require_next(WHERE);
 	self.require_next(LBRACE);
@@ -165,8 +163,17 @@ fn class(&mut self) -> Class {
 	self.lexer.backtrack();
 	self.require_next(RBRACE);
 
-    //TODO infer kind from class?
-	Class { name : classname, variable: TypeVariable { id: typeVariableName, kind: unknown_kind.clone(), age: 0 }, declarations : declarations }
+    match typ {
+        TypeApplication(box TypeConstructor(classname), box TypeVariable(var)) => {
+            Class {
+                constraints: constraints,
+                name: classname.name,
+                variable: var,
+                declarations: declarations
+            }
+        }
+        _ => fail!("Parse error in class declaration header")
+    }
 }
 
 fn instance(&mut self) -> Instance {
@@ -1148,6 +1155,22 @@ instance Eq a => Eq [a] where
     assert_eq!(module.instances[0].classname, intern("Eq"));
     assert_eq!(module.instances[0].constraints[0].class, intern("Eq"));
     assert_eq!(module.instances[0].typ, list_type(Type::new_var(intern("a"))));
+}
+#[test]
+fn parse_super_class() {
+    let mut parser = Parser::new(
+r"class Eq a => Ord a where
+    (<) :: a -> a -> Bool
+
+".chars());
+    let module = parser.module();
+
+    let cls = module.classes[0];
+    let a = Type::new_var(intern("a")).var().clone();
+    assert_eq!(cls.name, intern("Ord"));
+    assert_eq!(cls.variable, a);
+    assert_eq!(cls.constraints[0].class, intern("Eq"));
+    assert_eq!(cls.constraints[0].variables[0], a);
 }
 #[test]
 fn parse_do_expr() {

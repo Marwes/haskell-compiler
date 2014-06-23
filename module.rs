@@ -23,6 +23,7 @@ pub struct Import {
 
 #[deriving(Clone)]
 pub struct Class<Ident = InternedStr> {
+    pub constraints: ~[Constraint],
     pub name : Ident,
     pub variable : TypeVariable,
     pub declarations : ~[TypeDeclaration]
