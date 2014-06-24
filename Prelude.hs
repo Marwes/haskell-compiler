@@ -47,6 +47,10 @@ instance Eq Int where
     (==) x y = primIntEQ x y
     (/=) x y = not (x == y)
 
+instance Eq Double where
+    (==) x y = primDoubleEQ x y
+    (/=) x y = not (x == y)
+
 instance Eq a => Eq [a] where
     (==) (x:xs) (y:ys) = (x == y) && (xs == ys)
     (==) [] [] = True
@@ -103,7 +107,7 @@ instance Integral Int where
 
 data Ordering = LT | EQ | GT
 
-class Ord a where
+class Eq a => Ord a where
     compare :: a -> a -> Ordering
     (<) :: a -> a -> Bool
     (>) :: a -> a -> Bool

@@ -337,6 +337,23 @@ impl <'a> TypeEnvironment<'a> {
                     binding.typ.constraints = FromVec::from_vec(vec_context);
                 }
             }
+            {
+                let mut missing_super_classes = self.find_class_constraints(class.name)
+                    .unwrap_or_else(|| fail!("Error: Missing class {}", class.name))
+                    .iter()//Make sure we have an instance for all of the constraints
+                    .filter(|constraint| !self.has_instance(constraint.class, &instance.typ))
+                    .peekable();
+                if !missing_super_classes.is_empty() {
+                    let mut buffer = String::new();
+                    buffer.push_str(missing_super_classes.next().unwrap().class.as_slice());
+                    for constraint in missing_super_classes {
+                        buffer.push_str(", ");
+                        buffer.push_str(constraint.class.as_slice());
+                    }
+                    fail!("The type {} does not have all necessary super class instances required for {}.\n Missing: {}",
+                        instance.typ, instance.classname, buffer);
+                }
+            }
             self.instances.push((instance.constraints.clone(), instance.classname.clone(), instance.typ.clone()));
         }
         
@@ -481,7 +498,7 @@ impl <'a> TypeEnvironment<'a> {
     }
 
     ///Returns whether the type 'searched_type' has an instance for 'class'
-    fn has_instance_(&self, class: InternedStr, searched_type: &Type) -> bool {
+    fn has_instance(&self, class: InternedStr, searched_type: &Type) -> bool {
         for &(ref constraints, ref name, ref typ) in self.instances.iter() {
             if class == *name {
                 if self.check_instance_constraints(*constraints, typ, searched_type) {
@@ -499,16 +516,6 @@ impl <'a> TypeEnvironment<'a> {
             }
         }
         false
-    }
-
-    fn has_instance(&self, class: InternedStr, searched_type: &Type) -> bool {
-        if !self.has_instance_(class, searched_type) {
-            return false;
-        }
-        self.find_class_constraints(class)
-            .unwrap_or_else(|| fail!("Error: Missing class {}", class))
-            .iter()//Make sure we have an instance for all of the constraints
-            .all(|constraint| self.has_instance(constraint.class, searched_type))
     }
 
     fn find_class_constraints(&'a self, class: InternedStr) -> Option<&'a [Constraint]> {
@@ -1484,6 +1491,17 @@ pub fn let_(bindings : ~[Binding], expr : TypedExpr) -> TypedExpr {
 #[cfg(test)]
 pub fn case(expr : TypedExpr, alts: ~[Alternative]) -> TypedExpr {
     TypedExpr::new(Case(box expr, alts))
+}
+
+pub fn typecheck_string(module: &str) -> IoResult<Vec<Module<Name>>> {
+    use parser::parse_string;
+    use renamer::rename_modules;
+    let mut modules = rename_modules(try!(parse_string(module)));
+    let mut env = TypeEnvironment::new();
+    for module in modules.mut_iter() {
+        env.typecheck_module(module);
+    }
+    Ok(modules)
 }
 
 ///Parses a module, renames and typechecks it, as well as all of its imported modules

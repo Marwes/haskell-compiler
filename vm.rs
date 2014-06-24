@@ -460,10 +460,19 @@ fn extract_result(node: Node_) -> Option<VMResult> {
     }
 }
 
+pub fn execute_main_string(module: &str) -> IoResult<Option<VMResult>> {
+    let assemblies = try!(compile_string(module));
+    execute_main_module_(assemblies)
+}
+
 ///Takes a module with a main function and compiles it and all its imported modules
 ///and then executes the main function
 pub fn execute_main_module(modulename: &str) -> IoResult<Option<VMResult>> {
     let assemblies = try!(compile_module(modulename));
+    execute_main_module_(assemblies)
+}
+
+fn execute_main_module_(assemblies: Vec<Assembly>) -> IoResult<Option<VMResult>> {
     let mut vm = VM::new();
     for assembly in assemblies.move_iter() {
         vm.add_assembly(assembly);
@@ -611,7 +620,7 @@ use std::path::Path;
 use std::io::File;
 use typecheck::TypeEnvironment;
 use compiler::{compile_with_type_env};
-use vm::{VM, evaluate, compile_file, compile_iter, execute_main_module, extract_result, VMResult, IntResult, DoubleResult, ConstructorResult};
+use vm::{VM, evaluate, compile_file, compile_iter, execute_main_module, execute_main_string, extract_result, VMResult, IntResult, DoubleResult, ConstructorResult};
 use interner::*;
 
 fn execute_main<T : Iterator<char>>(iterator: T) -> Option<VMResult> {
@@ -896,6 +905,18 @@ main = (test 2 [], test 100 [0], test 100 [0, 123])
 
 ".chars());
     assert_eq!(result, Some(ConstructorResult(0, vec!(IntResult(2), IntResult(1), IntResult(100)))));
+}
+
+#[test]
+fn use_super_class() {
+    let result = execute_main_string(
+r"
+import Prelude
+
+test x y = (x == y) || (x < y)
+main = (test (0 :: Int) 2) && not (test (1 :: Int) 0)")
+        .unwrap_or_else(|err| fail!("{}", err));
+    assert_eq!(result, Some(ConstructorResult(0, Vec::new())));
 }
 
 }

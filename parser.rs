@@ -966,22 +966,31 @@ fn encode_binding_identifier(instancename : InternedStr, bindingname : InternedS
     intern(buffer.as_slice())
 }
 
+pub fn parse_string(contents: &str) -> IoResult<Vec<Module>> {
+    let mut modules = Vec::new();
+    let mut visited = HashSet::new();
+    try!(parse_modules_(&mut visited, &mut modules, "<input>", contents));
+    Ok(modules)
+}
+
 ///Parses a module and all its imports
 ///If the modules contain a cyclic dependency fail is called.
 pub fn parse_modules(modulename: &str) -> IoResult<Vec<Module>> {
     let mut modules = Vec::new();
     let mut visited = HashSet::new();
-    try!(parse_modules_(&mut visited, &mut modules, modulename));
+    let contents = try!(get_contents(modulename));
+    try!(parse_modules_(&mut visited, &mut modules, modulename, contents.as_slice()));
     Ok(modules)
 }
 
-fn parse_modules_(visited: &mut HashSet<InternedStr>, modules: &mut Vec<Module>, modulename: &str) -> IoResult<()> {
-    let contents = {
-        let mut filename = String::from_str(modulename);
-        filename.push_str(".hs");
-        let mut file = File::open(&Path::new(filename.as_slice()));
-        try!(file.read_to_str())
-    };
+fn get_contents(modulename: &str) -> IoResult<String> {
+    let mut filename = String::from_str(modulename);
+    filename.push_str(".hs");
+    let mut file = File::open(&Path::new(filename.as_slice()));
+    file.read_to_str()
+}
+
+fn parse_modules_(visited: &mut HashSet<InternedStr>, modules: &mut Vec<Module>, modulename: &str, contents: &str) -> IoResult<()> {
     let mut parser = Parser::new(contents.as_slice().chars());
     let module = parser.module();
     let interned_name = intern(modulename);
@@ -992,7 +1001,9 @@ fn parse_modules_(visited: &mut HashSet<InternedStr>, modules: &mut Vec<Module>,
         }
         else if modules.iter().all(|m| m.name != import.module) {
             //parse the module if it is not parsed
-            try!(parse_modules_(visited, modules, import.module.as_slice()));
+            let import_module = import.module.as_slice();
+            let contents_next = try!(get_contents(import_module));
+            try!(parse_modules_(visited, modules, import_module, contents_next.as_slice()));
         }
     }
     visited.remove(&interned_name);

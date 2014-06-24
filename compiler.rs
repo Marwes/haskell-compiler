@@ -765,33 +765,39 @@ impl <'a> Compiler<'a> {
         if constraints.len() == 0 {
             fail!("Attempted to push dictionary member '{}' with no constraints", name)
         }
+        let mut ii = 0;
         for c in constraints.iter() {
-            match self.find_class(c.class) {
-                Some(class) => {
-                    for ii in range(0, class.declarations.len()) {
-                        if class.declarations[ii].name == name {
-                            return Some(ii)
-                        }
+            let result = self.walk_classes(c.class, &mut |class| {
+                for decl in class.declarations.iter() {
+                    if decl.name == name {
+                        return Some(ii)
                     }
+                    ii += 1;
                 }
-                None => fail!("Undefined instance {}", c)
+                None
+            });
+            if result.is_some() {
+                return result;
             }
         }
         None
     }
 
+    ///Walks through the class and all of its super classes, calling 'f' on each of them
+    ///Returning Some(..) from the function quits and returns that value
+    fn walk_classes<T>(&self, class: InternedStr, f: &mut |&Class| -> Option<T>) -> Option<T> {
+        let class = self.find_class(class)
+            .expect("Compiler error: Expected class");
+        //Look through the functions in any super classes first
+        class.constraints.iter()
+            .filter_map(|constraint| self.walk_classes(constraint.class, f))
+            .next()
+            .or_else(|| (*f)(class))
+    }
+
     ///Find the index of the instance dictionary for the constraints and types in 'constraints'
     ///Returns the index and possibly a new dictionary which needs to be added to the assemblies dictionaries
     fn find_dictionary_index(&self, constraints: &[(InternedStr, Type)]) -> (uint, Option<(~[(InternedStr, Type)], ~[uint])>) {
-
-
-        fn extract_applied_type<'a>(typ: &'a Type) -> &'a Type {
-            match typ {
-                &TypeApplication(ref lhs, _) => extract_applied_type(*lhs),
-                _ => typ
-            }
-        }
-
         //Check if the dictionary already exist
         let dict_len = self.instance_dictionaries.len();
         for ii in range(0, dict_len) {
@@ -804,32 +810,41 @@ impl <'a> Compiler<'a> {
             fail!("Error: Attempted to compile dictionary with no constraints at <unknown>");
         }
         let mut function_indexes = Vec::new();
-        for &(ref class_name, ref typ) in constraints.iter() {
-            match self.find_class(*class_name) {
-                Some(class) => {
-                    assert!(class.declarations.len() > 0);
-                    for decl in class.declarations.iter() {
-                        let x = match extract_applied_type(typ) {
-                            &TypeConstructor(ref x) => x,
-                            _ => fail!("{}", typ)
-                        };
-                        let mut b = String::from_str("#");
-                        b.push_str(x.name.as_slice());
-                        b.push_str(decl.name.as_slice());
-                        let f = intern(b.as_slice());
-                        let name = Name { name: f, uid: 0 };
-                        match self.find(&name) {
-                            Some(GlobalVariable(index)) => {
-                                function_indexes.push(index as uint);
-                            }
-                            _ => fail!("Did not find function {}", name)
-                        }
-                    }
-                }
-                None => fail!("Could not find class '{}'", *class_name)
+        self.add_class(constraints, &mut function_indexes);
+        (dict_len, Some((constraints.to_owned(), FromVec::from_vec(function_indexes))))
+    }
+
+    fn add_class(&self, constraints: &[(InternedStr, Type)], function_indexes: &mut Vec<uint>) {
+
+        fn extract_applied_type<'a>(typ: &'a Type) -> &'a Type {
+            match typ {
+                &TypeApplication(ref lhs, _) => extract_applied_type(*lhs),
+                _ => typ
             }
         }
-        (dict_len, Some((constraints.to_owned(), FromVec::from_vec(function_indexes))))
+
+        for &(ref class_name, ref typ) in constraints.iter() {
+            self.walk_classes(*class_name, &mut |class| -> Option<()> {
+                for decl in class.declarations.iter() {
+                    let x = match extract_applied_type(typ) {
+                        &TypeConstructor(ref x) => x,
+                        _ => fail!("{}", typ)
+                    };
+                    let mut b = String::from_str("#");
+                    b.push_str(x.name.as_slice());
+                    b.push_str(decl.name.as_slice());
+                    let f = intern(b.as_slice());
+                    let name = Name { name: f, uid: 0 };
+                    match self.find(&name) {
+                        Some(GlobalVariable(index)) => {
+                            function_indexes.push(index as uint);
+                        }
+                        _ => fail!("Did not find function {}", name)
+                    }
+                }
+                None
+            });
+        }
     }
 
     ///Attempt to compile a binary primitive, returning true if it succeded
@@ -985,12 +1000,22 @@ pub fn compile_with_type_env(type_env: &mut TypeEnvironment, assemblies: &[&Asse
     compiler.compile_module(&core_module)
 }
 
+pub fn compile_string(module: &str) -> IoResult<Vec<Assembly>> {
+    use typecheck::typecheck_string;
+    let modules = try!(typecheck_string(module));
+    compile_module_(modules)
+}
+
 ///Takes a module name and does everything needed up to and including compiling the module
 ///and its imported modules
 pub fn compile_module(module: &str) -> IoResult<Vec<Assembly>> {
     use typecheck::typecheck_module;
-    use compiler::Compiler;
     let modules = try!(typecheck_module(module));
+    compile_module_(modules)
+}
+
+fn compile_module_(modules: Vec<::module::Module<Name>>) -> IoResult<Vec<Assembly>> {
+    use compiler::Compiler;
     let core_modules: Vec<Module<Id<Name>>> = modules.move_iter()
         .map(|module| do_lambda_lift(translate_module(module)))
         .collect();
