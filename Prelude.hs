@@ -174,6 +174,34 @@ instance Ord Double where
         True -> x
         False -> y
 
+instance Ord Bool where
+    compare False True = LT
+    compare True False = GT
+    compare _ _ = EQ
+    
+    (<) x y = case compare x y of
+        LT -> True
+        EQ -> False
+        GT -> False
+    (>) x y = case compare x y of
+        LT -> False
+        EQ -> False
+        GT -> True
+    (<=) x y = case compare x y of
+        LT -> True
+        EQ -> True
+        GT -> False
+    (>=) x y = case compare x y of
+        LT -> False
+        EQ -> True
+        GT -> True
+    min x y = case x < y of
+        True -> x
+        False -> y
+    max x y = case x > y of
+        True -> x
+        False -> y
+
 class Functor f where
     fmap :: (a -> b) -> f a -> f b
 
