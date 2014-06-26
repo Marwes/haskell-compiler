@@ -11,7 +11,7 @@ use std::io::IoResult;
 use core::translate::{translate_module};
 use lambda_lift::do_lambda_lift;
 use renamer::rename_module;
-use primitive::primitives;
+use builtins::builtins;
 
 #[deriving(PartialEq, Clone, Show)]
 pub enum Instruction {
@@ -55,7 +55,7 @@ pub enum Instruction {
     JumpFalse(uint),
     PushDictionary(uint),
     PushDictionaryMember(uint),
-    PushPrimitive(uint)
+    PushBuiltin(uint)
 }
 #[deriving(Show)]
 enum Var<'a> {
@@ -64,7 +64,7 @@ enum Var<'a> {
     ConstructorVariable(u16, u16),
     ClassVariable(&'a Type, &'a [Constraint], &'a TypeVariable),
     ConstraintVariable(uint, &'a Type, &'a[Constraint]),
-    PrimitiveVariable(uint)
+    BuiltinVariable(uint)
 }
 
 impl <'a> Clone for Var<'a> {
@@ -75,7 +75,7 @@ impl <'a> Clone for Var<'a> {
             &ConstructorVariable(x, y) => ConstructorVariable(x, y),
             &ClassVariable(x, y, z) => ClassVariable(x, y, z),
             &ConstraintVariable(x, y, z) => ConstraintVariable(x, y, z),
-            &PrimitiveVariable(x) => PrimitiveVariable(x)
+            &BuiltinVariable(x) => BuiltinVariable(x)
         }
     }
 }
@@ -356,7 +356,7 @@ impl Instruction {
             Split(s) => (s as int) - 1, 
             Pack(_, s) => 1 - (s as int),
             CaseJump(..) | Jump(..) | JumpFalse(..) => 0,
-            PushDictionary(..) | PushDictionaryMember(..) | PushPrimitive(..) => 1
+            PushDictionary(..) | PushDictionaryMember(..) | PushBuiltin(..) => 1
         }
     }
 }
@@ -375,8 +375,8 @@ pub struct Compiler<'a> {
 impl <'a> Compiler<'a> {
     pub fn new() -> Compiler<'a> {
         let mut variables = ScopedMap::new();
-        for (i, &(name, _)) in primitives().iter().enumerate() {
-            variables.insert(Name { name: intern(name), uid: 0}, PrimitiveVariable(i));
+        for (i, &(name, _)) in builtins().iter().enumerate() {
+            variables.insert(Name { name: intern(name), uid: 0}, BuiltinVariable(i));
         }
         Compiler { instance_dictionaries: Vec::new(),
             stackSize : 0, assemblies: Vec::new(),
@@ -565,7 +565,7 @@ impl <'a> Compiler<'a> {
                             StackVariable(index) => { instructions.push(Push(index)); None }
                             GlobalVariable(index) => { instructions.push(PushGlobal(index)); None }
                             ConstructorVariable(tag, arity) => { instructions.push(Pack(tag, arity)); None }
-                            PrimitiveVariable(index) => { instructions.push(PushPrimitive(index)); None }
+                            BuiltinVariable(index) => { instructions.push(PushBuiltin(index)); None }
                             ClassVariable(typ, constraints, var) => self.compile_instance_variable(expr.get_type(), instructions, &name.name, typ, constraints, var),
                             ConstraintVariable(index, bind_type, constraints) => {
                                 let x = self.compile_with_constraints(&name.name, expr.get_type(), bind_type, constraints, instructions);

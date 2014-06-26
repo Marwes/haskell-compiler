@@ -4,7 +4,7 @@ use std::vec::FromVec;
 use std::io::IoResult;
 use module::*;
 use graph::{Graph, VertexIndex, strongly_connected_components};
-use primitive::primitives;
+use builtins::builtins;
 use renamer::*;
 use interner::*;
 
@@ -236,7 +236,7 @@ impl <'a> TypeEnvironment<'a> {
         insert_to(&mut globals, "primDoubleToInt", function_type_(double_type(), int_type()));
         let var = Generic(Type::new_var_kind(intern("a"), star_kind.clone()).var().clone());
         
-        for (name, typ) in primitives().move_iter() {
+        for (name, typ) in builtins().move_iter() {
             insert_to(&mut globals, name, typ);
         }
         let list = list_type(var.clone());

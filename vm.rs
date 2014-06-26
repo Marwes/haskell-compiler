@@ -9,7 +9,7 @@ use parser::Parser;
 use core::translate::translate_module;
 use lambda_lift::do_lambda_lift;
 use renamer::rename_module;
-use vm::primitive::{PrimFun, get_primitive};
+use vm::primitive::{BuiltinFun, get_builtin};
 use interner::*;
 
 enum Node_<'a> {
@@ -21,7 +21,7 @@ enum Node_<'a> {
     Indirection(Node<'a>),
     Constructor(u16, Vec<Node<'a>>),
     Dictionary(&'a [uint]),
-    PrimitiveFunction(uint, PrimFun)
+    BuiltinFunction(uint, BuiltinFun)
 }
 impl <'a> Clone for Node_<'a> {
     fn clone(&self) -> Node_<'a> {
@@ -34,7 +34,7 @@ impl <'a> Clone for Node_<'a> {
             &Indirection(ref n) => Indirection(n.clone()),
             &Constructor(ref tag, ref args) => Constructor(tag.clone(), args.clone()),
             &Dictionary(dict) => Dictionary(dict),
-            &PrimitiveFunction(arity, f) => PrimitiveFunction(arity, f)
+            &BuiltinFunction(arity, f) => BuiltinFunction(arity, f)
         }
     }
 }
@@ -112,7 +112,7 @@ impl <'a> fmt::Show for Node_<'a> {
                 }
             }
             &Dictionary(ref dict) => write!(f, "{}", dict),
-            &PrimitiveFunction(..) => write!(f, "<extern function>")
+            &BuiltinFunction(..) => write!(f, "<extern function>")
         }
     }
 }
@@ -230,9 +230,9 @@ impl <'a> VM {
                     let sc = &self_.assembly.get(assembly_index).superCombinators[index];
                     stack.push(Node::new(Combinator(sc)));
                 }
-                PushPrimitive(index) => {
-                    let (arity, f) = get_primitive(index);
-                    stack.push(Node::new(PrimitiveFunction(arity, f)));
+                PushBuiltin(index) => {
+                    let (arity, f) = get_builtin(index);
+                    stack.push(Node::new(BuiltinFunction(arity, f)));
                 }
                 Mkap => {
                     assert!(stack.len() >= 2);
@@ -303,7 +303,7 @@ impl <'a> VM {
                                 new_stack.pop().unwrap()
                             });
                         }
-                        PrimitiveFunction(arity, func) => {
+                        BuiltinFunction(arity, func) => {
                             unwind(&mut i, arity, stack, |new_stack| func(self_, new_stack.as_slice()));
                         }
                         Indirection(node) => {
@@ -493,10 +493,10 @@ fn execute_main_module_(assemblies: Vec<Assembly>) -> IoResult<Option<VMResult>>
 mod primitive {
 
     use std::io::fs::File;
-    use vm::{VM, execute, deepseq, Node, Node_, Application, Constructor, PrimitiveFunction, Char};
+    use vm::{VM, execute, deepseq, Node, Node_, Application, Constructor, BuiltinFunction, Char};
     use compiler::{Instruction, Eval};
 
-    pub fn get_primitive(i: uint) -> (uint, PrimFun) {
+    pub fn get_builtin(i: uint) -> (uint, BuiltinFun) {
         match i {
             0 => (1, error),
             1 => (2, seq),
@@ -508,7 +508,7 @@ mod primitive {
         }
     }
 
-    pub type PrimFun = extern "Rust" fn <'a>(&'a VM, &[Node<'a>]) -> Node<'a>;
+    pub type BuiltinFun = extern "Rust" fn <'a>(&'a VM, &[Node<'a>]) -> Node<'a>;
 
     fn error<'a>(vm: &'a VM, stack: &[Node<'a>]) -> Node<'a> {
         let mut vec = Vec::new();
@@ -534,7 +534,7 @@ mod primitive {
         //             0                                      1                        2 
         //(a, RealWorld)
         let aw = Node::new(Application(stack[0].clone(), stack[2].clone()));
-        let p = Node::new(PrimitiveFunction(2, pass));
+        let p = Node::new(BuiltinFunction(2, pass));
         Node::new(Application(Node::new(Application(p, aw)), stack[1].clone()))
     }
     fn pass<'a>(vm: &'a VM, stack: &[Node<'a>]) -> Node<'a> {
