@@ -64,18 +64,49 @@ enum Var<'a> {
     ConstructorVariable(u16, u16),
     ClassVariable(&'a Type, &'a [Constraint], &'a TypeVariable),
     ConstraintVariable(uint, &'a Type, &'a[Constraint]),
-    BuiltinVariable(uint)
+    BuiltinVariable(uint),
+    PrimitiveVariable(uint, Instruction)
 }
+
+static unary_primitives: &'static [(&'static str, Instruction)] = &[
+    ("primIntToDouble", IntToDouble),
+    ("primDoubleToInt", DoubleToInt),
+];
+
+static binary_primitives: &'static [(&'static str, Instruction)] = &[
+    ("primIntAdd", Add),
+    ("primIntSubtract", Sub),
+    ("primIntMultiply", Multiply),
+    ("primIntDivide", Divide),
+    ("primIntRemainder", Remainder),
+    ("primIntEQ", IntEQ),
+    ("primIntLT", IntLT),
+    ("primIntLE", IntLE),
+    ("primIntGT", IntGT),
+    ("primIntGE", IntGE),
+    ("primDoubleAdd", DoubleAdd),
+    ("primDoubleSubtract", DoubleSub),
+    ("primDoubleMultiply", DoubleMultiply),
+    ("primDoubleDivide", DoubleDivide),
+    ("primDoubleRemainder", DoubleRemainder),
+    ("primDoubleEQ", DoubleEQ),
+    ("primDoubleLT", DoubleLT),
+    ("primDoubleLE", DoubleLE),
+    ("primDoubleGT", DoubleGT),
+    ("primDoubleGE", DoubleGE),
+];
+
 
 impl <'a> Clone for Var<'a> {
     fn clone(&self) -> Var<'a> {
-        match self {
-            &StackVariable(x) => StackVariable(x),
-            &GlobalVariable(x) => GlobalVariable(x),
-            &ConstructorVariable(x, y) => ConstructorVariable(x, y),
-            &ClassVariable(x, y, z) => ClassVariable(x, y, z),
-            &ConstraintVariable(x, y, z) => ConstraintVariable(x, y, z),
-            &BuiltinVariable(x) => BuiltinVariable(x)
+        match *self {
+            StackVariable(x) => StackVariable(x),
+            GlobalVariable(x) => GlobalVariable(x),
+            ConstructorVariable(x, y) => ConstructorVariable(x, y),
+            ClassVariable(x, y, z) => ClassVariable(x, y, z),
+            ConstraintVariable(x, y, z) => ConstraintVariable(x, y, z),
+            BuiltinVariable(x) => BuiltinVariable(x),
+            PrimitiveVariable(x, y) => PrimitiveVariable(x, y)
         }
     }
 }
@@ -361,6 +392,11 @@ impl Instruction {
     }
 }
 
+enum ArgList<'a> {
+    Cons(&'a Expr<Id>, &'a ArgList<'a>),
+    Nil
+}
+
 pub struct Compiler<'a> {
     ///Hashmap containging class names mapped to the functions it contains
     pub instance_dictionaries: Vec<(~[(InternedStr, Type)], ~[uint])>,
@@ -377,6 +413,12 @@ impl <'a> Compiler<'a> {
         let mut variables = ScopedMap::new();
         for (i, &(name, _)) in builtins().iter().enumerate() {
             variables.insert(Name { name: intern(name), uid: 0}, BuiltinVariable(i));
+        }
+        for &(name, instruction) in binary_primitives.iter() {
+            variables.insert(Name { name: intern(name), uid: 0 }, PrimitiveVariable(2, instruction));
+        }
+        for &(name, instruction) in unary_primitives.iter() {
+            variables.insert(Name { name: intern(name), uid: 0 }, PrimitiveVariable(1, instruction));
         }
         Compiler { instance_dictionaries: Vec::new(),
             stackSize : 0, assemblies: Vec::new(),
@@ -459,7 +501,7 @@ impl <'a> Compiler<'a> {
     }
     
     ///Find a variable by walking through the stack followed by all globals
-    fn find<'r>(&'r self, identifier : &Name) -> Option<Var<'r>> {
+    fn find(&self, identifier : &Name) -> Option<Var<'a>> {
         self.variables.find(identifier).map(|x| x.clone())
         .or_else(|| {
             match self.module {
@@ -556,33 +598,7 @@ impl <'a> Compiler<'a> {
     fn compile(&mut self, expr : &Expr<Id>, instructions : &mut Vec<Instruction>, strict: bool) {
         match expr {
             &Identifier(ref name) => {
-                //When compiling a variable which has constraints a new instance dictionary
-                //might be created which is returned here and added to the assembly
-                let maybe_new_dict = match self.find(&name.name) {
-                    None => fail!("Error: Undefined variable {}", *name),
-                    Some(var) => {
-                        match var {
-                            StackVariable(index) => { instructions.push(Push(index)); None }
-                            GlobalVariable(index) => { instructions.push(PushGlobal(index)); None }
-                            ConstructorVariable(tag, arity) => { instructions.push(Pack(tag, arity)); None }
-                            BuiltinVariable(index) => { instructions.push(PushBuiltin(index)); None }
-                            ClassVariable(typ, constraints, var) => self.compile_instance_variable(expr.get_type(), instructions, &name.name, typ, constraints, var),
-                            ConstraintVariable(index, bind_type, constraints) => {
-                                let x = self.compile_with_constraints(&name.name, expr.get_type(), bind_type, constraints, instructions);
-                                instructions.push(PushGlobal(index));
-                                instructions.push(Mkap);
-                                x
-                            }
-                        }
-                    }
-                };
-                match maybe_new_dict {
-                    Some(dict) => self.instance_dictionaries.push(dict),
-                    None => ()
-                }
-                if strict {
-                    instructions.push(Eval);
-                }
+                self.compile_apply(expr, Nil, instructions, strict);
             }
             &Literal(ref literal) => {
                 match &literal.value {
@@ -631,22 +647,7 @@ impl <'a> Compiler<'a> {
                 }
             }
             &Apply(ref func, ref arg) => {
-                if !self.primitive(*func, *arg, instructions) {
-                    self.compile(*arg, instructions, false);
-                    //The stack has increased by 1 until the function compiles add reduces it wtih Pack or Mkap
-                    self.stackSize += 1;
-                    self.compile(*func, instructions, false);
-                    self.stackSize -= 1;
-                    match instructions.get(instructions.len() - 1) {
-                        &Pack(_, _) => (),//The application was a constructor so dont do Mkap and the Pack instruction is strict already
-                        _ => {
-                            instructions.push(Mkap);
-                            if strict {
-                                instructions.push(Eval);
-                            }
-                        }
-                    }
-                }
+                self.compile_apply(expr, Nil, instructions, strict);
             }
             &Let(ref bindings, ref body) => {
                 self.scope(|this| {
@@ -706,6 +707,91 @@ impl <'a> Compiler<'a> {
                 }
             }
             &Lambda(_, _) => fail!("Error: Found non-lifted lambda when compiling expression")
+        }
+    }
+    fn compile_apply<'a>(&mut self, expr: &Expr<Id>, args: ArgList<'a>, instructions: &mut Vec<Instruction>, strict: bool) {
+        //Unroll the applications until the function is found
+        match *expr {
+            Apply(ref func, ref arg) => {
+                return self.compile_apply(*func, Cons(*arg, &args), instructions, strict)
+            }
+            _ => ()
+        }
+        //Tracks if the application is a regular function in which case we need to add Mkap instructions at the end
+        let mut is_function = true;
+        let arg_length;
+        match *expr {
+            Identifier(ref name) => {
+                let mut maybe_new_dict = None;
+                {
+                    //When compiling a variable which has constraints a new instance dictionary
+                    //might be created which is returned here and added to the assembly
+                    let mut is_primitive = false;
+                    let var = self.find(&name.name)
+                        .unwrap_or_else(|| fail!("Error: Undefined variable {}", *name));
+                    match var {
+                        PrimitiveVariable(num_args, instruction) => is_primitive = true,
+                        _ => ()
+                    }
+                    arg_length = self.compile_args(&args, instructions, is_primitive);
+                    match var {
+                        StackVariable(index) => { instructions.push(Push(index)); }
+                        GlobalVariable(index) => { instructions.push(PushGlobal(index)); }
+                        ConstructorVariable(tag, arity) => {
+                            instructions.push(Pack(tag, arity));
+                            is_function = false;
+                        }
+                        BuiltinVariable(index) => { instructions.push(PushBuiltin(index)); }
+                        ClassVariable(typ, constraints, var) => {
+                            maybe_new_dict = self.compile_instance_variable(expr.get_type(), instructions, &name.name, typ, constraints, var);
+                            }
+                        ConstraintVariable(index, bind_type, constraints) => {
+                            maybe_new_dict = self.compile_with_constraints(&name.name, expr.get_type(), bind_type, constraints, instructions);
+                            instructions.push(PushGlobal(index));
+                            instructions.push(Mkap);
+                        }
+                        PrimitiveVariable(num_args, instruction) => {
+                            if num_args == arg_length {
+                                instructions.push(instruction);
+                            }
+                            else {
+                                fail!("Expected {} arguments for {}, got {}", num_args, name, arg_length)
+                            }
+                            is_function = false;
+                        }
+                    }
+                }
+                match maybe_new_dict {
+                    Some(dict) => self.instance_dictionaries.push(dict),
+                    None => ()
+                }
+            }
+            _ => {
+                arg_length = self.compile_args(&args, instructions, strict);
+                self.compile(expr, instructions, strict);
+            }
+        }
+        self.stackSize -= arg_length;
+        if is_function {
+            for _ in range(0, arg_length) {
+                instructions.push(Mkap);
+            }
+            if strict {
+                instructions.push(Eval);
+            }
+        }
+    }
+
+    fn compile_args<'a>(&mut self, args: &ArgList<'a>, instructions: &mut Vec<Instruction>, strict: bool) -> uint {
+        match *args {
+            Cons(arg, rest) => {
+                let i = self.compile_args(rest, instructions, strict);
+                //The stack has increased by 1 until the function compiles and reduces it wtih Pack or Mkap
+                self.compile(arg, instructions, strict);
+                self.stackSize += 1;
+                i + 1
+            }
+            Nil => 0
         }
     }
 
@@ -844,72 +930,6 @@ impl <'a> Compiler<'a> {
                 }
                 None
             });
-        }
-    }
-
-    ///Attempt to compile a binary primitive, returning true if it succeded
-    fn primitive(&mut self, func: &Expr<Id>, arg: &Expr<Id>, instructions: &mut Vec<Instruction>) -> bool {
-        match func {
-            &Apply(ref prim_func, ref arg2) => {
-                let p: &Expr<Id> = *prim_func;
-                match p {
-                    &Identifier(ref name) => {
-                        //Binary functions
-                        let maybeOP = match name.name.name.as_slice() {
-                            "primIntAdd" => Some(Add),
-                            "primIntSubtract" => Some(Sub),
-                            "primIntMultiply" => Some(Multiply),
-                            "primIntDivide" => Some(Divide),
-                            "primIntRemainder" => Some(Remainder),
-                            "primIntEQ" => Some(IntEQ),
-                            "primIntLT" => Some(IntLT),
-                            "primIntLE" => Some(IntLE),
-                            "primIntGT" => Some(IntGT),
-                            "primIntGE" => Some(IntGE),
-                            "primDoubleAdd" => Some(DoubleAdd),
-                            "primDoubleSubtract" => Some(DoubleSub),
-                            "primDoubleMultiply" => Some(DoubleMultiply),
-                            "primDoubleDivide" => Some(DoubleDivide),
-                            "primDoubleRemainder" => Some(DoubleRemainder),
-                            "primDoubleEQ" => Some(DoubleEQ),
-                            "primDoubleLT" => Some(DoubleLT),
-                            "primDoubleLE" => Some(DoubleLE),
-                            "primDoubleGT" => Some(DoubleGT),
-                            "primDoubleGE" => Some(DoubleGE),
-                            _ => None
-                        };
-                        match maybeOP {
-                            Some(op) => {
-                                self.compile(arg, instructions, true);
-                                self.stackSize += 1;
-                                self.compile(*arg2, instructions, true);
-                                self.stackSize -= 1;
-                                instructions.push(op);
-                                true
-                            }
-                            None => false
-                        }
-                    }
-                    _ => false
-                }
-            }
-            &Identifier(ref name) => {
-                let n: &str = name.name.name.as_slice();
-                let maybeOP = match n {
-                    "primIntToDouble" => Some(IntToDouble),
-                    "primDoubleToInt" => Some(DoubleToInt),
-                    _ => None
-                };
-                match maybeOP {
-                    Some(op) => {
-                        self.compile(arg, instructions, true);
-                        instructions.push(op);
-                        true
-                    }
-                    None => false
-                }
-            }
-            _ => false
         }
     }
 
