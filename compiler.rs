@@ -722,48 +722,41 @@ impl <'a> Compiler<'a> {
         let arg_length;
         match *expr {
             Identifier(ref name) => {
-                let mut maybe_new_dict = None;
-                {
-                    //When compiling a variable which has constraints a new instance dictionary
-                    //might be created which is returned here and added to the assembly
-                    let mut is_primitive = false;
-                    let var = self.find(&name.name)
-                        .unwrap_or_else(|| fail!("Error: Undefined variable {}", *name));
-                    match var {
-                        PrimitiveVariable(num_args, instruction) => is_primitive = true,
-                        _ => ()
-                    }
-                    arg_length = self.compile_args(&args, instructions, is_primitive);
-                    match var {
-                        StackVariable(index) => { instructions.push(Push(index)); }
-                        GlobalVariable(index) => { instructions.push(PushGlobal(index)); }
-                        ConstructorVariable(tag, arity) => {
-                            instructions.push(Pack(tag, arity));
-                            is_function = false;
-                        }
-                        BuiltinVariable(index) => { instructions.push(PushBuiltin(index)); }
-                        ClassVariable(typ, constraints, var) => {
-                            maybe_new_dict = self.compile_instance_variable(expr.get_type(), instructions, &name.name, typ, constraints, var);
-                            }
-                        ConstraintVariable(index, bind_type, constraints) => {
-                            maybe_new_dict = self.compile_with_constraints(&name.name, expr.get_type(), bind_type, constraints, instructions);
-                            instructions.push(PushGlobal(index));
-                            instructions.push(Mkap);
-                        }
-                        PrimitiveVariable(num_args, instruction) => {
-                            if num_args == arg_length {
-                                instructions.push(instruction);
-                            }
-                            else {
-                                fail!("Expected {} arguments for {}, got {}", num_args, name, arg_length)
-                            }
-                            is_function = false;
-                        }
-                    }
+                //When compiling a variable which has constraints a new instance dictionary
+                //might be created which is returned here and added to the assembly
+                let mut is_primitive = false;
+                let var = self.find(&name.name)
+                    .unwrap_or_else(|| fail!("Error: Undefined variable {}", *name));
+                match var {
+                    PrimitiveVariable(num_args, instruction) => is_primitive = true,
+                    _ => ()
                 }
-                match maybe_new_dict {
-                    Some(dict) => self.instance_dictionaries.push(dict),
-                    None => ()
+                arg_length = self.compile_args(&args, instructions, is_primitive);
+                match var {
+                    StackVariable(index) => { instructions.push(Push(index)); }
+                    GlobalVariable(index) => { instructions.push(PushGlobal(index)); }
+                    ConstructorVariable(tag, arity) => {
+                        instructions.push(Pack(tag, arity));
+                        is_function = false;
+                    }
+                    BuiltinVariable(index) => { instructions.push(PushBuiltin(index)); }
+                    ClassVariable(typ, constraints, var) => {
+                        self.compile_instance_variable(expr.get_type(), instructions, &name.name, typ, constraints, var);
+                    }
+                    ConstraintVariable(index, bind_type, constraints) => {
+                        self.compile_with_constraints(&name.name, expr.get_type(), bind_type, constraints, instructions);
+                        instructions.push(PushGlobal(index));
+                        instructions.push(Mkap);
+                    }
+                    PrimitiveVariable(num_args, instruction) => {
+                        if num_args == arg_length {
+                            instructions.push(instruction);
+                        }
+                        else {
+                            fail!("Expected {} arguments for {}, got {}", num_args, name, arg_length)
+                        }
+                        is_function = false;
+                    }
                 }
             }
             _ => {
@@ -796,7 +789,7 @@ impl <'a> Compiler<'a> {
     }
 
     ///Compile a function which is defined in a class
-    fn compile_instance_variable(&self, actual_type: &Type, instructions: &mut Vec<Instruction>, name: &Name, typ: &Type, constraints: &[Constraint], var: &TypeVariable) -> Option<(~[(InternedStr, Type)], ~[uint])> {
+    fn compile_instance_variable(&mut self, actual_type: &Type, instructions: &mut Vec<Instruction>, name: &Name, typ: &Type, constraints: &[Constraint], var: &TypeVariable) {
         match try_find_instance_type(var, typ, actual_type) {
             Some(typename) => {
                 //We should be able to retrieve the instance directly
@@ -807,13 +800,11 @@ impl <'a> Compiler<'a> {
                 match self.find(&instance_fn_name) {
                     Some(GlobalVariable(index)) => {
                         instructions.push(PushGlobal(index));
-                        None
                     }
                     Some(ConstraintVariable(index, function_type, constraints)) => {
-                        let dict = self.compile_with_constraints(&instance_fn_name, actual_type, function_type, constraints, instructions);
+                        self.compile_with_constraints(&instance_fn_name, actual_type, function_type, constraints, instructions);
                         instructions.push(PushGlobal(index));
                         instructions.push(Mkap);
-                        dict
                     }
                     _ => fail!("Unregistered instance function {}", name)
                 }
@@ -825,7 +816,7 @@ impl <'a> Compiler<'a> {
     }
 
     ///Compile the loading of a variable which has constraints and will thus need to load a dictionary with functions as well
-    fn compile_with_constraints(&self, name: &Name, actual_type: &Type, function_type: &Type, constraints: &[Constraint], instructions: &mut Vec<Instruction>) -> Option<(~[(InternedStr, Type)], ~[uint])> {
+    fn compile_with_constraints(&mut self, name: &Name, actual_type: &Type, function_type: &Type, constraints: &[Constraint], instructions: &mut Vec<Instruction>) {
         match self.find(&Name { name: intern("$dict"), uid: 0}) {
             Some(StackVariable(_)) => {
                 //Push dictionary or member of dictionary
@@ -833,15 +824,13 @@ impl <'a> Compiler<'a> {
                     Some(index) => instructions.push(PushDictionaryMember(index)),
                     None => instructions.push(Push(0))
                 }
-                None
             }
             _ => {
                 //get dictionary index
                 //push dictionary
                 let dictionary_key = find_specialized_instances(function_type, actual_type, constraints);
-                let (index, dict) = self.find_dictionary_index(dictionary_key);
+                let index = self.find_dictionary_index(dictionary_key);
                 instructions.push(PushDictionary(index));
-                dict
             }
         }
     }
@@ -883,12 +872,12 @@ impl <'a> Compiler<'a> {
 
     ///Find the index of the instance dictionary for the constraints and types in 'constraints'
     ///Returns the index and possibly a new dictionary which needs to be added to the assemblies dictionaries
-    fn find_dictionary_index(&self, constraints: &[(InternedStr, Type)]) -> (uint, Option<(~[(InternedStr, Type)], ~[uint])>) {
+    fn find_dictionary_index(&mut self, constraints: &[(InternedStr, Type)]) -> uint {
         //Check if the dictionary already exist
         let dict_len = self.instance_dictionaries.len();
         for ii in range(0, dict_len) {
             if self.instance_dictionaries.get(ii).ref0().equiv(&constraints) {
-                return (ii, None);
+                return ii;
             }
         }
 
@@ -897,7 +886,8 @@ impl <'a> Compiler<'a> {
         }
         let mut function_indexes = Vec::new();
         self.add_class(constraints, &mut function_indexes);
-        (dict_len, Some((constraints.to_owned(), FromVec::from_vec(function_indexes))))
+        self.instance_dictionaries.push((constraints.to_owned(), FromVec::from_vec(function_indexes)));
+        dict_len
     }
 
     fn add_class(&self, constraints: &[(InternedStr, Type)], function_indexes: &mut Vec<uint>) {
