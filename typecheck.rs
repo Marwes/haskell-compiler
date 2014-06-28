@@ -441,6 +441,10 @@ impl <'a> TypeEnvironment<'a> {
                 self.substitute(subs, *func);
                 self.substitute(subs, *arg);
             }
+            OpApply(ref mut lhs, _, ref mut rhs) => {
+                self.substitute(subs, *lhs);
+                self.substitute(subs, *rhs);
+            }
             Let(ref mut bindings, ref mut let_expr) => {
                 for bind in bindings.mut_iter() {
                     match bind.matches {
@@ -630,15 +634,16 @@ impl <'a> TypeEnvironment<'a> {
                 }
             }
             Apply(ref mut func, ref mut arg) => {
-                let mut func_type = self.typecheck(*func, subs);
-                let arg_type = self.typecheck(*arg, subs);
-                let mut result = function_type_(arg_type, self.new_var());
-                unify_location(self, subs, &expr.location, &mut func_type, &mut result);
-                result = match result {
-                    TypeApplication(_, x) => *x,
-                    _ => fail!("Must be a type application (should be a function type), found {}", result)
+                let func_type = self.typecheck(*func, subs);
+                self.typecheck_apply(&expr.location, subs, func_type, *arg)
+            }
+            OpApply(ref mut lhs, ref op, ref mut rhs) => {
+                let op_type = match self.fresh(op) {
+                    Some(typ) => typ,
+                    None => fail!("Undefined identifier '{}' at {}", *op, expr.location)
                 };
-                result
+                let first = self.typecheck_apply(&expr.location, subs, op_type, *lhs);
+                self.typecheck_apply(&expr.location, subs, first, *rhs)
             }
             Lambda(ref arg, ref mut body) => {
                 let mut argType = self.new_var();
@@ -711,6 +716,16 @@ impl <'a> TypeEnvironment<'a> {
         };
         debug!("{}\nas\n{}", expr, x);
         x
+    }
+    fn typecheck_apply(&mut self, location: &Location, subs: &mut Substitution, mut func_type: Type, arg: &mut TypedExpr<Name>) -> Type {
+        let arg_type = self.typecheck(arg, subs);
+        let mut result = function_type_(arg_type, self.new_var());
+        unify_location(self, subs, location, &mut func_type, &mut result);
+        result = match result {
+            TypeApplication(_, x) => *x,
+            _ => fail!("Must be a type application (should be a function type), found {}", result)
+        };
+        result
     }
     ///Typechecks a pattern.
     ///Checks that the pattern has the type 'match_type' and adds all variables in the pattern.
@@ -1483,6 +1498,10 @@ pub fn rational(i : f64) -> TypedExpr {
 #[cfg(test)]
 pub fn apply(func : TypedExpr, arg : TypedExpr) -> TypedExpr {
     TypedExpr::new(Apply(box func, box arg))
+}
+#[cfg(test)]
+pub fn op_apply(lhs: TypedExpr, op: InternedStr, rhs: TypedExpr) -> TypedExpr {
+    TypedExpr::new(OpApply(box lhs, op, box rhs))
 }
 #[cfg(test)]
 pub fn let_(bindings : ~[Binding], expr : TypedExpr) -> TypedExpr {

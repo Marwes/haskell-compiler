@@ -152,6 +152,7 @@ pub enum Literal {
 pub enum Expr<Ident = InternedStr> {
     Identifier(Ident),
     Apply(Box<TypedExpr<Ident>>, Box<TypedExpr<Ident>>),
+    OpApply(Box<TypedExpr<Ident>>, Ident, Box<TypedExpr<Ident>>),
     Literal(Literal),
     Lambda(Pattern<Ident>, Box<TypedExpr<Ident>>),
     Let(~[Binding<Ident>], Box<TypedExpr<Ident>>),
@@ -279,6 +280,10 @@ pub fn walk_expr<Ident>(visitor: &mut Visitor<Ident>, expr: &TypedExpr<Ident>) {
         &Apply(ref func, ref arg) => {
             visitor.visit_expr(*func);
             visitor.visit_expr(*arg);
+        }
+        &OpApply(ref lhs, ref op, ref rhs) => {
+            visitor.visit_expr(*lhs);
+            visitor.visit_expr(*rhs);
         }
         &Lambda(_, ref body) => visitor.visit_expr(*body),
         &Let(ref binds, ref e) => {

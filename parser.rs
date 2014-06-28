@@ -427,8 +427,7 @@ fn binary_expression(&mut self, inL : Option<TypedExpr>, minPrecedence : int) ->
         };
         lhs = match (lhs, rhs) {
             (Some(lhs), Some(rhs)) => {
-                let args = box [lhs, rhs];
-                Some(make_application(name, args.move_iter()))
+                Some(TypedExpr::with_location(OpApply(box lhs, op.value.clone(), box rhs), loc))
             }
             (Some(lhs), None) => {
                 Some(TypedExpr::with_location(Apply(box name, box lhs), loc))
@@ -1017,7 +1016,7 @@ mod tests {
 use interner::*;
 use parser::*;
 use module::*;
-use typecheck::{identifier, apply, number, rational, lambda, let_, case};
+use typecheck::{identifier, apply, op_apply, number, rational, lambda, let_, case};
 use std::io::File;
 use test::Bencher;
 
@@ -1027,7 +1026,7 @@ fn simple()
 {
     let mut parser = Parser::new("2 + 3".chars());
     let expr = parser.expression_();
-    assert_eq!(expr, apply(apply(identifier("+"), number(2)), number(3)));
+    assert_eq!(expr, op_apply(number(2), intern("+"), number(3)));
 }
 #[test]
 fn binding()
@@ -1035,7 +1034,7 @@ fn binding()
     let mut parser = Parser::new("test x = x + 3".chars());
     let bind = parser.binding();
     assert_eq!(bind.arguments, ~[IdentifierPattern(intern("x"))]);
-    assert_eq!(bind.matches, Simple(apply(apply(identifier("+"), identifier("x")), number(3))));
+    assert_eq!(bind.matches, Simple(op_apply(identifier("x"), intern("+"), number(3))));
     assert_eq!(bind.name, intern("test"));
 }
 
@@ -1058,7 +1057,7 @@ in test - 2".chars());
     let expr = parser.expression_();
     let bind = Binding { arguments: ~[], name: intern("test"), typ: Default::default(),
         matches: Simple(apply(apply(identifier("add"), number(3)), number(2))) };
-    assert_eq!(expr, let_(~[bind], apply(apply(identifier("-"), identifier("test")), number(2))));
+    assert_eq!(expr, let_(~[bind], op_apply(identifier("test"), intern("-"), number(2))));
 }
 
 #[test]
@@ -1149,7 +1148,7 @@ r"case () :: () of
 fn test_operators() {
     let mut parser = Parser::new("1 : 2 : []".chars());
     let expr = parser.expression_();
-    assert_eq!(expr, apply(apply(identifier(":"), number(1)), apply(apply(identifier(":"), number(2)), identifier("[]"))));
+    assert_eq!(expr, op_apply(number(1), intern(":"), op_apply(number(2), intern(":"), identifier("[]"))));
 }
 
 #[test]

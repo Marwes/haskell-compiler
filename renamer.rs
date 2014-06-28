@@ -118,6 +118,7 @@ impl Renamer {
             Literal(l) => Literal(l),
             Identifier(i) => Identifier(self.get_name(i)),
             Apply(func, arg) => Apply(box self.rename(*func), box self.rename(*arg)),
+            OpApply(lhs, op, rhs) => OpApply(box self.rename(*lhs), self.get_name(op), box self.rename(*rhs)),
             Lambda(arg, body) => {
                 self.uniques.enter_scope();
                 let l = Lambda(self.rename_pattern(arg), box self.rename(*body));

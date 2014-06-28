@@ -391,6 +391,14 @@ impl Translator {
         match expr {
             module::Identifier(s) => Identifier(Id::new(s, typ, ~[])),
             module::Apply(func, arg) => Apply(box self.translate_expr(*func), box self.translate_expr(*arg)),
+            module::OpApply(lhs, op, rhs) => {
+                let l = box self.translate_expr(*lhs);
+                let r = box self.translate_expr(*rhs);
+                let func_type = function_type_(l.get_type().clone(),
+                                function_type_(r.get_type().clone(),
+                                               typ));
+                Apply(box Apply(box Identifier(Id::new(op, func_type, ~[])), l), r)
+            }
             module::Literal(l) => Literal(Literal { typ: typ, value: l }),
             module::Lambda(arg, body) => {
                 match arg {
