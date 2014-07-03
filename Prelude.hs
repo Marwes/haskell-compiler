@@ -6,9 +6,13 @@ not b = case b of
     True -> False
     False -> True
 
+infixr 2 ||
+
 (||) :: Bool -> Bool -> Bool
 (||) True y = True
 (||) False y = y
+
+infixr 3 &&
 
 (&&) :: Bool -> Bool -> Bool
 (&&) x y = case x of
@@ -31,6 +35,9 @@ either l r e = case e of
     Right x -> r x
 
 id x = x
+
+
+infix 4 ==, /=
 
 class Eq a where
     (==) :: a -> a -> Bool
@@ -69,6 +76,9 @@ instance Eq a => Eq (Maybe a) where
 
     (/=) x y = not (x == y)
 
+infixl 6 +, -
+infixl 7 *
+
 class Num a where
     (+) :: a -> a -> a
     (-) :: a -> a -> a
@@ -87,6 +97,8 @@ instance Num Double where
     (*) x y = primDoubleMultiply x y
     fromInteger x = primIntToDouble x
 
+infixl 7 /
+
 class Fractional a where
     (/) :: a -> a -> a
     fromRational :: Double -> a
@@ -94,6 +106,8 @@ class Fractional a where
 instance Fractional Double where
     (/) x y = primDoubleDivide x y
     fromRational x = x
+
+infixl 7 `div`, `rem`
 
 class Integral a where
     div :: a -> a -> a
@@ -106,6 +120,8 @@ instance Integral Int where
     toInteger x = x
 
 data Ordering = LT | EQ | GT
+
+infix 1 <, >, <=, >=
 
 class Eq a => Ord a where
     compare :: a -> a -> Ordering
@@ -213,6 +229,8 @@ instance Functor Maybe where
 instance Functor [] where
     fmap = map
 
+infixl 1 >>, >>=
+
 class Monad m where
     (>>=) :: m a -> (a -> m b) -> m b
     return :: a -> m a
@@ -293,8 +311,12 @@ uncurry f x = case x of
 const :: a -> b -> a
 const x _ = x
 
+infixr 9 .
+
 (.) :: (b -> c) -> (a -> b) -> (a -> c)
 (.) f g x = f (g x)
+
+infixr 0 $, $!, `seq`
 
 ($) :: (a -> b) -> a -> b
 ($) f x = f x
@@ -344,6 +366,8 @@ sum xs = case xs of
     y:ys -> y + sum ys
     [] -> 0
 
+infixl 9 !!
+
 (!!) :: [a] -> Int -> a
 (!!) xs n = case xs of
     y:ys -> case n of
@@ -358,6 +382,8 @@ reverse_ xs ys = case xs of
 
 reverse :: [a] -> [a]
 reverse xs = reverse_ xs []
+
+infixr 5 ++
 
 (++) :: [a] -> [a] -> [a]
 (++) xs ys = case xs of

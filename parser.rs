@@ -72,6 +72,7 @@ pub fn module(&mut self) -> Module {
     let mut instances = Vec::new();
     let mut type_declarations = Vec::new();
     let mut data_definitions = Vec::new();
+    let mut fixity_declarations = Vec::new();
 	loop {
 		//Do a lookahead to see what the next top level binding is
 		let token = self.lexer.next().token;
@@ -117,7 +118,11 @@ pub fn module(&mut self) -> Module {
 			self.lexer.backtrack();
 			data_definitions.push(self.data_definition());
 		}
-		else {
+		else if token == INFIXL || token == INFIXR || token == INFIX {
+			self.lexer.backtrack();
+            fixity_declarations.push(self.fixity_declaration());
+        }
+        else {
 			break;
 		}
 		let semicolon = self.lexer.next();
@@ -129,11 +134,7 @@ pub fn module(&mut self) -> Module {
 
     self.lexer.backtrack();
     self.require_next(RBRACE);
-
-	let eof = self.lexer.next();
-	if eof.token != EOF {
-		fail!("Unexpected token after end of module, {}", eof.token);
-	}
+    self.require_next(EOF);
 
     Module {
         name : modulename,
@@ -142,7 +143,8 @@ pub fn module(&mut self) -> Module {
         typeDeclarations : FromVec::from_vec(type_declarations),
         classes : FromVec::from_vec(classes),
         instances : FromVec::from_vec(instances),
-        dataDefinitions : FromVec::from_vec(data_definitions)
+        dataDefinitions : FromVec::from_vec(data_definitions),
+        fixity_declarations : FromVec::from_vec(fixity_declarations)
     }
 }
 
@@ -214,7 +216,7 @@ pub fn expression_(&mut self) -> TypedExpr {
 
 pub fn expression(&mut self) -> Option<TypedExpr> {
 	let app = self.application();
-	self.binary_expression(app, 0)
+	self.binary_expression(app)
         .map(|expr| {
         //Try to parse a type signature on this expression
         if self.lexer.next().token == TYPEDECL {
@@ -401,47 +403,33 @@ fn alternative(&mut self) -> Alternative {
 	Alternative { pattern : pat, matches: matches }
 }
 
-fn binary_expression(&mut self, inL : Option<TypedExpr>, minPrecedence : int) -> Option<TypedExpr> {
-	let mut lhs = inL;
-    self.lexer.next();
-    debug!("Parse operator exression, {}", self.lexer.current());
-	while self.lexer.valid() && self.lexer.current().token == OPERATOR
-		&& precedence(self.lexer.current().value.as_slice()) >= minPrecedence
-	{
-		let op = (*self.lexer.current()).clone();
-		let mut rhs = self.application();
-		self.lexer.next();
-        debug!("Parsing operator? {}", self.lexer.current());
-		while self.lexer.valid() && self.lexer.current().token == OPERATOR
-			&& precedence(self.lexer.current().value.as_slice()) >= precedence(op.value.as_slice())
-		{
-			let lookaheadPrecedence = precedence(self.lexer.current().value.as_slice());
-			self.lexer.backtrack();
-			rhs = self.binary_expression(rhs, lookaheadPrecedence);
-            self.lexer.next();
-		}
-		let mut name = TypedExpr::with_location(Identifier(op.value.clone()), op.location);
+fn binary_expression(&mut self, lhs : Option<TypedExpr>) -> Option<TypedExpr> {
+    debug!("Parse operator expression, {}", self.lexer.current());
+    if self.lexer.next().token == OPERATOR {
+		let op = self.lexer.current().value;
+        let op_location = self.lexer.current().location;
+		let rhs = self.application();
+        let rhs = self.binary_expression(rhs);
 		let loc = match lhs {
             Some(ref l) => l.location,
-            None => op.location
+            None => op_location
         };
-        lhs = match (lhs, rhs) {
+        match (lhs, rhs) {
             (Some(lhs), Some(rhs)) => {
-                Some(TypedExpr::with_location(OpApply(box lhs, op.value.clone(), box rhs), loc))
+                Some(TypedExpr::with_location(OpApply(box lhs, op, box rhs), loc))
             }
             (Some(lhs), None) => {
+		        let name = TypedExpr::with_location(Identifier(op), op_location);
                 Some(TypedExpr::with_location(Apply(box name, box lhs), loc))
             }
             (None, Some(rhs)) => {
-                if op.value == intern("-") {
-                    match name.expr {
-                        Identifier(ref mut n) => *n = intern("negate"),
-                        _ => fail!("WTF")
-                    }
+                if op == intern("-") {
+		            let name = TypedExpr::with_location(Identifier(intern("negate")), loc);
                     let args = ~[rhs];
                     Some(make_application(name, args.move_iter()))
                 }
                 else {
+		            let name = TypedExpr::with_location(Identifier(intern("negate")), loc);
                     let args = ~[TypedExpr::with_location(Identifier(intern("#")), loc), rhs];
                     let mut apply = make_application(name, args.move_iter());
                     apply.location = loc;
@@ -450,10 +438,12 @@ fn binary_expression(&mut self, inL : Option<TypedExpr>, minPrecedence : int) ->
                 }
             }
             (None, None) => return None
-        };
+        }
 	}
-	self.lexer.backtrack();
-	lhs
+    else {
+        self.lexer.backtrack();
+        lhs
+    }
 }
 
 fn application(&mut self) -> Option<TypedExpr> {
@@ -520,6 +510,27 @@ fn binding(&mut self) -> Binding {
         arguments: arguments,
         matches : matches,
     }
+}
+
+fn fixity_declaration(&mut self) -> FixityDeclaration {
+    let assoc = {
+        match self.lexer.next().token {
+            INFIXL => LeftAssoc,
+            INFIXR => RightAssoc,
+            INFIX => NoAssoc,
+            _ => fail!(parse_error2(&self.lexer, [INFIXL, INFIXR, INFIX]))
+        }
+    };
+    let precedence = match self.lexer.next().token {
+        NUMBER => from_str(self.lexer.current().value.as_slice()).unwrap(),
+        _ => {
+            self.lexer.backtrack();
+            9
+        }
+    };
+    let operators = self.sep_by_1(|this| this.require_next(OPERATOR).value, COMMA);
+    self.lexer.backtrack();
+    FixityDeclaration { assoc: assoc, precedence: precedence, operators: operators }
 }
 
 fn expr_or_guards(&mut self, end_token: TokenEnum) -> Match {
@@ -880,22 +891,6 @@ fn sep_by_1_func<T>(&mut self, f : |&mut Parser<Iter>| -> T, sep : |&Token| -> b
 }
 }//end impl Parser
 
-fn precedence(s : &str) -> int {
-    match s {
-        "+" => 1,
-        "-" => 1,
-        "==" => 1,
-        "/=" => 1,
-        "<" => 1,
-        ">" => 1,
-        "<=" => 1,
-        ">=" => 1,
-        "*" => 3,
-        "/" => 3,
-        "%" => 3,
-        _ => 9
-    }
-}
 fn make_constraints(types: ~[Type]) -> ~[Constraint] {
     FromVec::<Constraint>::from_vec(types.move_iter().map(|typ| {
         match typ {
@@ -1245,6 +1240,25 @@ test x
         ])
     };
     assert_eq!(binding, b2);
+}
+
+#[test]
+fn parse_fixity() {
+    let mut parser = Parser::new(
+r"
+test x y = 2
+
+infixr 5 `test`
+
+infixr 6 `test2`, |<
+
+test2 x y = 1
+".chars());
+    let module = parser.module();
+    assert_eq!(module.fixity_declarations.as_slice(), &[
+        FixityDeclaration { assoc: RightAssoc, precedence: 5, operators: box [intern("test")] },
+        FixityDeclaration { assoc: RightAssoc, precedence: 6, operators: box [intern("test2"), intern("|<")] },
+    ]);
 }
 
 #[test]

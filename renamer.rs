@@ -236,7 +236,8 @@ pub fn rename_module_(renamer: &mut Renamer, module: Module<InternedStr>) -> Mod
         dataDefinitions: data_definitions,
         typeDeclarations: typeDeclarations,
         bindings : bindings,
-        instances: instances
+        instances: instances,
+        fixity_declarations: fixity_declarations
     } = module;
 
     let data_definitions2 : Vec<DataDefinition<Name>> = data_definitions.move_iter().map(|data| {
@@ -283,6 +284,18 @@ pub fn rename_module_(renamer: &mut Renamer, module: Module<InternedStr>) -> Mod
     }).collect();
     
     let bindings2 = renamer.rename_bindings(bindings, true);
+
+    let fixity_declarations2: Vec<FixityDeclaration<Name>> = fixity_declarations.move_iter()
+        .map(|FixityDeclaration { assoc: assoc, precedence: precedence, operators: operators }| {
+            
+            let ops: Vec<Name> = operators.move_iter()
+                .map(|s| renamer.get_name(s))
+                .collect();
+            FixityDeclaration { assoc: assoc, precedence: precedence,
+                operators: FromVec::from_vec(ops)
+            }
+        })
+        .collect();
     
     Module {
         name: renamer.make_unique(name),
@@ -291,7 +304,8 @@ pub fn rename_module_(renamer: &mut Renamer, module: Module<InternedStr>) -> Mod
         dataDefinitions: FromVec::from_vec(data_definitions2),
         typeDeclarations: typeDeclarations,
         bindings : bindings2,
-        instances: FromVec::from_vec(instances2)
+        instances: FromVec::from_vec(instances2),
+        fixity_declarations: FromVec::from_vec(fixity_declarations2)
     }
 }
 

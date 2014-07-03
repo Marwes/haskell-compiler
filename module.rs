@@ -13,7 +13,8 @@ pub struct Module<Ident = InternedStr> {
     pub typeDeclarations : ~[TypeDeclaration],
     pub classes : ~[Class],
     pub instances : ~[Instance<Ident>],
-    pub dataDefinitions : ~[DataDefinition<Ident>]
+    pub dataDefinitions : ~[DataDefinition<Ident>],
+    pub fixity_declarations : ~[FixityDeclaration<Ident>]
 }
 
 #[deriving(Clone)]
@@ -58,6 +59,20 @@ pub struct DataDefinition<Ident = InternedStr> {
     pub constructors : ~[Constructor<Ident>],
     pub typ : Qualified<Type>,
     pub parameters : HashMap<InternedStr, int>
+}
+
+#[deriving(PartialEq, Clone, Show)]
+pub enum Assoc {
+    LeftAssoc,
+    RightAssoc,
+    NoAssoc
+}
+
+#[deriving(PartialEq, Clone, Show)]
+pub struct FixityDeclaration<Ident = InternedStr> {
+    pub assoc: Assoc,
+    pub precedence: int,
+    pub operators: ~[Ident]
 }
 
 #[deriving(Clone, PartialEq, Eq, Default)]
@@ -187,6 +202,7 @@ impl <T: fmt::Show> fmt::Show for Expr<T> {
                 }
                 write!(f, "{} \\}", *expr)
             }
+            OpApply(ref lhs, ref op, ref rhs) => write!(f, "({} {} {})", lhs, op, rhs),
             _ => Ok(())
         }
     }
@@ -342,6 +358,116 @@ pub fn walk_pattern<Ident>(visitor: &mut Visitor<Ident>, pattern: &Pattern<Ident
         _ => ()
     }
 }
+
+
+
+pub trait MutVisitor<Ident> {
+    fn visit_expr(&mut self, expr: &mut TypedExpr<Ident>) {
+        walk_expr_mut(self, expr)
+    }
+    fn visit_alternative(&mut self, alt: &mut Alternative<Ident>) {
+        walk_alternative_mut(self, alt)
+    }
+    fn visit_pattern(&mut self, pattern: &mut Pattern<Ident>) {
+        walk_pattern_mut(self, pattern)
+    }
+    fn visit_binding(&mut self, binding: &mut Binding<Ident>) {
+        walk_binding_mut(self, binding);
+    }
+    fn visit_module(&mut self, module: &mut Module<Ident>) {
+        walk_module_mut(self, module);
+    }
+}
+
+pub fn walk_module_mut<Ident, V: MutVisitor<Ident>>(visitor: &mut V, module: &mut Module<Ident>) {
+    for bind in module.instances.mut_iter().flat_map(|i| i.bindings.mut_iter()) {
+        visitor.visit_binding(bind);
+    }
+    for bind in module.bindings.mut_iter() {
+        visitor.visit_binding(bind);
+    }
+}
+
+pub fn walk_binding_mut<Ident, V: MutVisitor<Ident>>(visitor: &mut V, binding: &mut Binding<Ident>) {
+    match binding.matches {
+        Simple(ref mut e) => visitor.visit_expr(e),
+        Guards(ref mut gs) => {
+            for g in gs.mut_iter() {
+                visitor.visit_expr(&mut g.predicate);
+                visitor.visit_expr(&mut g.expression);
+            }
+        }
+    }
+}
+
+pub fn walk_expr_mut<Ident, V: MutVisitor<Ident>>(visitor: &mut V, expr: &mut TypedExpr<Ident>) {
+    match expr.expr {
+        Apply(ref mut func, ref mut arg) => {
+            visitor.visit_expr(*func);
+            visitor.visit_expr(*arg);
+        }
+        OpApply(ref mut lhs, _, ref mut rhs) => {
+            visitor.visit_expr(*lhs);
+            visitor.visit_expr(*rhs);
+        }
+        Lambda(_, ref mut body) => visitor.visit_expr(*body),
+        Let(ref mut binds, ref mut e) => {
+            for b in binds.mut_iter() {
+                visitor.visit_binding(b);
+            }
+            visitor.visit_expr(*e);
+        }
+        Case(ref mut e, ref mut alts) => {
+            visitor.visit_expr(*e);
+            for alt in alts.mut_iter() {
+                visitor.visit_alternative(alt);
+            }
+        }
+        Do(ref mut binds, ref mut expr) => {
+            for bind in binds.mut_iter() {
+                match *bind {
+                    DoLet(ref mut bs) => {
+                        for b in bs.mut_iter() {
+                            visitor.visit_binding(b);
+                        }
+                    }
+                    DoBind(ref mut pattern, ref mut e) => {
+                        visitor.visit_pattern(&mut pattern.node);
+                        visitor.visit_expr(e);
+                    }
+                    DoExpr(ref mut e) => visitor.visit_expr(e)
+                }
+            }
+            visitor.visit_expr(*expr);
+        }
+        TypeSig(ref mut expr, _) => visitor.visit_expr(*expr),
+        Literal(..) | Identifier(..) => ()
+    }
+}
+
+pub fn walk_alternative_mut<Ident, V: MutVisitor<Ident>>(visitor: &mut V, alt: &mut Alternative<Ident>) {
+    match alt.matches {
+        Simple(ref mut e) => visitor.visit_expr(e),
+        Guards(ref mut gs) => {
+            for g in gs.mut_iter() {
+                visitor.visit_expr(&mut g.predicate);
+                visitor.visit_expr(&mut g.expression);
+            }
+        }
+    }
+}
+
+pub fn walk_pattern_mut<Ident, V: MutVisitor<Ident>>(visitor: &mut V, pattern: &mut Pattern<Ident>) {
+    match pattern {
+        &ConstructorPattern(_, ref mut ps) => {
+            for p in ps.mut_iter() {
+                visitor.visit_pattern(p);
+            }
+        }
+        _ => ()
+    }
+}
+
 struct Binds<'a, Ident> {
     vec: &'a [Binding<Ident>]
 }

@@ -41,7 +41,10 @@ pub enum TokenEnum {
 	DATA,
     LAMBDA,
     DO,
-    IMPORT
+    IMPORT,
+    INFIXL,
+    INFIXR,
+    INFIX
 }
 
 #[deriving(Clone, PartialEq)]
@@ -122,6 +125,9 @@ fn name_or_keyword(tok : &str) -> TokenEnum {
         "data" => DATA,
         "do" => DO,
         "import" => IMPORT,
+        "infixl" => INFIXL,
+        "infixr" => INFIXR,
+        "infix" => INFIX,
         _ => NAME
     }
 }

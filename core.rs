@@ -329,7 +329,8 @@ pub mod translate {
             typeDeclarations : _typeDeclarations,
             classes : classes,
             instances : instances,
-            dataDefinitions : dataDefinitions
+            dataDefinitions : dataDefinitions,
+            fixity_declarations : _fixity_declarations
         } = module;
 
         let mut translator = Translator { name_supply: NameSupply::new() };

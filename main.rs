@@ -52,6 +52,7 @@ mod scoped_map;
 mod core;
 mod lambda_lift;
 mod renamer;
+mod infix;
 mod builtins;
 mod interner;
 #[cfg(not(test))]
