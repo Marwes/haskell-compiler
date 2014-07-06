@@ -245,7 +245,8 @@ pub fn rename_module_(renamer: &mut Renamer, module: Module<InternedStr>) -> Mod
         let DataDefinition {
             constructors : ctors,
             typ : typ,
-            parameters : parameters
+            parameters : parameters,
+            deriving
         } = data;
         let c: Vec<Constructor<Name>> = ctors.move_iter().map(|ctor| {
             let Constructor {
@@ -262,10 +263,15 @@ pub fn rename_module_(renamer: &mut Renamer, module: Module<InternedStr>) -> Mod
             }
         }).collect();
 
+        let d: Vec<Name> = deriving.move_iter().map(|s| {
+            Name { name: s, uid: 0 }
+        }).collect();
+
         DataDefinition {
             typ : typ,
             parameters : parameters,
-            constructors : FromVec::from_vec(c)
+            constructors : FromVec::from_vec(c),
+            deriving : FromVec::from_vec(d)
         }
     }).collect();
     

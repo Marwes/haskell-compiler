@@ -774,7 +774,8 @@ fn data_definition(&mut self) -> DataDefinition {
 	let mut definition = DataDefinition {
         constructors : box [],
         typ : qualified(~[], Type::new_var(intern("a"))),
-        parameters : HashMap::new()
+        parameters : HashMap::new(),
+        deriving: box []
     };
     let mut typ = TypeConstructor(TypeConstructor { name: dataName, kind: star_kind.clone() });
 	while self.lexer.next().token == NAME {
@@ -794,7 +795,15 @@ fn data_definition(&mut self) -> DataDefinition {
 	for ii in range(0, definition.constructors.len()) {
 		definition.constructors[ii].tag = ii as int;
 	}
-	self.lexer.backtrack();
+    if self.lexer.current().token == DERIVING {
+        self.require_next(LPARENS);
+        definition.deriving = self.sep_by_1(|this| this.require_next(NAME).value, COMMA);
+	    self.lexer.backtrack();
+        self.require_next(RPARENS);
+    }
+    else {
+	    self.lexer.backtrack();
+    }
 	definition
 }
 
@@ -1288,6 +1297,20 @@ test2 x y = 1
         FixityDeclaration { assoc: RightAssoc, precedence: 5, operators: box [intern("test")] },
         FixityDeclaration { assoc: RightAssoc, precedence: 6, operators: box [intern("test2"), intern("|<")] },
     ]);
+}
+
+#[test]
+fn deriving() {
+    let mut parser = Parser::new(
+r"data Test = A | B
+    deriving(Eq, Show)
+
+dummy = 1
+".chars());
+    let module = parser.module();
+    let data = &module.dataDefinitions[0];
+    assert_eq!(data.typ, qualified(box [], Type::new_op(intern("Test"), box [])));
+    assert_eq!(data.deriving.as_slice(), &[intern("Eq"), intern("Show")]);
 }
 
 #[test]

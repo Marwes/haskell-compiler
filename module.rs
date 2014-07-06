@@ -59,7 +59,8 @@ pub struct Constructor<Ident = InternedStr> {
 pub struct DataDefinition<Ident = InternedStr> {
     pub constructors : ~[Constructor<Ident>],
     pub typ : Qualified<Type>,
-    pub parameters : HashMap<InternedStr, int>
+    pub parameters : HashMap<InternedStr, int>,
+    pub deriving: ~[Ident]
 }
 
 #[deriving(PartialEq, Clone, Show)]
