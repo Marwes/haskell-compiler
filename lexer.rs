@@ -44,7 +44,8 @@ pub enum TokenEnum {
     IMPORT,
     INFIXL,
     INFIXR,
-    INFIX
+    INFIX,
+    DERIVING
 }
 
 #[deriving(Clone, PartialEq)]
@@ -128,6 +129,7 @@ fn name_or_keyword(tok : &str) -> TokenEnum {
         "infixl" => INFIXL,
         "infixr" => INFIXR,
         "infix" => INFIX,
+        "deriving" => DERIVING,
         _ => NAME
     }
 }
