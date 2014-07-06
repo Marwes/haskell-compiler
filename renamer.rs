@@ -162,6 +162,7 @@ impl Renamer {
             TypeSig(expr, sig) => {
                 TypeSig(box self.rename(*expr), sig)
             }
+            Paren(expr) => Paren(box self.rename(*expr))
         };
         let mut t = TypedExpr::with_location(e, location);
         t.typ = typ;

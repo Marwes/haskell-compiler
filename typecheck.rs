@@ -497,6 +497,7 @@ impl <'a> TypeEnvironment<'a> {
                 self.substitute(subs, *expr);
             }
             TypeSig(ref mut expr, _) => self.substitute(subs, *expr),
+            Paren(ref mut expr) => self.substitute(subs, *expr),
             Identifier(..) | Literal(..) => ()
         }
     }
@@ -713,6 +714,7 @@ impl <'a> TypeEnvironment<'a> {
                 match_or_fail(self, subs, &expr.location, &mut typ, &mut qualified_type.value);
                 typ
             }
+            Paren(ref mut expr) => self.typecheck(*expr, subs)
         };
         debug!("{}\nas\n{}", expr, x);
         x
@@ -1510,6 +1512,10 @@ pub fn let_(bindings : ~[Binding], expr : TypedExpr) -> TypedExpr {
 #[cfg(test)]
 pub fn case(expr : TypedExpr, alts: ~[Alternative]) -> TypedExpr {
     TypedExpr::new(Case(box expr, alts))
+}
+#[cfg(test)]
+pub fn paren(expr : TypedExpr) -> TypedExpr {
+    TypedExpr::new(Paren(box expr))
 }
 
 pub fn typecheck_string(module: &str) -> IoResult<Vec<Module<Name>>> {

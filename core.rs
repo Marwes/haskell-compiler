@@ -435,7 +435,8 @@ impl Translator {
                 }
                 result
             }
-            module::TypeSig(expr, _) => self.translate_expr(*expr)
+            module::TypeSig(expr, _) => self.translate_expr(*expr),
+            module::Paren(expr) => self.translate_expr(*expr)
         }
     }
     ///Translates

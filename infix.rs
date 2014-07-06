@@ -121,7 +121,7 @@ mod tests {
     #[test]
     fn operator_precedence()
     {
-        let mut m = parse_string(
+        let m = parse_string(
 r"import Prelude
 test = 3 * 4 - 5 * 6").unwrap();
         let mut modules = rename_modules(m);
@@ -133,6 +133,22 @@ test = 3 * 4 - 5 * 6").unwrap();
             op_apply(number(3), intern("*"), number(4)),
             intern("-"),
             op_apply(number(5), intern("*"), number(6))))));
+    }
+    #[test]
+    fn operator_precedence_parens()
+    {
+        let m = parse_string(
+r"import Prelude
+test = 3 * 4 * (5 - 6)").unwrap();
+        let mut modules = rename_modules(m);
+        let mut v = PrecedenceVisitor::new();
+        for module in modules.mut_iter() {
+            v.visit_module(module);
+        }
+        assert_eq!(modules.last().unwrap().bindings[0].matches, Simple(rename_expr(op_apply(
+            op_apply(number(3), intern("*"), number(4)),
+            intern("*"),
+            paren(op_apply(number(5), intern("-"), number(6)))))));
     }
 
     #[test]

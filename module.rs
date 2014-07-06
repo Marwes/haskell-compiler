@@ -173,7 +173,8 @@ pub enum Expr<Ident = InternedStr> {
     Let(~[Binding<Ident>], Box<TypedExpr<Ident>>),
     Case(Box<TypedExpr<Ident>>, ~[Alternative<Ident>]),
     Do(~[DoBinding<Ident>], Box<TypedExpr<Ident>>),
-    TypeSig(Box<TypedExpr<Ident>>, Qualified<Type>)
+    TypeSig(Box<TypedExpr<Ident>>, Qualified<Type>),
+    Paren(Box<TypedExpr<Ident>>)
 }
 impl <T: fmt::Show> fmt::Show for Binding<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -203,6 +204,8 @@ impl <T: fmt::Show> fmt::Show for Expr<T> {
                 write!(f, "{} \\}", *expr)
             }
             OpApply(ref lhs, ref op, ref rhs) => write!(f, "({} {} {})", lhs, op, rhs),
+            TypeSig(ref expr, ref typ) => write!(f, "{} {}", expr, typ),
+            Paren(ref expr) => write!(f, "({})", expr),
             _ => Ok(())
         }
     }
@@ -332,6 +335,7 @@ pub fn walk_expr<Ident>(visitor: &mut Visitor<Ident>, expr: &TypedExpr<Ident>) {
             visitor.visit_expr(*expr);
         }
         &TypeSig(ref expr, _) => visitor.visit_expr(*expr),
+        &Paren(ref expr) => visitor.visit_expr(*expr),
         &Literal(..) | &Identifier(..) => ()
     }
 }
@@ -441,6 +445,7 @@ pub fn walk_expr_mut<Ident, V: MutVisitor<Ident>>(visitor: &mut V, expr: &mut Ty
             visitor.visit_expr(*expr);
         }
         TypeSig(ref mut expr, _) => visitor.visit_expr(*expr),
+        Paren(ref mut expr) => visitor.visit_expr(*expr),
         Literal(..) | Identifier(..) => ()
     }
 }

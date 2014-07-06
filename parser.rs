@@ -275,7 +275,8 @@ fn sub_expression(&mut self) -> Option<TypedExpr> {
                     fail!(parse_error(&self.lexer, RPARENS));
                 }
                 if expressions.len() == 1 {
-                    Some(expressions[0])
+                    let loc = expressions[0].location;
+                    Some(TypedExpr::with_location(Paren(box expressions[0]), loc))
                 }
                 else {
                     Some(new_tuple(expressions))
@@ -1195,7 +1196,7 @@ r"main = do
 }
 #[test]
 fn lambda_pattern() {
-    let mut parser = Parser::new(r"(\(x, _) -> x)".chars());
+    let mut parser = Parser::new(r"\(x, _) -> x".chars());
     let expr = parser.expression_();
     let pattern = ConstructorPattern(intern("(,)"), ~[IdentifierPattern(intern("x")), WildCardPattern]);
     assert_eq!(expr, TypedExpr::new(Lambda(pattern, box identifier("x"))));
