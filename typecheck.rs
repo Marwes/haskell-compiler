@@ -124,6 +124,7 @@ pub struct TypeEnvironment<'a> {
     ///3: The Type which the instance is defined for
     instances: Vec<(~[Constraint], InternedStr, Type)>,
     classes: Vec<(~[Constraint], InternedStr)>,
+    data_definitions : Vec<DataDefinition<Name>>,
     ///The current age for newly created variables.
     ///Age is used to determine whether variables need to be quantified or not.
     variable_age : int,
@@ -266,6 +267,7 @@ impl <'a> TypeEnvironment<'a> {
             constraints: HashMap::new(),
             instances: Vec::new(),
             classes: Vec::new(),
+            data_definitions : Vec::new(),
             variable_age : 0 ,
         }
     }
@@ -285,6 +287,7 @@ impl <'a> TypeEnvironment<'a> {
                 quantify(0, &mut typ);
                 self.namedTypes.insert(constructor.name.clone(), typ);
             }
+            self.data_definitions.push(data_def.clone());
         }
         for class in module.classes.mut_iter() {
             //Instantiate a new variable and replace all occurances of the class variable with this
@@ -446,6 +449,11 @@ impl <'a> TypeEnvironment<'a> {
         |_| ());
         FromVec::from_vec(result)
     }
+    fn find_data_definition<'a>(&'a self, name: InternedStr) -> Option<&'a DataDefinition<Name>> {
+        self.data_definitions.iter()
+            .find(|data| extract_applied_type(&data.typ.value).ctor().name == name)
+            .or_else(|| self.assemblies.iter().filter_map(|a| a.find_data_type(name)).next())
+    }
     
     fn freshen_qualified_type(&mut self, typ: &mut Qualified<Type>, mut mapping: HashMap<TypeVariable, Type>) {
         for constraint in typ.constraints.mut_iter() {
@@ -533,6 +541,19 @@ impl <'a> TypeEnvironment<'a> {
 
     ///Returns whether the type 'searched_type' has an instance for 'class'
     fn has_instance(&self, class: InternedStr, searched_type: &Type) -> bool {
+        match extract_applied_type(searched_type) {
+            &TypeConstructor(ref ctor) => {
+                match self.find_data_definition(ctor.name) {
+                    Some(data_type) => {
+                        if data_type.deriving.iter().any(|name| name.name == class) {
+                            return self.check_instance_constraints(&[], &data_type.typ.value, searched_type);
+                        }
+                    }
+                    None => ()
+                }
+            }
+            _ => ()
+        }
         for &(ref constraints, ref name, ref typ) in self.instances.iter() {
             if class == *name {
                 if self.check_instance_constraints(*constraints, typ, searched_type) {
@@ -1674,7 +1695,7 @@ main = case [mult2 123, 0] of
 }
 
 #[test]
-fn typecheck_string() {
+fn test_typecheck_string() {
     let mut env = TypeEnvironment::new();
 
     let mut parser = Parser::new("\"hello\"".chars());
@@ -2080,6 +2101,16 @@ fn typedeclaration_on_expression() {
 test = [1,2,3 :: Int]
 ");
     assert_eq!(module.bindings[0].typ.value, list_type(int_type()));
+}
+
+#[test]
+fn deriving() {
+    let module = typecheck_string(
+r"import Prelude
+data Test = Test Int
+    deriving(Eq)
+
+test = Test 2 == Test 1");
 }
 
 #[test]
