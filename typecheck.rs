@@ -1570,21 +1570,21 @@ pub fn paren(expr : TypedExpr) -> TypedExpr {
 
 pub fn typecheck_string(module: &str) -> IoResult<Vec<Module<Name>>> {
     use parser::parse_string;
-    use renamer::rename_modules;
-    let mut modules = rename_modules(try!(parse_string(module)));
-    let mut env = TypeEnvironment::new();
-    for module in modules.mut_iter() {
-        env.typecheck_module(module);
-    }
-    Ok(modules)
+    parse_string(module)
+        .map(typecheck_modules_common)
 }
 
 ///Parses a module, renames and typechecks it, as well as all of its imported modules
 pub fn typecheck_module(module: &str) -> IoResult<Vec<Module<Name>>> {
     use parser::parse_modules;
+    parse_modules(module)
+        .map(typecheck_modules_common)
+}
+
+fn typecheck_modules_common(modules: Vec<Module>) -> Vec<Module<Name>> {
     use renamer::rename_modules;
     use infix::PrecedenceVisitor;
-    let mut modules = rename_modules(try!(parse_modules(module)));
+    let mut modules = rename_modules(modules);
     let mut prec_visitor = PrecedenceVisitor::new();
     for module in modules.mut_iter() {
         prec_visitor.visit_module(module);
@@ -1593,7 +1593,7 @@ pub fn typecheck_module(module: &str) -> IoResult<Vec<Module<Name>>> {
     for module in modules.mut_iter() {
         env.typecheck_module(module);
     }
-    Ok(modules)
+    modules
 }
 
 
