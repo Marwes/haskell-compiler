@@ -504,6 +504,7 @@ mod primitive {
             3 => (3, io_bind),
             4 => (2, io_return),
             5 => (2, putStrLn),
+            6 => (2, compare_tags),
             _ => fail!("undefined primitive")
         }
     }
@@ -610,6 +611,21 @@ mod primitive {
             };
         }
         (first, node)
+    }
+    ///Compares the tags of two constructors, returning an Ordering
+    fn compare_tags<'a>(vm: &'a VM, stack: &[Node<'a>]) -> Node<'a> {
+        assert_eq!(stack.len(), 2);
+        let lhs = eval(vm, stack[0].clone());
+        let rhs = eval(vm, stack[1].clone());
+        let tag = match (&*lhs.borrow(), &*rhs.borrow()) {
+            (&Constructor(lhs, _), &Constructor(rhs, _)) => match lhs.cmp(&rhs) {
+                Less => 0,
+                Equal => 1,
+                Greater => 2
+            },
+            (_, _) => 1//EQ
+        };
+        Node::new(Constructor(tag, Vec::new()))
     }
 }
 
@@ -941,7 +957,7 @@ main = (test (0 :: Int) 2) && not (test (1 :: Int) 0)")
 }
 
 #[test]
-fn generate_eq() {
+fn deriving_eq() {
     let result = execute_main_string(
 r"
 import Prelude
@@ -951,6 +967,18 @@ data Test = A Int | B
 main = A 0 == A 2 || A 0 == B
 ").unwrap_or_else(|err| fail!(err));
     assert_eq!(result, Some(ConstructorResult(1, Vec::new())));
+}
+#[test]
+fn deriving_ord() {
+    let result = execute_main_string(
+r"
+import Prelude
+data Test = A Int | B
+    deriving(Ord)
+
+main = compare (A 0) (A 2) == LT && compare B (A 123) == GT
+").unwrap_or_else(|err| fail!(err));
+    assert_eq!(result, Some(ConstructorResult(0, Vec::new())));
 }
 
 }

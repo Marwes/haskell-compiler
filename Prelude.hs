@@ -121,6 +121,7 @@ instance Integral Int where
     toInteger x = x
 
 data Ordering = LT | EQ | GT
+    deriving(Eq, Ord)
 
 infix 1 <, >, <=, >=
 
@@ -132,6 +133,7 @@ class Eq a => Ord a where
     (>=) :: a -> a -> Bool
     min :: a -> a -> a
     max :: a -> a -> a
+
 
 instance Ord Int where
     compare x y = case primIntLT x y of
