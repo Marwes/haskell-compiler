@@ -1,12 +1,12 @@
 use std::fmt;
 pub use types::{Qualified, Type, TypeApplication, TypeConstructor, TypeVariable, Constraint};
-pub use module::{Class, DataDefinition, Integral, Fractional, String, Char};
+pub use module::{TypeDeclaration, DataDefinition, Integral, Fractional, String, Char};
 use module;
 use interner::*;
 pub use renamer::Name;
 
 pub struct Module<Ident> {
-    pub classes: ~[Class],
+    pub classes: ~[Class<Ident>],
     pub data_definitions: ~[DataDefinition<Name>],
     pub instances: ~[(~[Constraint], Type)],
     pub bindings: ~[Binding<Ident>]
@@ -24,6 +24,15 @@ impl Module<Id> {
             }]
         }
     }
+}
+
+#[deriving(Clone, PartialEq)]
+pub struct Class<Ident> {
+    pub constraints: ~[Constraint],
+    pub name : InternedStr,
+    pub variable : TypeVariable,
+    pub declarations : ~[module::TypeDeclaration],
+    pub bindings: ~[Binding<Ident>]
 }
 
 #[deriving(Clone, PartialEq)]
@@ -337,13 +346,31 @@ pub mod translate {
 
         let mut instance_functions = Vec::new();
         let mut new_instances = Vec::new();
+
+        let classes2 : Vec<Class<Id>> = classes.move_iter().map(|class| {
+            let module::Class {
+                constraints: cs,
+                name : name,
+                variable : var,
+                declarations : decls,
+                bindings: bindings
+            } = class;
+            Class {
+                constraints: cs,
+                name: name,
+                variable: var,
+                declarations: decls,
+                bindings: translator.translate_bindings(bindings)
+            }
+        }).collect();
+
         for module::Instance {classname: classname, typ: typ, constraints: constraints, bindings: bindings } in instances.move_iter() {
             new_instances.push((constraints.clone(), Type::new_op(classname, ~[typ])));
             instance_functions.extend(translator.translate_bindings(bindings).move_iter());
         }
         instance_functions.extend(translator.translate_bindings(bindings).move_iter());
         Module {
-            classes: classes,
+            classes: FromVec::from_vec(classes2),
             data_definitions: dataDefinitions,
             bindings: FromVec::from_vec(instance_functions),
             instances: FromVec::from_vec(new_instances)

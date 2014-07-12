@@ -11,7 +11,7 @@ pub struct Module<Ident = InternedStr> {
     pub imports: ~[Import],
     pub bindings : ~[Binding<Ident>],
     pub typeDeclarations : ~[TypeDeclaration],
-    pub classes : ~[Class],
+    pub classes : ~[Class<Ident>],
     pub instances : ~[Instance<Ident>],
     pub dataDefinitions : ~[DataDefinition<Ident>],
     pub fixity_declarations : ~[FixityDeclaration<Ident>]
@@ -25,10 +25,10 @@ pub struct Import {
 #[deriving(Clone)]
 pub struct Class<Ident = InternedStr> {
     pub constraints: ~[Constraint],
-    pub name : Ident,
+    pub name : InternedStr,
     pub variable : TypeVariable,
     pub declarations : ~[TypeDeclaration],
-    pub bindings: ~[Binding]
+    pub bindings: ~[Binding<Ident>]
 }
 
 #[deriving(Clone)]

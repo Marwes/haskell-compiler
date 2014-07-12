@@ -127,7 +127,7 @@ impl SuperCombinator {
 pub struct Assembly {
     pub superCombinators: ~[SuperCombinator],
     pub instance_dictionaries: ~[~[uint]],
-    pub classes: ~[Class],
+    pub classes: ~[Class<Id>],
     pub instances: ~[(~[Constraint], Type)],
     pub data_definitions: ~[DataDefinition<Name>],
     pub offset: uint
@@ -239,8 +239,10 @@ impl Types for Module<Id> {
         return None;
     }
 
-    fn find_class<'a>(&'a self, name: InternedStr) -> Option<&'a Class> {
-        self.classes.iter().find(|class| name == class.name)
+    fn find_class<'a>(&'a self, name: InternedStr) -> Option<(&'a [Constraint], &'a TypeVariable, &'a [TypeDeclaration])> {
+        self.classes.iter()
+            .find(|class| name == class.name)
+            .map(|class| (class.constraints.as_slice(), &class.variable, class.declarations.as_slice()))
     }
 
     fn find_instance<'a>(&'a self, classname: InternedStr, typ: &Type) -> Option<(&'a [Constraint], &'a Type)> {
@@ -318,8 +320,10 @@ impl Types for Assembly {
         return None;
     }
 
-    fn find_class<'a>(&'a self, name: InternedStr) -> Option<&'a Class> {
-        self.classes.iter().find(|class| name == class.name)
+    fn find_class<'a>(&'a self, name: InternedStr) -> Option<(&'a [Constraint], &'a TypeVariable, &'a [TypeDeclaration])> {
+        self.classes.iter()
+            .find(|class| name == class.name)
+            .map(|class| (class.constraints.as_slice(), &class.variable, class.declarations.as_slice()))
     }
     fn find_instance<'a>(&'a self, classname: InternedStr, typ: &Type) -> Option<(&'a [Constraint], &'a Type)> {
         for &(ref constraints, ref op) in self.instances.iter() {
@@ -432,6 +436,11 @@ impl <'a> Compiler<'a> {
         let mut superCombinators = Vec::new();
         let mut instance_dictionaries = Vec::new();
         let mut data_definitions = Vec::new();
+
+        for bind in module.classes.iter().flat_map(|class| class.bindings.iter()) {
+            let sc = self.compile_binding(bind);
+            superCombinators.push(sc);
+        }
         
         for def in module.data_definitions.iter() {
             let mut constructors = Vec::new();
@@ -565,7 +574,7 @@ impl <'a> Compiler<'a> {
         }
     }
 
-    fn find_class<'r>(&'r self, name: InternedStr) -> Option<&'r Class> {
+    fn find_class<'a>(&'a self, name: InternedStr) -> Option<(&'a [Constraint], &'a TypeVariable, &'a [TypeDeclaration])> {
         self.module.and_then(|m| m.find_class(name))
             .or_else(|| {
             for types in self.assemblies.iter() {
@@ -842,8 +851,8 @@ impl <'a> Compiler<'a> {
         }
         let mut ii = 0;
         for c in constraints.iter() {
-            let result = self.walk_classes(c.class, &mut |class| {
-                for decl in class.declarations.iter() {
+            let result = self.walk_classes(c.class, &mut |declarations| {
+                for decl in declarations.iter() {
                     if decl.name == name {
                         return Some(ii)
                     }
@@ -860,14 +869,14 @@ impl <'a> Compiler<'a> {
 
     ///Walks through the class and all of its super classes, calling 'f' on each of them
     ///Returning Some(..) from the function quits and returns that value
-    fn walk_classes<T>(&self, class: InternedStr, f: &mut |&Class| -> Option<T>) -> Option<T> {
-        let class = self.find_class(class)
+    fn walk_classes<T>(&self, class: InternedStr, f: &mut |&[TypeDeclaration]| -> Option<T>) -> Option<T> {
+        let (constraints, _, declarations) = self.find_class(class)
             .expect("Compiler error: Expected class");
         //Look through the functions in any super classes first
-        class.constraints.iter()
+        constraints.iter()
             .filter_map(|constraint| self.walk_classes(constraint.class, f))
             .next()
-            .or_else(|| (*f)(class))
+            .or_else(|| (*f)(declarations))
     }
 
     ///Find the index of the instance dictionary for the constraints and types in 'constraints'
@@ -900,8 +909,8 @@ impl <'a> Compiler<'a> {
         }
 
         for &(ref class_name, ref typ) in constraints.iter() {
-            self.walk_classes(*class_name, &mut |class| -> Option<()> {
-                for decl in class.declarations.iter() {
+            self.walk_classes(*class_name, &mut |declarations| -> Option<()> {
+                for decl in declarations.iter() {
                     let x = match extract_applied_type(typ) {
                         &TypeConstructor(ref x) => x,
                         _ => fail!("{}", typ)

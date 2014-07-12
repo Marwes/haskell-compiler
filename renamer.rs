@@ -283,6 +283,24 @@ pub fn rename_module_(renamer: &mut Renamer, module: Module<InternedStr>) -> Mod
             classname : classname
         }
     }).collect();
+
+    
+    let classes2 : Vec<Class<Name>> = classes.move_iter().map(|class| {
+        let Class {
+            constraints: cs,
+            name : name,
+            variable : var,
+            declarations : decls,
+            bindings: bindings
+        } = class;
+        Class {
+            constraints: cs,
+            name: name,
+            variable: var,
+            declarations: decls,
+            bindings: renamer.rename_bindings(bindings, true)
+        }
+    }).collect();
     
     let bindings2 = renamer.rename_bindings(bindings, true);
 
@@ -301,7 +319,7 @@ pub fn rename_module_(renamer: &mut Renamer, module: Module<InternedStr>) -> Mod
     Module {
         name: renamer.make_unique(name),
         imports: imports,
-        classes : classes,
+        classes : FromVec::from_vec(classes2),
         dataDefinitions: FromVec::from_vec(data_definitions2),
         typeDeclarations: typeDeclarations,
         bindings : bindings2,

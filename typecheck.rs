@@ -17,7 +17,7 @@ use module::Alternative;
 ///Trait which can be implemented by types where types can be looked up by name
 pub trait Types {
     fn find_type<'a>(&'a self, name: &Name) -> Option<&'a Qualified<Type>>;
-    fn find_class<'a>(&'a self, name: InternedStr) -> Option<&'a Class>;
+    fn find_class<'a>(&'a self, name: InternedStr) -> Option<(&'a [Constraint], &'a TypeVariable, &'a [TypeDeclaration])>;
     fn has_instance(&self, classname: InternedStr, typ: &Type) -> bool {
         match self.find_instance(classname, typ) {
             Some(_) => true,
@@ -66,8 +66,10 @@ impl Types for Module<Name> {
         return None;
     }
 
-    fn find_class<'a>(&'a self, name: InternedStr) -> Option<&'a Class> {
-        self.classes.iter().find(|class| name == class.name)
+    fn find_class<'a>(&'a self, name: InternedStr) -> Option<(&'a [Constraint], &'a TypeVariable, &'a [TypeDeclaration])> {
+        self.classes.iter()
+            .find(|class| name == class.name)
+            .map(|class| (class.constraints.as_slice(), &class.variable, class.declarations.as_slice()))
     }
 
     fn find_instance<'a>(&'a self, classname: InternedStr, typ: &Type) -> Option<(&'a [Constraint], &'a Type)> {
@@ -146,8 +148,11 @@ impl Bindings for Module<Name> {
         let bindings = if instance_idx == 0 {
             &mut self.bindings
         }
-        else {
+        else if instance_idx - 1 < self.instances.len() {
             &mut self.instances[instance_idx - 1].bindings
+        }
+        else {
+            &mut self.classes[instance_idx - 1 - self.instances.len()].bindings
         };
         mut_bindings_at(*bindings, idx)
     }
@@ -162,6 +167,13 @@ impl Bindings for Module<Name> {
             index = 0;
             for binds in binding_groups(instance.bindings.as_slice()) {
                 func(binds, (instance_index + 1, index));
+                index += binds.len();
+            }
+        }
+        for (class_index, class) in self.classes.iter().enumerate() {
+            index = 0;
+            for binds in binding_groups(class.bindings.as_slice()) {
+                func(binds, (class_index + 1 + self.instances.len(), index));
                 index += binds.len();
             }
         }
@@ -530,7 +542,7 @@ impl <'a> TypeEnvironment<'a> {
             .or_else(|| self.assemblies.iter()
                 .filter_map(|types| types.find_class(class))//Find the class
                 .next()//next will get us the first class (but should only be one)
-                .map(|class| class.constraints.as_slice()))
+                .map(|(constraints, _, _)| constraints))
     }
 
     ///Checks whether 'actual_type' fulfills all the constraints that the instance has.
