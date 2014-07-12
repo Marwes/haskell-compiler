@@ -27,7 +27,8 @@ pub struct Class<Ident = InternedStr> {
     pub constraints: ~[Constraint],
     pub name : Ident,
     pub variable : TypeVariable,
-    pub declarations : ~[TypeDeclaration]
+    pub declarations : ~[TypeDeclaration],
+    pub bindings: ~[Binding]
 }
 
 #[deriving(Clone)]

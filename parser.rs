@@ -17,6 +17,12 @@ pub struct Parser<Iter> {
     lexer : Lexer<Iter>,
 }
 
+enum BindOrTypeDecl {
+    Binding(Binding),
+    TypeDecl(TypeDeclaration)
+}
+
+
 impl <Iter : Iterator<char>> Parser<Iter> {
 
 pub fn new(iterator : Iter) -> Parser<Iter> {
@@ -75,54 +81,27 @@ pub fn module(&mut self) -> Module {
     let mut fixity_declarations = Vec::new();
 	loop {
 		//Do a lookahead to see what the next top level binding is
-		let token = self.lexer.next().token;
+		let token = self.lexer.peek().token;
 		if token == NAME || token == LPARENS {
-            //Since the token indicates an identifier it will be a function declaration or a function definition
-            //We can disambiguate this by looking wether the '::' token appear.
-            let maybe_type_decl = if token == LPARENS {
-                self.lexer.next();//
-                self.require_next(RPARENS);
-                let tok = self.lexer.next().token;
-                self.lexer.backtrack();
-                self.lexer.backtrack();
-                self.lexer.backtrack();
-                self.lexer.backtrack();
-                tok
+            match self.binding_or_type_declaration() {
+                Binding(bind) => bindings.push(bind),
+                TypeDecl(decl) => type_declarations.push(decl)
             }
-            else {
-                let tok = self.lexer.next().token;
-                self.lexer.backtrack();
-                self.lexer.backtrack();
-                tok
-            };
-
-			if maybe_type_decl == TYPEDECL {
-				let bind = self.type_declaration();
-				type_declarations.push(bind);
-			}
-			else {
-				let bind = self.binding();
-                debug!("Parsed binding {}", bind.name);
-				bindings.push(bind);
-			}
 		}
 		else if token == CLASS {
-			self.lexer.backtrack();
 			classes.push(self.class());
 		}
 		else if token == INSTANCE {
-			self.lexer.backtrack();
 			instances.push(self.instance());
 		}
 		else if token == DATA {
-			self.lexer.backtrack();
 			data_definitions.push(self.data_definition());
 		}
 		else if token == INFIXL || token == INFIXR || token == INFIX {
-			self.lexer.backtrack();
             fixity_declarations.push(self.fixity_declaration());
         }
         else {
+            self.lexer.next();
 			break;
 		}
 		let semicolon = self.lexer.next();
@@ -160,7 +139,15 @@ fn class(&mut self) -> Class {
 
 	self.require_next(WHERE);
 	self.require_next(LBRACE);
-	let declarations = self.sep_by_1(|this| this.type_declaration(), SEMICOLON);
+	let x = self.sep_by_1(|this| this.binding_or_type_declaration(), SEMICOLON);
+    let mut bindings = Vec::new();
+    let mut declarations = Vec::new();
+    for decl_or_binding in x.move_iter() {
+        match decl_or_binding {
+            Binding(bind) => bindings.push(bind),
+            TypeDecl(decl) => declarations.push(decl)
+        }
+    }
 	
 	self.lexer.backtrack();
 	self.require_next(RBRACE);
@@ -171,7 +158,8 @@ fn class(&mut self) -> Class {
                 constraints: constraints,
                 name: classname.name,
                 variable: var,
-                declarations: declarations
+                declarations: FromVec::from_vec(declarations),
+                bindings: FromVec::from_vec(bindings)
             }
         }
         _ => fail!("Parse error in class declaration header")
@@ -510,6 +498,35 @@ fn binding(&mut self) -> Binding {
         typ: Default::default(),
         arguments: arguments,
         matches : matches,
+    }
+}
+
+fn binding_or_type_declaration(&mut self) -> BindOrTypeDecl {
+    //Since the token indicates an identifier it will be a function declaration or a function definition
+    //We can disambiguate this by looking wether the '::' token appear.
+    let token = self.lexer.next().token;
+    let maybe_type_decl = if token == LPARENS {
+        self.require_next(OPERATOR);
+        self.require_next(RPARENS);
+        let tok = self.lexer.next().token;
+        self.lexer.backtrack();
+        self.lexer.backtrack();
+        self.lexer.backtrack();
+        self.lexer.backtrack();
+        tok
+    }
+    else {
+        let tok = self.lexer.next().token;
+        self.lexer.backtrack();
+        self.lexer.backtrack();
+        tok
+    };
+
+    if maybe_type_decl == TYPEDECL {
+        TypeDecl(self.type_declaration())
+    }
+    else {
+        Binding(self.binding())
     }
 }
 
@@ -1152,12 +1169,19 @@ fn parse_instance_class() {
     let mut parser = Parser::new(
 r"class Eq a where
     (==) :: a -> a -> Bool
+    (/=) x y = not (x == y)
+    (/=) :: a -> a -> Bool
+
 
 instance Eq a => Eq [a] where
     (==) xs ys = undefined".chars());
     let module = parser.module();
 
     assert_eq!(module.classes[0].name, intern("Eq"));
+    assert_eq!(module.classes[0].bindings[0].name, intern("/="));
+    assert_eq!(module.classes[0].bindings.len(), 1);
+    assert_eq!(module.classes[0].declarations[0].name, intern("=="));
+    assert_eq!(module.classes[0].declarations[1].name, intern("/="));
     assert_eq!(module.instances[0].classname, intern("Eq"));
     assert_eq!(module.instances[0].constraints[0].class, intern("Eq"));
     assert_eq!(module.instances[0].typ, list_type(Type::new_var(intern("a"))));
