@@ -315,6 +315,23 @@ impl <'a> TypeEnvironment<'a> {
                 quantify(0, &mut t);
                 self.namedTypes.insert(Name { name: type_decl.name.clone(), uid: 0 }, t);
             }
+            for binding in class.bindings.mut_iter() {
+                let decl = class.declarations.iter()
+                    .find(|decl| binding.name.name == decl.name)
+                    .expect(format!("Could not find {} in class {}", binding.name, class.name));
+                binding.typ = decl.typ.clone();
+                {
+                    let mut context = ~[];
+                    swap(&mut context, &mut binding.typ.constraints);
+                    let mut vec_context: Vec<Constraint> = context.move_iter().collect();
+                    let c = Constraint {
+                        class: class.name.clone(),
+                        variables: ~[class.variable.clone()]
+                    };
+                    vec_context.push(c);
+                    binding.typ.constraints = FromVec::from_vec(vec_context);
+                }
+            }
             self.classes.push((class.constraints.clone(), class.name.clone()));
         }
         let data_definitions = module.dataDefinitions.clone();

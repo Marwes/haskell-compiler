@@ -141,6 +141,14 @@ trait Globals {
 
 impl Globals for Assembly {
     fn find_global<'a>(&'a self, name: &Name) -> Option<Var<'a>> {
+        for class in self.classes.iter() {
+            for decl in class.declarations.iter() {
+                if decl.name == name.name {
+                    return Some(ClassVariable(&decl.typ.value, decl.typ.constraints, &class.variable));
+                }
+            }
+        }
+        
         let mut index = 0;
         for sc in self.superCombinators.iter() {
             if *name == sc.name {
@@ -153,14 +161,6 @@ impl Globals for Assembly {
             }
             index += 1;
         }
-        for class in self.classes.iter() {
-            for decl in class.declarations.iter() {
-                if decl.name == name.name {
-                    return Some(ClassVariable(&decl.typ.value, decl.typ.constraints, &class.variable));
-                }
-            }
-        }
-        
         self.find_constructor(name.name).map(|(tag, arity)| ConstructorVariable(tag, arity))
     }
     fn find_constructor(&self, name: InternedStr) -> Option<(u16, u16)> {
@@ -186,20 +186,25 @@ fn find_global<'a>(module: &'a Module<Id>, offset: uint, name: &Name) -> Option<
     }
 
     let mut global_index = 0;
-    for bind in module.bindings.iter() {
-        if bind.name.name == *name {
+    module.bindings.iter()
+        .chain(module.instances.iter().flat_map(|instance| instance.bindings.iter()))
+        .chain(module.classes.iter().flat_map(|c| c.bindings.iter()))
+        .find(|bind| { global_index += 1; bind.name.name == *name })
+        .map(|bind| {
+            global_index -= 1;
             let typ = bind.expression.get_type();
             let constraints = &bind.name.typ.constraints;
             if constraints.len() > 0 {
-                return Some(ConstraintVariable(offset + global_index, typ, *constraints));
+                ConstraintVariable(offset + global_index, typ, *constraints)
             }
             else {
-                return Some(GlobalVariable(offset + global_index));
+                GlobalVariable(offset + global_index)
             }
-        }
-        global_index += 1;
-    }
-    find_constructor(module, name.name).map(|(tag, arity)| ConstructorVariable(tag, arity))
+        })
+        .or_else(|| {
+            find_constructor(module, name.name)
+                .map(|(tag, arity)| ConstructorVariable(tag, arity))
+        })
 }
 
 fn find_constructor(module: &Module<Id>, name: InternedStr) -> Option<(u16, u16)> {
@@ -246,28 +251,17 @@ impl Types for Module<Id> {
     }
 
     fn find_instance<'a>(&'a self, classname: InternedStr, typ: &Type) -> Option<(&'a [Constraint], &'a Type)> {
-        for &(ref constraints, ref op) in self.instances.iter() {
-            match op {
-                &TypeApplication(ref op, ref t) => {
-                    let x = match extract_applied_type(*op) {
-                        &TypeConstructor(ref x) => x,
-                        _ => fail!()
-                    };
-                    let y = match extract_applied_type(*t) {
-                        &TypeConstructor(ref x) => x,
-                        _ => fail!()
-                    };
-                    let z = match extract_applied_type(typ) {
-                        &TypeConstructor(ref x) => x,
-                        _ => fail!()
-                    };
-                    if classname == x.name && y.name == z.name {
-                        let c : &[Constraint] = *constraints;
-                        let o : &Type = *t;
-                        return Some((c, o));
-                    }
-                }
-                _ => ()
+        for instance in self.instances.iter() {
+            let y = match extract_applied_type(&instance.typ) {
+                &TypeConstructor(ref x) => x,
+                _ => fail!()
+            };
+            let z = match extract_applied_type(typ) {
+                &TypeConstructor(ref x) => x,
+                _ => fail!()
+            };
+            if classname == instance.classname && y.name == z.name {
+                return Some((instance.constraints.as_slice(), &instance.typ));
             }
         }
         None
@@ -437,11 +431,6 @@ impl <'a> Compiler<'a> {
         let mut instance_dictionaries = Vec::new();
         let mut data_definitions = Vec::new();
 
-        for bind in module.classes.iter().flat_map(|class| class.bindings.iter()) {
-            let sc = self.compile_binding(bind);
-            superCombinators.push(sc);
-        }
-        
         for def in module.data_definitions.iter() {
             let mut constructors = Vec::new();
             for ctor in def.constructors.iter() {
@@ -449,12 +438,15 @@ impl <'a> Compiler<'a> {
             }
             data_definitions.push(def.clone());
         }
+        let mut bindings = module.bindings.iter()
+            .chain(module.instances.iter().flat_map(|i| i.bindings.iter()))
+            .chain(module.classes.iter().flat_map(|class| class.bindings.iter()));
 
-        for bind in module.bindings.iter() {
-            let mut sc = self.compile_binding(bind);
-            sc.name = bind.name.name.clone();
+        for bind in bindings {
+            let sc = self.compile_binding(bind);
             superCombinators.push(sc);
         }
+        
 
         for &(_, ref dict) in self.instance_dictionaries.iter() {
             instance_dictionaries.push(dict.clone());
@@ -465,7 +457,11 @@ impl <'a> Compiler<'a> {
             instance_dictionaries: FromVec::from_vec(instance_dictionaries),
             offset: self.assemblies.iter().flat_map(|assembly| assembly.superCombinators.iter()).len(),
             classes: module.classes.clone(),
-            instances: FromVec::<(~[Constraint], Type)>::from_vec(module.instances.iter().map(|x| x.clone()).collect()),
+            instances: FromVec::<(~[Constraint], Type)>::from_vec(
+                module.instances.iter()
+                .map(|x| (x.constraints.clone(), Type::new_op(x.classname, box [x.typ.clone()])))
+                .collect()
+            ),
             data_definitions: FromVec::from_vec(data_definitions)
         }
     }
@@ -750,9 +746,11 @@ impl <'a> Compiler<'a> {
                     }
                     BuiltinVariable(index) => { instructions.push(PushBuiltin(index)); }
                     ClassVariable(typ, constraints, var) => {
+                        debug!("ClassVariable ({}, {}, {}) {}", typ, constraints, var, expr.get_type());
                         self.compile_instance_variable(expr.get_type(), instructions, &name.name, typ, constraints, var);
                     }
                     ConstraintVariable(index, bind_type, constraints) => {
+                        debug!("ConstraintVariable {} ({}, {}, {})", name, index, bind_type, constraints);
                         self.compile_with_constraints(&name.name, expr.get_type(), bind_type, constraints, instructions);
                         instructions.push(PushGlobal(index));
                         instructions.push(Mkap);
@@ -924,7 +922,7 @@ impl <'a> Compiler<'a> {
                         Some(GlobalVariable(index)) => {
                             function_indexes.push(index as uint);
                         }
-                        _ => fail!("Did not find function {}", name)
+                        var => fail!("Did not find function {} {}", name, var)
                     }
                 }
                 None
@@ -1142,9 +1140,9 @@ instance Test Int where
 main = test (primIntAdd 6 0)";
     let assembly = compile(file);
 
-    let main = &assembly.superCombinators[1];
+    let main = &assembly.superCombinators[0];
     assert_eq!(main.name.name, intern("main"));
-    assert_eq!(main.instructions, ~[PushInt(0), PushInt(6), Add, PushGlobal(0), Mkap, Eval, Update(0), Unwind]);
+    assert_eq!(main.instructions, ~[PushInt(0), PushInt(6), Add, PushGlobal(1), Mkap, Eval, Update(0), Unwind]);
 }
 
 #[test]
@@ -1159,7 +1157,7 @@ instance Test Int where
 main x = primIntAdd (test x) 6";
     let assembly = compile(file);
 
-    let main = assembly.superCombinators[1];
+    let main = assembly.superCombinators[0];
     assert_eq!(main.name.name, intern("main"));
     assert_eq!(main.instructions, ~[PushInt(6), Push(1), PushDictionaryMember(0), Mkap, Eval, Add, Update(0), Pop(2), Unwind]);
 }

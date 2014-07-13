@@ -41,7 +41,9 @@ infix 4 ==, /=
 
 class Eq a where
     (==) :: a -> a -> Bool
+    (==) x y = not (x /= y)
     (/=) :: a -> a -> Bool
+    (/=) x y = not (x == y)
 
 instance Eq Bool where
     (==) True True = True

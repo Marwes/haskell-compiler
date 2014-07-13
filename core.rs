@@ -8,7 +8,7 @@ pub use renamer::Name;
 pub struct Module<Ident> {
     pub classes: ~[Class<Ident>],
     pub data_definitions: ~[DataDefinition<Name>],
-    pub instances: ~[(~[Constraint], Type)],
+    pub instances: ~[Instance<Ident>],
     pub bindings: ~[Binding<Ident>]
 }
 
@@ -33,6 +33,14 @@ pub struct Class<Ident> {
     pub variable : TypeVariable,
     pub declarations : ~[module::TypeDeclaration],
     pub bindings: ~[Binding<Ident>]
+}
+
+#[deriving(Clone)]
+pub struct Instance<Ident = InternedStr> {
+    pub bindings : ~[Binding<Ident>],
+    pub constraints : ~[Constraint],
+    pub typ : Type,
+    pub classname : InternedStr
 }
 
 #[deriving(Clone, PartialEq)]
@@ -365,8 +373,12 @@ pub mod translate {
         }).collect();
 
         for module::Instance {classname: classname, typ: typ, constraints: constraints, bindings: bindings } in instances.move_iter() {
-            new_instances.push((constraints.clone(), Type::new_op(classname, ~[typ])));
-            instance_functions.extend(translator.translate_bindings(bindings).move_iter());
+            new_instances.push(Instance {
+                constraints: constraints,
+                typ: typ,
+                classname: classname,
+                bindings: translator.translate_bindings(bindings)
+            });
         }
         instance_functions.extend(translator.translate_bindings(bindings).move_iter());
         Module {
