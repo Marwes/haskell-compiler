@@ -124,6 +124,33 @@ class Eq a => Ord a where
     (>=) :: a -> a -> Bool
     min :: a -> a -> a
     max :: a -> a -> a
+    compare x y = case x < y of
+        True -> LT
+        False -> case x == y of
+            True -> EQ
+            False -> GT
+    (<) x y = case compare x y of
+        LT -> True
+        EQ -> False
+        GT -> False
+    (>) x y = case compare x y of
+        LT -> False
+        EQ -> False
+        GT -> True
+    (<=) x y = case compare x y of
+        LT -> True
+        EQ -> True
+        GT -> False
+    (>=) x y = case compare x y of
+        LT -> False
+        EQ -> True
+        GT -> True
+    min x y = case x < y of
+        True -> x
+        False -> y
+    max x y = case x > y of
+        True -> x
+        False -> y
 
 
 instance Ord Int where

@@ -813,7 +813,7 @@ impl <'a> Compiler<'a> {
                         instructions.push(PushGlobal(index));
                         instructions.push(Mkap);
                     }
-                    _ => fail!("Unregistered instance function {}", name)
+                    _ => fail!("Unregistered instance function {}", instance_fn_name)
                 }
             }
             None => {

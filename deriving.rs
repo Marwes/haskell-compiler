@@ -6,17 +6,31 @@ use interner::{intern, InternedStr};
 
 use std::vec::FromVec;
 
-pub fn generate_deriving(bindings: &mut Vec<Binding<Id<Name>>>, data: &DataDefinition<Name>) {
+pub fn generate_deriving(instances: &mut Vec<Instance<Id<Name>>>, data: &DataDefinition<Name>) {
     let mut gen = DerivingGen { name_supply: NameSupply::new() };
     for deriving in data.deriving.iter() {
         match deriving.as_slice() {
             "Eq" => {
+                let mut bindings = Vec::new();
                 bindings.push(gen.generate_eq(data));
+                instances.push(Instance {
+                    constraints: box [],
+                    typ: data.typ.value.clone(),
+                    classname: intern("Eq"),
+                    bindings: FromVec::from_vec(bindings)
+                });
             }
             "Ord" => {
+                let mut bindings = Vec::new();
                 let b = gen.generate_ord(data);
                 debug!("Generated Ord {} ->>\n{}", data.typ, b);
                 bindings.push(b);
+                instances.push(Instance {
+                    constraints: box [],
+                    typ: data.typ.value.clone(),
+                    classname: intern("Ord"),
+                    bindings: FromVec::from_vec(bindings)
+                });
             }
             x => fail!("Cannot generate instance for class {}", x)
         }

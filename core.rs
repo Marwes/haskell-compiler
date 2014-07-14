@@ -394,26 +394,32 @@ pub mod translate {
         }).collect();
 
         for instance in instances.move_iter() {
-            let (class_var, class_decls) = (translator.functions_in_class)(instance.classname);
-            let mut defaults = create_default_stubs(class_var, class_decls, &instance);
             let module::Instance {
                 classname: classname,
                 typ: instance_type,
                 constraints: constraints,
                 bindings: bindings
             } = instance;
-            let bs = translator.translate_bindings(bindings);
-            defaults.extend(bs.move_iter());
+            let bs: Vec<Binding<Id<Name>>> = translator.translate_bindings(bindings).move_iter().collect();
             new_instances.push(Instance {
                 constraints: constraints,
                 typ: instance_type,
                 classname: classname,
-                bindings: FromVec::from_vec(defaults)
+                bindings: FromVec::from_vec(bs)
             });
         }
-        let mut bs: Vec<Binding<Id<Name>>> = translator.translate_bindings(bindings).move_iter().collect();
+        let bs: Vec<Binding<Id<Name>>> = translator.translate_bindings(bindings).move_iter().collect();
         for data in dataDefinitions.iter() {
-            generate_deriving(&mut bs, data);
+            generate_deriving(&mut new_instances, data);
+        }
+        for instance in new_instances.mut_iter() {
+            let (class_var, class_decls) = (translator.functions_in_class)(instance.classname);
+            let defaults = create_default_stubs(class_var, class_decls, instance);
+            let mut temp = box [];
+            ::std::mem::swap(&mut temp, &mut instance.bindings);
+            let vec: Vec<Binding<Id<Name>>> = temp.move_iter().chain(defaults.move_iter()).collect();
+            debug!("{}", vec);
+            instance.bindings = FromVec::from_vec(vec);
         }
         Module {
             classes: FromVec::from_vec(classes2),
@@ -424,7 +430,7 @@ pub mod translate {
     }
 
     ///Creates stub functions for each undeclared function in the instance
-    fn create_default_stubs(class_var: &TypeVariable, class_decls: &[TypeDeclaration], instance: &module::Instance<Name>) -> Vec<Binding<Id<Name>>> {
+    fn create_default_stubs(class_var: &TypeVariable, class_decls: &[TypeDeclaration], instance: &Instance<Id<Name>>) -> Vec<Binding<Id<Name>>> {
         class_decls.iter()
             .filter(|decl| instance.bindings.iter().find(|bind| bind.name.as_slice().ends_with(decl.name.as_slice())).is_none())
             .map(|decl| {
