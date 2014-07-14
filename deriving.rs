@@ -2,7 +2,7 @@ use module::{DataDefinition, encode_binding_identifier};
 use core::*;
 use renamer::{Name, NameSupply};
 use types::*;
-use interner::intern;
+use interner::{intern, InternedStr};
 
 use std::vec::FromVec;
 
@@ -28,7 +28,7 @@ struct DerivingGen {
 }
 impl DerivingGen {
     fn generate_eq(&mut self, data: &DataDefinition<Name>) -> Binding<Id<Name>> {
-        self.make_binop("==", data, |this, id_l, id_r| {
+        self.make_binop("Eq", "==", data, |this, id_l, id_r| {
             let alts = this.match_same_constructors(data, &id_r, |this, l, r| this.eq_fields(l, r));
             Case(box Identifier(id_l.clone()), alts)
         })
@@ -48,7 +48,7 @@ impl DerivingGen {
     }
 
     fn generate_ord(&mut self, data: &DataDefinition<Name>) -> Binding<Id<Name>> {
-        self.make_binop("compare", data, |this, id_l, id_r| {
+        self.make_binop("Ord", "compare", data, |this, id_l, id_r| {
             //We first compare the tags of the arguments since this would otherwise the last of the alternatives
             let when_eq = {
                 let alts = this.match_same_constructors(data, &id_r, |this, l, r| this.ord_fields(l, r));
@@ -77,17 +77,30 @@ impl DerivingGen {
 
     ///Creates a binary function binding with the name 'funcname' which is a function in an instance for 'data'
     ///This function takes two parameters of the type of 'data'
-    fn make_binop(&mut self, funcname: &str, data: &DataDefinition<Name>, func: |&mut DerivingGen, Id<Name>, Id<Name>| -> Expr<Id<Name>>) -> Binding<Id<Name>> {
+    fn make_binop(&mut self, class: &str, funcname: &str, data: &DataDefinition<Name>, func: |&mut DerivingGen, Id<Name>, Id<Name>| -> Expr<Id<Name>>) -> Binding<Id<Name>> {
         let arg_l = self.name_supply.anonymous();
         let arg_r = self.name_supply.anonymous();
-        let id_r = Id::new(arg_r, data.typ.value.clone(), data.typ.constraints.clone());
-        let id_l = Id::new(arg_l, data.typ.value.clone(), data.typ.constraints.clone());
+        let mut id_r = Id::new(arg_r, data.typ.value.clone(), data.typ.constraints.clone());
+        let mut id_l = Id::new(arg_l, data.typ.value.clone(), data.typ.constraints.clone());
         let expr = func(self, id_l.clone(), id_r.clone());
+        id_r.typ.value = function_type_(data.typ.value.clone(), bool_type());
+        id_l.typ.value = function_type_(data.typ.value.clone(), function_type_(data.typ.value.clone(), bool_type()));
         let lambda_expr = Lambda(id_l, box Lambda(id_r, box expr));//TODO types
         let data_name = extract_applied_type(&data.typ.value).ctor().name;
         let name = encode_binding_identifier(data_name, intern(funcname));
+        //Create a constraint for each type parameter
+        fn make_constraints(mut result: Vec<Constraint>, class: InternedStr, typ: &Type) -> ~[Constraint] {
+            match typ {
+                &TypeApplication(ref f, ref param) => {
+                    result.push(Constraint { class: class, variables: box [param.var().clone()] });
+                    make_constraints(result, class, *f)
+                }
+                _ => FromVec::from_vec(result)
+            }
+        }
+        let constraints = make_constraints(Vec::new(), intern(class), &data.typ.value);
         Binding {
-            name: Id::new(Name { name: name, uid: 0 }, lambda_expr.get_type().clone(), box []),
+            name: Id::new(Name { name: name, uid: 0 }, lambda_expr.get_type().clone(), constraints),
             expression: lambda_expr
         }
     }
