@@ -327,6 +327,7 @@ pub mod translate {
     use interner::*;
     use renamer::NameSupply;
     use std::vec::FromVec;
+    use deriving::*;
     use collections::HashMap;
 
     struct Translator<'a> {
@@ -410,7 +411,10 @@ pub mod translate {
                 bindings: FromVec::from_vec(defaults)
             });
         }
-        let bs: Vec<Binding<Id<Name>>> = translator.translate_bindings(bindings).move_iter().collect();
+        let mut bs: Vec<Binding<Id<Name>>> = translator.translate_bindings(bindings).move_iter().collect();
+        for data in dataDefinitions.iter() {
+            generate_deriving(&mut bs, data);
+        }
         Module {
             classes: FromVec::from_vec(classes2),
             data_definitions: dataDefinitions,

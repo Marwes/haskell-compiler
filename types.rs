@@ -281,7 +281,7 @@ struct Prec<'a>(Prec_, &'a Type);
 
 ///If the type is a function it returns the type of the argument and the result type,
 ///otherwise it returns None
-fn try_get_function<'a>(typ: &'a Type) -> Option<(&'a Type, &'a Type)> {
+pub fn try_get_function<'a>(typ: &'a Type) -> Option<(&'a Type, &'a Type)> {
     match *typ {
         TypeApplication(ref xx, ref result) => {
             let y: &Type = *xx;

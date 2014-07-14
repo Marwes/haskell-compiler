@@ -55,6 +55,7 @@ mod renamer;
 mod infix;
 mod builtins;
 mod interner;
+mod deriving;
 #[cfg(not(test))]
 mod repl;
 
