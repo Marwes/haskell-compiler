@@ -974,11 +974,22 @@ fn deriving_ord() {
 r"
 import Prelude
 data Test = A Int | B
-    deriving(Ord)
+    deriving(Eq, Ord)
 
 main = compare (A 0) (A 2) == LT && compare B (A 123) == GT
 ").unwrap_or_else(|err| fail!(err));
     assert_eq!(result, Some(ConstructorResult(0, Vec::new())));
+}
+
+#[test]
+fn instance_eq_list() {
+    let result = execute_main_string(
+r"
+import Prelude
+test x y = x == y
+main = test [1 :: Int] [3]
+").unwrap_or_else(|err| fail!(err));
+    assert_eq!(result, Some(ConstructorResult(1, Vec::new())));
 }
 
 }

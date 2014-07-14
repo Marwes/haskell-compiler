@@ -418,7 +418,6 @@ pub mod translate {
             let mut temp = box [];
             ::std::mem::swap(&mut temp, &mut instance.bindings);
             let vec: Vec<Binding<Id<Name>>> = temp.move_iter().chain(defaults.move_iter()).collect();
-            debug!("{}", vec);
             instance.bindings = FromVec::from_vec(vec);
         }
         Module {

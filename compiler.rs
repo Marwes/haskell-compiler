@@ -922,6 +922,9 @@ impl <'a> Compiler<'a> {
                         Some(GlobalVariable(index)) => {
                             function_indexes.push(index as uint);
                         }
+                        Some(ConstraintVariable(index, _, _)) => {
+                            function_indexes.push(index as uint);//TODO this is not really correct since this function requires a dictionary
+                        }
                         var => fail!("Did not find function {} {}", name, var)
                     }
                 }
