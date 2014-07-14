@@ -1,6 +1,7 @@
 module Prelude where
 
 data Bool = True | False
+    deriving(Eq, Ord)
 
 not b = case b of
     True -> False
@@ -20,6 +21,7 @@ infixr 3 &&
     False -> False
 
 data Maybe a = Just a | Nothing
+    deriving(Eq, Ord)
 
 maybe :: b -> (a -> b) -> Maybe a -> b
 maybe def f m = case m of
@@ -65,17 +67,6 @@ instance Eq a => Eq [a] where
     (==) x y = False
 
     (/=) xs ys = not (xs == ys)
-
-instance Eq a => Eq (Maybe a) where
-    (==) x y = case x of
-        Just l -> case y of
-            Just r -> l == r
-            Nothing -> False
-        Nothing -> case y of
-            Just r -> False
-            Nothing -> True
-
-    (/=) x y = not (x == y)
 
 infixl 6 +, -
 infixl 7 *

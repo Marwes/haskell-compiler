@@ -588,11 +588,8 @@ impl <'a> TypeEnvironment<'a> {
         match (instance_type, actual_type) {
             (&TypeApplication(ref lvar, box TypeVariable(ref rvar)), &TypeApplication(ref ltype, ref rtype)) => {
                 let maybeConstraint = constraints.iter().find(|c| c.variables[0] == *rvar);
-                match maybeConstraint {
-                    Some(constraint) => self.has_instance(constraint.class, *rtype)
-                                     && self.check_instance_constraints(constraints, *lvar, *ltype),
-                    None => false//?
-                }
+                maybeConstraint.map_or(true, |constraint| self.has_instance(constraint.class, *rtype))
+                    && self.check_instance_constraints(constraints, *lvar, *ltype)
             }
             (&TypeConstructor(ref l), &TypeConstructor(ref r)) => l.name == r.name,
             (_, &TypeVariable(_)) => true,
@@ -2110,7 +2107,10 @@ r"import Prelude
 data Test = Test Int
     deriving(Eq)
 
-test = Test 2 == Test 1");
+data Test2 a = J a | N
+    deriving(Eq)
+
+test x = Test 2 == Test 1 || J x == N");
 }
 
 #[test]
