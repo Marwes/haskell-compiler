@@ -12,6 +12,16 @@ use renamer::rename_module;
 use vm::primitive::{BuiltinFun, get_builtin};
 use interner::*;
 
+#[deriving(Clone)]
+struct InstanceDictionary {
+    entries: Vec<Rc<DictionaryEntry>>
+}
+#[deriving(Clone)]
+enum DictionaryEntry {
+    SubDictionary(Rc<InstanceDictionary>),
+    Function(uint)
+}
+
 enum Node_<'a> {
     Application(Node<'a>, Node<'a>),
     Int(int),
@@ -20,7 +30,7 @@ enum Node_<'a> {
     Combinator(&'a SuperCombinator),
     Indirection(Node<'a>),
     Constructor(u16, Vec<Node<'a>>),
-    Dictionary(&'a [uint]),
+    Dictionary(InstanceDictionary),
     BuiltinFunction(uint, BuiltinFun)
 }
 impl <'a> Clone for Node_<'a> {
@@ -33,7 +43,7 @@ impl <'a> Clone for Node_<'a> {
             &Combinator(sc) => Combinator(sc),
             &Indirection(ref n) => Indirection(n.clone()),
             &Constructor(ref tag, ref args) => Constructor(tag.clone(), args.clone()),
-            &Dictionary(dict) => Dictionary(dict),
+            &Dictionary(ref dict) => Dictionary(dict.clone()),
             &BuiltinFunction(arity, f) => BuiltinFunction(arity, f)
         }
     }
@@ -113,6 +123,26 @@ impl <'a> fmt::Show for Node_<'a> {
             }
             &Dictionary(ref dict) => write!(f, "{}", dict),
             &BuiltinFunction(..) => write!(f, "<extern function>")
+        }
+    }
+}
+impl fmt::Show for InstanceDictionary {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        try!(write!(f, "["));
+        if self.entries.len() > 0 {
+            try!(write!(f, "{}", **self.entries.get(0)));
+        }
+        for entry in self.entries.iter().skip(1) {
+            try!(write!(f, ", {}", **entry));
+        }
+        write!(f, "]")
+    }
+}
+impl fmt::Show for DictionaryEntry {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            SubDictionary(ref sd) => write!(f, "{}", **sd),
+            Function(index) => write!(f, "{}", index)
         }
     }
 }
@@ -368,6 +398,7 @@ impl <'a> VM {
                 PushDictionary(index) => {
                     let assembly = self_.assembly.get(assembly_id);
                     let dict : &[uint] = assembly.instance_dictionaries[index];
+                    let dict = InstanceDictionary { entries: dict.iter().map(|i| Rc::new(Function(*i))).collect() };
                     stack.push(Node::new(Dictionary(dict)));
                 }
                 PushDictionaryMember(index) => {
@@ -377,9 +408,13 @@ impl <'a> VM {
                             Dictionary(ref x) => x,
                             ref x => fail!("Attempted to retrieve {} as dictionary", *x)
                         };
-                        let gi = dict[index];
-                        let &(assembly_index, i) = self_.globals.get(gi);
-                        &self_.assembly.get(assembly_index).superCombinators[i]
+                        match **dict.entries.get(index) {
+                            Function(gi) => {
+                                let &(assembly_index, i) = self_.globals.get(gi);
+                                &self_.assembly.get(assembly_index).superCombinators[i]
+                            }
+                            _ => fail!("Not implemented")
+                        }
                     };
                     stack.push(Node::new(Combinator(sc)));
                 }
