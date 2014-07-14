@@ -906,6 +906,27 @@ main = (test 2 [], test 100 [0], test 100 [0, 123])
 ".chars());
     assert_eq!(result, Some(ConstructorResult(0, vec!(IntResult(2), IntResult(1), IntResult(100)))));
 }
+#[test]
+fn test_class_default_function()
+{
+    let module = 
+r"data Bool = True | False
+
+class Test a where
+    test :: a -> Int
+    test _ = 42
+    test2 :: Int
+
+instance Test Int where
+    test x = x
+    test2 = 0
+
+instance Test Bool where
+    test2 = 2
+
+main = (test True, test (1 :: Int))";
+    assert_eq!(execute_main(module.chars()), Some(ConstructorResult(0, vec![IntResult(42), IntResult(1)])));
+}
 
 #[test]
 fn use_super_class() {
