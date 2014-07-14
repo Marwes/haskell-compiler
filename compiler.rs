@@ -8,7 +8,7 @@ use std::default::Default;
 use std::vec::FromVec;
 use std::io::IoResult;
 
-use core::translate::{translate_module};
+use core::translate::{translate_module, translate_modules};
 use lambda_lift::do_lambda_lift;
 use renamer::rename_module;
 use builtins::builtins;
@@ -1033,8 +1033,9 @@ pub fn compile_module(module: &str) -> IoResult<Vec<Assembly>> {
 
 fn compile_module_(modules: Vec<::module::Module<Name>>) -> IoResult<Vec<Assembly>> {
     use compiler::Compiler;
-    let core_modules: Vec<Module<Id<Name>>> = modules.move_iter()
-        .map(|module| do_lambda_lift(translate_module(module)))
+    let core_modules: Vec<Module<Id<Name>>> = translate_modules(modules)
+        .move_iter()
+        .map(|module| do_lambda_lift(module))
         .collect();
     let mut assemblies = Vec::new();
     for module in core_modules.iter() {

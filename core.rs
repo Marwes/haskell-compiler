@@ -327,19 +327,41 @@ pub mod translate {
     use interner::*;
     use renamer::NameSupply;
     use std::vec::FromVec;
+    use collections::HashMap;
 
-    struct Translator {
-        name_supply: NameSupply
+    struct Translator<'a> {
+        name_supply: NameSupply,
+        functions_in_class: |InternedStr|:'a -> (&'a TypeVariable, &'a [TypeDeclaration])
     }
     
     #[deriving(Show)]
     struct Equation<'a>(&'a [(Id<Name>, Pattern<Id<Name>>)], &'a module::Match<Name>);
 
     pub fn translate_expr(expr: module::TypedExpr<Name>) -> Expr<Id<Name>> {
-        let mut translator = Translator { name_supply: NameSupply::new() };
+        let mut translator = Translator { name_supply: NameSupply::new(), functions_in_class: |_| fail!() };
         translator.translate_expr(expr)
     }
+
+    pub fn translate_modules(modules: Vec<module::Module<Name>>) -> Vec<Module<Id<Name>>> {
+        let mut map = HashMap::new();
+        for class in modules.iter().flat_map(|m| m.classes.iter()) {
+            map.insert(class.name.clone(), (class.variable.clone(), class.declarations.clone()));
+        }
+        let mut translator = Translator {
+            name_supply: NameSupply::new(),
+            functions_in_class: |name| {
+                let &(ref var, ref decls) = map.get(&name);
+                (var, decls.as_slice())
+            }
+        };
+        modules.move_iter()
+            .map(|module| translate_module_(&mut translator, module))
+            .collect()
+    }
     pub fn translate_module(module: module::Module<Name>) -> Module<Id<Name>> {
+        translate_modules(vec!(module)).pop().unwrap()
+    }
+    fn translate_module_<'a>(translator: &mut Translator<'a>, module: module::Module<Name>) -> Module<Id<Name>> {
         let module::Module { name : _name,
             imports : _imports,
             bindings : bindings,
@@ -350,10 +372,8 @@ pub mod translate {
             fixity_declarations : _fixity_declarations
         } = module;
 
-        let mut translator = Translator { name_supply: NameSupply::new() };
 
-        let mut instance_functions = Vec::new();
-        let mut new_instances = Vec::new();
+        let mut new_instances: Vec<Instance<Id<Name>>> = Vec::new();
 
         let classes2 : Vec<Class<Id>> = classes.move_iter().map(|class| {
             let module::Class {
@@ -372,23 +392,67 @@ pub mod translate {
             }
         }).collect();
 
-        for module::Instance {classname: classname, typ: typ, constraints: constraints, bindings: bindings } in instances.move_iter() {
+        for instance in instances.move_iter() {
+            let (class_var, class_decls) = (translator.functions_in_class)(instance.classname);
+            let mut defaults = create_default_stubs(class_var, class_decls, &instance);
+            let module::Instance {
+                classname: classname,
+                typ: instance_type,
+                constraints: constraints,
+                bindings: bindings
+            } = instance;
+            let bs = translator.translate_bindings(bindings);
+            defaults.extend(bs.move_iter());
             new_instances.push(Instance {
                 constraints: constraints,
-                typ: typ,
+                typ: instance_type,
                 classname: classname,
-                bindings: translator.translate_bindings(bindings)
+                bindings: FromVec::from_vec(defaults)
             });
         }
-        instance_functions.extend(translator.translate_bindings(bindings).move_iter());
+        let bs: Vec<Binding<Id<Name>>> = translator.translate_bindings(bindings).move_iter().collect();
         Module {
             classes: FromVec::from_vec(classes2),
             data_definitions: dataDefinitions,
-            bindings: FromVec::from_vec(instance_functions),
+            bindings: FromVec::from_vec(bs),
             instances: FromVec::from_vec(new_instances)
         }
     }
-impl Translator {
+
+    ///Creates stub functions for each undeclared function in the instance
+    fn create_default_stubs(class_var: &TypeVariable, class_decls: &[TypeDeclaration], instance: &module::Instance<Name>) -> Vec<Binding<Id<Name>>> {
+        class_decls.iter()
+            .filter(|decl| instance.bindings.iter().find(|bind| bind.name.as_slice().ends_with(decl.name.as_slice())).is_none())
+            .map(|decl| {
+                debug!("Create default function for {} ({}) {}", instance.classname, instance.typ, decl.name);
+                //The stub functions will naturally have the same type as the function in the class but with the variable replaced
+                //with the instance's type
+                let mut typ = decl.typ.clone();
+                ::typecheck::replace_var(&mut typ.value, class_var, &instance.typ);
+                {
+                    let mut context = ~[];
+                    ::std::mem::swap(&mut context, &mut typ.constraints);
+                    //Remove all constraints which refer to the class's variable
+                    let vec_context: Vec<Constraint> = context.move_iter()
+                        .filter(|c| c.variables[0] != *class_var)
+                        .collect();
+                    typ.constraints = FromVec::from_vec(vec_context);
+                }
+                let Qualified { value: typ, constraints: constraints } = typ;
+                let default_name = module::encode_binding_identifier(instance.classname, decl.name);
+                let typ_name = module::extract_applied_type(&instance.typ).ctor().name;
+                let instance_fn_name = module::encode_binding_identifier(typ_name, decl.name);
+
+                //Example stub for undeclared (/=)
+                //(/=) = #Eq/=
+                Binding {
+                    name: Id::new(Name { name: instance_fn_name, uid: 0 }, typ.clone(), constraints.clone()),
+                    expression: Identifier(Id::new(Name { name: default_name, uid: 0 }, typ, constraints))
+                }
+            })
+            .collect()
+    }
+impl <'a> Translator<'a> {
     fn translate_match(&mut self, matches: module::Match<Name>) -> Expr<Id<Name>> {
         match matches {
             module::Simple(e) => self.translate_expr(e),

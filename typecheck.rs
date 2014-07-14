@@ -317,7 +317,7 @@ impl <'a> TypeEnvironment<'a> {
             }
             for binding in class.bindings.mut_iter() {
                 let decl = class.declarations.iter()
-                    .find(|decl| binding.name.name == decl.name)
+                    .find(|decl| binding.name.name.as_slice().ends_with(decl.name.as_slice()))
                     .expect(format!("Could not find {} in class {}", binding.name, class.name));
                 binding.typ = decl.typ.clone();
                 {
@@ -1066,7 +1066,7 @@ fn quantify(start_var_age: int, typ: &mut Qualified<Type>) {
 }
 
 ///Replaces all occurences of 'var' in 'typ' with the the type 'replacement'
-fn replace_var(typ: &mut Type, var: &TypeVariable, replacement: &Type) {
+pub fn replace_var(typ: &mut Type, var: &TypeVariable, replacement: &Type) {
     let new = match typ {
         &TypeVariable(ref v) => {
             if v == var {

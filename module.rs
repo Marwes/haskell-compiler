@@ -505,3 +505,19 @@ pub fn binding_groups<'a, Ident: Eq>(bindings: &'a [Binding<Ident>]) -> Binds<'a
     Binds { vec: bindings }
 }
 
+///Since bindings in instances have the same name as any other instance for the same class we
+///Give it a new name which is '# Type name' (no spaces)
+pub fn encode_binding_identifier(instancename : InternedStr, bindingname : InternedStr) -> InternedStr {
+    let mut buffer = String::new();
+    buffer.push_str("#");
+    buffer.push_str(instancename.clone().as_slice());
+    buffer.push_str(bindingname.clone().as_slice());
+    intern(buffer.as_slice())
+}
+
+pub fn extract_applied_type<'a>(typ: &'a Type) -> &'a Type {
+    match typ {
+        &TypeApplication(ref lhs, _) => extract_applied_type(*lhs),
+        _ => typ
+    }
+}

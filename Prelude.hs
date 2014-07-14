@@ -54,7 +54,6 @@ instance Eq Bool where
 
 instance Eq Int where
     (==) x y = primIntEQ x y
-    (/=) x y = not (x == y)
 
 instance Eq Double where
     (==) x y = primDoubleEQ x y

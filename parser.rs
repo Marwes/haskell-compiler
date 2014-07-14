@@ -144,7 +144,21 @@ fn class(&mut self) -> Class {
     let mut declarations = Vec::new();
     for decl_or_binding in x.move_iter() {
         match decl_or_binding {
-            Binding(bind) => bindings.push(bind),
+            Binding(mut bind) => {
+                //Bindings need to have their name altered to distinguish them from
+                //the declarations name
+                match typ {
+                    TypeApplication(ref op, _) => {
+                        let classname = match **op {
+                            TypeConstructor(ref ctor) => ctor.name,
+                            _ => fail!("Expected type operator")
+                        };
+                        bind.name = encode_binding_identifier(classname, bind.name);
+                    }
+                    _ => fail!("The name of the class must start with an uppercase letter")
+                }
+                bindings.push(bind)
+            }
             TypeDecl(decl) => declarations.push(decl)
         }
     }
@@ -968,16 +982,6 @@ fn parse_error<Iter : Iterator<char>>(lexer : &Lexer<Iter>, expected : TokenEnum
     format!("Expected {} but found {}\\{{}\\}, at {}", expected, lexer.current().token, lexer.current().value.as_slice(), lexer.current().location)
 }
 
-///Since bindings in instances have the same name as any other instance for the same class we
-///Give it a new name which is '# Type name' (no spaces)
-fn encode_binding_identifier(instancename : InternedStr, bindingname : InternedStr) -> InternedStr {
-    let mut buffer = String::new();
-    buffer.push_str("#");
-    buffer.push_str(instancename.clone().as_slice());
-    buffer.push_str(bindingname.clone().as_slice());
-    intern(buffer.as_slice())
-}
-
 pub fn parse_string(contents: &str) -> IoResult<Vec<Module>> {
     let mut modules = Vec::new();
     let mut visited = HashSet::new();
@@ -1178,7 +1182,7 @@ instance Eq a => Eq [a] where
     let module = parser.module();
 
     assert_eq!(module.classes[0].name, intern("Eq"));
-    assert_eq!(module.classes[0].bindings[0].name, intern("/="));
+    assert_eq!(module.classes[0].bindings[0].name, intern("#Eq/="));
     assert_eq!(module.classes[0].bindings.len(), 1);
     assert_eq!(module.classes[0].declarations[0].name, intern("=="));
     assert_eq!(module.classes[0].declarations[1].name, intern("/="));
