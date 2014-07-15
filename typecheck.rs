@@ -1026,6 +1026,7 @@ impl <'a> TypeEnvironment<'a> {
 
 ///Searches through a type, comparing it with the type on the identifier, returning all the specialized constraints
 pub fn find_specialized_instances(typ: &Type, actual_type: &Type, constraints: &[Constraint]) -> ~[(InternedStr, Type)] {
+    debug!("Finding specialization {} => {} <-> {}", constraints, typ, actual_type);
     let mut result = Vec::new();
     find_specialized(&mut result, actual_type, typ, constraints);
     if constraints.len() == 0 {

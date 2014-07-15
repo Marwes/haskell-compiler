@@ -18,8 +18,8 @@ struct InstanceDictionary {
 }
 #[deriving(Clone)]
 enum DictionaryEntry {
-    SubDictionary(Rc<InstanceDictionary>),
-    Function(uint)
+    Function(uint),
+    App(uint, InstanceDictionary)
 }
 
 enum Node_<'a> {
@@ -141,8 +141,8 @@ impl fmt::Show for InstanceDictionary {
 impl fmt::Show for DictionaryEntry {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            SubDictionary(ref sd) => write!(f, "{}", **sd),
-            Function(index) => write!(f, "{}", index)
+            Function(index) => write!(f, "{}", index),
+            App(ref func, ref arg) => write!(f, "({} {})", *func, *arg)
         }
     }
 }
@@ -411,12 +411,64 @@ impl <'a> VM {
                         match **dict.entries.get(index) {
                             Function(gi) => {
                                 let &(assembly_index, i) = self_.globals.get(gi);
-                                &self_.assembly.get(assembly_index).superCombinators[i]
+                                Combinator(&self_.assembly.get(assembly_index).superCombinators[i])
                             }
-                            _ => fail!("Not implemented")
+                            App(gi, ref dict) => {
+                                let &(assembly_index, i) = self_.globals.get(gi);
+                                let sc = &self_.assembly.get(assembly_index).superCombinators[i];
+                                Application(Node::new(Combinator(sc)), Node::new(Dictionary(dict.clone())))
+                            }
                         }
                     };
-                    stack.push(Node::new(Combinator(sc)));
+                    stack.push(Node::new(sc));
+                }
+                MkapDictionary => {
+                    let a = stack.pop().unwrap();
+                    let a = a.borrow();
+                    let arg = match *a {
+                        Dictionary(ref d) => {
+                            d
+                        }
+                        _ => fail!()
+                    };
+                    let func = stack.pop().unwrap();
+                    let mut new_dict = InstanceDictionary { entries: Vec::new() };
+                    match *func.borrow() {
+                        Dictionary(ref d) => {
+                            for entry in d.entries.iter() {
+                                match **entry {
+                                    Function(index) => {
+                                        new_dict.entries.push(Rc::new(App(index, arg.clone())));
+                                    }
+                                    _ => fail!()
+                                }
+                            }
+                        }
+                        _ => fail!()
+                    }
+                    stack.push(Node::new(Dictionary(new_dict)));
+                }
+                ConstructDictionary(size) => {
+                    let mut new_dict = InstanceDictionary { entries: Vec::new() };
+                    for _ in range(0, size) {
+                        match *stack.pop().unwrap().borrow() {
+                            Dictionary(ref d) => {
+                                new_dict.entries.extend(d.entries.iter().map(|x| x.clone()));
+                            }
+                            ref x => fail!("Unexpected {}", x)
+                        }
+                    }
+                    stack.push(Node::new(Dictionary(new_dict)));
+                }
+                PushDictionaryRange(start, size) => {
+                    let mut new_dict = InstanceDictionary { entries: Vec::new() };
+                    match *stack.get(0).borrow() {
+                        Dictionary(ref d) => {
+                            new_dict.entries.extend(d.entries.iter().skip(start).take(size).map(|x| x.clone()));
+                        }
+                        _ => fail!()
+                    }
+                    stack.push(Node::new(Dictionary(new_dict)));
                 }
             }
             i += 1;
@@ -1022,6 +1074,18 @@ fn instance_eq_list() {
 r"
 import Prelude
 test x y = x == y
+main = test [1 :: Int] [3]
+").unwrap_or_else(|err| fail!(err));
+    assert_eq!(result, Some(ConstructorResult(1, Vec::new())));
+}
+#[test]
+fn build_dictionary() {
+    //Test that the compiler can generate code to build a dictionary at runtime
+    let result = execute_main_string(
+r"
+import Prelude
+test :: Eq a => a -> a -> Bool
+test x y = [x] == [y]
 main = test [1 :: Int] [3]
 ").unwrap_or_else(|err| fail!(err));
     assert_eq!(result, Some(ConstructorResult(1, Vec::new())));

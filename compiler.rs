@@ -55,7 +55,10 @@ pub enum Instruction {
     JumpFalse(uint),
     PushDictionary(uint),
     PushDictionaryMember(uint),
-    PushBuiltin(uint)
+    PushBuiltin(uint),
+    MkapDictionary,
+    ConstructDictionary(uint),
+    PushDictionaryRange(uint, uint)
 }
 #[deriving(Show)]
 enum Var<'a> {
@@ -385,7 +388,10 @@ impl Instruction {
             Split(s) => (s as int) - 1, 
             Pack(_, s) => 1 - (s as int),
             CaseJump(..) | Jump(..) | JumpFalse(..) => 0,
-            PushDictionary(..) | PushDictionaryMember(..) | PushBuiltin(..) => 1
+            PushDictionary(..) | PushDictionaryMember(..) | PushBuiltin(..) => 1,
+            MkapDictionary => -1,
+            ConstructDictionary(size) => (size as int) - 1,
+            PushDictionaryRange(..) => 1
         }
     }
 }
@@ -402,7 +408,8 @@ pub struct Compiler<'a> {
     ///Array of all the assemblies which can be used to lookup functions in
     pub assemblies: Vec<&'a Assembly>,
     module: Option<&'a Module<Id>>,
-    variables: ScopedMap<Name, Var<'a>>
+    variables: ScopedMap<Name, Var<'a>>,
+    context: ~[Constraint]
 }
 
 
@@ -421,7 +428,8 @@ impl <'a> Compiler<'a> {
         Compiler { instance_dictionaries: Vec::new(),
             stackSize : 0, assemblies: Vec::new(),
             module: None,
-            variables: variables
+            variables: variables,
+            context: box []
         }
     }
     
@@ -473,6 +481,7 @@ impl <'a> Compiler<'a> {
         comb.name = bind.name.name.clone();
         debug!("Compiling binding {} :: {}", comb.name, comb.typ);
         let dict_arg = if bind.name.typ.constraints.len() > 0 { 1 } else { 0 };
+        self.context = comb.typ.constraints.clone();
         let mut instructions = Vec::new();
         self.scope(|this| {
             if dict_arg == 1 {
@@ -796,8 +805,8 @@ impl <'a> Compiler<'a> {
     }
 
     ///Compile a function which is defined in a class
-    fn compile_instance_variable(&mut self, actual_type: &Type, instructions: &mut Vec<Instruction>, name: &Name, typ: &Type, constraints: &[Constraint], var: &TypeVariable) {
-        match try_find_instance_type(var, typ, actual_type) {
+    fn compile_instance_variable(&mut self, actual_type: &Type, instructions: &mut Vec<Instruction>, name: &Name, function_type: &Type, constraints: &[Constraint], var: &TypeVariable) {
+        match try_find_instance_type(var, function_type, actual_type) {
             Some(typename) => {
                 //We should be able to retrieve the instance directly
                 let mut b = String::from_str("#");
@@ -817,7 +826,7 @@ impl <'a> Compiler<'a> {
                 }
             }
             None => {
-                self.compile_with_constraints(name, actual_type, typ, constraints, instructions)
+                self.compile_with_constraints(name, actual_type, function_type, constraints, instructions)
             }
         }
     }
@@ -829,16 +838,71 @@ impl <'a> Compiler<'a> {
                 //Push dictionary or member of dictionary
                 match self.push_dictionary_member(constraints, name.name) {
                     Some(index) => instructions.push(PushDictionaryMember(index)),
-                    None => instructions.push(Push(0))
+                    None => {
+                        let dictionary_key = find_specialized_instances(function_type, actual_type, constraints);
+                        self.push_dictionary(constraints, dictionary_key, instructions);
+                    }
                 }
             }
             _ => {
                 //get dictionary index
                 //push dictionary
                 let dictionary_key = find_specialized_instances(function_type, actual_type, constraints);
-                let index = self.find_dictionary_index(dictionary_key);
+                self.push_dictionary(constraints, dictionary_key, instructions);
+            }
+        }
+    }
+    
+    fn push_dictionary(&mut self, context: &[Constraint], constraints: &[(InternedStr, Type)], instructions: &mut Vec<Instruction>) {
+        debug!("Push dictionary {} ==> {}", context, constraints);
+        for &(ref class, ref typ) in constraints.iter() {
+            self.fold_dictionary(*class, typ, instructions);
+            instructions.push(ConstructDictionary(constraints.len()));
+        }
+    }
+    
+    //Writes instructions which pushes a dictionary for the type to the top of the stack
+    fn fold_dictionary(&mut self, class: InternedStr, typ: &Type, instructions: &mut Vec<Instruction>) {
+        match *typ {
+            TypeConstructor(ref ctor) => {//Simple
+                debug!("Simple for {}", ctor);
+                //Push static dictionary to the top of the stack
+                let index = self.find_dictionary_index(&[(class.clone(), typ.clone())]);
                 instructions.push(PushDictionary(index));
             }
+            TypeApplication(ref lhs, ref rhs) => {
+                debug!("App for ({} {})", lhs, rhs);
+                //For function in functions
+                // Mkap function fold_dictionary(rhs)
+                self.fold_dictionary(class, *lhs, instructions);
+                self.fold_dictionary(class, *rhs, instructions);
+                instructions.push(MkapDictionary);
+            }
+            TypeVariable(ref var) => {
+                //This variable must appear in the context
+                let mut has_constraint = false;
+                let mut index = 0;
+                for constraint in self.context.iter() {
+                    if constraint.variables[0] == *var && constraint.class == class {
+                        has_constraint = true;
+                        break
+                    }
+                    let (_, _, decls) = self.find_class(constraint.class).unwrap();
+                    index += decls.len();
+                }
+                if has_constraint {
+                    //Found the variable in the constraints
+                    let num_class_functions = self.find_class(class)
+                        .map(|(_, _, decls)| decls.len())
+                        .unwrap();
+                    debug!("Use previous dict for {} at {}..{}", var, index, num_class_functions);
+                    instructions.push(PushDictionaryRange(index, num_class_functions));
+                }
+                else {
+                    debug!("No dict for {}", var);
+                }
+            }
+            _ => fail!("Did not expect generic")
         }
     }
 
@@ -878,7 +942,7 @@ impl <'a> Compiler<'a> {
     }
 
     ///Find the index of the instance dictionary for the constraints and types in 'constraints'
-    ///Returns the index and possibly a new dictionary which needs to be added to the assemblies dictionaries
+    ///Returns the index
     fn find_dictionary_index(&mut self, constraints: &[(InternedStr, Type)]) -> uint {
         //Check if the dictionary already exist
         let dict_len = self.instance_dictionaries.len();

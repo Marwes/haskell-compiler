@@ -238,6 +238,13 @@ instance Ord Bool where
     max x y = case x > y of
         True -> x
         False -> y
+instance Ord a => Ord [a] where
+    compare (x:xs) (y:ys) = case compare x y of
+        EQ -> compare xs ys
+        x -> x
+    compare (_:_) [] = GT
+    compare [] (_:_) = LT
+    compare [] [] = EQ
 
 class Functor f where
     fmap :: (a -> b) -> f a -> f b
