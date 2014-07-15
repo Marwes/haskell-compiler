@@ -578,9 +578,11 @@ impl <'a> TypeEnvironment<'a> {
     {
         match (instance_type, actual_type) {
             (&TypeApplication(ref lvar, box TypeVariable(ref rvar)), &TypeApplication(ref ltype, ref rtype)) => {
-                constraints.iter().find(|c| c.variables[0] == *rvar)
-                    .map_or(Ok(()), |constraint| self.has_instance(constraint.class, *rtype))
-                    .and_then(|()| self.check_instance_constraints(constraints, *lvar, *ltype))
+                constraints.iter()
+                    .filter(|c| c.variables[0] == *rvar)
+                    .map(|constraint| self.has_instance(constraint.class, *rtype))
+                    .find(|result| result.is_err())
+                    .unwrap_or_else(|| self.check_instance_constraints(constraints, *lvar, *ltype))
             }
             (&TypeConstructor(ref l), &TypeConstructor(ref r)) if l.name == r.name => Ok(()),
             (_, &TypeVariable(_)) => Ok(()),
@@ -2164,6 +2166,25 @@ fn type_declaration_error() {
 r"
 test :: [Int] -> Int -> Int
 test x y = primIntAdd x y");
+}
+
+#[test]
+#[should_fail]
+fn all_constraints_match() {
+    typecheck_string(
+r"
+import Prelude
+
+class Test a where
+    test :: a -> a
+instance (Eq a, Test a) => Test (Maybe a) where
+    test x = x
+
+test :: Test a => a -> a
+test x = test x
+
+test2 = test (Just True)")
+    .unwrap_or_else(|err| fail!(err));
 }
 
 #[bench]
