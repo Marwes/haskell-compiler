@@ -415,21 +415,6 @@ impl <'a> TypeEnvironment<'a> {
         self.substitute(&mut subs, expr);
     }
 
-    ///Returns the type which is bound to the Name or None if the Name does not exist.
-    pub fn find(&'a self, ident: &Name) -> Option<&'a Qualified<Type>> {
-        self.local_types.find(ident)
-            .or_else(|| self.namedTypes.find(ident))
-            .or_else(|| {
-            for types in self.assemblies.iter() {
-                let v = types.find_type(ident);
-                if v != None {
-                    return v;
-                }
-            }
-            None
-        })
-    }
-
     ///Finds all the constraints for a type
     pub fn find_constraints(&self, typ: &Type) -> ~[Constraint] {
         let mut result : Vec<Constraint> = Vec::new();
@@ -989,10 +974,10 @@ impl <'a> TypeEnvironment<'a> {
     
     fn insert_constraint(&mut self, var: &TypeVariable, classname: InternedStr) {
         let mut constraints = self.constraints.pop(var).unwrap_or(Vec::new());
-        self.insert_constraint_(&mut constraints, var, classname);
+        self.insert_constraint_(&mut constraints, classname);
         self.constraints.insert(var.clone(), constraints);
     }
-    fn insert_constraint_(&mut self, constraints: &mut Vec<InternedStr>, var: &TypeVariable, classname: InternedStr) {
+    fn insert_constraint_(&mut self, constraints: &mut Vec<InternedStr>, classname: InternedStr) {
         let mut ii = 0;
         while ii < constraints.len() {
             if *constraints.get(ii) == classname || self.exists_as_super_class(*constraints.get(ii), classname) {
@@ -2103,7 +2088,7 @@ test = [1,2,3 :: Int]
 
 #[test]
 fn deriving() {
-    let module = typecheck_string(
+    typecheck_string(
 r"import Prelude
 data Test = Test Int
     deriving(Eq)
@@ -2111,7 +2096,8 @@ data Test = Test Int
 data Test2 a = J a | N
     deriving(Eq)
 
-test x = Test 2 == Test 1 || J x == N");
+test x = Test 2 == Test 1 || J x == N")
+    .unwrap();
 }
 
 #[test]

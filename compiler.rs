@@ -611,7 +611,7 @@ impl <'a> Compiler<'a> {
     ///Compile an expression by appending instructions to the instruction vector
     fn compile(&mut self, expr : &Expr<Id>, instructions : &mut Vec<Instruction>, strict: bool) {
         match expr {
-            &Identifier(ref name) => {
+            &Identifier(_) => {
                 self.compile_apply(expr, Nil, instructions, strict);
             }
             &Literal(ref literal) => {
@@ -660,7 +660,7 @@ impl <'a> Compiler<'a> {
                     &Char(c) => instructions.push(PushChar(c))
                 }
             }
-            &Apply(ref func, ref arg) => {
+            &Apply(..) => {
                 self.compile_apply(expr, Nil, instructions, strict);
             }
             &Let(ref bindings, ref body) => {
@@ -742,7 +742,7 @@ impl <'a> Compiler<'a> {
                 let var = self.find(&name.name)
                     .unwrap_or_else(|| fail!("Error: Undefined variable {}", *name));
                 match var {
-                    PrimitiveVariable(num_args, instruction) => is_primitive = true,
+                    PrimitiveVariable(..) => is_primitive = true,
                     _ => ()
                 }
                 arg_length = self.compile_args(&args, instructions, is_primitive);

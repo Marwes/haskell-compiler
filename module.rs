@@ -302,7 +302,7 @@ pub fn walk_expr<Ident>(visitor: &mut Visitor<Ident>, expr: &TypedExpr<Ident>) {
             visitor.visit_expr(*func);
             visitor.visit_expr(*arg);
         }
-        &OpApply(ref lhs, ref op, ref rhs) => {
+        &OpApply(ref lhs, _, ref rhs) => {
             visitor.visit_expr(*lhs);
             visitor.visit_expr(*rhs);
         }

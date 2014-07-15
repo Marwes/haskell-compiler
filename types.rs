@@ -246,7 +246,6 @@ impl Default for Kind {
         StarKind
     }
 }
-pub static unknown_kind : Kind = StarKind;
 pub static star_kind : Kind = StarKind;
 
 impl Default for Type {
