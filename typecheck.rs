@@ -373,7 +373,7 @@ impl <'a> TypeEnvironment<'a> {
                 let mut missing_super_classes = self.find_class_constraints(class.name)
                     .unwrap_or_else(|| fail!("Error: Missing class {}", class.name))
                     .iter()//Make sure we have an instance for all of the constraints
-                    .filter(|constraint| self.has_instance(constraint.class, &instance.typ).is_err())
+                    .filter(|constraint| self.has_instance(constraint.class, &instance.typ, &mut Vec::new()).is_err())
                     .peekable();
                 if !missing_super_classes.is_empty() {
                     let mut buffer = String::new();
@@ -526,13 +526,13 @@ impl <'a> TypeEnvironment<'a> {
 
     ///Returns whether the type 'searched_type' has an instance for 'class'
     ///If no instance was found, return the instance which was missing
-    fn has_instance(&self, class: InternedStr, searched_type: &Type) -> Result<(), InternedStr> {
+    fn has_instance(&self, class: InternedStr, searched_type: &Type, new_constraints: &mut Vec<Constraint>) -> Result<(), InternedStr> {
         match extract_applied_type(searched_type) {
             &TypeConstructor(ref ctor) => {
                 match self.find_data_definition(ctor.name) {
                     Some(data_type) => {
                         if data_type.deriving.iter().any(|name| name.name == class) {
-                            return self.check_instance_constraints(&[], &data_type.typ.value, searched_type);
+                            return self.check_instance_constraints(&[], &data_type.typ.value, searched_type, new_constraints);
                         }
                     }
                     None => ()
@@ -542,7 +542,7 @@ impl <'a> TypeEnvironment<'a> {
         }
         for &(ref constraints, ref name, ref typ) in self.instances.iter() {
             if class == *name {
-                let result = self.check_instance_constraints(*constraints, typ, searched_type);
+                let result = self.check_instance_constraints(*constraints, typ, searched_type, new_constraints);
                 if result.is_ok() {
                     return result;
                 }
@@ -552,7 +552,7 @@ impl <'a> TypeEnvironment<'a> {
         for types in self.assemblies.iter() {
             match types.find_instance(class, searched_type) {
                 Some((constraints, unspecialized_type)) => {
-                    return self.check_instance_constraints(constraints, unspecialized_type, searched_type);
+                    return self.check_instance_constraints(constraints, unspecialized_type, searched_type, new_constraints);
                 }
                 None => ()
             }
@@ -574,15 +574,30 @@ impl <'a> TypeEnvironment<'a> {
     fn check_instance_constraints(&self,
                                   constraints: &[Constraint],
                                   instance_type: &Type,
-                                  actual_type: &Type) -> Result<(), InternedStr>
+                                  actual_type: &Type,
+                                  new_constraints: &mut Vec<Constraint>) -> Result<(), InternedStr>
     {
         match (instance_type, actual_type) {
             (&TypeApplication(ref lvar, box TypeVariable(ref rvar)), &TypeApplication(ref ltype, ref rtype)) => {
                 constraints.iter()
                     .filter(|c| c.variables[0] == *rvar)
-                    .map(|constraint| self.has_instance(constraint.class, *rtype))
+                    .map(|constraint| {
+                        let result = self.has_instance(constraint.class, *rtype, new_constraints);
+                        if result.is_ok() {
+                            match **rtype {
+                                TypeVariable(ref var) => {
+                                    new_constraints.push(Constraint {
+                                        class: constraint.class,
+                                        variables: box [var.clone()]
+                                    });
+                                }
+                                _ => ()
+                            }
+                        }
+                        result
+                    })
                     .find(|result| result.is_err())
-                    .unwrap_or_else(|| self.check_instance_constraints(constraints, *lvar, *ltype))
+                    .unwrap_or_else(|| self.check_instance_constraints(constraints, *lvar, *ltype, new_constraints))
             }
             (&TypeConstructor(ref l), &TypeConstructor(ref r)) if l.name == r.name => Ok(()),
             (_, &TypeVariable(_)) => Ok(()),
@@ -1292,10 +1307,11 @@ fn bind_variable(env: &mut TypeEnvironment, subs: &mut Substitution, var: &TypeV
                     replace_var(replaced, var, typ);
                 }
                 subs.subs.insert(var.clone(), typ.clone());
+                let mut new_constraints = Vec::new();
                 match env.constraints.find(var) {
                     Some(constraints) => {
                         for c in constraints.iter() {
-                            let result = env.has_instance(*c, typ);
+                            let result = env.has_instance(*c, typ, &mut new_constraints);
                             match result {
                                 Err(missing_instance) => {
                                     match *typ {
@@ -1316,6 +1332,9 @@ fn bind_variable(env: &mut TypeEnvironment, subs: &mut Substitution, var: &TypeV
                         }
                     }
                     _ => ()
+                }
+                for constraint in new_constraints.move_iter() {
+                    env.insert_constraint(&constraint.variables[0], constraint.class)
                 }
                 Ok(())
             }
@@ -2111,6 +2130,23 @@ data Test2 a = J a | N
 test x = Test 2 == Test 1 || J x == N")
     .unwrap();
 }
+
+#[test]
+fn instance_constraints_propagate() {
+    let modules = typecheck_string(
+r"
+import Prelude
+
+test x y = [x] == [y]
+")
+    .unwrap_or_else(|err| fail!(err));
+    let module = modules.last().unwrap();
+    let a = Type::new_var(intern("a"));
+    let cs = box [Constraint { class: intern("Eq"), variables: box [a.var().clone()] } ];
+    let typ = qualified(cs, function_type_(a.clone(), function_type_(a.clone(), bool_type())));
+    assert_eq!(module.bindings[0].typ, typ);
+}
+
 
 #[test]
 #[should_fail]
