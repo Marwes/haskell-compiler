@@ -373,7 +373,7 @@ impl <'a> TypeEnvironment<'a> {
                 let mut missing_super_classes = self.find_class_constraints(class.name)
                     .unwrap_or_else(|| fail!("Error: Missing class {}", class.name))
                     .iter()//Make sure we have an instance for all of the constraints
-                    .filter(|constraint| !self.has_instance(constraint.class, &instance.typ))
+                    .filter(|constraint| self.has_instance(constraint.class, &instance.typ).is_err())
                     .peekable();
                 if !missing_super_classes.is_empty() {
                     let mut buffer = String::new();
@@ -525,7 +525,8 @@ impl <'a> TypeEnvironment<'a> {
     }
 
     ///Returns whether the type 'searched_type' has an instance for 'class'
-    fn has_instance(&self, class: InternedStr, searched_type: &Type) -> bool {
+    ///If no instance was found, return the instance which was missing
+    fn has_instance(&self, class: InternedStr, searched_type: &Type) -> Result<(), InternedStr> {
         match extract_applied_type(searched_type) {
             &TypeConstructor(ref ctor) => {
                 match self.find_data_definition(ctor.name) {
@@ -541,8 +542,9 @@ impl <'a> TypeEnvironment<'a> {
         }
         for &(ref constraints, ref name, ref typ) in self.instances.iter() {
             if class == *name {
-                if self.check_instance_constraints(*constraints, typ, searched_type) {
-                    return true;
+                let result = self.check_instance_constraints(*constraints, typ, searched_type);
+                if result.is_ok() {
+                    return result;
                 }
             }
         }
@@ -555,7 +557,7 @@ impl <'a> TypeEnvironment<'a> {
                 None => ()
             }
         }
-        false
+        Err(class)
     }
 
     fn find_class_constraints(&'a self, class: InternedStr) -> Option<&'a [Constraint]> {
@@ -569,16 +571,20 @@ impl <'a> TypeEnvironment<'a> {
     }
 
     ///Checks whether 'actual_type' fulfills all the constraints that the instance has.
-    fn check_instance_constraints(&self, constraints: &[Constraint], instance_type: &Type, actual_type: &Type) -> bool {
+    fn check_instance_constraints(&self,
+                                  constraints: &[Constraint],
+                                  instance_type: &Type,
+                                  actual_type: &Type) -> Result<(), InternedStr>
+    {
         match (instance_type, actual_type) {
             (&TypeApplication(ref lvar, box TypeVariable(ref rvar)), &TypeApplication(ref ltype, ref rtype)) => {
-                let maybeConstraint = constraints.iter().find(|c| c.variables[0] == *rvar);
-                maybeConstraint.map_or(true, |constraint| self.has_instance(constraint.class, *rtype))
-                    && self.check_instance_constraints(constraints, *lvar, *ltype)
+                constraints.iter().find(|c| c.variables[0] == *rvar)
+                    .map_or(Ok(()), |constraint| self.has_instance(constraint.class, *rtype))
+                    .and_then(|()| self.check_instance_constraints(constraints, *lvar, *ltype))
             }
-            (&TypeConstructor(ref l), &TypeConstructor(ref r)) => l.name == r.name,
-            (_, &TypeVariable(_)) => true,
-            _ => false
+            (&TypeConstructor(ref l), &TypeConstructor(ref r)) if l.name == r.name => Ok(()),
+            (_, &TypeVariable(_)) => Ok(()),
+            _ => Err(intern("Unknown error"))
         }
     }
     ///Creates a new type variable with a kind
@@ -1287,19 +1293,23 @@ fn bind_variable(env: &mut TypeEnvironment, subs: &mut Substitution, var: &TypeV
                 match env.constraints.find(var) {
                     Some(constraints) => {
                         for c in constraints.iter() {
-                            if !env.has_instance(*c, typ) {
-                                match *typ {
-                                    TypeConstructor(ref op) => {
-                                        if *c == intern("Num") && (op.name == intern("Int") || op.name == intern("Double")) && *typ.kind() == star_kind {
-                                            continue;
+                            let result = env.has_instance(*c, typ);
+                            match result {
+                                Err(missing_instance) => {
+                                    match *typ {
+                                        TypeConstructor(ref op) => {
+                                            if *c == intern("Num") && (op.name == intern("Int") || op.name == intern("Double")) && *typ.kind() == star_kind {
+                                                continue;
+                                            }
+                                            else if *c == intern("Fractional") && intern("Double") == op.name && *typ.kind() == star_kind {
+                                                continue;
+                                            }
                                         }
-                                        else if *c == intern("Fractional") && intern("Double") == op.name && *typ.kind() == star_kind {
-                                            continue;
-                                        }
+                                        _ => ()
                                     }
-                                    _ => ()
+                                    return Err(MissingInstance(missing_instance, typ.clone(), var.clone()));
                                 }
-                                return Err(MissingInstance(c.clone(), typ.clone(), var.clone()));
+                                Ok(()) => ()
                             }
                         }
                     }
