@@ -457,76 +457,17 @@ impl <'a> TypeEnvironment<'a> {
 
     ///Walks through an expression and applies the substitution on each of its types
     fn substitute(&mut self, subs : &Substitution, expr: &mut TypedExpr<Name>) {
-        replace(&mut self.constraints, &mut expr.typ, subs);
-        match expr.expr {
-            Apply(ref mut func, ref mut arg) => {
-                self.substitute(subs, *func);
-                self.substitute(subs, *arg);
-            }
-            OpApply(ref mut lhs, _, ref mut rhs) => {
-                self.substitute(subs, *lhs);
-                self.substitute(subs, *rhs);
-            }
-            Let(ref mut bindings, ref mut let_expr) => {
-                for bind in bindings.mut_iter() {
-                    match bind.matches {
-                        Simple(ref mut e) => self.substitute(subs, e),
-                        Guards(ref mut gs) => {
-                            for guard in gs.mut_iter() {
-                                self.substitute(subs, &mut guard.predicate);
-                                self.substitute(subs, &mut guard.expression);
-                            }
-                        }
-                    }
-                }
-                self.substitute(subs, *let_expr);
-            }
-            Case(ref mut case_expr, ref mut alts) => {
-                self.substitute(subs, *case_expr);
-                for alt in alts.mut_iter() {
-                    match alt.matches {
-                        Simple(ref mut e) => self.substitute(subs, e),
-                        Guards(ref mut gs) => {
-                            for guard in gs.mut_iter() {
-                                self.substitute(subs, &mut guard.predicate);
-                                self.substitute(subs, &mut guard.expression);
-                            }
-                        }
-                    }
-                }
-            }
-            IfElse(ref mut pred, ref mut if_true, ref mut if_false) => {
-                self.substitute(subs, *pred);
-                self.substitute(subs, *if_true);
-                self.substitute(subs, *if_false);
-            }
-            Lambda(_, ref mut body) => self.substitute(subs, *body),
-            Do(ref mut binds, ref mut expr) => {
-                for bind in binds.mut_iter() {
-                    match *bind {
-                        DoExpr(ref mut expr) => self.substitute(subs, expr),
-                        DoBind(_, ref mut expr) => self.substitute(subs, expr),
-                        DoLet(ref mut bindings) => {
-                            for bind in bindings.mut_iter() {
-                                match bind.matches {
-                                    Simple(ref mut e) => self.substitute(subs, e),
-                                    Guards(ref mut gs) => {
-                                        for guard in gs.mut_iter() {
-                                            self.substitute(subs, &mut guard.predicate);
-                                            self.substitute(subs, &mut guard.expression);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                self.substitute(subs, *expr);
-            }
-            TypeSig(ref mut expr, _) => self.substitute(subs, *expr),
-            Paren(ref mut expr) => self.substitute(subs, *expr),
-            Identifier(..) | Literal(..) => ()
+        struct SubVisitor<'a> {
+            env: &'a mut TypeEnvironment<'a>,
+            subs: &'a Substitution
         }
+        impl <'a> MutVisitor<Name> for SubVisitor<'a> {
+            fn visit_expr(&mut self, expr: &mut TypedExpr<Name>) {
+                replace(&mut self.env.constraints, &mut expr.typ, self.subs);
+                walk_expr_mut(self, expr);
+            }
+        }
+        SubVisitor { env: self, subs: subs }.visit_expr(expr);
     }
 
     ///Returns whether the type 'searched_type' has an instance for 'class'
