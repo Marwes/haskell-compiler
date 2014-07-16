@@ -315,6 +315,21 @@ fn sub_expression(&mut self) -> Option<TypedExpr> {
                 None => None
             }
 		}
+        IF => {
+            let location = self.lexer.current().location;
+            let pred = self.expression_();
+            if self.lexer.peek().token == SEMICOLON {
+                self.lexer.next();
+            }
+            self.require_next(THEN);
+            let if_true = self.expression_();
+            if self.lexer.peek().token == SEMICOLON {
+                self.lexer.next();
+            }
+            self.require_next(ELSE);
+            let if_false = self.expression_();
+            Some(TypedExpr::with_location(IfElse(box pred, box if_true, box if_false), location))
+        }
         LAMBDA => {
             let args = self.pattern_arguments();
             self.require_next(ARROW);
@@ -1042,7 +1057,7 @@ mod tests {
 use interner::*;
 use parser::*;
 use module::*;
-use typecheck::{identifier, apply, op_apply, number, rational, lambda, let_, case};
+use typecheck::{identifier, apply, op_apply, number, rational, lambda, let_, case, if_else};
 use std::io::File;
 use test::Bencher;
 
@@ -1311,6 +1326,25 @@ dummy = 1
     let data = &module.dataDefinitions[0];
     assert_eq!(data.typ, qualified(box [], Type::new_op(intern("Test"), box [])));
     assert_eq!(data.deriving.as_slice(), &[intern("Eq"), intern("Show")]);
+}
+
+#[test]
+fn test_if_else() {
+    let mut parser = Parser::new(
+r"
+if test 1 
+    then 1
+    else if True
+        then 2
+        else 3 + 2
+".chars());
+    let e = parser.expression_();
+    assert_eq!(e,
+        if_else(apply(identifier("test"), number(1))
+            , number(1)
+            , if_else(identifier("True")
+                , number(2)
+                , op_apply(number(3), intern("+"), number(2)))));
 }
 
 #[test]

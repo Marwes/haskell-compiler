@@ -495,6 +495,11 @@ impl <'a> TypeEnvironment<'a> {
                     }
                 }
             }
+            IfElse(ref mut pred, ref mut if_true, ref mut if_false) => {
+                self.substitute(subs, *pred);
+                self.substitute(subs, *if_true);
+                self.substitute(subs, *if_false);
+            }
             Lambda(_, ref mut body) => self.substitute(subs, *body),
             Do(ref mut binds, ref mut expr) => {
                 for bind in binds.mut_iter() {
@@ -727,6 +732,14 @@ impl <'a> TypeEnvironment<'a> {
                     unify_location(self, subs, &alt.pattern.location, &mut alt0_, &mut alt_type);
                 }
                 alt0_
+            }
+            IfElse(ref mut pred, ref mut if_true, ref mut if_false) => {
+                let mut p = self.typecheck(*pred, subs);
+                unify_location(self, subs, &expr.location, &mut p, &mut bool_type());
+                let mut t = self.typecheck(*if_true, subs);
+                let mut f = self.typecheck(*if_false, subs);
+                unify_location(self, subs, &expr.location, &mut t, &mut f);
+                t
             }
             Do(ref mut bindings, ref mut last_expr) => {
                 let mut previous = self.new_var_kind(KindFunction(box StarKind, box StarKind));
@@ -1576,6 +1589,10 @@ pub fn let_(bindings : ~[Binding], expr : TypedExpr) -> TypedExpr {
 #[cfg(test)]
 pub fn case(expr : TypedExpr, alts: ~[Alternative]) -> TypedExpr {
     TypedExpr::new(Case(box expr, alts))
+}
+#[cfg(test)]
+pub fn if_else(expr: TypedExpr, t: TypedExpr, f: TypedExpr) -> TypedExpr {
+    TypedExpr::new(IfElse(box expr, box t, box f))
 }
 #[cfg(test)]
 pub fn paren(expr : TypedExpr) -> TypedExpr {

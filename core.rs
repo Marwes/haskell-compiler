@@ -527,6 +527,12 @@ impl <'a> Translator<'a> {
             module::Case(expr, alts) => {
                 self.translate_case(*expr, alts)
             }
+            module::IfElse(pred, if_true, if_false) => {
+                Case(box self.translate_expr(*pred), box [
+                    Alternative { pattern: bool_pattern("True"), expression: self.translate_expr(*if_true) },
+                    Alternative { pattern: bool_pattern("False"), expression: self.translate_expr(*if_false) }
+                    ])
+            }
             module::Do(bindings, expr) => {
                 let mut result = self.translate_expr(*expr);
                 for bind in bindings.move_iter().rev() {
@@ -758,10 +764,8 @@ impl <'a> Translator<'a> {
         for guard in guards.iter().rev() {
             let predicate = box self.translate_expr(guard.predicate.clone());
             result = Case(predicate, ~[
-                Alternative { pattern: ConstructorPattern(Id::new(Name { name: intern("True"), uid: 0 }, bool_type(), ~[]), ~[]),
-                              expression: self.translate_expr(guard.expression.clone()) },
-                Alternative { pattern: ConstructorPattern(Id::new(Name { name: intern("False"), uid: 0 }, bool_type(), ~[]), ~[]),
-                              expression: result },
+                Alternative { pattern: bool_pattern("True"), expression: self.translate_expr(guard.expression.clone()) },
+                Alternative { pattern: bool_pattern("False"), expression: result },
             ]);
         }
         result
@@ -925,6 +929,11 @@ impl <'a> Translator<'a> {
         }
     }
 }
+
+    fn bool_pattern(s: &str) -> Pattern<Id<Name>> {
+        ConstructorPattern(Id::new(Name { name: intern(s), uid: 0 }, bool_type(), ~[]), ~[])
+    }
+
     struct LambdaIterator<'a> {
         typ: &'a Type
     }

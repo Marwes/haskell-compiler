@@ -145,6 +145,11 @@ impl Renamer {
                 }).collect();
                 Case(box self.rename(*expr), FromVec::from_vec(a))
             }
+            IfElse(pred, if_true, if_false) => {
+                IfElse(box self.rename(*pred),
+                       box self.rename(*if_true),
+                       box self.rename(*if_false))
+            }
             Do(bindings, expr) => {
                 let bs: Vec<DoBinding<Name>> = bindings.move_iter().map(|bind| {
                     match bind {

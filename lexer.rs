@@ -45,7 +45,10 @@ pub enum TokenEnum {
     INFIXL,
     INFIXR,
     INFIX,
-    DERIVING
+    DERIVING,
+    IF,
+    THEN,
+    ELSE
 }
 
 #[deriving(Clone, PartialEq)]
@@ -130,6 +133,9 @@ fn name_or_keyword(tok : &str) -> TokenEnum {
         "infixr" => INFIXR,
         "infix" => INFIX,
         "deriving" => DERIVING,
+        "if" => IF,
+        "then" => THEN,
+        "else" => ELSE,
         _ => NAME
     }
 }

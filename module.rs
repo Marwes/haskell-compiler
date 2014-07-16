@@ -174,6 +174,7 @@ pub enum Expr<Ident = InternedStr> {
     Lambda(Pattern<Ident>, Box<TypedExpr<Ident>>),
     Let(~[Binding<Ident>], Box<TypedExpr<Ident>>),
     Case(Box<TypedExpr<Ident>>, ~[Alternative<Ident>]),
+    IfElse(Box<TypedExpr<Ident>>, Box<TypedExpr<Ident>>, Box<TypedExpr<Ident>>),
     Do(~[DoBinding<Ident>], Box<TypedExpr<Ident>>),
     TypeSig(Box<TypedExpr<Ident>>, Qualified<Type>),
     Paren(Box<TypedExpr<Ident>>)
@@ -319,6 +320,11 @@ pub fn walk_expr<Ident>(visitor: &mut Visitor<Ident>, expr: &TypedExpr<Ident>) {
                 visitor.visit_alternative(alt);
             }
         }
+        &IfElse(ref pred, ref if_true, ref if_false) => {
+            visitor.visit_expr(*pred);
+            visitor.visit_expr(*if_true);
+            visitor.visit_expr(*if_false);
+        }
         &Do(ref binds, ref expr) => {
             for bind in binds.iter() {
                 match *bind {
@@ -428,6 +434,11 @@ pub fn walk_expr_mut<Ident, V: MutVisitor<Ident>>(visitor: &mut V, expr: &mut Ty
             for alt in alts.mut_iter() {
                 visitor.visit_alternative(alt);
             }
+        }
+        IfElse(ref mut pred, ref mut if_true, ref mut if_false) => {
+            visitor.visit_expr(*pred);
+            visitor.visit_expr(*if_true);
+            visitor.visit_expr(*if_false);
         }
         Do(ref mut binds, ref mut expr) => {
             for bind in binds.mut_iter() {

@@ -1091,4 +1091,19 @@ main = test [1 :: Int] [3]
     assert_eq!(result, Some(ConstructorResult(1, Vec::new())));
 }
 
+#[test]
+fn if_else() {
+    let result = execute_main_string(
+r"
+import Prelude
+
+main = let
+        x = 123 :: Int
+    in if x < 0
+        then x
+        else 1
+").unwrap_or_else(|err| fail!(err));
+    assert_eq!(result, Some(IntResult(1)));
+}
+
 }
