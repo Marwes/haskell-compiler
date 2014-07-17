@@ -33,73 +33,67 @@ impl FreeVariables {
 //free variables to its arguments and performs an immediate application
 //@variables All the local variables in scope, values are how many of the name there exists
 //@free_vars The free variables for the returned expression
-fn free_variables(&mut self, variables: &mut HashMap<Name, int>, free_vars: &mut HashMap<Name, TypeAndStr>, expr: Expr<TypeAndStr>) -> Expr<TypeAndStr> {
-    match expr {
-        Identifier(i) => {
+fn free_variables(&mut self, variables: &mut HashMap<Name, int>, free_vars: &mut HashMap<Name, TypeAndStr>, expr: &mut Expr<TypeAndStr>) {
+    match *expr {
+        Identifier(ref mut i) => {
             //If the identifier is a local, add it to the free variables
             if variables.find(&i.name).map(|x| *x > 0).unwrap_or(false) {
                 free_vars.insert(i.name.clone(), i.clone());
             }
-            Identifier(i)
         }
-        Apply(func, arg) => {
-            let f = box self.free_variables(variables, free_vars, *func);
-            let a = box self.free_variables(variables, free_vars, *arg);
-            Apply(f, a)
+        Apply(ref mut func, ref mut arg) => {
+            self.free_variables(variables, free_vars, *func);
+            self.free_variables(variables, free_vars, *arg);
         }
-        Lambda(arg, body) => {
+        Lambda(ref mut arg, ref mut body) => {
             variables.insert_or_update_with(arg.name.clone(), 1, |_, v| *v += 1);
-            let b = self.free_variables(variables, free_vars, *body);
+            self.free_variables(variables, free_vars, *body);
             *variables.get_mut(&arg.name) -= 1;
             free_vars.remove(&arg.name);//arg was not actually a free variable
-            Lambda(arg, box b)
         }
-        Let(mut bindings, expr) => {
+        Let(ref mut bindings, ref mut expr) => {
             for bind in bindings.iter() {
                 variables.insert_or_update_with(bind.name.name.clone(), 1, |_, v| *v += 1);
             }
             let mut free_vars2 = HashMap::new();
             for bind in bindings.mut_iter() {
                 free_vars2.clear();
-                update(&mut bind.expression, |bind_expr| self.free_variables(variables, &mut free_vars2, bind_expr));
+                self.free_variables(variables, &mut free_vars2, &mut bind.expression);
                 //free_vars2 is the free variables for this binding
                 for (k, v) in free_vars2.iter() {
                     free_vars.insert(k.clone(), v.clone());
                 }
-                update(&mut bind.expression, |e| self.abstract(&free_vars2, e));
+                self.abstract(&free_vars2, &mut bind.expression);
             }
-            let e = box self.free_variables(variables, free_vars, *expr);
+            self.free_variables(variables, free_vars, *expr);
             for bind in bindings.iter() {
                 *variables.get_mut(&bind.name.name) -= 1;
                 free_vars.remove(&bind.name.name);
             }
-            Let(bindings, e)
         }
-        Case(expr, mut alts) => {
-            let e = self.free_variables(variables, free_vars, *expr);
+        Case(ref mut expr, ref mut alts) => {
+            self.free_variables(variables, free_vars, *expr);
             for alt in alts.mut_iter() {
                 each_pattern_variables(&alt.pattern, &mut |name| {
                     variables.insert_or_update_with(name.clone(), 1, |_, v| *v += 1);
                 });
-                update(&mut alt.expression, |expression| self.free_variables(variables, free_vars, expression));
+                self.free_variables(variables, free_vars, &mut alt.expression);
                 each_pattern_variables(&alt.pattern, &mut |name| {
                     *variables.get_mut(name) -= 1;
                     free_vars.remove(name);//arg was not actually a free variable
                 });
             }
-            Case(box e, alts)
         }
-        e => e
+        _ => ()
     }
 }
 ///Adds the free variables, if any, to the expression
-fn abstract(&mut self, free_vars: &HashMap<Name, TypeAndStr>, input_expr: Expr<TypeAndStr>) -> Expr<TypeAndStr> {
-    if free_vars.len() == 0 {
-        input_expr
-    }
-    else {
+fn abstract(&mut self, free_vars: &HashMap<Name, TypeAndStr>, input_expr: &mut Expr<TypeAndStr>) {
+    if free_vars.len() != 0 {
+        let mut temp = Literal(Literal { typ: Type::new_var(self.name_supply.from_str("a").name), value: Integral(0) });
+        ::std::mem::swap(&mut temp, input_expr);
         let mut e = {
-            let mut rhs = input_expr;
+            let mut rhs = temp;
             let mut typ = rhs.get_type().clone();
             for (_, var) in free_vars.iter() {
                 rhs = Lambda(var.clone(), box rhs);
@@ -115,24 +109,29 @@ fn abstract(&mut self, free_vars: &HashMap<Name, TypeAndStr>, input_expr: Expr<T
         for (_, var) in free_vars.iter() {
             e = Apply(box e, box Identifier(var.clone()));
         }
-        e
+        *input_expr = e
     }
 }
 }
 
 ///Lifts all lambdas in the expression to the top level of the program
-fn lift_lambdas_expr<T>(expr: Expr<T>, out_lambdas: &mut Vec<Binding<T>>) -> Expr<T> {
-    match expr {
-        Apply(func, arg) => Apply(box lift_lambdas_expr(*func, out_lambdas), box lift_lambdas_expr(*arg, out_lambdas)),
-        Lambda(arg, body) => Lambda(arg, box lift_lambdas_expr(*body, out_lambdas)),
-        Let(bindings, expr) => {
+fn lift_lambdas_expr<T>(expr: &mut Expr<T>, out_lambdas: &mut Vec<Binding<T>>) {
+    match *expr {
+        Apply(ref mut func, ref mut arg) => {
+            lift_lambdas_expr(*func, out_lambdas);
+            lift_lambdas_expr(*arg, out_lambdas);
+        }
+        Lambda(_, ref mut body) => lift_lambdas_expr(*body, out_lambdas),
+        Let(ref mut bindings, ref mut expr) => {
             let mut new_binds = Vec::new();
-            for mut bind in bindings.move_iter() {
+            let mut bs = ~[];
+            ::std::mem::swap(&mut bs, bindings);
+            for mut bind in bs.move_iter() {
                 let is_lambda = match bind.expression {
                     Lambda(..) => true,
                     _ => false
                 };
-                update(&mut bind.expression, |expression| lift_lambdas_expr(expression, out_lambdas));
+                lift_lambdas_expr(&mut bind.expression, out_lambdas);
                 if is_lambda {
                     out_lambdas.push(bind);
                 }
@@ -144,16 +143,17 @@ fn lift_lambdas_expr<T>(expr: Expr<T>, out_lambdas: &mut Vec<Binding<T>>) -> Exp
                 lift_lambdas_expr(*expr, out_lambdas)
             }
             else {
-                Let(FromVec::from_vec(new_binds), box lift_lambdas_expr(*expr, out_lambdas))
+                *bindings = FromVec::from_vec(new_binds);
+                lift_lambdas_expr(*expr, out_lambdas);
             }
         }
-        Case(expr, mut alts) => {
+        Case(ref mut expr, ref mut alts) => {
             for alt in alts.mut_iter() {
-                update(&mut alt.expression, |expression| lift_lambdas_expr(expression, out_lambdas));
+                lift_lambdas_expr(&mut alt.expression, out_lambdas);
             }
-            Case(box lift_lambdas_expr(*expr, out_lambdas), alts)
+            lift_lambdas_expr(*expr, out_lambdas);
         }
-        _ => expr
+        _ => ()
     }
 }
 pub fn lift_lambdas<T>(mut module: Module<T>) -> Module<T> {
@@ -164,7 +164,7 @@ pub fn lift_lambdas<T>(mut module: Module<T>) -> Module<T> {
             .chain(module.instances.mut_iter().flat_map(|i| i.bindings.mut_iter()));
 
         for bind in bind_iter {
-            update(&mut bind.expression, |expr| lift_lambdas_expr(expr, &mut new_bindings));
+            lift_lambdas_expr(&mut bind.expression, &mut new_bindings);
         }
     }
     let mut temp = box [];
@@ -176,30 +176,19 @@ pub fn lift_lambdas<T>(mut module: Module<T>) -> Module<T> {
     module
 }
 
-///TODO Not safe if the task fails since uninitalized memory will be freed
-fn update<T>(x: &mut T, f: |T| -> T) {
-    use std::mem::{swap, forget, uninitialized};
-    let mut temp = unsafe { uninitialized() };
-    swap(x, &mut temp);
-    temp = f(temp);
-    swap(x, &mut temp);
-    unsafe { forget(temp) };
-}
-
 ///Takes a module and adds all variables which are captured into a lambda to its arguments
-pub fn abstract_module(module: Module<TypeAndStr>) -> Module<TypeAndStr> {
-    use core::result::*;
+pub fn abstract_module(mut module: Module<TypeAndStr>) -> Module<TypeAndStr> {
+    use core::mutable::*;
     impl Visitor<TypeAndStr> for FreeVariables {
-        fn visit_binding(&mut self, bind: Binding<TypeAndStr>) -> Binding<TypeAndStr> {
-            let Binding { name: name, expression: bind_expr } = bind;
+        fn visit_binding(&mut self, bind: &mut Binding<TypeAndStr>) {
             let mut variables = HashMap::new();
             let mut free_vars = HashMap::new();
-            let e = self.free_variables(&mut variables, &mut free_vars, bind_expr);
-            Binding { name: name, expression: e }
+            self.free_variables(&mut variables, &mut free_vars, &mut bind.expression);
         }
     }
     let mut this = FreeVariables { name_supply: NameSupply::new() };
-    this.visit_module(module)
+    this.visit_module(&mut module);
+    module
 }
 
 #[cfg(test)]

@@ -247,6 +247,64 @@ pub fn walk_alternative<Ident>(visitor: &mut Visitor<Ident>, alt: &Alternative<I
     visitor.visit_expr(&alt.expression);
 }
 
+pub mod mutable {
+    use super::*;
+    
+    pub trait Visitor<Ident> {
+        fn visit_expr(&mut self, expr: &mut Expr<Ident>) {
+            walk_expr(self, expr)
+        }
+        fn visit_alternative(&mut self, alt: &mut Alternative<Ident>) {
+            walk_alternative(self, alt)
+        }
+        fn visit_pattern(&mut self, _pattern: &mut Pattern<Ident>) {
+        }
+        fn visit_binding(&mut self, binding: &mut Binding<Ident>) {
+            walk_binding(self, binding);
+        }
+        fn visit_module(&mut self, module: &mut Module<Ident>) {
+            walk_module(self, module);
+        }
+    }
+
+    pub fn walk_module<Ident>(visitor: &mut Visitor<Ident>, module: &mut Module<Ident>) {
+        for bind in module.bindings.mut_iter() {
+            visitor.visit_binding(bind);
+        }
+    }
+
+    pub fn walk_binding<Ident>(visitor: &mut Visitor<Ident>, binding: &mut Binding<Ident>) {
+        visitor.visit_expr(&mut binding.expression);
+    }
+
+    pub fn walk_expr<Ident>(visitor: &mut Visitor<Ident>, expr: &mut Expr<Ident>) {
+        match expr {
+            &Apply(ref mut func, ref mut arg) => {
+                visitor.visit_expr(*func);
+                visitor.visit_expr(*arg);
+            }
+            &Lambda(_, ref mut body) => visitor.visit_expr(*body),
+            &Let(ref mut binds, ref mut e) => {
+                for b in binds.mut_iter() {
+                    visitor.visit_binding(b);
+                }
+                visitor.visit_expr(*e);
+            }
+            &Case(ref mut e, ref mut alts) => {
+                visitor.visit_expr(*e);
+                for alt in alts.mut_iter() {
+                    visitor.visit_alternative(alt);
+                }
+            }
+            _ => ()
+        }
+    }
+
+    pub fn walk_alternative<Ident>(visitor: &mut Visitor<Ident>, alt: &mut Alternative<Ident>) {
+        visitor.visit_expr(&mut alt.expression);
+    }
+}
+
 pub mod result {
     use core::*;
     use std::vec::FromVec;
