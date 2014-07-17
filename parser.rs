@@ -529,11 +529,18 @@ fn binding(&mut self) -> Binding {
 	//Parse the arguments for the binding
 	let arguments = self.pattern_arguments();
     let matches = self.expr_or_guards(EQUALSSIGN);
+    let where = if self.lexer.peek().token == WHERE {
+        self.lexer.next();
+        Some(self.let_bindings())
+    }
+    else {
+        None
+    };
     Binding {
         name : name.clone(),
         typ: Default::default(),
         arguments: arguments,
-        where : None,
+        where : where,
         matches : matches,
     }
 }
@@ -1365,26 +1372,36 @@ if test 1
 fn where() {
     let mut parser = Parser::new(
 r"
-case [] of
-    x:y:xs -> z
-        where
-        z = x + y
-    x:xs -> x
-    [] -> z
-        where z = 0
+test = case a of
+        x:y:xs -> z
+            where
+            z = x + y
+        x:xs -> x
+        [] -> z
+            where z = 0
+    where
+        a = []
 ".chars());
-    let e = parser.expression_();
-    match e.expr {
-        Case(_, alts) => {
-            let w = alts[0].where.as_ref().expect("Expected where");
-            assert_eq!(w[0].name, intern("z"));
-            assert_eq!(w[0].matches, Simple(op_apply(identifier("x"), intern("+"), identifier("y"))));
-            let w2 = alts[2].where.as_ref().expect("Expected where");
-            assert_eq!(w2[0].name, intern("z"));
-            assert_eq!(w2[0].matches, Simple(number(0)));
+    let bind = parser.binding();
+    match bind.matches {
+        Simple(ref e) => {
+            match e.expr {
+                Case(_, ref alts) => {
+                    let w = alts[0].where.as_ref().expect("Expected where");
+                    assert_eq!(w[0].name, intern("z"));
+                    assert_eq!(w[0].matches, Simple(op_apply(identifier("x"), intern("+"), identifier("y"))));
+                    let w2 = alts[2].where.as_ref().expect("Expected where");
+                    assert_eq!(w2[0].name, intern("z"));
+                    assert_eq!(w2[0].matches, Simple(number(0)));
+                }
+                _ => fail!("Expected case")
+            }
         }
-        _ => assert!(false, "Expected case")
+        _ => fail!("Expected simple binding")
     }
+    let binds = bind.where.as_ref().expect("Expected where");
+    assert_eq!(binds[0].name, intern("a"));
+    assert_eq!(binds[0].matches, Simple(identifier("[]")));
 }
 
 #[test]
