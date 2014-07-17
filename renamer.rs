@@ -142,8 +142,8 @@ impl Renamer {
                     self.uniques.enter_scope();
                     let a = Alternative {
                         pattern: Located { location: loc, node: self.rename_pattern(pattern) },
-                        matches: self.rename_matches(matches),
-                        where: where.map(|bs| self.rename_bindings(bs, false))
+                        where: where.map(|bs| self.rename_bindings(bs, false)),
+                        matches: self.rename_matches(matches)
                     };
                     self.uniques.exit_scope();
                     a

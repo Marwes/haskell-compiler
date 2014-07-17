@@ -394,7 +394,7 @@ pub mod translate {
     }
     
     #[deriving(Show)]
-    struct Equation<'a>(&'a [(Id<Name>, Pattern<Id<Name>>)], &'a module::Match<Name>);
+    struct Equation<'a>(&'a [(Id<Name>, Pattern<Id<Name>>)], (&'a [Binding<Id<Name>>], &'a module::Match<Name>));
 
     pub fn translate_expr(expr: module::TypedExpr<Name>) -> Expr<Id<Name>> {
         let mut translator = Translator { name_supply: NameSupply::new(), functions_in_class: |_| fail!() };
@@ -734,7 +734,8 @@ impl <'a> Translator<'a> {
         let dummy_var = [Id::new(self.name_supply.anonymous(), Type::new_var(intern("a")), ~[])];
         let uid = self.name_supply.next_id();
         for module::Alternative { pattern: pattern, matches: matches, where: where } in alts.move_iter() {
-            vec.push((self.unwrap_patterns(uid, dummy_var, [pattern.node]), matches));
+            let bindings = where.map_or(box [], |bs| self.translate_bindings(bs));
+            vec.push((self.unwrap_patterns(uid, dummy_var, [pattern.node]), bindings, matches));
         }
         let mut x = self.translate_equations_(vec);
         match x {
@@ -795,8 +796,8 @@ impl <'a> Translator<'a> {
         //First we flatten all the patterns that occur in each equation
         //(2:xs) -> [(x:xs), 2]
         let uid = self.name_supply.next_id();
-        let equations: Vec<(Vec<(Id<Name>, Pattern<Id<Name>>)>, module::Match<Name>)> = bindings.iter().map(|bind| {
-            (self.unwrap_patterns(uid, arg_ids.as_slice(), bind.arguments), bind.matches.clone())
+        let equations: Vec<_> = bindings.iter().map(|bind| {
+            (self.unwrap_patterns(uid, arg_ids.as_slice(), bind.arguments), box [], bind.matches.clone())
         }).collect();
         let mut expr = self.translate_equations_(equations);
         expr = make_lambda(arg_ids.move_iter(), expr);
@@ -806,10 +807,10 @@ impl <'a> Translator<'a> {
             expression: expr
         }
     }
-    fn translate_equations_(&mut self, equations: Vec<(Vec<(Id<Name>, Pattern<Id<Name>>)>, module::Match<Name>)>) -> Expr<Id<Name>> {
+    fn translate_equations_(&mut self, equations: Vec<(Vec<(Id<Name>, Pattern<Id<Name>>)>, ~[Binding<Id<Name>>], module::Match<Name>)>) -> Expr<Id<Name>> {
         let mut eqs: Vec<Equation> = Vec::new();
-        for &(ref ps, ref e) in equations.iter() {
-            eqs.push(Equation(ps.as_slice(), e));
+        for &(ref ps, ref bs, ref e) in equations.iter() {
+            eqs.push(Equation(ps.as_slice(), (bs.as_slice(), e)));
         }
         for e in eqs.iter() {
             debug!("{}", e);
@@ -843,21 +844,29 @@ impl <'a> Translator<'a> {
             }
         }
         debug!("In {}", equations);
-        let &Equation(ps, e) = &equations[0];
+        let &Equation(ps, (where_bindings, e)) = &equations[0];
         if ps.len() == 0 {
             assert_eq!(equations.len(), 1);//Otherwise multiple matches for this group
-            return self.translate_match((*e).clone());
+            let bindings = where_bindings.iter().map(|x| x.clone()).collect();
+            return make_let(bindings, self.translate_match((*e).clone()));
         }
         if ps.len() == 1 {
             let mut alts: Vec<Alternative<Id<Name>>> = Vec::new();
-            for (i, &Equation(ps, m)) in equations.iter().enumerate() {
+            for (i, &Equation(ps, (where_bindings, m))) in equations.iter().enumerate() {
+                let bindings = where_bindings.iter().map(|x| x.clone()).collect();
                 match *m {
                     module::Simple(ref e) => {
                         let alt = if ps.len() == 0 {
-                            Alternative { pattern: WildCardPattern, expression: self.translate_expr((*e).clone()) }
+                            Alternative {
+                                pattern: WildCardPattern, expression:
+                                make_let(bindings, self.translate_expr((*e).clone()))
+                            }
                         }
                         else {
-                            Alternative { pattern: ps[0].ref1().clone(), expression: self.translate_expr((*e).clone()) }
+                            Alternative {
+                                pattern: ps[0].ref1().clone(),
+                                expression: make_let(bindings, self.translate_expr((*e).clone()))
+                            }
                         };
                         alts.push(alt);
                     }
@@ -870,7 +879,7 @@ impl <'a> Translator<'a> {
                         };
                         alts.push(Alternative {
                             pattern: ps[0].ref1().clone(),
-                            expression: self.translate_guards(fallthrough, *guards)
+                            expression: make_let(bindings, self.translate_guards(fallthrough, *guards))
                         });
                     }
                 }
