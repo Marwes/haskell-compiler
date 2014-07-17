@@ -418,7 +418,14 @@ fn alternative(&mut self) -> Alternative {
 	let pat = self.located_pattern();
 
     let matches = self.expr_or_guards(ARROW);
-	Alternative { pattern : pat, matches: matches, where: None }
+    let where = if self.lexer.peek().token == WHERE {
+        self.lexer.next();
+        Some(self.let_bindings())
+    }
+    else {
+        None
+    };
+	Alternative { pattern : pat, matches: matches, where: where }
 }
 
 fn binary_expression(&mut self, lhs : Option<TypedExpr>) -> Option<TypedExpr> {
@@ -1350,6 +1357,32 @@ if test 1
             , if_else(identifier("True")
                 , number(2)
                 , op_apply(number(3), intern("+"), number(2)))));
+}
+
+#[test]
+fn where() {
+    let mut parser = Parser::new(
+r"
+case [] of
+    x:y:xs -> z
+        where
+        z = x + y
+    x:xs -> x
+    [] -> z
+        where z = 0
+".chars());
+    let e = parser.expression_();
+    match e.expr {
+        Case(_, alts) => {
+            let w = alts[0].where.as_ref().expect("Expected where");
+            assert_eq!(w[0].name, intern("z"));
+            assert_eq!(w[0].matches, Simple(op_apply(identifier("x"), intern("+"), identifier("y"))));
+            let w2 = alts[2].where.as_ref().expect("Expected where");
+            assert_eq!(w2[0].name, intern("z"));
+            assert_eq!(w2[0].matches, Simple(number(0)));
+        }
+        _ => assert!(false, "Expected case")
+    }
 }
 
 #[test]
