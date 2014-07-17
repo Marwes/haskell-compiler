@@ -121,6 +121,7 @@ impl TypedExpr {
 pub struct Alternative<Ident = InternedStr> {
     pub pattern : Located<Pattern<Ident>>,
     pub matches: Match<Ident>,
+    pub where : Option<~[Binding<Ident>]>
 }
 
 #[deriving(Clone, PartialOrd, PartialEq, Eq)]

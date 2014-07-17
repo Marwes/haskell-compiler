@@ -733,7 +733,7 @@ impl <'a> Translator<'a> {
         let mut vec = Vec::new();
         let dummy_var = [Id::new(self.name_supply.anonymous(), Type::new_var(intern("a")), ~[])];
         let uid = self.name_supply.next_id();
-        for module::Alternative { pattern: pattern, matches: matches } in alts.move_iter() {
+        for module::Alternative { pattern: pattern, matches: matches, where: where } in alts.move_iter() {
             vec.push((self.unwrap_patterns(uid, dummy_var, [pattern.node]), matches));
         }
         let mut x = self.translate_equations_(vec);

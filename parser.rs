@@ -418,7 +418,7 @@ fn alternative(&mut self) -> Alternative {
 	let pat = self.located_pattern();
 
     let matches = self.expr_or_guards(ARROW);
-	Alternative { pattern : pat, matches: matches }
+	Alternative { pattern : pat, matches: matches, where: None }
 }
 
 fn binary_expression(&mut self, lhs : Option<TypedExpr>) -> Option<TypedExpr> {
@@ -1114,10 +1114,14 @@ r"case [] of
             location: Location::eof(),
             node: ConstructorPattern(intern(":"), ~[IdentifierPattern(intern("x")), IdentifierPattern(intern("xs"))])
         },
-        matches: Simple(identifier("x")) };
+        matches: Simple(identifier("x")),
+        where: None
+    };
     let alt2 = Alternative {
         pattern: Located { location: Location::eof(), node: ConstructorPattern(intern("[]"), ~[]) },
-        matches: Simple(number(2)) };
+        matches: Simple(number(2)),
+        where: None
+    };
     assert_eq!(expression, case(identifier("[]"), ~[alt, alt2]));
 }
 
@@ -1181,7 +1185,8 @@ r"case () :: () of
     assert_eq!(expr, case(TypedExpr::new(TypeSig(box identifier("()"), qualified(~[], Type::new_op(intern("()"), ~[])))), 
         ~[Alternative {
         pattern: Located { location: Location::eof(), node: ConstructorPattern(intern("()"), ~[])  },
-        matches: Simple(number(1))
+        matches: Simple(number(1)),
+        where: None
     } ]));
 }
 

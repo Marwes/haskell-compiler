@@ -133,12 +133,17 @@ impl Renamer {
                 l
             }
             Case(expr, alts) => {
-                let a: Vec<Alternative<Name>> = alts.move_iter().map(
-                    |Alternative { pattern: Located { location: loc, node: pattern }, matches: matches }| {
+                let a: Vec<Alternative<Name>> = alts.move_iter().map(|alt| {
+                    let Alternative {
+                        pattern: Located { location: loc, node: pattern },
+                        matches: matches,
+                        where: where
+                    } = alt;
                     self.uniques.enter_scope();
                     let a = Alternative {
                         pattern: Located { location: loc, node: self.rename_pattern(pattern) },
-                        matches: self.rename_matches(matches)
+                        matches: self.rename_matches(matches),
+                        where: where.map(|bs| self.rename_bindings(bs, false))
                     };
                     self.uniques.exit_scope();
                     a
