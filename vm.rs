@@ -1112,13 +1112,15 @@ fn where() {
 r"
 import Prelude
 
-main = case [1::Int] of
-    [] -> 123
-    x:xs
-        | y < 10 -> 0
-        | otherwise -> y
-        where
-        y = x + 10
+main = case list of
+        [] -> 123
+        x:xs
+            | y < 10 -> 0
+            | otherwise -> y
+            where
+            y = x + 10
+    where
+        list = [1::Int]
 ").unwrap_or_else(|err| fail!(err));
     assert_eq!(result, Some(IntResult(11)));
 }

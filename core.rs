@@ -757,7 +757,7 @@ impl <'a> Translator<'a> {
                 name: name,
                 arguments: arguments, matches: matches,
                 typ: module::Qualified { constraints: constraints, value: typ, },
-                ..
+                where: where
             } = bindings.pop().unwrap();
             let arg_iterator = arguments.move_iter().map(|p| {
                 match p {
@@ -772,17 +772,20 @@ impl <'a> Translator<'a> {
                     .map(|(typ, arg)| {
                     Id::new(arg, typ.clone(), ~[])
                 });
-                make_lambda(lambda_ids, self.translate_match(matches))
+                let where_binds = where.map_or(Vec::new(), |bs| self.translate_bindings(bs).move_iter().collect());
+                make_lambda(lambda_ids, make_let(where_binds, self.translate_match(matches)))
             };
             return Binding {
                 name: Id::new(name, typ, constraints),
                 expression: expr
             }
         }
-        let binding0 = bindings.get(0);
         //Generate new names for each of the arguments (since it is likely that not all arguments have a name)
         let mut arg_ids = Vec::new();
+        let name;
         {
+            let binding0 = bindings.get(0);
+            name = Id::new(binding0.name.clone(), binding0.typ.value.clone(), binding0.typ.constraints.clone());
             let mut typ = &binding0.typ.value;
             for _ in range(0, binding0.arguments.len()) {
                 arg_ids.push(Id::new(self.name_supply.from_str("arg"), typ.clone(), ~[]));
@@ -796,14 +799,21 @@ impl <'a> Translator<'a> {
         //First we flatten all the patterns that occur in each equation
         //(2:xs) -> [(x:xs), 2]
         let uid = self.name_supply.next_id();
-        let equations: Vec<_> = bindings.iter().map(|bind| {
-            (self.unwrap_patterns(uid, arg_ids.as_slice(), bind.arguments), box [], bind.matches.clone())
+        let equations: Vec<_> = bindings.move_iter().map(|bind| {
+            let module::Binding {
+                arguments: arguments,
+                matches: matches,
+                where: where,
+                ..
+            } = bind;
+            let where_binds = where.map_or(box [], |bs| self.translate_bindings(bs));
+            (self.unwrap_patterns(uid, arg_ids.as_slice(), arguments), where_binds, matches)
         }).collect();
         let mut expr = self.translate_equations_(equations);
         expr = make_lambda(arg_ids.move_iter(), expr);
-        debug!("Desugared {} :: {}\n {}", binding0.name, binding0.typ, expr);
+        debug!("Desugared {} :: {}\n {}", name.name, name.typ, expr);
         Binding {
-            name: Id::new(binding0.name.clone(), binding0.typ.value.clone(), binding0.typ.constraints.clone()),
+            name: name,
             expression: expr
         }
     }
