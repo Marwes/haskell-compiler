@@ -350,6 +350,7 @@ pub fn walk_expr<Ident>(visitor: &mut Visitor<Ident>, expr: &TypedExpr<Ident>) {
 }
 
 pub fn walk_alternative<Ident>(visitor: &mut Visitor<Ident>, alt: &Alternative<Ident>) {
+    visitor.visit_pattern(&alt.pattern.node);
     match alt.matches {
         Simple(ref e) => visitor.visit_expr(e),
         Guards(ref gs) => {
@@ -358,6 +359,14 @@ pub fn walk_alternative<Ident>(visitor: &mut Visitor<Ident>, alt: &Alternative<I
                 visitor.visit_expr(&g.expression);
             }
         }
+    }
+    match alt.where {
+        Some(ref bindings) => {
+            for bind in bindings.iter() {
+                visitor.visit_binding(bind);
+            }
+        }
+        None => ()
     }
 }
 
@@ -465,6 +474,7 @@ pub fn walk_expr_mut<Ident, V: MutVisitor<Ident>>(visitor: &mut V, expr: &mut Ty
 }
 
 pub fn walk_alternative_mut<Ident, V: MutVisitor<Ident>>(visitor: &mut V, alt: &mut Alternative<Ident>) {
+    visitor.visit_pattern(&mut alt.pattern.node);
     match alt.matches {
         Simple(ref mut e) => visitor.visit_expr(e),
         Guards(ref mut gs) => {
@@ -473,6 +483,14 @@ pub fn walk_alternative_mut<Ident, V: MutVisitor<Ident>>(visitor: &mut V, alt: &
                 visitor.visit_expr(&mut g.expression);
             }
         }
+    }
+    match alt.where {
+        Some(ref mut bindings) => {
+            for bind in bindings.mut_iter() {
+                visitor.visit_binding(bind);
+            }
+        }
+        None => ()
     }
 }
 
