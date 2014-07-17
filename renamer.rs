@@ -246,6 +246,7 @@ pub fn rename_module_(renamer: &mut Renamer, module: Module<InternedStr>) -> Mod
         imports: imports,
         classes : classes,
         dataDefinitions: data_definitions,
+        newtypes: newtypes,
         typeDeclarations: typeDeclarations,
         bindings : bindings,
         instances: instances,
@@ -284,6 +285,10 @@ pub fn rename_module_(renamer: &mut Renamer, module: Module<InternedStr>) -> Mod
             constructors : FromVec::from_vec(c),
             deriving : FromVec::from_vec(d)
         }
+    }).collect();
+
+    let newtypes2: Vec<Newtype<Name>> = newtypes.move_iter().map(|newtype| {
+        fail!()
     }).collect();
     
     let instances2: Vec<Instance<Name>> = instances.move_iter().map(|instance| {
@@ -341,6 +346,7 @@ pub fn rename_module_(renamer: &mut Renamer, module: Module<InternedStr>) -> Mod
         typeDeclarations: typeDeclarations,
         bindings : bindings2,
         instances: FromVec::from_vec(instances2),
+        newtypes: FromVec::from_vec(newtypes2),
         fixity_declarations: FromVec::from_vec(fixity_declarations2)
     }
 }

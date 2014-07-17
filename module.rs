@@ -14,6 +14,7 @@ pub struct Module<Ident = InternedStr> {
     pub classes : ~[Class<Ident>],
     pub instances : ~[Instance<Ident>],
     pub dataDefinitions : ~[DataDefinition<Ident>],
+    pub newtypes : ~[Newtype<Ident>],
     pub fixity_declarations : ~[FixityDeclaration<Ident>]
 }
 
@@ -61,6 +62,13 @@ pub struct DataDefinition<Ident = InternedStr> {
     pub constructors : ~[Constructor<Ident>],
     pub typ : Qualified<Type>,
     pub parameters : HashMap<InternedStr, int>,
+    pub deriving: ~[Ident]
+}
+
+#[deriving(PartialEq, Clone)]
+pub struct Newtype<Ident = InternedStr> {
+    pub typ: Qualified<Type>,
+    pub constructor_name: Ident,
     pub deriving: ~[Ident]
 }
 

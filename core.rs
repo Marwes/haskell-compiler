@@ -425,11 +425,16 @@ pub mod translate {
             imports : _imports,
             bindings : bindings,
             typeDeclarations : _typeDeclarations,
+            newtypes : newtypes,
             classes : classes,
             instances : instances,
             dataDefinitions : dataDefinitions,
             fixity_declarations : _fixity_declarations
         } = module;
+
+        let newtypes2: Vec<module::Newtype<Name>> = newtypes.move_iter().map(|newtype| {
+            fail!()
+        }).collect();
 
 
         let mut new_instances: Vec<Instance<Id<Name>>> = Vec::new();

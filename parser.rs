@@ -78,6 +78,7 @@ pub fn module(&mut self) -> Module {
     let mut instances = Vec::new();
     let mut type_declarations = Vec::new();
     let mut data_definitions = Vec::new();
+    let mut newtypes = Vec::new();
     let mut fixity_declarations = Vec::new();
 	loop {
 		//Do a lookahead to see what the next top level binding is
@@ -123,6 +124,7 @@ pub fn module(&mut self) -> Module {
         classes : FromVec::from_vec(classes),
         instances : FromVec::from_vec(instances),
         dataDefinitions : FromVec::from_vec(data_definitions),
+        newtypes: FromVec::from_vec(newtypes),
         fixity_declarations : FromVec::from_vec(fixity_declarations)
     }
 }
