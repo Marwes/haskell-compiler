@@ -267,17 +267,17 @@ pub mod mutable {
         }
     }
 
-    pub fn walk_module<Ident>(visitor: &mut Visitor<Ident>, module: &mut Module<Ident>) {
+    pub fn walk_module<Ident, V: Visitor<Ident>>(visitor: &mut V, module: &mut Module<Ident>) {
         for bind in module.bindings.mut_iter() {
             visitor.visit_binding(bind);
         }
     }
 
-    pub fn walk_binding<Ident>(visitor: &mut Visitor<Ident>, binding: &mut Binding<Ident>) {
+    pub fn walk_binding<Ident, V: Visitor<Ident>>(visitor: &mut V, binding: &mut Binding<Ident>) {
         visitor.visit_expr(&mut binding.expression);
     }
 
-    pub fn walk_expr<Ident>(visitor: &mut Visitor<Ident>, expr: &mut Expr<Ident>) {
+    pub fn walk_expr<Ident, V: Visitor<Ident>>(visitor: &mut V, expr: &mut Expr<Ident>) {
         match expr {
             &Apply(ref mut func, ref mut arg) => {
                 visitor.visit_expr(*func);
@@ -300,7 +300,7 @@ pub mod mutable {
         }
     }
 
-    pub fn walk_alternative<Ident>(visitor: &mut Visitor<Ident>, alt: &mut Alternative<Ident>) {
+    pub fn walk_alternative<Ident, V: Visitor<Ident>>(visitor: &mut V, alt: &mut Alternative<Ident>) {
         visitor.visit_expr(&mut alt.expression);
     }
 }

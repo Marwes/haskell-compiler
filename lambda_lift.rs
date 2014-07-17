@@ -114,66 +114,65 @@ fn abstract(&mut self, free_vars: &HashMap<Name, TypeAndStr>, input_expr: &mut E
 }
 }
 
-///Lifts all lambdas in the expression to the top level of the program
-fn lift_lambdas_expr<T>(expr: &mut Expr<T>, out_lambdas: &mut Vec<Binding<T>>) {
-    match *expr {
-        Apply(ref mut func, ref mut arg) => {
-            lift_lambdas_expr(*func, out_lambdas);
-            lift_lambdas_expr(*arg, out_lambdas);
-        }
-        Lambda(_, ref mut body) => lift_lambdas_expr(*body, out_lambdas),
-        Let(ref mut bindings, ref mut expr) => {
-            let mut new_binds = Vec::new();
-            let mut bs = ~[];
-            ::std::mem::swap(&mut bs, bindings);
-            for mut bind in bs.move_iter() {
-                let is_lambda = match bind.expression {
-                    Lambda(..) => true,
-                    _ => false
-                };
-                lift_lambdas_expr(&mut bind.expression, out_lambdas);
-                if is_lambda {
-                    out_lambdas.push(bind);
-                }
-                else {
-                    new_binds.push(bind);
-                }
-            }
-            if new_binds.len() == 0 {
-                lift_lambdas_expr(*expr, out_lambdas)
-            }
-            else {
-                *bindings = FromVec::from_vec(new_binds);
-                lift_lambdas_expr(*expr, out_lambdas);
-            }
-        }
-        Case(ref mut expr, ref mut alts) => {
-            for alt in alts.mut_iter() {
-                lift_lambdas_expr(&mut alt.expression, out_lambdas);
-            }
-            lift_lambdas_expr(*expr, out_lambdas);
-        }
-        _ => ()
-    }
-}
+///Lifts all lambdas in the module to the top level of the program
 pub fn lift_lambdas<T>(mut module: Module<T>) -> Module<T> {
-    let mut new_bindings : Vec<Binding<T>> = Vec::new();
-    {
-        let mut bind_iter = module.bindings.mut_iter()
-            .chain(module.classes.mut_iter().flat_map(|c| c.bindings.mut_iter()))
-            .chain(module.instances.mut_iter().flat_map(|i| i.bindings.mut_iter()));
-
-        for bind in bind_iter {
-            lift_lambdas_expr(&mut bind.expression, &mut new_bindings);
+    use core::mutable::*;
+    struct LambdaLifter<T> { out_lambdas: Vec<Binding<T>> }
+    impl <T> Visitor<T> for LambdaLifter<T> {
+        fn visit_expr(&mut self, expr: &mut Expr<T>) {
+            match *expr {
+                Let(ref mut bindings, ref mut body) => {
+                    let mut new_binds = Vec::new();
+                    let mut bs = ~[];
+                    ::std::mem::swap(&mut bs, bindings);
+                    for mut bind in bs.move_iter() {
+                        let is_lambda = match bind.expression {
+                            Lambda(..) => true,
+                            _ => false
+                        };
+                        walk_expr(self, &mut bind.expression);
+                        if is_lambda {
+                            self.out_lambdas.push(bind);
+                        }
+                        else {
+                            new_binds.push(bind);
+                        }
+                    }
+                    *bindings = FromVec::from_vec(new_binds);
+                    self.visit_expr(*body);
+                }
+                _ => walk_expr(self, expr)
+            }
+            remove_empty_let(expr);
         }
     }
+    let mut visitor = LambdaLifter { out_lambdas: Vec::new() };
+    visitor.visit_module(&mut module);
     let mut temp = box [];
     ::std::mem::swap(&mut temp, &mut module.bindings);
     let vec : Vec<Binding<T>> = temp.move_iter()
-        .chain(new_bindings.move_iter())
+        .chain(visitor.out_lambdas.move_iter())
         .collect();
     module.bindings = FromVec::from_vec(vec);
     module
+}
+//Replaces let expressions with no binding with the expression itself
+fn remove_empty_let<T>(expr: &mut Expr<T>) {
+    let mut temp = unsafe { ::std::mem::uninitialized() };
+    ::std::mem::swap(&mut temp, expr);
+    temp = match temp {
+        Let(bindings, e) => {
+            if bindings.len() == 0 {
+                *e
+            }
+            else {
+                Let(bindings, e)
+            }
+        }
+        temp => temp
+    };
+    ::std::mem::swap(&mut temp, expr);
+    unsafe { ::std::mem::forget(temp) }
 }
 
 ///Takes a module and adds all variables which are captured into a lambda to its arguments
