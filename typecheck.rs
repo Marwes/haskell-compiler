@@ -666,9 +666,17 @@ impl <'a> TypeEnvironment<'a> {
             Case(ref mut case_expr, ref mut alts) => {
                 let mut match_type = self.typecheck(*case_expr, subs);
                 self.typecheck_pattern(&alts[0].pattern.location, subs, &alts[0].pattern.node, &mut match_type);
+                match alts[0].where {
+                    Some(ref mut bindings) => self.typecheck_local_bindings(subs, &mut BindingsWrapper { value: *bindings }),
+                    None => ()
+                }
                 let mut alt0_ = self.typecheck_match(&mut alts[0].matches, subs);
                 for alt in alts.mut_iter().skip(1) {
                     self.typecheck_pattern(&alt.pattern.location, subs, &alt.pattern.node, &mut match_type);
+                    match alt.where {
+                        Some(ref mut bindings) => self.typecheck_local_bindings(subs, &mut BindingsWrapper { value: *bindings }),
+                        None => ()
+                    }
                     let mut alt_type = self.typecheck_match(&mut alt.matches, subs);
                     unify_location(self, subs, &alt.pattern.location, &mut alt0_, &mut alt_type);
                 }
@@ -2179,6 +2187,20 @@ test x = test x
 
 test2 = test (Just True)")
     .unwrap_or_else(|err| fail!(err));
+}
+
+#[test]
+#[should_fail]
+fn where_binding() {
+    typecheck_string(
+r"
+test = case 1 :: Int of
+    2 -> []
+    x -> y
+    where
+        y = x 1
+")
+        .unwrap_or_else(|err| fail!(err));
 }
 
 #[bench]
