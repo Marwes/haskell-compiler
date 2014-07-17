@@ -98,6 +98,9 @@ pub fn module(&mut self) -> Module {
 		else if token == DATA {
 			data_definitions.push(self.data_definition());
 		}
+		else if token == NEWTYPE {
+			newtypes.push(self.newtype());
+		}
 		else if token == INFIXL || token == INFIXR || token == INFIX {
             fixity_declarations.push(self.fixity_declaration());
         }
@@ -801,7 +804,6 @@ fn constructor_type(&mut self, arity : &mut int, dataDef: &DataDefinition) -> Ty
 
 fn data_definition(&mut self) -> DataDefinition {
 	self.require_next(DATA);
-	let dataName = self.require_next(NAME).value.clone();
 
 	let mut definition = DataDefinition {
         constructors : box [],
@@ -809,34 +811,59 @@ fn data_definition(&mut self) -> DataDefinition {
         parameters : HashMap::new(),
         deriving: box []
     };
-    let mut typ = TypeConstructor(TypeConstructor { name: dataName, kind: star_kind.clone() });
-	while self.lexer.next().token == NAME {
-        //TODO use new variables isntead of only  -1
-		typ = TypeApplication(box typ, box Type::new_var(self.lexer.current().value));
-		definition.parameters.insert(self.lexer.current().value.clone(), -1);
-	}
-    definition.typ.value = typ;
-    Parser::<Iter>::set_kind(&mut definition.typ.value, 1);
+    definition.typ.value = self.data_lhs();
+    self.require_next(EQUALSSIGN);
 
-	let equalToken = self.lexer.current().token;
-	if equalToken != EQUALSSIGN {
-		fail!(parse_error(&self.lexer, EQUALSSIGN));
-	}
 	definition.constructors = self.sep_by_1_func(|this| this.constructor(&definition),
 		|t : &Token| t.token == PIPE);
+    self.lexer.backtrack();
 	for ii in range(0, definition.constructors.len()) {
 		definition.constructors[ii].tag = ii as int;
 	}
-    if self.lexer.current().token == DERIVING {
+    definition.deriving = self.deriving();
+	definition
+}
+
+fn newtype(&mut self) -> Newtype {
+    debug!("Parsing newtype");
+    self.require_next(NEWTYPE);
+    let typ = self.data_lhs();
+    self.require_next(EQUALSSIGN);
+    let name = self.require_next(NAME).value;
+    let location = self.lexer.current().location;
+    let arg_type = self.sub_type()
+        .unwrap_or_else(|| fail!("Parse error when parsing argument to new type at  {}", location));
+    
+    Newtype {
+        typ: qualified(box [], typ.clone()),
+        constructor_type: function_type_(arg_type, typ),
+        deriving: self.deriving()
+    }
+}
+
+fn data_lhs(&mut self) -> Type {
+	let name = self.require_next(NAME).value.clone();
+    let mut typ = TypeConstructor(TypeConstructor { name: name, kind: star_kind.clone() });
+	while self.lexer.next().token == NAME {
+		typ = TypeApplication(box typ, box Type::new_var(self.lexer.current().value));
+	}
+    self.lexer.backtrack();
+    Parser::<Iter>::set_kind(&mut typ, 1);
+    typ
+}
+
+fn deriving(&mut self) -> ~[InternedStr] {
+    if self.lexer.next().token == DERIVING {
         self.require_next(LPARENS);
-        definition.deriving = self.sep_by_1(|this| this.require_next(NAME).value, COMMA);
+        let vec = self.sep_by_1(|this| this.require_next(NAME).value, COMMA);
 	    self.lexer.backtrack();
         self.require_next(RPARENS);
+        vec
     }
     else {
 	    self.lexer.backtrack();
+        box []
     }
-	definition
 }
 
 fn set_kind(typ: &mut Type, kind: int) {
@@ -1404,6 +1431,19 @@ test = case a of
     let binds = bind.where.as_ref().expect("Expected where");
     assert_eq!(binds[0].name, intern("a"));
     assert_eq!(binds[0].matches, Simple(identifier("[]")));
+}
+
+#[test]
+fn parse_newtype() {
+    let s = 
+r"
+newtype IntPair a = IntPair (a, Int)
+";
+    let module = Parser::new(s.chars()).module();
+    let a = Type::new_var(intern("a"));
+    let typ = Type::new_op(intern("IntPair"), box [a.clone()]);
+    assert_eq!(module.newtypes[0].typ, qualified(box [], typ.clone()));
+    assert_eq!(module.newtypes[0].constructor_type, function_type_(Type::new_op(intern("(,)"), box [a, int_type()]), typ));
 }
 
 #[test]
