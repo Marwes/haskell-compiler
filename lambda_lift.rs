@@ -157,16 +157,22 @@ fn lift_lambdas_expr<T>(expr: Expr<T>, out_lambdas: &mut Vec<Binding<T>>) -> Exp
     }
 }
 pub fn lift_lambdas<T>(mut module: Module<T>) -> Module<T> {
-    update(&mut module.bindings, |bindings| {
-        let mut new_bindings : Vec<Binding<T>> = Vec::new();
-        let mut bindings2 : Vec<Binding<T>> = bindings.move_iter()
-            .map(|mut bind| {
-                update(&mut bind.expression, |expression| lift_lambdas_expr(expression, &mut new_bindings));
-                bind
-            }).collect();
-        bindings2.extend(new_bindings.move_iter());
-        FromVec::from_vec(bindings2)
-    });
+    let mut new_bindings : Vec<Binding<T>> = Vec::new();
+    {
+        let mut bind_iter = module.bindings.mut_iter()
+            .chain(module.classes.mut_iter().flat_map(|c| c.bindings.mut_iter()))
+            .chain(module.instances.mut_iter().flat_map(|i| i.bindings.mut_iter()));
+
+        for bind in bind_iter {
+            update(&mut bind.expression, |expr| lift_lambdas_expr(expr, &mut new_bindings));
+        }
+    }
+    let mut temp = box [];
+    ::std::mem::swap(&mut temp, &mut module.bindings);
+    let vec : Vec<Binding<T>> = temp.move_iter()
+        .chain(new_bindings.move_iter())
+        .collect();
+    module.bindings = FromVec::from_vec(vec);
     module
 }
 
