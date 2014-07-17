@@ -533,6 +533,7 @@ fn binding(&mut self) -> Binding {
         name : name.clone(),
         typ: Default::default(),
         arguments: arguments,
+        where : None,
         matches : matches,
     }
 }
@@ -1104,7 +1105,7 @@ let
 in test - 2".chars());
     let expr = parser.expression_();
     let bind = Binding { arguments: ~[], name: intern("test"), typ: Default::default(),
-        matches: Simple(apply(apply(identifier("add"), number(3)), number(2))) };
+        matches: Simple(apply(apply(identifier("add"), number(3)), number(2))), where: None };
     assert_eq!(expr, let_(~[bind], op_apply(identifier("test"), intern("-"), number(2))));
 }
 
@@ -1302,7 +1303,8 @@ test x
         matches: Guards(~[
             Guard { predicate: identifier("x"), expression: number(1) },
             Guard { predicate: identifier("otherwise"), expression: number(0) },
-        ])
+        ]),
+        where: None
     };
     assert_eq!(binding, b2);
 }

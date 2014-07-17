@@ -1636,7 +1636,7 @@ fn typecheck_let() {
 
     //let test x = add x in test
     let unary_bind = lambda("x", apply(apply(identifier("primIntAdd"), identifier("x")), number(1)));
-    let e = let_(~[Binding { arguments: ~[], name: intern("test"), matches: Simple(unary_bind), typ: Default::default() }], identifier("test"));
+    let e = let_(~[Binding { arguments: ~[], name: intern("test"), matches: Simple(unary_bind), typ: Default::default() , where: None }], identifier("test"));
     let mut expr = rename_expr(e);
     env.typecheck_expr(&mut expr);
 

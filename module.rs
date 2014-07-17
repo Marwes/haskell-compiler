@@ -44,6 +44,7 @@ pub struct Binding<Ident = InternedStr> {
     pub name : Ident,
     pub arguments: ~[Pattern<Ident>],
     pub matches: Match<Ident>,
+    pub where : Option<~[Binding<Ident>]>,
     pub typ: Qualified<Type>
 }
 
