@@ -800,11 +800,15 @@ impl <'a> TypeEnvironment<'a> {
             for (arg, typ) in bind.arguments.mut_iter().zip(argument_types.mut_iter()) {
                 self.typecheck_pattern(&Location::eof(), subs, arg, typ);
             }
+            match bind.where {
+                Some(ref mut bindings) => self.typecheck_local_bindings(subs, &mut BindingsWrapper { value: *bindings }),
+                None => ()
+            }
+            let mut typ = self.typecheck_match(&mut bind.matches, subs);
             fn make_function(arguments: &[Type], expr: &Type) -> Type {
                 if arguments.len() == 0 { expr.clone() }
                 else { function_type_(arguments[0].clone(), make_function(arguments.slice_from(1), expr)) }
             }
-            let mut typ = self.typecheck_match(&mut bind.matches, subs);
             typ = make_function(argument_types.as_slice(), &typ);
             match previous_type {
                 Some(mut prev) => unify_location(self, subs, bind.matches.location(), &mut typ, &mut prev),
