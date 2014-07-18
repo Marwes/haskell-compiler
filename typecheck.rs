@@ -130,6 +130,7 @@ pub struct TypeEnvironment<'a> {
     ///The current age for newly created variables.
     ///Age is used to determine whether variables need to be quantified or not.
     variable_age : int,
+    errors: Errors<TypeErrorInfo>
 }
 
 ///A Substitution is a mapping from typevariables to types.
@@ -271,6 +272,7 @@ impl <'a> TypeEnvironment<'a> {
             classes: Vec::new(),
             data_definitions : Vec::new(),
             variable_age : 0 ,
+            errors: Errors::new()
         }
     }
 
@@ -410,6 +412,10 @@ impl <'a> TypeEnvironment<'a> {
             let mut subs = Substitution { subs: HashMap::new() }; 
             self.typecheck_global_bindings(start_var_age, &mut subs, module);
         }
+        if self.errors.has_errors() {
+            self.errors.report_errors("typecheck");
+            fail!();
+        }
     }
 
     ///Typechecks an expression.
@@ -420,6 +426,10 @@ impl <'a> TypeEnvironment<'a> {
         let mut typ = self.typecheck(expr, &mut subs);
         unify_location(self, &mut subs, &expr.location, &mut typ, &mut expr.typ);
         self.substitute(&mut subs, expr);
+        if self.errors.has_errors() {
+            self.errors.report_errors("typecheck");
+            fail!();
+        }
     }
 
     ///Finds all the constraints for a type
@@ -1226,19 +1236,17 @@ fn unify_location(env: &mut TypeEnvironment, subs: &mut Substitution, location: 
     debug!("{} Unifying {} <-> {}", location, *lhs, *rhs);
     match unify(env, subs, lhs, rhs) {
         Ok(()) => (),
-        Err(error) => fail_type_error(location, lhs, rhs, error)
+        Err(error) => {
+            env.errors.insert(TypeErrorInfo { location: location.clone(), lhs: lhs.clone(), rhs: rhs.clone(), error: error })
+        }
     }
 }
 
-fn fail_type_error(location: &Location, lhs: &Type, rhs: &Type, error: TypeError) -> ! {
-    match error {
-        UnifyFail(l, r) => fail!("{} Error: Could not unify types\n{}\nand\n{}\nin types\n{}\nand\n{}", location, l, r, *lhs, *rhs),
-        RecursiveUnification => fail!("{} Error: Recursive unification between {}\nand\n{}", location, *lhs, *rhs),
-        WrongArity(l, r) =>
-            fail!("{} Error: Types do not have the same arity.\n{} <-> {}\n{} <-> {}\n{}\nand\n{}"
-                , location, l, r, l.kind(), r.kind(), *lhs, *rhs),
-        MissingInstance(class, typ, id) => fail!("{} Error: The instance {} {} was not found as required by {} when unifying {}\nand\n{}", location, class, typ, id, *lhs, *rhs)
-    }
+struct TypeErrorInfo {
+    location: Location,
+    lhs: Type,
+    rhs: Type,
+    error: TypeError
 }
 
 enum TypeError {
@@ -1247,6 +1255,26 @@ enum TypeError {
     WrongArity(Type, Type),
     MissingInstance(InternedStr, Type, TypeVariable)
 }
+
+impl ::std::fmt::Show for TypeErrorInfo {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+        match self.error {
+            UnifyFail(ref l, ref r) =>
+                write!(f, "{} Error: Could not unify types\n{}\nand\n{}\nin types\n{}\nand\n{}",
+                    self.location, l, r, self.lhs, self.rhs),
+            RecursiveUnification =>
+                write!(f, "{} Error: Recursive unification between {}\nand\n{}",
+                    self.location, self.lhs, self.rhs),
+            WrongArity(ref l, ref r) =>
+                write!(f, "{} Error: Types do not have the same arity.\n{} <-> {}\n{} <-> {}\n{}\nand\n{}"
+                    , self.location, l, r, l.kind(), r.kind(), self.lhs, self.rhs),
+            MissingInstance(ref class, ref typ, ref id) =>
+                write!(f, "{} Error: The instance {} {} was not found as required by {} when unifying {}\nand\n{}",
+                    self.location, class, typ, id, self.lhs, self.rhs)
+        }
+    }
+}
+
 ///Tries to bind the type to the variable.
 ///Returns Ok if the binding was possible.
 ///Returns Error if the binding was not possible and the reason for the error.
@@ -1376,7 +1404,7 @@ fn match_or_fail(env: &mut TypeEnvironment, subs: &mut Substitution, location: &
     debug!("Match {} --> {}", *lhs, *rhs);
     match match_(env, subs, lhs, rhs) {
         Ok(()) => (),
-        Err(error) => fail_type_error(location, lhs, rhs, error)
+        Err(error) => env.errors.insert(TypeErrorInfo { location: location.clone(), lhs: lhs.clone(), rhs: rhs.clone(), error: error })
     }
 }
 ///Match performs matching which is walks through the same process as unify but only allows

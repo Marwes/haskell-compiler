@@ -23,22 +23,22 @@ impl ::std::fmt::Show for Name {
 }
 
 ///Generic struct which can store and report errors
-struct Errors<T> {
+pub struct Errors<T> {
     errors: Vec<T>
 }
 impl <T> Errors<T> {
-    fn new() -> Errors<T> {
+    pub fn new() -> Errors<T> {
         Errors { errors: Vec::new() }
     }
-    fn insert(&mut self, e: T) {
+    pub fn insert(&mut self, e: T) {
         self.errors.push(e);
     }
-    fn has_errors(&self) -> bool {
+    pub fn has_errors(&self) -> bool {
         self.errors.len() != 0
     }
 }
 impl <T: ::std::fmt::Show> Errors<T> {
-    fn report_errors(&self, pass: &str) {
+    pub fn report_errors(&self, pass: &str) {
         println!("Found {} errors in compiler pass: {}", self.errors.len(), pass);
         for error in self.errors.iter() {
             println!("{}", error);
