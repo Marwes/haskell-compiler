@@ -63,7 +63,9 @@ impl Types for Module<Name> {
                 }
             }
         }
-        return None;
+        self.newtypes.iter()
+            .find(|newtype| newtype.constructor_name == *name)
+            .map(|newtype| &newtype.constructor_type)
     }
 
     fn find_class<'a>(&'a self, name: InternedStr) -> Option<(&'a [Constraint], &'a TypeVariable, &'a [TypeDeclaration])> {
@@ -288,6 +290,11 @@ impl <'a> TypeEnvironment<'a> {
                 self.namedTypes.insert(constructor.name.clone(), typ);
             }
             self.data_definitions.push(data_def.clone());
+        }
+        for newtype in module.newtypes.iter() {
+            let mut typ = newtype.constructor_type.clone();
+            quantify(0, &mut typ);
+            self.namedTypes.insert(newtype.constructor_name.clone(), typ);
         }
         for class in module.classes.mut_iter() {
             //Instantiate a new variable and replace all occurances of the class variable with this
@@ -2117,6 +2124,23 @@ test x y = [x] == [y]
     assert_eq!(module.bindings[0].typ, typ);
 }
 
+#[test]
+fn newtype() {
+    let modules = typecheck_string(
+r"
+import Prelude
+newtype Even = Even Int
+
+makeEven i
+    | i `div` 2 /= (i - 1) `div` 2 = Even i
+    | otherwise = undefined
+
+"
+).unwrap_or_else(|err| fail!(err));
+    let module = modules.last().unwrap();
+    assert_eq!(module.bindings[0].typ, qualified(box [], function_type_(int_type(), Type::new_op(intern("Even"), box []))));
+}
+
 
 #[test]
 #[should_fail]
@@ -2205,6 +2229,20 @@ test = case 1 :: Int of
         y = x 1
 ")
         .unwrap_or_else(|err| fail!(err));
+}
+
+#[test]
+#[should_fail]
+fn newtype_wrong_arg() {
+    typecheck_string(
+r"
+import Prelude
+newtype IntPair a = IntPair (a, Int)
+
+test = IntPair (True, False)
+
+"
+).unwrap_or_else(|err| fail!(err));
 }
 
 #[bench]
