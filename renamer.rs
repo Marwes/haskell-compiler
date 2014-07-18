@@ -288,7 +288,11 @@ pub fn rename_module_(renamer: &mut Renamer, module: Module<InternedStr>) -> Mod
     }).collect();
 
     let newtypes2: Vec<Newtype<Name>> = newtypes.move_iter().map(|newtype| {
-        fail!()
+        let Newtype { typ: typ, constructor_type: constructor_type, deriving: deriving } = newtype;
+        let deriving2: Vec<Name> = deriving.move_iter().map(|s| {
+            Name { name: s, uid: 0 }
+        }).collect();
+        Newtype { typ: typ, constructor_type: constructor_type, deriving: FromVec::from_vec(deriving2) }
     }).collect();
     
     let instances2: Vec<Instance<Name>> = instances.move_iter().map(|instance| {
