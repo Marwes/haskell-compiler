@@ -836,7 +836,8 @@ fn newtype(&mut self) -> Newtype {
     
     Newtype {
         typ: qualified(box [], typ.clone()),
-        constructor_type: function_type_(arg_type, typ),
+        constructor_name: name,
+        constructor_type: qualified(box [], function_type_(arg_type, typ)),
         deriving: self.deriving()
     }
 }
@@ -1443,7 +1444,7 @@ newtype IntPair a = IntPair (a, Int)
     let a = Type::new_var(intern("a"));
     let typ = Type::new_op(intern("IntPair"), box [a.clone()]);
     assert_eq!(module.newtypes[0].typ, qualified(box [], typ.clone()));
-    assert_eq!(module.newtypes[0].constructor_type, function_type_(Type::new_op(intern("(,)"), box [a, int_type()]), typ));
+    assert_eq!(module.newtypes[0].constructor_type.value, function_type_(Type::new_op(intern("(,)"), box [a, int_type()]), typ));
 }
 
 #[test]

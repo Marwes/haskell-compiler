@@ -68,7 +68,8 @@ pub struct DataDefinition<Ident = InternedStr> {
 #[deriving(PartialEq, Clone)]
 pub struct Newtype<Ident = InternedStr> {
     pub typ: Qualified<Type>,
-    pub constructor_type: Type,
+    pub constructor_name: Ident,
+    pub constructor_type: Qualified<Type>,
     pub deriving: ~[Ident]
 }
 
