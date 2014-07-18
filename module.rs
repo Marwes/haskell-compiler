@@ -114,7 +114,7 @@ impl <T: PartialEq> PartialEq for TypedExpr<T> {
 
 impl <T: fmt::Show> fmt::Show for TypedExpr<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.expr)
+        write!(f, "{} :: {}", self.expr, self.typ)
     }
 }
 

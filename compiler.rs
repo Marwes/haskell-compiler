@@ -68,7 +68,8 @@ enum Var<'a> {
     ClassVariable(&'a Type, &'a [Constraint], &'a TypeVariable),
     ConstraintVariable(uint, &'a Type, &'a[Constraint]),
     BuiltinVariable(uint),
-    PrimitiveVariable(uint, Instruction)
+    PrimitiveVariable(uint, Instruction),
+    NewtypeVariable
 }
 
 static unary_primitives: &'static [(&'static str, Instruction)] = &[
@@ -109,7 +110,8 @@ impl <'a> Clone for Var<'a> {
             ClassVariable(x, y, z) => ClassVariable(x, y, z),
             ConstraintVariable(x, y, z) => ConstraintVariable(x, y, z),
             BuiltinVariable(x) => BuiltinVariable(x),
-            PrimitiveVariable(x, y) => PrimitiveVariable(x, y)
+            PrimitiveVariable(x, y) => PrimitiveVariable(x, y),
+            NewtypeVariable => NewtypeVariable
         }
     }
 }
@@ -205,6 +207,11 @@ fn find_global<'a>(module: &'a Module<Id>, offset: uint, name: &Name) -> Option<
             }
         })
         .or_else(|| {
+            module.newtypes.iter()
+                .find(|newtype| newtype.constructor_name == *name)
+                .map(|newtype| NewtypeVariable)
+        })
+        .or_else(|| {
             find_constructor(module, name.name)
                 .map(|(tag, arity)| ConstructorVariable(tag, arity))
         })
@@ -244,7 +251,9 @@ impl Types for Module<Id> {
                 }
             }
         }
-        return None;
+        self.newtypes.iter()
+            .find(|newtype| newtype.constructor_name == *name)
+            .map(|newtype| &newtype.constructor_type)
     }
 
     fn find_class<'a>(&'a self, name: InternedStr) -> Option<(&'a [Constraint], &'a TypeVariable, &'a [TypeDeclaration])> {
@@ -773,6 +782,25 @@ impl <'a> Compiler<'a> {
                         }
                         is_function = false;
                     }
+                    NewtypeVariable => {
+                        match args {
+                            Cons(_, _) => {
+                                //Do nothing
+                            }
+                            Nil => {
+                                //translate into id application
+                                let x = self.find(&Name { name: intern("id"), uid: 0 })
+                                    .expect("Compiler error: Prelude.id must be in scope for compilation of newtype");
+                                match x {
+                                    GlobalVariable(index) => {
+                                        instructions.push(PushGlobal(index));
+                                    }
+                                    _ => fail!()
+                                }
+                            }
+                        }
+                        is_function = false;
+                    }
                 }
             }
             _ => {
@@ -1274,6 +1302,19 @@ fn binding_pattern() {
 test f (x:xs) = f x : test f xs
 test _ [] = []
 ");
+}
+
+#[test]
+fn newtype() {
+    //Test that the newtype constructor is newer constucted
+    let file =
+r"
+newtype Test a = Test [a]
+test = Test [1::Int]";
+    let assembly = compile(file);
+
+    let test = assembly.superCombinators[0];
+    assert_eq!(test.instructions, box [Pack(0, 0), PushInt(1), Pack(1, 2), Update(0), Unwind]);
 }
 
 #[bench]

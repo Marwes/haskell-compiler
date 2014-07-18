@@ -1107,6 +1107,24 @@ main = let
 }
 
 #[test]
+fn newtype() {
+    let result = execute_main_string(
+r"
+import Prelude
+newtype Even = Even Int
+
+makeEven :: Int -> Maybe Even
+makeEven i
+    | i `div` 2 /= (i - 1) `div` 2 = Just (Even i)
+    | otherwise = Nothing
+
+main = makeEven (100 * 3)
+").unwrap_or_else(|err| fail!(err));
+
+    assert_eq!(result, Some(ConstructorResult(0, vec![IntResult(300)])));
+}
+
+#[test]
 fn where() {
     let result = execute_main_string(
 r"

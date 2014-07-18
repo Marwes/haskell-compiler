@@ -1,6 +1,6 @@
 use std::fmt;
 pub use types::{Qualified, Type, TypeApplication, TypeConstructor, TypeVariable, Constraint};
-pub use module::{TypeDeclaration, DataDefinition, Integral, Fractional, String, Char};
+pub use module::{TypeDeclaration, DataDefinition, Newtype, Integral, Fractional, String, Char};
 use module;
 use interner::*;
 pub use renamer::Name;
@@ -8,6 +8,7 @@ pub use renamer::Name;
 pub struct Module<Ident> {
     pub classes: ~[Class<Ident>],
     pub data_definitions: ~[DataDefinition<Name>],
+    pub newtypes: ~[Newtype<Name>],
     pub instances: ~[Instance<Ident>],
     pub bindings: ~[Binding<Ident>]
 }
@@ -17,6 +18,7 @@ impl Module<Id> {
         Module {
             classes: ~[],
             data_definitions: ~[],
+            newtypes: box [],
             instances: ~[],
             bindings: ~[Binding {
                 name: Id::new(Name { name: intern("main"), uid: 0 }, expr.get_type().clone(), ~[]),
@@ -432,11 +434,6 @@ pub mod translate {
             fixity_declarations : _fixity_declarations
         } = module;
 
-        let newtypes2: Vec<module::Newtype<Name>> = newtypes.move_iter().map(|newtype| {
-            fail!()
-        }).collect();
-
-
         let mut new_instances: Vec<Instance<Id<Name>>> = Vec::new();
 
         let classes2 : Vec<Class<Id>> = classes.move_iter().map(|class| {
@@ -486,6 +483,7 @@ pub mod translate {
         Module {
             classes: FromVec::from_vec(classes2),
             data_definitions: dataDefinitions,
+            newtypes: newtypes,
             bindings: FromVec::from_vec(bs),
             instances: FromVec::from_vec(new_instances)
         }
