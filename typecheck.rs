@@ -741,6 +741,7 @@ impl <'a> TypeEnvironment<'a> {
             Paren(ref mut expr) => self.typecheck(*expr, subs)
         };
         debug!("{}\nas\n{}", expr, x);
+        expr.typ = x.clone();
         x
     }
     fn typecheck_apply(&mut self, location: &Location, subs: &mut Substitution, mut func_type: Type, arg: &mut TypedExpr<Name>) -> Type {
