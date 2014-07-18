@@ -437,19 +437,15 @@ fn binary_expression(&mut self, lhs : Option<TypedExpr>) -> Option<TypedExpr> {
     debug!("Parse operator expression, {}", self.lexer.current());
     if self.lexer.next().token == OPERATOR {
 		let op = self.lexer.current().value;
-        let op_location = self.lexer.current().location;
+        let loc = self.lexer.current().location;
 		let rhs = self.application();
         let rhs = self.binary_expression(rhs);
-		let loc = match lhs {
-            Some(ref l) => l.location,
-            None => op_location
-        };
         match (lhs, rhs) {
             (Some(lhs), Some(rhs)) => {
                 Some(TypedExpr::with_location(OpApply(box lhs, op, box rhs), loc))
             }
             (Some(lhs), None) => {
-		        let name = TypedExpr::with_location(Identifier(op), op_location);
+		        let name = TypedExpr::with_location(Identifier(op), loc);
                 Some(TypedExpr::with_location(Apply(box name, box lhs), loc))
             }
             (None, Some(rhs)) => {
