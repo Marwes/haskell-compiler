@@ -168,7 +168,6 @@ fn class(&mut self) -> Class {
         }
     }
 	
-	self.lexer.backtrack();
 	self.require_next(RBRACE);
 
     match typ {
@@ -206,7 +205,6 @@ fn instance(&mut self) -> Instance {
                 }
             }
 
-            self.lexer.backtrack();
             self.require_next(RBRACE);
             Instance { typ : *arg, classname : classname, bindings : bindings, constraints: constraints }
         }
@@ -275,12 +273,7 @@ fn sub_expression(&mut self) -> Option<TypedExpr> {
             }
             else {
                 let expressions = self.sep_by_1(|this| this.expression_(), COMMA);
-
-                let maybeParens = self.lexer.current();
-
-                if maybeParens.token != RPARENS {
-                    fail!(parse_error(&self.lexer, RPARENS));
-                }
+                self.require_next(RPARENS);
                 if expressions.len() == 1 {
                     let loc = expressions[0].location;
                     Some(TypedExpr::with_location(Paren(box expressions[0]), loc))
@@ -313,7 +306,6 @@ fn sub_expression(&mut self) -> Option<TypedExpr> {
 			self.require_next(LBRACE);
 
 			let alts = self.sep_by_1(|this| this.alternative(), SEMICOLON);
-            self.lexer.backtrack();
             self.require_next(RBRACE);
 			match expr {
                 Some(e) => Some(TypedExpr::with_location(Case(box e, alts), location)),
@@ -344,7 +336,6 @@ fn sub_expression(&mut self) -> Option<TypedExpr> {
             let location = self.lexer.current().location;
             self.require_next(LBRACE);
             let bindings = self.sep_by_1(|this| this.do_binding(), SEMICOLON);
-            self.lexer.backtrack();
             self.require_next(RBRACE);
             if bindings.len() == 0 {
                 fail!("{}: Parse error: Empty do", self.lexer.current().location);
@@ -414,7 +405,6 @@ fn let_bindings(&mut self) -> ~[Binding] {
     self.require_next(LBRACE);
 
     let binds = self.sep_by_1(|this| this.binding(), SEMICOLON);
-    self.lexer.backtrack();
     self.lexer.next_end();
     binds
 }
@@ -592,16 +582,13 @@ fn fixity_declaration(&mut self) -> FixityDeclaration {
         }
     };
     let operators = self.sep_by_1(|this| this.require_next(OPERATOR).value, COMMA);
-    self.lexer.backtrack();
     FixityDeclaration { assoc: assoc, precedence: precedence, operators: operators }
 }
 
 fn expr_or_guards(&mut self, end_token: TokenEnum) -> Match {
     let token = self.lexer.next().token;
     if token == PIPE {
-        let g = Guards(self.sep_by_1(|this| this.guard(end_token), PIPE));
-        self.lexer.backtrack();
-        g
+        Guards(self.sep_by_1(|this| this.guard(end_token), PIPE))
     }
     else if token == end_token {
         Simple(self.expression_())
@@ -683,10 +670,7 @@ fn pattern(&mut self) -> Pattern {
             }
             else {
                 let tupleArgs = self.sep_by_1(|this| this.pattern(), COMMA);
-                let rParens = self.lexer.current().token;
-                if rParens != RPARENS {
-                    fail!(parse_error(&self.lexer, RPARENS));
-                }
+                self.require_next(RPARENS);
                 if tupleArgs.len() == 1 {
                     tupleArgs[0]
                 }
@@ -744,9 +728,7 @@ fn constrained_type(&mut self) -> (~[Constraint], Type) {
         }
         else {
             let t = self.sep_by_1(|this| this.parse_type(), COMMA);
-            if self.lexer.current().token != RPARENS {
-                fail!("Expected RPARENS");
-            }
+            self.require_next(RPARENS);
             t
         }
     }
@@ -812,7 +794,6 @@ fn data_definition(&mut self) -> DataDefinition {
 
 	definition.constructors = self.sep_by_1_func(|this| this.constructor(&definition),
 		|t : &Token| t.token == PIPE);
-    self.lexer.backtrack();
 	for ii in range(0, definition.constructors.len()) {
 		definition.constructors[ii].tag = ii as int;
 	}
@@ -853,7 +834,6 @@ fn deriving(&mut self) -> ~[InternedStr] {
     if self.lexer.next().token == DERIVING {
         self.require_next(LPARENS);
         let vec = self.sep_by_1(|this| this.require_next(NAME).value, COMMA);
-	    self.lexer.backtrack();
         self.require_next(RPARENS);
         vec
     }
@@ -927,7 +907,6 @@ fn parse_type(&mut self) -> Type {
                         .move_iter()
                         .collect();
                     tupleArgs.unshift(t);
-                    self.lexer.backtrack();
                     self.require_next(RPARENS);
 
                     self.parse_return_type(make_tuple_type(FromVec::from_vec(tupleArgs)))
@@ -981,6 +960,7 @@ fn sep_by_1_func<T>(&mut self, f : |&mut Parser<Iter>| -> T, sep : |&Token| -> b
     loop {
         result.push(f(self));
         if !sep(self.lexer.next()) {
+            self.lexer.backtrack();
             break;
         }
     }
