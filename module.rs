@@ -8,7 +8,7 @@ pub use types::*;
 #[deriving(Clone)]
 pub struct Module<Ident = InternedStr> {
     pub name : Ident,
-    pub imports: ~[Import],
+    pub imports: ~[Import<Ident>],
     pub bindings : ~[Binding<Ident>],
     pub typeDeclarations : ~[TypeDeclaration],
     pub classes : ~[Class<Ident>],
@@ -19,8 +19,9 @@ pub struct Module<Ident = InternedStr> {
 }
 
 #[deriving(Clone)]
-pub struct Import {
-    pub module: InternedStr
+pub struct Import<Ident> {
+    pub module: InternedStr,
+    pub imports: ~[Ident]
 }
 
 #[deriving(Clone)]

@@ -253,6 +253,13 @@ pub fn rename_module_(renamer: &mut Renamer, module: Module<InternedStr>) -> Mod
         fixity_declarations: fixity_declarations
     } = module;
 
+    let imports2: Vec<Import<Name>> = imports.move_iter().map(|import| {
+        let imports: Vec<Name> = import.imports.iter()
+            .map(|&x| renamer.make_unique(x))
+            .collect();
+        Import { module: import.module, imports: FromVec::from_vec(imports) }
+    }).collect();
+
     let data_definitions2 : Vec<DataDefinition<Name>> = data_definitions.move_iter().map(|data| {
         let DataDefinition {
             constructors : ctors,
@@ -349,7 +356,7 @@ pub fn rename_module_(renamer: &mut Renamer, module: Module<InternedStr>) -> Mod
     
     Module {
         name: renamer.make_unique(name),
-        imports: imports,
+        imports: FromVec::from_vec(imports2),
         classes : FromVec::from_vec(classes2),
         dataDefinitions: FromVec::from_vec(data_definitions2),
         typeDeclarations: typeDeclarations,

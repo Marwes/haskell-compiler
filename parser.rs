@@ -60,16 +60,17 @@ pub fn module(&mut self) -> Module {
 
     let mut imports = Vec::new();
     loop {
-        if self.lexer.next().token == IMPORT {
-            self.lexer.backtrack();
+        if self.lexer.peek().token == IMPORT {
             imports.push(self.import());
-            if self.lexer.next().token != SEMICOLON {
-                break;
+            if self.lexer.peek().token == SEMICOLON {
+                self.lexer.next();
+            }
+            else {
+                break
             }
         }
         else {
-            self.lexer.backtrack();
-            break;
+            break
         }
     }
 
@@ -132,10 +133,25 @@ pub fn module(&mut self) -> Module {
     }
 }
 
-fn import(&mut self) -> Import {
+fn import(&mut self) -> Import<InternedStr> {
     self.require_next(IMPORT);
-    let tok = self.require_next(NAME);
-    Import { module: tok.value }
+    let module_name = self.require_next(NAME).value;
+    let imports = if self.lexer.peek().token == LPARENS {
+        self.lexer.next();
+        if self.lexer.peek().token == RPARENS {
+            self.lexer.next();
+            box []
+        }
+        else {
+            let imports = self.sep_by_1(|this| this.require_next(NAME).value, COMMA);
+            self.require_next(RPARENS);
+            imports
+        }
+    }
+    else {
+        box []
+    };
+    Import { module: module_name, imports: imports }
 }
 
 fn class(&mut self) -> Class {
@@ -1285,14 +1301,18 @@ fn lambda_pattern() {
 fn parse_imports() {
     let mut parser = Parser::new(
 r"import Hello
-import World
+import World ()
+import Prelude (id, sum)
 
-id x = x
 ".chars());
     let module = parser.module();
 
     assert_eq!(module.imports[0].module.as_slice(), "Hello");
+    assert_eq!(module.imports[0].imports, box []);
     assert_eq!(module.imports[1].module.as_slice(), "World");
+    assert_eq!(module.imports[1].imports, box []);
+    assert_eq!(module.imports[2].module.as_slice(), "Prelude");
+    assert_eq!(module.imports[2].imports, box [intern("id"), intern("sum")]);
 }
 #[test]
 fn parse_module_imports() {
