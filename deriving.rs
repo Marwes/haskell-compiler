@@ -16,7 +16,7 @@ pub fn generate_deriving(instances: &mut Vec<Instance<Id<Name>>>, data: &DataDef
                 instances.push(Instance {
                     constraints: box [],
                     typ: data.typ.value.clone(),
-                    classname: intern("Eq"),
+                    classname: Name { name: intern("Eq"), uid: 0 },
                     bindings: FromVec::from_vec(bindings)
                 });
             }
@@ -28,7 +28,7 @@ pub fn generate_deriving(instances: &mut Vec<Instance<Id<Name>>>, data: &DataDef
                 instances.push(Instance {
                     constraints: box [],
                     typ: data.typ.value.clone(),
-                    classname: intern("Ord"),
+                    classname: Name { name: intern("Ord"), uid: 0 },
                     bindings: FromVec::from_vec(bindings)
                 });
             }
@@ -103,10 +103,10 @@ impl DerivingGen {
         let data_name = extract_applied_type(&data.typ.value).ctor().name;
         let name = encode_binding_identifier(data_name, intern(funcname));
         //Create a constraint for each type parameter
-        fn make_constraints(mut result: Vec<Constraint>, class: InternedStr, typ: &Type) -> ~[Constraint] {
+        fn make_constraints(mut result: Vec<Constraint<Name>>, class: InternedStr, typ: &Type) -> ~[Constraint<Name>] {
             match typ {
                 &TypeApplication(ref f, ref param) => {
-                    result.push(Constraint { class: class, variables: box [param.var().clone()] });
+                    result.push(Constraint { class: Name { name: class, uid: 0 }, variables: box [param.var().clone()] });
                     make_constraints(result, class, *f)
                 }
                 _ => FromVec::from_vec(result)

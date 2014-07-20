@@ -88,25 +88,49 @@ impl Renamer {
         Renamer { uniques: ScopedMap::new(), name_supply: NameSupply::new(), errors: Errors::new() }
     }
 
+    fn insert_globals(&mut self, module: &Module<InternedStr>) {
+        for ctor in module.dataDefinitions.iter().flat_map(|data| data.constructors.iter()) {
+            self.make_unique(ctor.name.clone());
+        }
+        for newtype in module.newtypes.iter() {
+            self.make_unique(newtype.constructor_name.clone());
+        }
+        for bind in module.instances.iter().flat_map(|instance| binding_groups(instance.bindings.as_slice())) {
+            self.make_unique(bind[0].name.clone());
+        }
+        for class in module.classes.iter() {
+            self.make_unique(class.name);
+            for decl in class.declarations.iter() {
+                self.make_unique(decl.name.clone());
+            }
+            for bind in binding_groups(class.bindings) {
+                self.make_unique(bind[0].name.clone());
+            }
+        }
+        for bind in binding_groups(module.bindings.as_slice()) {
+            self.make_unique(bind[0].name.clone());
+        }
+    }
+
     fn rename_bindings(&mut self, bindings: ~[Binding<InternedStr>], is_global: bool) -> ~[Binding<Name>] {
         //Add all bindings in the scope
-        for bind in binding_groups(bindings.as_slice()) {
-            self.make_unique(bind[0].name.clone());
-            if is_global {
-                self.uniques.find_mut(&bind[0].name).unwrap().uid = 0;
+        if !is_global {
+            for bind in binding_groups(bindings.as_slice()) {
+                self.make_unique(bind[0].name.clone());
             }
         }
         FromVec::<Binding<Name>>::from_vec(bindings.move_iter().map(|binding| {
             let Binding { name: name, arguments: arguments, matches: matches, typ: typ, where: where  } = binding;
-            let n = self.uniques.find(&name).map(|u| u.clone())
-                .expect(format!("Error: lambda_lift: Undefined variable {}", name));
+            let n = self.uniques.find(&name)
+                .map(|u| u.clone())
+                .unwrap_or_else(|| fail!("Renaming error: Undefined variable {}", name));
             self.uniques.enter_scope();
             let b = Binding {
                 name: n,
                 arguments: self.rename_arguments(arguments),
                 where: where.map(|bs| self.rename_bindings(bs, false)),
                 matches: self.rename_matches(matches),
-                typ: typ,
+                typ: self.rename_qualified_type(typ)
             };
             self.uniques.exit_scope();
             b
@@ -171,7 +195,7 @@ impl Renamer {
                 Do(FromVec::from_vec(bs), box self.rename(*expr))
             }
             TypeSig(expr, sig) => {
-                TypeSig(box self.rename(*expr), sig)
+                TypeSig(box self.rename(*expr), self.rename_qualified_type(sig))
             }
             Paren(expr) => Paren(box self.rename(*expr))
         };
@@ -185,7 +209,7 @@ impl Renamer {
             NumberPattern(i) => NumberPattern(i),
             ConstructorPattern(s, ps) => {
                 let ps2: Vec<Pattern<Name>> = ps.move_iter().map(|p| self.rename_pattern(p)).collect();
-                ConstructorPattern(Name { name: s, uid: 0}, FromVec::from_vec(ps2))
+                ConstructorPattern(self.get_name(s), FromVec::from_vec(ps2))
             }
             IdentifierPattern(s) => IdentifierPattern(self.make_unique(s)),
             WildCardPattern => WildCardPattern
@@ -196,7 +220,7 @@ impl Renamer {
     fn get_name(&self, s: InternedStr) -> Name {
         match self.uniques.find(&s) {
             Some(&Name { uid: uid, .. }) => Name { name: s, uid: uid },
-            None => Name { name: s, uid: 0 }//If the variable is not found in variables it is a global variable
+            None => Name { name: s, uid: 0 }//Primitive
         }
     }
 
@@ -214,6 +238,22 @@ impl Renamer {
 
     fn rename_arguments(&mut self, arguments: ~[Pattern<InternedStr>]) -> ~[Pattern<Name>] {
         FromVec::<Pattern<Name>>::from_vec(arguments.move_iter().map(|a| self.rename_pattern(a)).collect())
+    }
+
+    fn rename_qualified_type(&mut self, typ: Qualified<Type, InternedStr>) -> Qualified<Type, Name> {
+        let Qualified { constraints: constraints, value: typ } = typ;
+        let constraints2: Vec<Constraint<Name>> = constraints.move_iter()
+            .map(|Constraint { class: class, variables: variables }| {
+                Constraint { class: self.get_name(class), variables: variables }
+            })
+            .collect();
+        qualified(FromVec::from_vec(constraints2), typ)
+    }
+    fn rename_type_declarations(&mut self, decls: ~[TypeDeclaration<InternedStr>]) -> ~[TypeDeclaration<Name>] {
+        let decls2: Vec<TypeDeclaration<Name>> = decls.move_iter()
+            .map(|decl| TypeDeclaration { name: self.get_name(decl.name), typ: self.rename_qualified_type(decl.typ) })
+            .collect();
+        FromVec::from_vec(decls2)
     }
 
     ///Introduces a new Name to the current scope.
@@ -241,6 +281,7 @@ pub fn rename_module(module: Module<InternedStr>) -> Module<Name> {
     rename_module_(&mut renamer, module)
 }
 pub fn rename_module_(renamer: &mut Renamer, module: Module<InternedStr>) -> Module<Name> {
+    renamer.insert_globals(&module);
     let Module {
         name: name,
         imports: imports,
@@ -275,19 +316,18 @@ pub fn rename_module_(renamer: &mut Renamer, module: Module<InternedStr>) -> Mod
                 arity : arity
             } = ctor;
             Constructor {
-                name : Name { name: name, uid: 0 },
-                typ : typ,
+                name : renamer.get_name(name),
+                typ : renamer.rename_qualified_type(typ),
                 tag : tag,
                 arity : arity
             }
         }).collect();
-
         let d: Vec<Name> = deriving.move_iter().map(|s| {
-            Name { name: s, uid: 0 }
+            renamer.get_name(s)
         }).collect();
 
         DataDefinition {
-            typ : typ,
+            typ : renamer.rename_qualified_type(typ),
             parameters : parameters,
             constructors : FromVec::from_vec(c),
             deriving : FromVec::from_vec(d)
@@ -297,12 +337,12 @@ pub fn rename_module_(renamer: &mut Renamer, module: Module<InternedStr>) -> Mod
     let newtypes2: Vec<Newtype<Name>> = newtypes.move_iter().map(|newtype| {
         let Newtype { typ: typ, constructor_name: constructor_name, constructor_type: constructor_type, deriving: deriving } = newtype;
         let deriving2: Vec<Name> = deriving.move_iter().map(|s| {
-            Name { name: s, uid: 0 }
+            renamer.get_name(s)
         }).collect();
         Newtype {
             typ: typ,
-            constructor_name: Name { name: constructor_name, uid: 0 },
-            constructor_type: constructor_type,
+            constructor_name: renamer.get_name(constructor_name),
+            constructor_type: renamer.rename_qualified_type(constructor_type),
             deriving: FromVec::from_vec(deriving2)
         }
     }).collect();
@@ -314,11 +354,16 @@ pub fn rename_module_(renamer: &mut Renamer, module: Module<InternedStr>) -> Mod
             typ : typ,
             classname : classname
         } = instance;
+        let constraints2: Vec<Constraint<Name>> = constraints.move_iter()
+            .map(|Constraint { class: class, variables: variables }| {
+                Constraint { class: renamer.get_name(class), variables: variables }
+            })
+            .collect();
         Instance {
             bindings : renamer.rename_bindings(bindings, true),
-            constraints : constraints,
+            constraints : FromVec::from_vec(constraints2),
             typ : typ,
-            classname : classname
+            classname : renamer.get_name(classname)
         }
     }).collect();
 
@@ -331,11 +376,16 @@ pub fn rename_module_(renamer: &mut Renamer, module: Module<InternedStr>) -> Mod
             declarations : decls,
             bindings: bindings
         } = class;
+        let constraints2: Vec<Constraint<Name>> = cs.move_iter()
+            .map(|Constraint { class: class, variables: variables }| {
+                Constraint { class: renamer.get_name(class), variables: variables }
+            })
+            .collect();
         Class {
-            constraints: cs,
-            name: name,
+            constraints: FromVec::from_vec(constraints2),
+            name: renamer.get_name(name),
             variable: var,
-            declarations: decls,
+            declarations: renamer.rename_type_declarations(decls),
             bindings: renamer.rename_bindings(bindings, true)
         }
     }).collect();
@@ -359,12 +409,16 @@ pub fn rename_module_(renamer: &mut Renamer, module: Module<InternedStr>) -> Mod
         imports: FromVec::from_vec(imports2),
         classes : FromVec::from_vec(classes2),
         dataDefinitions: FromVec::from_vec(data_definitions2),
-        typeDeclarations: typeDeclarations,
+        typeDeclarations: renamer.rename_type_declarations(typeDeclarations),
         bindings : bindings2,
         instances: FromVec::from_vec(instances2),
         newtypes: FromVec::from_vec(newtypes2),
         fixity_declarations: FromVec::from_vec(fixity_declarations2)
     }
+}
+
+pub fn prelude_name(s: &str) -> Name {
+    Name { name: intern(s), uid: 0 }
 }
 
 ///Renames a vector of modules.

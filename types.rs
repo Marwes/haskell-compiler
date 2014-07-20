@@ -26,11 +26,11 @@ pub enum Type {
     Generic(TypeVariable)
 }
 #[deriving(Clone, Default, Hash)]
-pub struct Qualified<T> {
-    pub constraints: ~[Constraint],
+pub struct Qualified<T, Ident = InternedStr> {
+    pub constraints: ~[Constraint<Ident>],
     pub value: T
 }
-pub fn qualified(constraints: ~[Constraint], typ: Type) -> Qualified<Type> {
+pub fn qualified<Ident>(constraints: ~[Constraint<Ident>], typ: Type) -> Qualified<Type, Ident> {
     Qualified { constraints: constraints, value: typ }
 }
 
@@ -212,8 +212,8 @@ pub fn unit() -> Type {
 
 
 #[deriving(Clone, PartialEq, Eq, Hash)]
-pub struct Constraint {
-    pub class : InternedStr,
+pub struct Constraint<Ident = InternedStr> {
+    pub class : Ident,
     pub variables : ~[TypeVariable]
 }
 
@@ -264,7 +264,7 @@ impl fmt::Show for TypeConstructor {
     }
 }
 
-impl <T: fmt::Show> fmt::Show for Qualified<T> {
+impl <T: fmt::Show, I: fmt::Show> fmt::Show for Qualified<T, I> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{} => {}", self.constraints, self.value)
     }
@@ -346,7 +346,7 @@ impl fmt::Show for Type {
         write!(f, "{}", Prec(Top, self))
     }
 }
-impl fmt::Show for Constraint {
+impl <I: fmt::Show> fmt::Show for Constraint<I> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         try!(write!(f, "{}", self.class));
         for var in self.variables.iter() {
@@ -375,8 +375,8 @@ fn var_eq<'a>(mapping: &mut HashMap<&'a TypeVariable, &'a TypeVariable>, l: &'a 
     true
 }
 
-impl PartialEq for Qualified<Type> {
-    fn eq(&self, other: &Qualified<Type>) -> bool {
+impl <I : PartialEq> PartialEq for Qualified<Type, I> {
+    fn eq(&self, other: &Qualified<Type, I>) -> bool {
         let mut mapping = HashMap::new();
         self.constraints.iter()
             .zip(other.constraints.iter())
@@ -384,7 +384,7 @@ impl PartialEq for Qualified<Type> {
         && type_eq(&mut mapping, &self.value, &other.value)
     }
 }
-impl Eq for Qualified<Type> {
+impl <I: Eq> Eq for Qualified<Type, I> {
 }
 
 impl PartialEq for Type {

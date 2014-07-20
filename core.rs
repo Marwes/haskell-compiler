@@ -30,19 +30,19 @@ impl Module<Id> {
 
 #[deriving(Clone, PartialEq)]
 pub struct Class<Ident> {
-    pub constraints: ~[Constraint],
-    pub name : InternedStr,
+    pub constraints: ~[Constraint<Name>],
+    pub name : Name,
     pub variable : TypeVariable,
-    pub declarations : ~[module::TypeDeclaration],
+    pub declarations : ~[module::TypeDeclaration<Name>],
     pub bindings: ~[Binding<Ident>]
 }
 
 #[deriving(Clone)]
 pub struct Instance<Ident = InternedStr> {
     pub bindings : ~[Binding<Ident>],
-    pub constraints : ~[Constraint],
+    pub constraints : ~[Constraint<Name>],
     pub typ : Type,
-    pub classname : InternedStr
+    pub classname : Name
 }
 
 #[deriving(Clone, PartialEq)]
@@ -165,7 +165,7 @@ impl <'a> Equiv<&'a str> for Name {
 #[deriving(PartialEq, Eq, Hash, Clone)]
 pub struct Id<T = Name> {
     pub name: T,
-    pub typ: Qualified<Type>
+    pub typ: Qualified<Type, Name>
 }
 
 impl fmt::Show for Id {
@@ -175,7 +175,7 @@ impl fmt::Show for Id {
 }
 
 impl <T> Id<T> {
-    pub fn new(name: T, typ: Type, constraints: ~[Constraint]) -> Id<T> {
+    pub fn new(name: T, typ: Type, constraints: ~[Constraint<Name>]) -> Id<T> {
         Id { name: name, typ: module::qualified(constraints, typ) }
     }
 }
@@ -392,7 +392,7 @@ pub mod translate {
 
     struct Translator<'a> {
         name_supply: NameSupply,
-        functions_in_class: |InternedStr|:'a -> (&'a TypeVariable, &'a [TypeDeclaration])
+        functions_in_class: |Name|:'a -> (&'a TypeVariable, &'a [TypeDeclaration<Name>])
     }
     
     #[deriving(Show)]
@@ -490,7 +490,7 @@ pub mod translate {
     }
 
     ///Creates stub functions for each undeclared function in the instance
-    fn create_default_stubs(class_var: &TypeVariable, class_decls: &[TypeDeclaration], instance: &Instance<Id<Name>>) -> Vec<Binding<Id<Name>>> {
+    fn create_default_stubs(class_var: &TypeVariable, class_decls: &[TypeDeclaration<Name>], instance: &Instance<Id<Name>>) -> Vec<Binding<Id<Name>>> {
         class_decls.iter()
             .filter(|decl| instance.bindings.iter().find(|bind| bind.name.as_slice().ends_with(decl.name.as_slice())).is_none())
             .map(|decl| {
@@ -500,18 +500,17 @@ pub mod translate {
                 let mut typ = decl.typ.clone();
                 ::typecheck::replace_var(&mut typ.value, class_var, &instance.typ);
                 {
-                    let mut context = ~[];
-                    ::std::mem::swap(&mut context, &mut typ.constraints);
+                    let context = ::std::mem::replace(&mut typ.constraints, box []);
                     //Remove all constraints which refer to the class's variable
-                    let vec_context: Vec<Constraint> = context.move_iter()
+                    let vec_context: Vec<Constraint<Name>> = context.move_iter()
                         .filter(|c| c.variables[0] != *class_var)
                         .collect();
                     typ.constraints = FromVec::from_vec(vec_context);
                 }
                 let Qualified { value: typ, constraints: constraints } = typ;
-                let default_name = module::encode_binding_identifier(instance.classname, decl.name);
+                let default_name = module::encode_binding_identifier(instance.classname.name, decl.name.name);
                 let typ_name = module::extract_applied_type(&instance.typ).ctor().name;
-                let instance_fn_name = module::encode_binding_identifier(typ_name, decl.name);
+                let instance_fn_name = module::encode_binding_identifier(typ_name, decl.name.name);
 
                 //Example stub for undeclared (/=)
                 //(/=) = #Eq/=
@@ -623,7 +622,7 @@ impl <'a> Translator<'a> {
     fn do_bind2_id(&mut self, m_a: Type, m_b: Type) -> Expr<Id<Name>> {
         debug!("m_a {}", m_a);
         let c = match *m_a.appl() {
-            TypeVariable(ref var) => ~[Constraint { class: intern("Monad"), variables: ~[var.clone()] }],
+            TypeVariable(ref var) => ~[Constraint { class: Name { name: intern("Monad"), uid: 0 }, variables: ~[var.clone()] }],
             _ => ~[]
         };
         let typ = function_type_(m_a, function_type_(m_b.clone(), m_b));
@@ -641,7 +640,7 @@ impl <'a> Translator<'a> {
         let m_b = result.get_type().clone();
                 debug!("m_a {}", m_a);
         let c = match *m_a.appl() {
-            TypeVariable(ref var) => ~[Constraint { class: intern("Monad"), variables: ~[var.clone()] }],
+            TypeVariable(ref var) => ~[Constraint { class: Name { name: intern("Monad"), uid: 0 }, variables: ~[var.clone()] }],
             _ => ~[]
         };
         let arg2_type = function_type_(a.clone(), m_b.clone());

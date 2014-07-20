@@ -10,7 +10,7 @@ pub struct Module<Ident = InternedStr> {
     pub name : Ident,
     pub imports: ~[Import<Ident>],
     pub bindings : ~[Binding<Ident>],
-    pub typeDeclarations : ~[TypeDeclaration],
+    pub typeDeclarations : ~[TypeDeclaration<Ident>],
     pub classes : ~[Class<Ident>],
     pub instances : ~[Instance<Ident>],
     pub dataDefinitions : ~[DataDefinition<Ident>],
@@ -26,19 +26,19 @@ pub struct Import<Ident> {
 
 #[deriving(Clone)]
 pub struct Class<Ident = InternedStr> {
-    pub constraints: ~[Constraint],
-    pub name : InternedStr,
+    pub constraints: ~[Constraint<Ident>],
+    pub name : Ident,
     pub variable : TypeVariable,
-    pub declarations : ~[TypeDeclaration],
+    pub declarations : ~[TypeDeclaration<Ident>],
     pub bindings: ~[Binding<Ident>]
 }
 
 #[deriving(Clone)]
 pub struct Instance<Ident = InternedStr> {
     pub bindings : ~[Binding<Ident>],
-    pub constraints : ~[Constraint],
+    pub constraints : ~[Constraint<Ident>],
     pub typ : Type,
-    pub classname : InternedStr
+    pub classname : Ident
 }
 
 #[deriving(Clone, PartialEq)]
@@ -47,13 +47,13 @@ pub struct Binding<Ident = InternedStr> {
     pub arguments: ~[Pattern<Ident>],
     pub matches: Match<Ident>,
     pub where : Option<~[Binding<Ident>]>,
-    pub typ: Qualified<Type>
+    pub typ: Qualified<Type, Ident>
 }
 
 #[deriving(PartialEq, Eq, Clone, Show)]
 pub struct Constructor<Ident = InternedStr> {
     pub name : Ident,
-    pub typ : Qualified<Type>,
+    pub typ : Qualified<Type, Ident>,
     pub tag : int,
     pub arity : int
 }
@@ -61,7 +61,7 @@ pub struct Constructor<Ident = InternedStr> {
 #[deriving(PartialEq, Clone)]
 pub struct DataDefinition<Ident = InternedStr> {
     pub constructors : ~[Constructor<Ident>],
-    pub typ : Qualified<Type>,
+    pub typ : Qualified<Type, Ident>,
     pub parameters : HashMap<InternedStr, int>,
     pub deriving: ~[Ident]
 }
@@ -70,7 +70,7 @@ pub struct DataDefinition<Ident = InternedStr> {
 pub struct Newtype<Ident = InternedStr> {
     pub typ: Qualified<Type>,
     pub constructor_name: Ident,
-    pub constructor_type: Qualified<Type>,
+    pub constructor_type: Qualified<Type, Ident>,
     pub deriving: ~[Ident]
 }
 
@@ -89,11 +89,11 @@ pub struct FixityDeclaration<Ident = InternedStr> {
 }
 
 #[deriving(Clone, PartialEq, Eq, Default)]
-pub struct TypeDeclaration {
-    pub typ : Qualified<Type>,
-    pub name : InternedStr
+pub struct TypeDeclaration<Ident = InternedStr> {
+    pub typ : Qualified<Type, Ident>,
+    pub name : Ident
 }
-impl fmt::Show for TypeDeclaration {
+impl <T : fmt::Show> fmt::Show for TypeDeclaration<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{} :: {}", self.name, self.typ)
     }
@@ -188,7 +188,7 @@ pub enum Expr<Ident = InternedStr> {
     Case(Box<TypedExpr<Ident>>, ~[Alternative<Ident>]),
     IfElse(Box<TypedExpr<Ident>>, Box<TypedExpr<Ident>>, Box<TypedExpr<Ident>>),
     Do(~[DoBinding<Ident>], Box<TypedExpr<Ident>>),
-    TypeSig(Box<TypedExpr<Ident>>, Qualified<Type>),
+    TypeSig(Box<TypedExpr<Ident>>, Qualified<Type, Ident>),
     Paren(Box<TypedExpr<Ident>>)
 }
 impl <T: fmt::Show> fmt::Show for Binding<T> {

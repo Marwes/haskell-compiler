@@ -16,16 +16,15 @@ use module::Alternative;
 
 ///Trait which can be implemented by types where types can be looked up by name
 pub trait Types {
-    fn find_type<'a>(&'a self, name: &Name) -> Option<&'a Qualified<Type>>;
-    fn find_class<'a>(&'a self, name: InternedStr) -> Option<(&'a [Constraint], &'a TypeVariable, &'a [TypeDeclaration])>;
-    fn has_instance(&self, classname: InternedStr, typ: &Type) -> bool {
+    fn find_type<'a>(&'a self, name: &Name) -> Option<&'a Qualified<Type, Name>>;
+    fn find_class<'a>(&'a self, name: Name) -> Option<(&'a [Constraint<Name>], &'a TypeVariable, &'a [TypeDeclaration<Name>])>;
+    fn has_instance(&self, classname: Name, typ: &Type) -> bool {
         match self.find_instance(classname, typ) {
             Some(_) => true,
             None => false
         }
     }
-    fn find_instance<'a>(&'a self, classname: InternedStr, typ: &Type) -> Option<(&'a [Constraint], &'a Type)>;
-    fn each_constraint_list(&self, |&[Constraint]|);
+    fn find_instance<'a>(&'a self, classname: Name, typ: &Type) -> Option<(&'a [Constraint<Name>], &'a Type)>;
 }
 
 ///A trait which also allows for lookup of data types
@@ -42,7 +41,7 @@ fn extract_applied_type<'a>(typ: &'a Type) -> &'a Type {
 }
 
 impl Types for Module<Name> {
-    fn find_type<'a>(&'a self, name: &Name) -> Option<&'a Qualified<Type>> {
+    fn find_type<'a>(&'a self, name: &Name) -> Option<&'a Qualified<Type, Name>> {
         for bind in self.bindings.iter() {
             if bind.name == *name {
                 return Some(&bind.typ);
@@ -51,7 +50,7 @@ impl Types for Module<Name> {
 
         for class in self.classes.iter() {
             for decl in class.declarations.iter() {
-                if name.name == decl.name {
+                if *name == decl.name {
                     return Some(&decl.typ);
                 }
             }
@@ -68,32 +67,19 @@ impl Types for Module<Name> {
             .map(|newtype| &newtype.constructor_type)
     }
 
-    fn find_class<'a>(&'a self, name: InternedStr) -> Option<(&'a [Constraint], &'a TypeVariable, &'a [TypeDeclaration])> {
+    fn find_class<'a>(&'a self, name: Name) -> Option<(&'a [Constraint<Name>], &'a TypeVariable, &'a [TypeDeclaration<Name>])> {
         self.classes.iter()
             .find(|class| name == class.name)
             .map(|class| (class.constraints.as_slice(), &class.variable, class.declarations.as_slice()))
     }
 
-    fn find_instance<'a>(&'a self, classname: InternedStr, typ: &Type) -> Option<(&'a [Constraint], &'a Type)> {
+    fn find_instance<'a>(&'a self, classname: Name, typ: &Type) -> Option<(&'a [Constraint<Name>], &'a Type)> {
         for instance in self.instances.iter() {
             if classname == instance.classname && extract_applied_type(&instance.typ) == extract_applied_type(typ) {//test name
-                let c : &[Constraint] = instance.constraints;
-                return Some((c, &instance.typ));
+                return Some((instance.constraints.as_slice(), &instance.typ));
             }
         }
         None
-    }
-
-    fn each_constraint_list(&self, func: |&[Constraint]|) {
-        for bind in self.bindings.iter() {
-            func(bind.typ.constraints);
-        }
-
-        for class in self.classes.iter() {
-            for decl in class.declarations.iter() {
-                func(decl.typ.constraints);
-            }
-        }
     }
 }
 
@@ -113,19 +99,19 @@ pub struct TypeEnvironment<'a> {
     ///Stores references to imported modules or assemblies
     assemblies: Vec<&'a DataTypes>,
     ///A mapping of names to the type which those names are bound to.
-    namedTypes : HashMap<Name, Qualified<Type>>,
+    namedTypes : HashMap<Name, Qualified<Type, Name>>,
     ///A mapping used for any variables declared inside any global binding.
     ///Used in conjuction to the global 'namedTypes' map since the local table can
     ///be cleared once those bindings are no longer in used which gives an overall speed up.
-    local_types : HashMap<Name, Qualified<Type>>,
+    local_types : HashMap<Name, Qualified<Type, Name>>,
     ///Stores the constraints for each typevariable since the typevariables cannot themselves store this.
-    constraints: HashMap<TypeVariable, Vec<InternedStr>>,
+    constraints: HashMap<TypeVariable, Vec<Name>>,
     ///Stores data about the instances which are available.
     ///1: Any constraints for the type which the instance is for
     ///2: The name of the class
     ///3: The Type which the instance is defined for
-    instances: Vec<(~[Constraint], InternedStr, Type)>,
-    classes: Vec<(~[Constraint], InternedStr)>,
+    instances: Vec<(~[Constraint<Name>], Name, Type)>,
+    classes: Vec<(~[Constraint<Name>], Name)>,
     data_definitions : Vec<DataDefinition<Name>>,
     ///The current age for newly created variables.
     ///Age is used to determine whether variables need to be quantified or not.
@@ -212,7 +198,7 @@ impl <'a> Bindings for BindingsWrapper<'a> {
     }
 }
 
-fn insert_to(map: &mut HashMap<Name, Qualified<Type>>, name: &str, typ: Type) {
+fn insert_to(map: &mut HashMap<Name, Qualified<Type, Name>>, name: &str, typ: Type) {
     map.insert(Name { name: intern(name), uid: 0 }, qualified(~[], typ));
 }
 fn prim(typename: &str, op: &str) -> String {
@@ -221,7 +207,7 @@ fn prim(typename: &str, op: &str) -> String {
     b.push_str(op);
     b
 }
-fn add_primitives(globals: &mut HashMap<Name, Qualified<Type>>, typename: &str) {
+fn add_primitives(globals: &mut HashMap<Name, Qualified<Type, Name>>, typename: &str) {
     let typ = Type::new_op(intern(typename), ~[]);
     {
         let binop = function_type(&typ, &function_type(&typ, &typ));
@@ -319,13 +305,13 @@ impl <'a> TypeEnvironment<'a> {
                 {//Workaround to add the class's constraints directyly to the declaration
                     let mut context = ~[];
                     swap(&mut context, &mut type_decl.typ.constraints);
-                    let mut vec_context: Vec<Constraint> = context.move_iter().collect();
+                    let mut vec_context: Vec<Constraint<Name>> = context.move_iter().collect();
                     vec_context.push(c);
                     type_decl.typ.constraints = FromVec::from_vec(vec_context);
                 }
                 let mut t = type_decl.typ.clone();
                 quantify(0, &mut t);
-                self.namedTypes.insert(Name { name: type_decl.name.clone(), uid: 0 }, t);
+                self.namedTypes.insert(type_decl.name.clone(), t);
             }
             for binding in class.bindings.mut_iter() {
                 let decl = class.declarations.iter()
@@ -335,7 +321,7 @@ impl <'a> TypeEnvironment<'a> {
                 {
                     let mut context = ~[];
                     swap(&mut context, &mut binding.typ.constraints);
-                    let mut vec_context: Vec<Constraint> = context.move_iter().collect();
+                    let mut vec_context: Vec<Constraint<Name>> = context.move_iter().collect();
                     let c = Constraint {
                         class: class.name.clone(),
                         variables: ~[class.variable.clone()]
@@ -371,7 +357,7 @@ impl <'a> TypeEnvironment<'a> {
                 {
                     let mut context = ~[];
                     swap(&mut context, &mut binding.typ.constraints);
-                    let mut vec_context: Vec<Constraint> = context.move_iter().collect();
+                    let mut vec_context: Vec<Constraint<Name>> = context.move_iter().collect();
                     for constraint in instance.constraints.iter() {
                         vec_context.push(constraint.clone());
                     }
@@ -400,7 +386,7 @@ impl <'a> TypeEnvironment<'a> {
         
         for type_decl in module.typeDeclarations.mut_iter() {
 
-            match module.bindings.mut_iter().find(|bind| bind.name.name == type_decl.name) {
+            match module.bindings.mut_iter().find(|bind| bind.name == type_decl.name) {
                 Some(bind) => {
                     bind.typ = type_decl.typ.clone();
                 }
@@ -433,8 +419,8 @@ impl <'a> TypeEnvironment<'a> {
     }
 
     ///Finds all the constraints for a type
-    pub fn find_constraints(&self, typ: &Type) -> ~[Constraint] {
-        let mut result : Vec<Constraint> = Vec::new();
+    pub fn find_constraints(&self, typ: &Type) -> ~[Constraint<Name>] {
+        let mut result : Vec<Constraint<Name>> = Vec::new();
         each_type(typ,
         |var| {
             match self.constraints.find(var) {
@@ -457,7 +443,7 @@ impl <'a> TypeEnvironment<'a> {
             .or_else(|| self.assemblies.iter().filter_map(|a| a.find_data_type(name)).next())
     }
     
-    fn freshen_qualified_type(&mut self, typ: &mut Qualified<Type>, mut mapping: HashMap<TypeVariable, Type>) {
+    fn freshen_qualified_type(&mut self, typ: &mut Qualified<Type, Name>, mut mapping: HashMap<TypeVariable, Type>) {
         for constraint in typ.constraints.mut_iter() {
             let old = constraint.variables[0].clone();
             let new = mapping.find_or_insert(old.clone(), self.new_var_kind(old.kind.clone()));
@@ -489,12 +475,12 @@ impl <'a> TypeEnvironment<'a> {
 
     ///Returns whether the type 'searched_type' has an instance for 'class'
     ///If no instance was found, return the instance which was missing
-    fn has_instance(&self, class: InternedStr, searched_type: &Type, new_constraints: &mut Vec<Constraint>) -> Result<(), InternedStr> {
+    fn has_instance(&self, class: Name, searched_type: &Type, new_constraints: &mut Vec<Constraint<Name>>) -> Result<(), InternedStr> {
         match extract_applied_type(searched_type) {
             &TypeConstructor(ref ctor) => {
                 match self.find_data_definition(ctor.name) {
                     Some(data_type) => {
-                        if data_type.deriving.iter().any(|name| name.name == class) {
+                        if data_type.deriving.iter().any(|name| *name == class) {
                             return self.check_instance_constraints(&[], &data_type.typ.value, searched_type, new_constraints);
                         }
                     }
@@ -520,10 +506,10 @@ impl <'a> TypeEnvironment<'a> {
                 None => ()
             }
         }
-        Err(class)
+        Err(class.name)
     }
 
-    fn find_class_constraints(&'a self, class: InternedStr) -> Option<&'a [Constraint]> {
+    fn find_class_constraints(&'a self, class: Name) -> Option<&'a [Constraint<Name>]> {
         self.classes.iter()
             .find(|& &(_, ref name)| *name == class)
             .map(|x| x.ref0().as_slice())
@@ -535,10 +521,10 @@ impl <'a> TypeEnvironment<'a> {
 
     ///Checks whether 'actual_type' fulfills all the constraints that the instance has.
     fn check_instance_constraints(&self,
-                                  constraints: &[Constraint],
+                                  constraints: &[Constraint<Name>],
                                   instance_type: &Type,
                                   actual_type: &Type,
-                                  new_constraints: &mut Vec<Constraint>) -> Result<(), InternedStr>
+                                  new_constraints: &mut Vec<Constraint<Name>>) -> Result<(), InternedStr>
     {
         match (instance_type, actual_type) {
             (&TypeApplication(ref lvar, box TypeVariable(ref rvar)), &TypeApplication(ref ltype, ref rtype)) => {
@@ -620,14 +606,14 @@ impl <'a> TypeEnvironment<'a> {
             Literal(ref lit) => {
                 match *lit {
                     Integral(_) => {
-                        self.constraints.insert(expr.typ.var().clone(), vec![intern("Num")]);
+                        self.constraints.insert(expr.typ.var().clone(), vec![prelude_name("Num")]);
                         match &mut expr.typ {
                             &TypeVariable(ref mut v) => v.kind = star_kind.clone(),
                             _ => ()
                         }
                     }
                     Fractional(_) => {
-                        self.constraints.insert(expr.typ.var().clone(), vec![intern("Fractional")]);
+                        self.constraints.insert(expr.typ.var().clone(), vec![prelude_name("Fractional")]);
                         match &mut expr.typ {
                             &TypeVariable(ref mut v) => v.kind = star_kind.clone(),
                             _ => ()
@@ -709,7 +695,7 @@ impl <'a> TypeEnvironment<'a> {
             }
             Do(ref mut bindings, ref mut last_expr) => {
                 let mut previous = self.new_var_kind(KindFunction(box StarKind, box StarKind));
-                self.constraints.insert(previous.var().clone(), vec!(intern("Monad")));
+                self.constraints.insert(previous.var().clone(), vec!(Name { name: intern("Monad"), uid: 0 }));
                 previous = TypeApplication(box previous, box self.new_var());
                 for bind in bindings.mut_iter() {
                     match *bind {
@@ -922,7 +908,7 @@ impl <'a> TypeEnvironment<'a> {
                         else {
                             self.local_types.get_mut(&bind.name)
                         };
-                        bind.typ = typ.clone();
+                        bind.typ.value = typ.value.clone();
                         quantify(start_var_age, typ);
                     }
                     bind.typ.constraints = self.find_constraints(&bind.typ.value);
@@ -945,7 +931,7 @@ impl <'a> TypeEnvironment<'a> {
     }
     
     ///Workaround to make all imported functions quantified without requiring their type variables to be generic
-    fn find_fresh(&self, name: &Name) -> Option<Qualified<Type>> {
+    fn find_fresh(&self, name: &Name) -> Option<Qualified<Type, Name>> {
         self.local_types.find(name)
             .or_else(|| self.namedTypes.find(name))
             .map(|x| x.clone())
@@ -979,12 +965,12 @@ impl <'a> TypeEnvironment<'a> {
     }
     
     
-    fn insert_constraint(&mut self, var: &TypeVariable, classname: InternedStr) {
+    fn insert_constraint(&mut self, var: &TypeVariable, classname: Name) {
         let mut constraints = self.constraints.pop(var).unwrap_or(Vec::new());
         self.insert_constraint_(&mut constraints, classname);
         self.constraints.insert(var.clone(), constraints);
     }
-    fn insert_constraint_(&mut self, constraints: &mut Vec<InternedStr>, classname: InternedStr) {
+    fn insert_constraint_(&mut self, constraints: &mut Vec<Name>, classname: Name) {
         let mut ii = 0;
         while ii < constraints.len() {
             if *constraints.get(ii) == classname || self.exists_as_super_class(*constraints.get(ii), classname) {
@@ -1003,7 +989,7 @@ impl <'a> TypeEnvironment<'a> {
     }
 
     ///Checks if 'classname' exists as a super class to any
-    fn exists_as_super_class(&self, constraint: InternedStr, classname: InternedStr) -> bool {
+    fn exists_as_super_class(&self, constraint: Name, classname: Name) -> bool {
         match self.find_class_constraints(constraint) {
             Some(constraints) => {
                 constraints.iter()
@@ -1017,7 +1003,7 @@ impl <'a> TypeEnvironment<'a> {
 
 
 ///Searches through a type, comparing it with the type on the identifier, returning all the specialized constraints
-pub fn find_specialized_instances(typ: &Type, actual_type: &Type, constraints: &[Constraint]) -> ~[(InternedStr, Type)] {
+pub fn find_specialized_instances(typ: &Type, actual_type: &Type, constraints: &[Constraint<Name>]) -> ~[(Name, Type)] {
     debug!("Finding specialization {} => {} <-> {}", constraints, typ, actual_type);
     let mut result = Vec::new();
     find_specialized(&mut result, actual_type, typ, constraints);
@@ -1026,7 +1012,7 @@ pub fn find_specialized_instances(typ: &Type, actual_type: &Type, constraints: &
     }
     FromVec::from_vec(result)
 }
-fn find_specialized(result: &mut Vec<(InternedStr, Type)>, actual_type: &Type, typ: &Type, constraints: &[Constraint]) {
+fn find_specialized(result: &mut Vec<(Name, Type)>, actual_type: &Type, typ: &Type, constraints: &[Constraint<Name>]) {
     match (actual_type, typ) {
         (_, &TypeVariable(ref var)) => {
             for c in constraints.iter().filter(|c| c.variables[0] == *var) {
@@ -1052,7 +1038,7 @@ fn find_specialized(result: &mut Vec<(InternedStr, Type)>, actual_type: &Type, t
 
 ///Quantifies all type variables with an age greater that start_var_age
 ///A quantified variable will when it is instantiated have new type variables
-fn quantify(start_var_age: int, typ: &mut Qualified<Type>) {
+fn quantify(start_var_age: int, typ: &mut Qualified<Type, Name>) {
     fn quantify_(start_var_age: int, typ: &mut Type) {
         let x = match typ {
             &TypeVariable(ref id) if id.age >= start_var_age => Some(id.clone()),
@@ -1137,7 +1123,7 @@ fn get_returntype(typ: &Type) -> Type {
 }
 
 ///Replace all typevariables using the substitution 'subs'
-fn replace(constraints: &mut HashMap<TypeVariable, Vec<InternedStr>>, old : &mut Type, subs : &Substitution) {
+fn replace(constraints: &mut HashMap<TypeVariable, Vec<Name>>, old : &mut Type, subs : &Substitution) {
     let replaced = match *old {
         TypeVariable(ref id) => {
             subs.subs.find(id).map(|new| {
@@ -1167,9 +1153,9 @@ fn occurs(type_var: &TypeVariable, inType: &Type) -> bool {
 }
 
 ///Freshen creates new type variables at every position where Generic(..) appears.
-fn freshen(env: &mut TypeEnvironment, subs: &mut Substitution, typ: &mut Qualified<Type>) {
+fn freshen(env: &mut TypeEnvironment, subs: &mut Substitution, typ: &mut Qualified<Type, Name>) {
     debug!("Freshen {}", typ);
-    fn freshen_(env: &mut TypeEnvironment, subs: &mut Substitution, constraints: &[Constraint], typ: &mut Type) {
+    fn freshen_(env: &mut TypeEnvironment, subs: &mut Substitution, constraints: &[Constraint<Name>], typ: &mut Type) {
         let result = match *typ {
             Generic(ref id) => freshen_var(env, subs, constraints, id),
             TypeApplication(ref mut lhs, ref mut rhs) => {
@@ -1209,7 +1195,7 @@ fn freshen_all(env: &mut TypeEnvironment, subs: &mut Substitution, typ: &mut Typ
     }
 }
 ///Updates the variable var, also making sure the constraints are updated appropriately
-fn freshen_var(env: &mut TypeEnvironment, subs: &mut Substitution, constraints: &[Constraint], id: &TypeVariable) -> Option<Type> {
+fn freshen_var(env: &mut TypeEnvironment, subs: &mut Substitution, constraints: &[Constraint<Name>], id: &TypeVariable) -> Option<Type> {
     subs.subs.find(id)
         .map(|var| var.clone())
         .or_else(|| {
@@ -1318,10 +1304,10 @@ fn bind_variable(env: &mut TypeEnvironment, subs: &mut Substitution, var: &TypeV
                                 Err(missing_instance) => {
                                     match *typ {
                                         TypeConstructor(ref op) => {
-                                            if *c == intern("Num") && (op.name == intern("Int") || op.name == intern("Double")) && *typ.kind() == star_kind {
+                                            if c.name == intern("Num") && (op.name == intern("Int") || op.name == intern("Double")) && *typ.kind() == star_kind {
                                                 continue;
                                             }
-                                            else if *c == intern("Fractional") && intern("Double") == op.name && *typ.kind() == star_kind {
+                                            else if c.name == intern("Fractional") && intern("Double") == op.name && *typ.kind() == star_kind {
                                                 continue;
                                             }
                                         }
@@ -1626,6 +1612,7 @@ use renamer::*;
 
 use parser::Parser;
 use std::io::File;
+use std::vec::FromVec;
 
 use test::Bencher;
 
@@ -1641,6 +1628,14 @@ pub fn do_typecheck_with(input: &str, types: &[&DataTypes]) -> Module<Name> {
     }
     env.typecheck_module(&mut module);
     module
+}
+
+fn un_name(typ: Qualified<Type, Name>) -> Qualified<Type, InternedStr> {
+    let Qualified { constraints: constraints, value: typ } = typ;
+    let constraints2: Vec<Constraint> = constraints.move_iter()
+        .map(|c| Constraint { class: c.class.name, variables: c.variables })
+        .collect();
+    qualified(FromVec::from_vec(constraints2), typ)
 }
 
 
@@ -1820,8 +1815,8 @@ main x y = primIntAdd (test x) (test y)".chars());
     let b = Type::new_var(intern("b"));
     let test = function_type_(a.clone(), function_type_(b.clone(), int_type()));
     assert_eq!(&typ.value, &test);
-    assert_eq!(typ.constraints[0].class, intern("Test"));
-    assert_eq!(typ.constraints[1].class, intern("Test"));
+    assert_eq!(typ.constraints[0].class.as_slice(), "Test");
+    assert_eq!(typ.constraints[1].class.as_slice(), "Test");
 }
 
 #[test]
@@ -1874,7 +1869,7 @@ test x y = case x < y of
     let a = Type::new_var(intern("a"));
     assert_eq!(typ.value, function_type_(a.clone(), function_type_(a.clone(), bool_type())));
     assert_eq!(typ.constraints.len(), 1);
-    assert_eq!(typ.constraints[0].class, intern("Ord"));
+    assert_eq!(typ.constraints[0].class.as_slice(), "Ord");
 }
 
 #[test]
@@ -1932,10 +1927,10 @@ instance Eq a => Eq [a] where
     env.typecheck_module(&mut module);
 
     let typ = &module.instances[0].bindings[0].typ;
-    let list_type = list_type(Type::new_var(intern("a")));
-    assert_eq!(typ.value, function_type_(list_type.clone(), function_type_(list_type, bool_type())));
-    let var = typ.value.appl().appr().appr().var();
-    assert_eq!(typ.constraints, box [Constraint { class: intern("Eq"), variables: box [var.clone()] }]);
+    let var = typ.value.appl().appr().appr();
+    let list_type = list_type(var.clone());
+    assert_eq!(un_name(typ.clone()), qualified(box [Constraint { class: intern("Eq"), variables: box [var.var().clone()] }],
+        function_type_(list_type.clone(), function_type_(list_type, bool_type()))));
 }
 
 #[test]
@@ -2082,7 +2077,7 @@ test x = do
     let var = Type::new_var(intern("a"));
     let t = function_type_(Type::new_var_args(intern("c"), ~[list_type(var.clone())]), Type::new_var_args(intern("c"), ~[var.clone()]));
     assert_eq!(module.bindings[0].typ.value, t);
-    assert_eq!(module.bindings[0].typ.constraints[0].class, intern("Monad"));
+    assert_eq!(module.bindings[0].typ.constraints[0].class.as_slice(), "Monad");
 }
 
 #[test]
@@ -2150,7 +2145,7 @@ test x y = [x] == [y]
     let a = Type::new_var(intern("a"));
     let cs = box [Constraint { class: intern("Eq"), variables: box [a.var().clone()] } ];
     let typ = qualified(cs, function_type_(a.clone(), function_type_(a.clone(), bool_type())));
-    assert_eq!(module.bindings[0].typ, typ);
+    assert_eq!(un_name(module.bindings[0].typ.clone()), typ);
 }
 
 #[test]
@@ -2167,7 +2162,7 @@ makeEven i
 "
 ).unwrap_or_else(|err| fail!(err));
     let module = modules.last().unwrap();
-    assert_eq!(module.bindings[0].typ, qualified(box [], function_type_(int_type(), Type::new_op(intern("Even"), box []))));
+    assert_eq!(un_name(module.bindings[0].typ.clone()), qualified(box [], function_type_(int_type(), Type::new_op(intern("Even"), box []))));
 }
 
 
