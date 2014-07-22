@@ -334,8 +334,15 @@ impl <'a> TypeEnvironment<'a> {
         }
         let data_definitions = module.dataDefinitions.clone();
         for instance in module.instances.mut_iter() {
-            let class = module.classes.iter().find(|class| class.name == instance.classname)
-                .expect(format!("Could not find class {}", instance.classname));
+            let (class_constraints, class_var, class_decls) = module.classes.iter()
+                .find(|class| class.name == instance.classname)
+                .map(|class| (class.constraints.as_slice(), &class.variable, class.declarations.as_slice()))
+                .or_else(|| {
+                    self.assemblies.iter()
+                        .filter_map(|a| a.find_class(instance.classname))
+                        .next()
+                })
+                .unwrap_or_else(|| fail!("Could not find class {}", instance.classname));
             //Update the kind of the type for the instance to be the same as the class kind (since we have no proper kind inference
             match instance.typ {
                 TypeConstructor(ref mut op) => {
@@ -349,10 +356,10 @@ impl <'a> TypeEnvironment<'a> {
                 _ => ()
             }
             for binding in instance.bindings.mut_iter() {
-                let decl = class.declarations.iter().find(|decl| binding.name.as_slice().ends_with(decl.name.as_slice()))
-                    .expect(format!("Could not find {} in class {}", binding.name, class.name));
+                let decl = class_decls.iter().find(|decl| binding.name.as_slice().ends_with(decl.name.as_slice()))
+                    .expect(format!("Could not find {} in class {}", binding.name, instance.classname));
                 binding.typ = decl.typ.clone();
-                replace_var(&mut binding.typ.value, &class.variable, &instance.typ);
+                replace_var(&mut binding.typ.value, class_var, &instance.typ);
                 self.freshen_qualified_type(&mut binding.typ, HashMap::new());
                 {
                     let mut context = ~[];
@@ -365,8 +372,8 @@ impl <'a> TypeEnvironment<'a> {
                 }
             }
             {
-                let mut missing_super_classes = self.find_class_constraints(class.name)
-                    .unwrap_or_else(|| fail!("Error: Missing class {}", class.name))
+                let mut missing_super_classes = self.find_class_constraints(instance.classname)
+                    .unwrap_or_else(|| fail!("Error: Missing class {}", instance.classname))
                     .iter()//Make sure we have an instance for all of the constraints
                     .filter(|constraint| self.has_instance(constraint.class, &instance.typ, &mut Vec::new()).is_err())
                     .peekable();
@@ -1595,9 +1602,12 @@ fn typecheck_modules_common(modules: Vec<Module>) -> Vec<Module<Name>> {
     for module in modules.mut_iter() {
         prec_visitor.visit_module(module);
     }
-    let mut env = TypeEnvironment::new();
-    for module in modules.mut_iter() {
-        env.typecheck_module(module);
+    {
+        let mut env = TypeEnvironment::new();
+        for module in modules.mut_iter() {
+            env.typecheck_module(module);
+            env.assemblies.push(module);
+        }
     }
     modules
 }
