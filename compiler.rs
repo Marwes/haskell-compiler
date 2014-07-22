@@ -604,7 +604,7 @@ impl <'a> Compiler<'a> {
                         }
                         else {
                             let fromInteger = Identifier(Id {
-                                name: Name { name: intern("fromInteger"), uid: 999999 }, 
+                                name: Name { name: intern("fromInteger"), uid: 0 }, 
                                 typ: qualified(~[], function_type_(int_type(), literal.typ.clone())),
                             });
                             let number = Literal(Literal { typ: int_type(), value: Integral(i) });
@@ -618,7 +618,7 @@ impl <'a> Compiler<'a> {
                         }
                         else {
                             let fromRational = Identifier(Id {
-                                name: Name { name: intern("fromRational"), uid: 999999 }, 
+                                name: Name { name: intern("fromRational"), uid: 0 }, 
                                 typ: qualified(~[], function_type_(double_type(), literal.typ.clone())),
                             });
                             let number = Literal(Literal {
@@ -810,7 +810,7 @@ impl <'a> Compiler<'a> {
                 let mut b = String::from_str("#");
                 b.push_str(typename);
                 b.push_str(name.as_slice());
-                let instance_fn_name = Name { name: intern(b.as_slice()), uid: 0 };
+                let instance_fn_name = Name { name: intern(b.as_slice()), uid: name.uid };
                 match self.find(instance_fn_name) {
                     Some(GlobalVariable(index)) => {
                         instructions.push(PushGlobal(index));
@@ -979,7 +979,7 @@ impl <'a> Compiler<'a> {
                     b.push_str(x.name.as_slice());
                     b.push_str(decl.name.as_slice());
                     let f = intern(b.as_slice());
-                    let name = Name { name: f, uid: 0 };
+                    let name = Name { name: f, uid: decl.name.uid };
                     match self.find(name) {
                         Some(GlobalVariable(index)) => {
                             function_indexes.push(index as uint);

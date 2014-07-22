@@ -515,8 +515,8 @@ pub mod translate {
                 //Example stub for undeclared (/=)
                 //(/=) = #Eq/=
                 Binding {
-                    name: Id::new(Name { name: instance_fn_name, uid: 0 }, typ.clone(), constraints.clone()),
-                    expression: Identifier(Id::new(Name { name: default_name, uid: 0 }, typ, constraints))
+                    name: Id::new(Name { name: instance_fn_name, uid: decl.name.uid }, typ.clone(), constraints.clone()),
+                    expression: Identifier(Id::new(Name { name: default_name, uid: decl.name.uid }, typ, constraints))
                 }
             })
             .collect()

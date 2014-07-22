@@ -960,8 +960,9 @@ fn import() {
 
 #[test]
 fn pattern_bind() {
-    let result = execute_main(
-r"data Bool = True | False
+    let result = execute_main_string(
+r"
+import Prelude
 
 test :: [Bool] -> Bool
 test (True:[]) = False
@@ -969,14 +970,15 @@ test (True:y:ys) = y
 test [] = False
 
 main = test [True, True]
-".chars());
+")
+    .unwrap_or_else(|err| fail!(err));
     assert_eq!(result, Some(ConstructorResult(0, Vec::new())));
 }
 #[test]
 fn pattern_guards() {
-    let result = execute_main(
+    let result = execute_main_string(
 r"
-data Bool = True | False
+import Prelude
 
 test :: Int -> [a] -> Int
 test 2 _ = 2
@@ -987,15 +989,16 @@ test x _ = x
 
 main = (test 2 [], test 100 [], test 100 ['c'])
 
-".chars());
+")
+    .unwrap_or_else(|err| fail!(err));
     assert_eq!(result, Some(ConstructorResult(0, vec!(IntResult(2), IntResult(1), IntResult(100)))));
 }
 
 #[test]
 fn pattern_guards_nested() {
-    let result = execute_main(
+    let result = execute_main_string(
 r"
-data Bool = True | False
+import Prelude
 
 test :: Int -> [Int] -> Int
 test 2 _ = 2
@@ -1006,7 +1009,8 @@ test x _ = x
 
 main = (test 2 [], test 100 [0], test 100 [0, 123])
 
-".chars());
+")
+    .unwrap_or_else(|err| fail!(err));
     assert_eq!(result, Some(ConstructorResult(0, vec!(IntResult(2), IntResult(1), IntResult(100)))));
 }
 #[test]

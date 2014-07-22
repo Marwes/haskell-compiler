@@ -53,7 +53,7 @@ pub struct NameSupply {
 impl NameSupply {
     
     pub fn new() -> NameSupply {
-        NameSupply { unique_id: 0 }
+        NameSupply { unique_id: 1 }
     }
     ///Create a unique Name which are anonymous
     pub fn anonymous(&mut self) -> Name {
@@ -75,6 +75,11 @@ impl NameSupply {
 
 ///The renamer has methods which turns the ASTs identifiers from simple strings
 ///into unique Names
+///Currently there is some constraints on what the unique ids should be.
+///Each module gets one uid which it uses for a top level declarations (bindings, types, etc)
+///All functions which are in a class or an instance gets the same id as the class has,
+///this is to allow the compiler to find the specific instance/class functions when it constructs dictionaries
+///All uid's of the other names can have any uid (as long as it introduces no name collisions)
 struct Renamer {
     ///Mapping of strings into the unique name
     uniques: ScopedMap<InternedStr, Name>,
@@ -88,27 +93,19 @@ impl Renamer {
         Renamer { uniques: ScopedMap::new(), name_supply: NameSupply::new(), errors: Errors::new() }
     }
 
-    fn insert_globals(&mut self, module: &Module<InternedStr>) {
-        for ctor in module.dataDefinitions.iter().flat_map(|data| data.constructors.iter()) {
-            self.make_unique(ctor.name.clone());
-        }
-        for newtype in module.newtypes.iter() {
-            self.make_unique(newtype.constructor_name.clone());
-        }
-        for bind in module.instances.iter().flat_map(|instance| binding_groups(instance.bindings.as_slice())) {
-            self.make_unique(bind[0].name.clone());
-        }
-        for class in module.classes.iter() {
-            self.make_unique(class.name);
-            for decl in class.declarations.iter() {
-                self.make_unique(decl.name.clone());
-            }
-            for bind in binding_groups(class.bindings) {
-                self.make_unique(bind[0].name.clone());
-            }
-        }
-        for bind in binding_groups(module.bindings.as_slice()) {
-            self.make_unique(bind[0].name.clone());
+    fn insert_globals(&mut self, module: &Module<InternedStr>, uid: uint) {
+        let mut names = module.dataDefinitions.iter()
+            .flat_map(|data| data.constructors.iter().map(|ctor| ctor.name))
+            .chain(module.newtypes.iter().map(|newtype| newtype.constructor_name))
+            .chain(module.instances.iter()
+                .flat_map(|instance| binding_groups(instance.bindings.as_slice()).map(|binds| binds[0].name)))
+            .chain(module.classes.iter().flat_map(|class|
+                Some(class.name).move_iter()
+                .chain(class.declarations.iter().map(|decl| decl.name))
+                .chain(binding_groups(class.bindings).map(|binds| binds[0].name))))
+            .chain(binding_groups(module.bindings.as_slice()).map(|binds| binds[0].name));
+        for name in names {
+            self.declare_global(name, uid);
         }
     }
 
@@ -269,6 +266,12 @@ impl Renamer {
             u
         }
     }
+    fn declare_global(&mut self, s: InternedStr, module_id: uint) -> Name {
+        self.make_unique(s);
+        let name = self.uniques.find_mut(&s).unwrap();
+        name.uid = module_id;
+        *name
+    }
 }
 
 pub fn rename_expr(expr: TypedExpr<InternedStr>) -> TypedExpr<Name> {
@@ -281,9 +284,14 @@ pub fn rename_module(module: Module<InternedStr>) -> Module<Name> {
     rename_module_(&mut renamer, module)
 }
 pub fn rename_module_(renamer: &mut Renamer, module: Module<InternedStr>) -> Module<Name> {
-    renamer.insert_globals(&module);
+    let mut name = renamer.make_unique(module.name);
+    if name.as_slice() == "Prelude" {
+        renamer.uniques.find_mut(&name.name).unwrap().uid = 0;
+        name.uid = 0;
+    }
+    renamer.insert_globals(&module, name.uid);
     let Module {
-        name: name,
+        name: _,
         imports: imports,
         classes : classes,
         dataDefinitions: data_definitions,
@@ -405,7 +413,7 @@ pub fn rename_module_(renamer: &mut Renamer, module: Module<InternedStr>) -> Mod
         .collect();
     
     Module {
-        name: renamer.make_unique(name),
+        name: name,
         imports: FromVec::from_vec(imports2),
         classes : FromVec::from_vec(classes2),
         dataDefinitions: FromVec::from_vec(data_definitions2),
