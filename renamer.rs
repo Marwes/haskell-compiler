@@ -97,8 +97,6 @@ impl Renamer {
         let mut names = module.dataDefinitions.iter()
             .flat_map(|data| data.constructors.iter().map(|ctor| ctor.name))
             .chain(module.newtypes.iter().map(|newtype| newtype.constructor_name))
-            .chain(module.instances.iter()
-                .flat_map(|instance| binding_groups(instance.bindings.as_slice()).map(|binds| binds[0].name)))
             .chain(module.classes.iter().flat_map(|class|
                 Some(class.name).move_iter()
                 .chain(class.declarations.iter().map(|decl| decl.name))
@@ -106,6 +104,12 @@ impl Renamer {
             .chain(binding_groups(module.bindings.as_slice()).map(|binds| binds[0].name));
         for name in names {
             self.declare_global(name, uid);
+        }
+        for instance in module.instances.iter() {
+            let class_uid = self.get_name(instance.classname).uid;
+            for binds in binding_groups(instance.bindings.as_slice()) {
+                self.declare_global(binds[0].name, class_uid);
+            }
         }
     }
 

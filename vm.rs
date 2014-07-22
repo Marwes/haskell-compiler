@@ -1046,6 +1046,24 @@ main = (test (0 :: Int) 2) && not (test (1 :: Int) 0)")
         .unwrap_or_else(|err| fail!("{}", err));
     assert_eq!(result, Some(ConstructorResult(0, Vec::new())));
 }
+#[test]
+fn implement_class() {
+    let result = execute_main_string(
+r"
+import Prelude
+data AB = A | B
+
+instance Eq AB where
+    (==) A A = True
+    (==) B B = True
+    (==) _ _ = False
+
+test x y = x == y
+
+main = A == B && test A A")
+        .unwrap_or_else(|err| fail!("{}", err));
+    assert_eq!(result, Some(ConstructorResult(1, Vec::new())));
+}
 
 #[test]
 fn deriving_eq() {
