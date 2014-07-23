@@ -21,7 +21,9 @@ pub struct Module<Ident = InternedStr> {
 #[deriving(Clone)]
 pub struct Import<Ident> {
     pub module: InternedStr,
-    pub imports: ~[Ident]
+    //None if 'import Name'
+    //Some(names) if 'import Name (names)'
+    pub imports: Option<~[Ident]>
 }
 
 #[deriving(Clone)]

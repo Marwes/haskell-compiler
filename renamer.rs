@@ -88,12 +88,33 @@ struct Renamer {
     errors: Errors<String>
 }
 
+
 impl Renamer {
     fn new() -> Renamer {
         Renamer { uniques: ScopedMap::new(), name_supply: NameSupply::new(), errors: Errors::new() }
     }
 
-    fn insert_globals(&mut self, module: &Module<InternedStr>, uid: uint) {
+    fn import_globals(&mut self, module: &Module<Name>) {
+        let mut names = module.dataDefinitions.iter()
+            .flat_map(|data| data.constructors.iter().map(|ctor| ctor.name))
+            .chain(module.newtypes.iter().map(|newtype| newtype.constructor_name))
+            .chain(module.classes.iter().flat_map(|class|
+                Some(class.name).move_iter()
+                .chain(class.declarations.iter().map(|decl| decl.name))
+                .chain(binding_groups(class.bindings).map(|binds| binds[0].name))))
+            .chain(binding_groups(module.bindings.as_slice()).map(|binds| binds[0].name));
+        for name in names {
+            self.declare_global(name.name, name.uid);
+        }
+        for instance in module.instances.iter() {
+            let class_uid = self.get_name(instance.classname.name).uid;
+            for binds in binding_groups(instance.bindings.as_slice()) {
+                self.declare_global(binds[0].name.name, class_uid);
+            }
+        }
+    }
+
+    fn insert_globals(&mut self, module_env: &[Module<Name>], module: &Module<InternedStr>, uid: uint) {
         let mut names = module.dataDefinitions.iter()
             .flat_map(|data| data.constructors.iter().map(|ctor| ctor.name))
             .chain(module.newtypes.iter().map(|newtype| newtype.constructor_name))
@@ -109,6 +130,22 @@ impl Renamer {
             let class_uid = self.get_name(instance.classname).uid;
             for binds in binding_groups(instance.bindings.as_slice()) {
                 self.declare_global(binds[0].name, class_uid);
+            }
+        }
+        for import in module.imports.iter() {
+            let imported_module = module_env.iter()
+                .find(|m| m.name.name == import.module)
+                .unwrap_or_else(|| fail!("Module {} is not defined", import.module));
+            let uid = imported_module.name.uid;
+            match import.imports {
+                Some(ref imports) => {
+                    for &imported_str in imports.iter() {
+                        self.declare_global(imported_str, uid);
+                    }
+                }
+                None => {//Import everything
+                    self.import_globals(imported_module)
+                }
             }
         }
     }
@@ -285,15 +322,16 @@ pub fn rename_expr(expr: TypedExpr<InternedStr>) -> TypedExpr<Name> {
 
 pub fn rename_module(module: Module<InternedStr>) -> Module<Name> {
     let mut renamer = Renamer::new();
-    rename_module_(&mut renamer, module)
+    rename_module_(&mut renamer, &[], module)
 }
-pub fn rename_module_(renamer: &mut Renamer, module: Module<InternedStr>) -> Module<Name> {
+pub fn rename_module_(renamer: &mut Renamer, module_env: &[Module<Name>], module: Module<InternedStr>) -> Module<Name> {
     let mut name = renamer.make_unique(module.name);
     if name.as_slice() == "Prelude" {
         renamer.uniques.find_mut(&name.name).unwrap().uid = 0;
         name.uid = 0;
     }
-    renamer.insert_globals(&module, name.uid);
+    renamer.uniques.enter_scope();
+    renamer.insert_globals(module_env, &module, name.uid);
     let Module {
         name: _,
         imports: imports,
@@ -307,10 +345,13 @@ pub fn rename_module_(renamer: &mut Renamer, module: Module<InternedStr>) -> Mod
     } = module;
 
     let imports2: Vec<Import<Name>> = imports.move_iter().map(|import| {
-        let imports: Vec<Name> = import.imports.iter()
-            .map(|&x| renamer.make_unique(x))
-            .collect();
-        Import { module: import.module, imports: FromVec::from_vec(imports) }
+        let imports = import.imports.as_ref().map(|x| {
+            let is: Vec<Name> = x.iter()
+                .map(|&x| renamer.get_name(x))
+                .collect();
+            FromVec::from_vec(is)
+        });
+        Import { module: import.module, imports: imports }
     }).collect();
 
     let data_definitions2 : Vec<DataDefinition<Name>> = data_definitions.move_iter().map(|data| {
@@ -415,13 +456,14 @@ pub fn rename_module_(renamer: &mut Renamer, module: Module<InternedStr>) -> Mod
             }
         })
         .collect();
-    
+    let decls2 = renamer.rename_type_declarations(typeDeclarations);
+    renamer.uniques.exit_scope();
     Module {
         name: name,
         imports: FromVec::from_vec(imports2),
         classes : FromVec::from_vec(classes2),
         dataDefinitions: FromVec::from_vec(data_definitions2),
-        typeDeclarations: renamer.rename_type_declarations(typeDeclarations),
+        typeDeclarations: decls2,
         bindings : bindings2,
         instances: FromVec::from_vec(instances2),
         newtypes: FromVec::from_vec(newtypes2),
@@ -437,9 +479,11 @@ pub fn prelude_name(s: &str) -> Name {
 ///If any errors are encounterd while renaming, an error message is output and fail is called
 pub fn rename_modules(modules: Vec<Module<InternedStr>>) -> Vec<Module<Name>> {
     let mut renamer = Renamer::new();
-    let ms = modules.move_iter().map(|module| {
-        rename_module_(&mut renamer, module)
-    }).collect();
+    let mut ms = Vec::new();
+    for module in modules.move_iter() {
+        let m = rename_module_(&mut renamer, ms.as_slice(), module);
+        ms.push(m);
+    }
     if renamer.errors.has_errors() {
         renamer.errors.report_errors("Renamer");
         fail!();
@@ -458,6 +502,26 @@ mod tests {
 r"main = 1
 test = []
 main = 2".chars());
+        let module = parser.module();
+        rename_modules(vec!(module));
+    }
+    #[test]
+    fn import_binding() {
+        let file =
+r"
+import Prelude (id)
+main = id";
+        let modules = parse_string(file)
+            .unwrap_or_else(|err| fail!(err));
+        rename_modules(modules);
+    }
+    #[test]
+    #[should_fail]
+    fn missing_import() {
+        let mut parser = Parser::new(
+r"
+import Prelude ()
+main = id".chars());
         let module = parser.module();
         rename_modules(vec!(module));
     }

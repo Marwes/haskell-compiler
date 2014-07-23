@@ -138,7 +138,7 @@ fn import(&mut self) -> Import<InternedStr> {
     let module_name = self.require_next(NAME).value;
     let imports = if self.lexer.peek().token == LPARENS {
         self.lexer.next();
-        if self.lexer.peek().token == RPARENS {
+        let x = if self.lexer.peek().token == RPARENS {
             self.lexer.next();
             box []
         }
@@ -146,10 +146,11 @@ fn import(&mut self) -> Import<InternedStr> {
             let imports = self.sep_by_1(|this| this.require_next(NAME).value, COMMA);
             self.require_next(RPARENS);
             imports
-        }
+        };
+        Some(x)
     }
     else {
-        box []
+        None
     };
     Import { module: module_name, imports: imports }
 }
@@ -1308,11 +1309,11 @@ import Prelude (id, sum)
     let module = parser.module();
 
     assert_eq!(module.imports[0].module.as_slice(), "Hello");
-    assert_eq!(module.imports[0].imports, box []);
+    assert_eq!(module.imports[0].imports, None);
     assert_eq!(module.imports[1].module.as_slice(), "World");
-    assert_eq!(module.imports[1].imports, box []);
+    assert_eq!(module.imports[1].imports, Some(box []));
     assert_eq!(module.imports[2].module.as_slice(), "Prelude");
-    assert_eq!(module.imports[2].imports, box [intern("id"), intern("sum")]);
+    assert_eq!(module.imports[2].imports, Some(box [intern("id"), intern("sum")]));
 }
 #[test]
 fn parse_module_imports() {
