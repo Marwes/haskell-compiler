@@ -94,7 +94,7 @@ impl Renamer {
         Renamer { uniques: ScopedMap::new(), name_supply: NameSupply::new(), errors: Errors::new() }
     }
 
-    fn import_globals(&mut self, module: &Module<Name>) {
+    fn import_globals<T: Eq + Copy>(&mut self, module: &Module<T>, str_fn: |T| -> InternedStr, uid: uint) {
         let mut names = module.dataDefinitions.iter()
             .flat_map(|data| data.constructors.iter().map(|ctor| ctor.name))
             .chain(module.newtypes.iter().map(|newtype| newtype.constructor_name))
@@ -104,34 +104,18 @@ impl Renamer {
                 .chain(binding_groups(class.bindings).map(|binds| binds[0].name))))
             .chain(binding_groups(module.bindings.as_slice()).map(|binds| binds[0].name));
         for name in names {
-            self.declare_global(name.name, name.uid);
+            self.declare_global(str_fn(name), uid);
         }
         for instance in module.instances.iter() {
-            let class_uid = self.get_name(instance.classname.name).uid;
+            let class_uid = self.get_name(str_fn(instance.classname)).uid;
             for binds in binding_groups(instance.bindings.as_slice()) {
-                self.declare_global(binds[0].name.name, class_uid);
+                self.declare_global(str_fn(binds[0].name), class_uid);
             }
         }
     }
 
     fn insert_globals(&mut self, module_env: &[Module<Name>], module: &Module<InternedStr>, uid: uint) {
-        let mut names = module.dataDefinitions.iter()
-            .flat_map(|data| data.constructors.iter().map(|ctor| ctor.name))
-            .chain(module.newtypes.iter().map(|newtype| newtype.constructor_name))
-            .chain(module.classes.iter().flat_map(|class|
-                Some(class.name).move_iter()
-                .chain(class.declarations.iter().map(|decl| decl.name))
-                .chain(binding_groups(class.bindings).map(|binds| binds[0].name))))
-            .chain(binding_groups(module.bindings.as_slice()).map(|binds| binds[0].name));
-        for name in names {
-            self.declare_global(name, uid);
-        }
-        for instance in module.instances.iter() {
-            let class_uid = self.get_name(instance.classname).uid;
-            for binds in binding_groups(instance.bindings.as_slice()) {
-                self.declare_global(binds[0].name, class_uid);
-            }
-        }
+        self.import_globals(module, |name| name, uid);
         for import in module.imports.iter() {
             let imported_module = module_env.iter()
                 .find(|m| m.name.name == import.module)
@@ -144,7 +128,7 @@ impl Renamer {
                     }
                 }
                 None => {//Import everything
-                    self.import_globals(imported_module)
+                    self.import_globals(imported_module, |name| name.name, imported_module.name.uid)
                 }
             }
         }
