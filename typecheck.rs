@@ -110,8 +110,8 @@ pub struct TypeEnvironment<'a> {
     ///1: Any constraints for the type which the instance is for
     ///2: The name of the class
     ///3: The Type which the instance is defined for
-    instances: Vec<(~[Constraint<Name>], Name, Type)>,
-    classes: Vec<(~[Constraint<Name>], Name)>,
+    instances: Vec<(Vec<Constraint<Name>>, Name, Type)>,
+    classes: Vec<(Vec<Constraint<Name>>, Name)>,
     data_definitions : Vec<DataDefinition<Name>>,
     ///The current age for newly created variables.
     ///Age is used to determine whether variables need to be quantified or not.
@@ -130,7 +130,7 @@ struct Substitution {
 trait Bindings {
     fn get_mut<'a>(&'a mut self, idx: (uint, uint)) -> &'a mut [Binding<Name>];
 
-    fn each_binding(&self, |&[Binding<Name>], (uint, uint)|);
+    fn each_binding<F>(&self, func: F) where F: FnMut(&[Binding<Name>], (uint, uint));
 }
 
 impl Bindings for Module<Name> {
@@ -147,7 +147,7 @@ impl Bindings for Module<Name> {
         mut_bindings_at(*bindings, idx)
     }
 
-    fn each_binding(&self, func: |&[Binding<Name>], (uint, uint)|) {
+    fn each_binding<F>(&self, func: F) where F: FnMut(&[Binding<Name>], (uint, uint)) {
         let mut index = 0;
         for binds in binding_groups(self.bindings.as_slice()) {
             func(binds, (0, index));
@@ -189,7 +189,7 @@ impl <'a> Bindings for BindingsWrapper<'a> {
         mut_bindings_at(self.value, idx)
     }
 
-    fn each_binding(&self, func: |&[Binding<Name>], (uint, uint)|) {
+    fn each_binding<F>(&self, func: F) where F: FnMut(&[Binding<Name>], (uint, uint)) {
         let mut index = 0;
         for binds in binding_groups(self.value.as_slice()) {
             func(binds, (0, index));
@@ -199,7 +199,7 @@ impl <'a> Bindings for BindingsWrapper<'a> {
 }
 
 fn insert_to(map: &mut HashMap<Name, Qualified<Type, Name>>, name: &str, typ: Type) {
-    map.insert(Name { name: intern(name), uid: 0 }, qualified(~[], typ));
+    map.insert(Name { name: intern(name), uid: 0 }, qualified(vec![], typ));
 }
 fn prim(typename: &str, op: &str) -> String {
     let mut b = String::from_str("prim");
@@ -208,7 +208,7 @@ fn prim(typename: &str, op: &str) -> String {
     b
 }
 fn add_primitives(globals: &mut HashMap<Name, Qualified<Type, Name>>, typename: &str) {
-    let typ = Type::new_op(intern(typename), ~[]);
+    let typ = Type::new_op(intern(typename), vec![]);
     {
         let binop = function_type(&typ, &function_type(&typ, &typ));
         insert_to(globals, prim(typename, "Add").as_slice(), binop.clone());
@@ -301,9 +301,9 @@ impl <'a> TypeEnvironment<'a> {
                     None => ()
                 }
                 
-                let c = Constraint { class: class.name.clone(), variables: ~[class.variable.clone()] };
+                let c = Constraint { class: class.name.clone(), variables: vec![class.variable.clone()] };
                 {//Workaround to add the class's constraints directyly to the declaration
-                    let mut context = ~[];
+                    let mut context = vec![];
                     swap(&mut context, &mut type_decl.typ.constraints);
                     let mut vec_context: Vec<Constraint<Name>> = context.move_iter().collect();
                     vec_context.push(c);
@@ -319,12 +319,12 @@ impl <'a> TypeEnvironment<'a> {
                     .expect(format!("Could not find {} in class {}", binding.name, class.name));
                 binding.typ = decl.typ.clone();
                 {
-                    let mut context = ~[];
+                    let mut context = vec![];
                     swap(&mut context, &mut binding.typ.constraints);
                     let mut vec_context: Vec<Constraint<Name>> = context.move_iter().collect();
                     let c = Constraint {
                         class: class.name.clone(),
-                        variables: ~[class.variable.clone()]
+                        variables: vec![class.variable.clone()]
                     };
                     vec_context.push(c);
                     binding.typ.constraints = FromVec::from_vec(vec_context);
@@ -362,7 +362,7 @@ impl <'a> TypeEnvironment<'a> {
                 replace_var(&mut binding.typ.value, class_var, &instance.typ);
                 self.freshen_qualified_type(&mut binding.typ, HashMap::new());
                 {
-                    let mut context = ~[];
+                    let mut context = vec![];
                     swap(&mut context, &mut binding.typ.constraints);
                     let mut vec_context: Vec<Constraint<Name>> = context.move_iter().collect();
                     for constraint in instance.constraints.iter() {
@@ -426,7 +426,7 @@ impl <'a> TypeEnvironment<'a> {
     }
 
     ///Finds all the constraints for a type
-    pub fn find_constraints(&self, typ: &Type) -> ~[Constraint<Name>] {
+    pub fn find_constraints(&self, typ: &Type) -> Vec<Constraint<Name>> {
         let mut result : Vec<Constraint<Name>> = Vec::new();
         each_type(typ,
         |var| {
@@ -434,7 +434,7 @@ impl <'a> TypeEnvironment<'a> {
                 Some(constraints) => {
                     for c in constraints.iter() {
                         if result.iter().find(|x| x.class == *c && x.variables[0] == *var) == None {
-                            result.push(Constraint { class: c.clone(), variables: ~[var.clone()] });
+                            result.push(Constraint { class: c.clone(), variables: vec![var.clone()] });
                         }
                     }
                 }
@@ -762,7 +762,7 @@ impl <'a> TypeEnvironment<'a> {
     fn typecheck_pattern(&mut self, location: &Location, subs: &mut Substitution, pattern: &Pattern<Name>, match_type: &mut Type) {
         match pattern {
             &IdentifierPattern(ref ident) => {
-                self.local_types.insert(ident.clone(), qualified(~[], match_type.clone()));
+                self.local_types.insert(ident.clone(), qualified(vec![], match_type.clone()));
             }
             &NumberPattern(_) => {
                 let mut typ = int_type();
@@ -1010,7 +1010,7 @@ impl <'a> TypeEnvironment<'a> {
 
 
 ///Searches through a type, comparing it with the type on the identifier, returning all the specialized constraints
-pub fn find_specialized_instances(typ: &Type, actual_type: &Type, constraints: &[Constraint<Name>]) -> ~[(Name, Type)] {
+pub fn find_specialized_instances(typ: &Type, actual_type: &Type, constraints: &[Constraint<Name>]) -> Vec<(Name, Type)> {
     debug!("Finding specialization {} => {} <-> {}", constraints, typ, actual_type);
     let mut result = Vec::new();
     find_specialized(&mut result, actual_type, typ, constraints);
@@ -1478,10 +1478,11 @@ fn add_edges<T: 'static>(graph: &mut Graph<T>, map: &HashMap<Name, VertexIndex>,
 }
 
 ///Walks through the type and calls the functions on each variable and type constructor
-fn each_type(typ: &Type, mut var_fn: |&TypeVariable|, mut op_fn: |&TypeConstructor|) {
+fn each_type<F, G>(typ: &Type, mut var_fn: F, mut op_fn: G)
+    where F: FnMut(&TypeVariable), G: FnMut(&TypeConstructor) {
     each_type_(typ, &mut var_fn, &mut op_fn);
 }
-fn each_type_(typ: &Type, var_fn: &mut |&TypeVariable|, op_fn: &mut |&TypeConstructor|) {
+fn each_type_(typ: &Type, var_fn: &mut FnMut(&TypeVariable), op_fn: &mut FnMut(&TypeConstructor)) {
     match typ {
         &TypeVariable(ref var) => (*var_fn)(var),
         &TypeConstructor(ref op) => (*op_fn)(op),
@@ -1524,7 +1525,7 @@ fn find_kind(test: &TypeVariable, expected: Option<Kind>, typ: &Type) -> Result<
 ///Takes a function type and calls the 'func' with the argument to the function and its
 ///return type.
 ///Returns true if the function was called.
-pub fn with_arg_return(func_type: &mut Type, func: |&mut Type, &mut Type|) -> bool {
+pub fn with_arg_return<F>(func_type: &mut Type, func: F) -> bool where F: FnOnce(&mut Type, &mut Type) {
     match func_type {
         &TypeApplication(ref mut lhs, ref mut return_type) => {
             let l: &mut Type = *lhs;
@@ -1565,11 +1566,11 @@ pub fn op_apply(lhs: TypedExpr, op: InternedStr, rhs: TypedExpr) -> TypedExpr {
     TypedExpr::new(OpApply(box lhs, op, box rhs))
 }
 #[cfg(test)]
-pub fn let_(bindings : ~[Binding], expr : TypedExpr) -> TypedExpr {
+pub fn let_(bindings : Vec<Binding>, expr : TypedExpr) -> TypedExpr {
     TypedExpr::new(Let(bindings, box expr))
 }
 #[cfg(test)]
-pub fn case(expr : TypedExpr, alts: ~[Alternative]) -> TypedExpr {
+pub fn case(expr : TypedExpr, alts: Vec<Alternative>) -> TypedExpr {
     TypedExpr::new(Case(box expr, alts))
 }
 #[cfg(test)]
@@ -1681,7 +1682,7 @@ fn typecheck_let() {
 
     //let test x = add x in test
     let unary_bind = lambda("x", apply(apply(identifier("primIntAdd"), identifier("x")), number(1)));
-    let e = let_(~[Binding { arguments: ~[], name: intern("test"), matches: Simple(unary_bind), typ: Default::default() , where: None }], identifier("test"));
+    let e = let_(vec![Binding { arguments: vec![], name: intern("test"), matches: Simple(unary_bind), typ: Default::default() , where: None }], identifier("test"));
     let mut expr = rename_expr(e);
     env.typecheck_expr(&mut expr);
 
@@ -1739,7 +1740,7 @@ fn typecheck_tuple() {
     env.typecheck_expr(&mut expr);
 
     let list = list_type(char_type());
-    assert_eq!(expr.typ, Type::new_op(intern("(,)"), ~[int_type(), list]));
+    assert_eq!(expr.typ, Type::new_op(intern("(,)"), vec![int_type(), list]));
 }
 
 #[test]
@@ -1973,7 +1974,7 @@ main = fmap add2 (Just 3)";
     let module = do_typecheck(file);
 
     let main = &module.bindings[1];
-    assert_eq!(main.typ.value, Type::new_op(intern("Maybe"), ~[int_type()]));
+    assert_eq!(main.typ.value, Type::new_op(intern("Maybe"), vec![int_type()]));
 }
 #[should_fail]
 #[test]
@@ -2085,7 +2086,7 @@ test x = do
     let module = do_typecheck_with(file, [&prelude as &DataTypes]);
 
     let var = Type::new_var(intern("a"));
-    let t = function_type_(Type::new_var_args(intern("c"), ~[list_type(var.clone())]), Type::new_var_args(intern("c"), ~[var.clone()]));
+    let t = function_type_(Type::new_var_args(intern("c"), vec![list_type(var.clone())]), Type::new_var_args(intern("c"), vec![var.clone()]));
     assert_eq!(module.bindings[0].typ.value, t);
     assert_eq!(module.bindings[0].typ.constraints[0].class.as_slice(), "Monad");
 }

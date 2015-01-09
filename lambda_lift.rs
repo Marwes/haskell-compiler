@@ -14,7 +14,7 @@ struct FreeVariables {
     name_supply: NameSupply
 }
 
-fn each_pattern_variables(pattern: &Pattern<Id>, f: &mut |&Name|) {
+fn each_pattern_variables(pattern: &Pattern<Id>, f: &mut FnMut(&Name)) {
     match *pattern {
         IdentifierPattern(ref ident) => (*f)(&ident.name),
         ConstructorPattern(_, ref patterns) => {
@@ -63,7 +63,7 @@ fn free_variables(&mut self, variables: &mut HashMap<Name, int>, free_vars: &mut
                 for (k, v) in free_vars2.iter() {
                     free_vars.insert(k.clone(), v.clone());
                 }
-                self.abstract(&free_vars2, &mut bind.expression);
+                self.abstract_(&free_vars2, &mut bind.expression);
             }
             self.free_variables(variables, free_vars, *expr);
             for bind in bindings.iter() {
@@ -88,7 +88,7 @@ fn free_variables(&mut self, variables: &mut HashMap<Name, int>, free_vars: &mut
     }
 }
 ///Adds the free variables, if any, to the expression
-fn abstract(&mut self, free_vars: &HashMap<Name, TypeAndStr>, input_expr: &mut Expr<TypeAndStr>) {
+fn abstract_(&mut self, free_vars: &HashMap<Name, TypeAndStr>, input_expr: &mut Expr<TypeAndStr>) {
     if free_vars.len() != 0 {
         let mut temp = Literal(Literal { typ: Type::new_var(self.name_supply.from_str("a").name), value: Integral(0) });
         ::std::mem::swap(&mut temp, input_expr);
@@ -104,7 +104,7 @@ fn abstract(&mut self, free_vars: &HashMap<Name, TypeAndStr>, input_expr: &mut E
                 name: id.clone(),
                 expression: rhs
             };
-            Let(~[bind], box Identifier(id))
+            Let(vec![bind], box Identifier(id))
         };
         for (_, var) in free_vars.iter() {
             e = Apply(box e, box Identifier(var.clone()));
@@ -123,7 +123,7 @@ pub fn lift_lambdas<T>(mut module: Module<T>) -> Module<T> {
             match *expr {
                 Let(ref mut bindings, ref mut body) => {
                     let mut new_binds = Vec::new();
-                    let mut bs = ~[];
+                    let mut bs = vec![];
                     ::std::mem::swap(&mut bs, bindings);
                     for mut bind in bs.move_iter() {
                         let is_lambda = match bind.expression {

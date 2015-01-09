@@ -64,7 +64,7 @@ impl <T> Graph<T> {
 
 ///Analyzes the graph for strongly connect components.
 ///Returns a vector of indices where each group is a separte vector
-pub fn strongly_connected_components<T>(graph: &Graph<T>) -> ~[~[VertexIndex]] {
+pub fn strongly_connected_components<T>(graph: &Graph<T>) -> Vec<Vec<VertexIndex>> {
     
     let mut tarjan = TarjanComponents { graph: graph, index: 1, stack: Vec::new(), connections: Vec::new(),
         valid: Vec::from_fn(graph.len(), |_| 0),
@@ -77,9 +77,9 @@ pub fn strongly_connected_components<T>(graph: &Graph<T>) -> ~[~[VertexIndex]] {
         }
     }
 
-    FromVec::<~[VertexIndex]>::from_vec(tarjan.connections
+    FromVec::<Vec<VertexIndex>>::from_vec(tarjan.connections
         .move_iter()
-        .map(|vec| -> ~[VertexIndex] FromVec::from_vec(vec)).collect())
+        .map(|vec| -> Vec<VertexIndex> FromVec::from_vec(vec)).collect())
 }
 
 struct TarjanComponents<'a, T>{
@@ -137,8 +137,8 @@ fn test_tarjan() {
     let connections = strongly_connected_components(&graph);
 
     assert_eq!(connections.len(), 2);
-    assert_eq!(connections[0], ~[v3]);
-    assert_eq!(connections[1], ~[v2, v1]);
+    assert_eq!(connections[0], vec![v3]);
+    assert_eq!(connections[1], vec![v2, v1]);
 }
 
 #[test]
@@ -156,7 +156,7 @@ fn test_tarjan2() {
     let connections = strongly_connected_components(&graph);
 
     assert_eq!(connections.len(), 1);
-    assert_eq!(connections[0], ~[v4, v3, v2, v1]);
+    assert_eq!(connections[0], vec![v4, v3, v2, v1]);
 }
 
 #[test]
@@ -176,7 +176,7 @@ fn test_tarjan3() {
     let connections = strongly_connected_components(&graph);
 
     assert_eq!(connections.len(), 3);
-    assert_eq!(connections[0], ~[v5]);
-    assert_eq!(connections[1], ~[v4, v3]);
-    assert_eq!(connections[2], ~[v2, v1]);
+    assert_eq!(connections[0], vec![v5]);
+    assert_eq!(connections[1], vec![v4, v3]);
+    assert_eq!(connections[2], vec![v2, v1]);
 }

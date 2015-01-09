@@ -1,7 +1,6 @@
 #![crate_id = "vm#0.0"]
 #![crate_type = "bin"]
-#![feature(globs, phase, default_type_params, macro_rules)]
-#[phase(syntax, link)]
+#[macro_use]
 extern crate log;
 extern crate collections;
 extern crate getopts;
@@ -38,7 +37,7 @@ macro_rules! write_core_expr(
             $($p => Ok(()))*
         }
     })
-)
+);
 
 mod types;
 mod module;

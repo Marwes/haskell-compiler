@@ -291,7 +291,8 @@ impl <'a> VM {
                     *stack.get_mut(index) = Node::new(Indirection(stack.last().unwrap().clone()));
                 }
                 Unwind => {
-                    fn unwind<'a>(i_ptr: &mut uint, arity: uint, stack: &mut Vec<Node<'a>>, f: |&mut Vec<Node<'a>>| -> Node<'a>) {
+                    fn unwind<'a, F>(i_ptr: &mut uint, arity: uint, stack: &mut Vec<Node<'a>>, f: F)
+                        where F: FnOnce(&mut Vec<Node<'a>>) -> Node<'a> {
                         if stack.len() - 1 < arity {
                             while stack.len() > 1 {
                                 stack.pop();
@@ -479,7 +480,7 @@ impl <'a> VM {
 
 
 ///Exucutes a binary primitive instruction taking two integers
-fn primitive_int(stack: &mut Vec<Node>, f: |int, int| -> Node_) {
+fn primitive_int<F>(stack: &mut Vec<Node>, f: F) where F: FnOnce(int, int) -> Node_ {
     let l = stack.pop().unwrap();
     let r = stack.pop().unwrap();
     match (&*l.borrow(), &*r.borrow()) {
@@ -488,7 +489,7 @@ fn primitive_int(stack: &mut Vec<Node>, f: |int, int| -> Node_) {
     }
 }
 ///Exucutes a binary primitive instruction taking two doubles
-fn primitive_float(stack: &mut Vec<Node>, f: |f64, f64| -> Node_) {
+fn primitive_float<F>(stack: &mut Vec<Node>, f: F) where F: FnOnce(f64, f64) -> Node_ {
     let l = stack.pop().unwrap();
     let r = stack.pop().unwrap();
     match (&*l.borrow(), &*r.borrow()) {
@@ -496,7 +497,7 @@ fn primitive_float(stack: &mut Vec<Node>, f: |f64, f64| -> Node_) {
         (lhs, rhs) => fail!("Expected fully evaluted numbers in primitive instruction\n LHS: {}\nRHS: {} ", lhs, rhs)
     }
 }
-fn primitive(stack: &mut Vec<Node>, f: |int, int| -> int) {
+fn primitive<F>(stack: &mut Vec<Node>, f: F) where F: FnOnce(int, int) -> int {
     primitive_int(stack, |l, r| Int(f(l, r)))
 }
 
@@ -596,7 +597,7 @@ mod primitive {
         }
     }
 
-    pub type BuiltinFun = extern "Rust" fn <'a>(&'a VM, &[Node<'a>]) -> Node<'a>;
+    pub type BuiltinFun = for <'a> extern "Rust" fn (&'a VM, &[Node<'a>]) -> Node<'a>;
 
     fn error<'a>(vm: &'a VM, stack: &[Node<'a>]) -> Node<'a> {
         let mut vec = Vec::new();
@@ -1147,7 +1148,7 @@ main = makeEven (100 * 3)
 }
 
 #[test]
-fn where() {
+fn where_bindings() {
     let result = execute_main_string(
 r"
 import Prelude

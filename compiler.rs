@@ -119,15 +119,15 @@ pub struct SuperCombinator {
     pub arity : uint,
     pub name: Name,
     pub assembly_id: uint,
-    pub instructions : ~[Instruction],
+    pub instructions : Vec<Instruction>,
     pub typ: Qualified<Type, Name>
 }
 pub struct Assembly {
-    pub superCombinators: ~[SuperCombinator],
-    pub instance_dictionaries: ~[~[uint]],
-    pub classes: ~[Class<Id>],
-    pub instances: ~[(~[Constraint<Name>], Type)],
-    pub data_definitions: ~[DataDefinition<Name>],
+    pub superCombinators: Vec<SuperCombinator>,
+    pub instance_dictionaries: Vec<Vec<uint>>,
+    pub classes: Vec<Class<Id>>,
+    pub instances: Vec<(Vec<Constraint<Name>>, Type)>,
+    pub data_definitions: Vec<DataDefinition<Name>>,
     pub offset: uint
 }
 
@@ -381,13 +381,13 @@ enum ArgList<'a> {
 
 pub struct Compiler<'a> {
     ///Hashmap containging class names mapped to the functions it contains
-    pub instance_dictionaries: Vec<(~[(Name, Type)], ~[uint])>,
+    pub instance_dictionaries: Vec<(Vec<(Name, Type)>, Vec<uint>)>,
     pub stackSize : uint,
     ///Array of all the assemblies which can be used to lookup functions in
     pub assemblies: Vec<&'a Assembly>,
     module: Option<&'a Module<Id>>,
     variables: ScopedMap<Name, Var<'a>>,
-    context: ~[Constraint<Name>]
+    context: Vec<Constraint<Name>>
 }
 
 
@@ -443,7 +443,7 @@ impl <'a> Compiler<'a> {
             instance_dictionaries: FromVec::from_vec(instance_dictionaries),
             offset: self.assemblies.iter().flat_map(|assembly| assembly.superCombinators.iter()).len(),
             classes: module.classes.clone(),
-            instances: FromVec::<(~[Constraint<Name>], Type)>::from_vec(
+            instances: FromVec::<(Vec<Constraint<Name>>, Type)>::from_vec(
                 module.instances.iter()
                 .map(|x| (x.constraints.clone(), Type::new_op(x.classname.name, box [x.typ.clone()])))
                 .collect()
@@ -458,7 +458,7 @@ impl <'a> Compiler<'a> {
         self.context = bind.name.typ.constraints.clone();
         let mut instructions = Vec::new();
         let mut arity = 0;
-        self.scope(|this| {
+        self.scope(&mut |this| {
             if dict_arg == 1 {
                 this.new_stack_var(Name { name: intern("$dict"), uid: 0 });
             }
@@ -579,7 +579,7 @@ impl <'a> Compiler<'a> {
         self.variables.insert(identifier, StackVariable(index));
     }
 
-    fn scope(&mut self, f: |&mut Compiler|) {
+    fn scope(&mut self, f: &mut FnMut(&mut Compiler)) {
         self.variables.enter_scope();
         let stackSize = self.stackSize;
         f(self);
@@ -605,7 +605,7 @@ impl <'a> Compiler<'a> {
                         else {
                             let fromInteger = Identifier(Id {
                                 name: Name { name: intern("fromInteger"), uid: 0 }, 
-                                typ: qualified(~[], function_type_(int_type(), literal.typ.clone())),
+                                typ: qualified(vec![], function_type_(int_type(), literal.typ.clone())),
                             });
                             let number = Literal(Literal { typ: int_type(), value: Integral(i) });
                             let apply = Apply(box fromInteger, box number);
@@ -619,7 +619,7 @@ impl <'a> Compiler<'a> {
                         else {
                             let fromRational = Identifier(Id {
                                 name: Name { name: intern("fromRational"), uid: 0 }, 
-                                typ: qualified(~[], function_type_(double_type(), literal.typ.clone())),
+                                typ: qualified(vec![], function_type_(double_type(), literal.typ.clone())),
                             });
                             let number = Literal(Literal {
                                 typ: double_type(),
@@ -643,7 +643,7 @@ impl <'a> Compiler<'a> {
                 self.compile_apply(expr, Nil, instructions, strict);
             }
             &Let(ref bindings, ref body) => {
-                self.scope(|this| {
+                self.scope(&mut |this| {
                     for bind in bindings.iter() {
                         this.new_stack_var(bind.name.name.clone());
                         //Workaround since this compiles non-recursive bindings
@@ -665,7 +665,7 @@ impl <'a> Compiler<'a> {
                 for i in range(0, alternatives.len()) {
                     let alt = &alternatives[i];
 
-                    self.scope(|this| {
+                    self.scope(&mut |this| {
                         let pattern_start = instructions.len() as int;
                         let mut branches = Vec::new();
                         let stack_increase = this.compile_pattern(&alt.pattern, &mut branches, instructions, this.stackSize - 1);
@@ -929,7 +929,7 @@ impl <'a> Compiler<'a> {
 
     ///Walks through the class and all of its super classes, calling 'f' on each of them
     ///Returning Some(..) from the function quits and returns that value
-    fn walk_classes<T>(&self, class: Name, f: &mut |&[TypeDeclaration<Name>]| -> Option<T>) -> Option<T> {
+    fn walk_classes<T>(&self, class: Name, f: &mut FnMut(&[TypeDeclaration<Name>]) -> Option<T>) -> Option<T> {
         let (constraints, _, declarations) = self.find_class(class)
             .expect("Compiler error: Expected class");
         //Look through the functions in any super classes first
@@ -1130,7 +1130,7 @@ fn add() {
     let file = "main = primIntAdd 1 2";
     let assembly = compile(file);
 
-    assert_eq!(assembly.superCombinators[0].instructions, ~[PushInt(2), PushInt(1), Add, Update(0), Unwind]);
+    assert_eq!(assembly.superCombinators[0].instructions, vec![PushInt(2), PushInt(1), Add, Update(0), Unwind]);
 }
 
 #[test]
@@ -1140,8 +1140,8 @@ r"add x y = primDoubleAdd x y
 main = add 2. 3.";
     let assembly = compile(file);
 
-    assert_eq!(assembly.superCombinators[0].instructions, ~[Push(1), Eval, Push(0), Eval, DoubleAdd, Update(0), Pop(2), Unwind]);
-    assert_eq!(assembly.superCombinators[1].instructions, ~[PushFloat(3.), PushFloat(2.), PushGlobal(0), Mkap, Mkap, Eval, Update(0), Unwind]);
+    assert_eq!(assembly.superCombinators[0].instructions, vec![Push(1), Eval, Push(0), Eval, DoubleAdd, Update(0), Pop(2), Unwind]);
+    assert_eq!(assembly.superCombinators[1].instructions, vec![PushFloat(3.), PushFloat(2.), PushGlobal(0), Mkap, Mkap, Eval, Update(0), Unwind]);
 }
 #[test]
 fn push_num_double() {
@@ -1149,7 +1149,7 @@ fn push_num_double() {
 r"main = primDoubleAdd 2 3";
     let assembly = compile(file);
 
-    assert_eq!(assembly.superCombinators[0].instructions, ~[PushFloat(3.), PushFloat(2.), DoubleAdd, Update(0), Unwind]);
+    assert_eq!(assembly.superCombinators[0].instructions, vec![PushFloat(3.), PushFloat(2.), DoubleAdd, Update(0), Unwind]);
 }
 
 #[test]
@@ -1159,7 +1159,7 @@ r"add x y = primIntAdd x y
 main = add 2 3";
     let assembly = compile(file);
 
-    assert_eq!(assembly.superCombinators[1].instructions, ~[PushInt(3), PushInt(2), PushGlobal(0), Mkap, Mkap, Eval, Update(0), Unwind]);
+    assert_eq!(assembly.superCombinators[1].instructions, vec![PushInt(3), PushInt(2), PushGlobal(0), Mkap, Mkap, Eval, Update(0), Unwind]);
 }
 
 #[test]
@@ -1168,7 +1168,7 @@ fn compile_constructor() {
 r"main = primIntAdd 1 0 : []";
     let assembly = compile(file);
 
-    assert_eq!(assembly.superCombinators[0].instructions, ~[Pack(0, 0), PushInt(0), PushInt(1), Add, Pack(1, 2), Update(0), Unwind]);
+    assert_eq!(assembly.superCombinators[0].instructions, vec![Pack(0, 0), PushInt(0), PushInt(1), Add, Pack(1, 2), Update(0), Unwind]);
 }
 
 #[test]
@@ -1177,7 +1177,7 @@ fn compile_tuple() {
 r"test x y = (primIntAdd 0 1, x, y)";
     let assembly = compile(file);
 
-    assert_eq!(assembly.superCombinators[0].instructions, ~[Push(1), Push(0), PushInt(1), PushInt(0), Add, Pack(0, 3), Update(0), Pop(2), Unwind]);
+    assert_eq!(assembly.superCombinators[0].instructions, vec![Push(1), Push(0), PushInt(1), PushInt(0), Add, Pack(0, 3), Update(0), Pop(2), Unwind]);
 }
 
 #[test]
@@ -1189,7 +1189,7 @@ r"main = case [primIntAdd 1 0] of
     let assembly = compile(file);
 
 
-    assert_eq!(assembly.superCombinators[0].instructions, ~[Pack(0, 0), PushInt(0), PushInt(1), Add, Pack(1, 2),
+    assert_eq!(assembly.superCombinators[0].instructions, vec![Pack(0, 0), PushInt(0), PushInt(1), Add, Pack(1, 2),
         Push(0), CaseJump(1), Jump(14), Split(2), Push(1), Eval, Slide(2), Jump(22), Pop(2),
         Push(0), CaseJump(0), Jump(22), Split(0), PushInt(2), Slide(0), Jump(22), Pop(0), Slide(1), Eval, Update(0), Unwind]);
 }
@@ -1208,7 +1208,7 @@ main = test (primIntAdd 6 0)";
 
     let main = &assembly.superCombinators[0];
     assert_eq!(main.name.name, intern("main"));
-    assert_eq!(main.instructions, ~[PushInt(0), PushInt(6), Add, PushGlobal(1), Mkap, Eval, Update(0), Unwind]);
+    assert_eq!(main.instructions, vec![PushInt(0), PushInt(6), Add, PushGlobal(1), Mkap, Eval, Update(0), Unwind]);
 }
 
 #[test]
@@ -1225,7 +1225,7 @@ main x = primIntAdd (test x) 6";
 
     let main = assembly.superCombinators[0];
     assert_eq!(main.name.name, intern("main"));
-    assert_eq!(main.instructions, ~[PushInt(6), Push(1), PushDictionaryMember(0), Mkap, Eval, Add, Update(0), Pop(2), Unwind]);
+    assert_eq!(main.instructions, vec![PushInt(6), Push(1), PushDictionaryMember(0), Mkap, Eval, Add, Update(0), Pop(2), Unwind]);
 }
 
 #[test]
@@ -1237,7 +1237,7 @@ fn compile_prelude() {
 
     let sc = &assembly.superCombinators[0];
     let id_index = prelude.superCombinators.iter().position(|sc| sc.name.name == intern("id")).unwrap();
-    assert_eq!(sc.instructions, ~[PushInt(0), PushInt(2), Add, PushGlobal(id_index), Mkap, Eval, Update(0), Unwind]);
+    assert_eq!(sc.instructions, vec![PushInt(0), PushInt(2), Add, PushGlobal(id_index), Mkap, Eval, Update(0), Unwind]);
 }
 
 #[test]

@@ -42,8 +42,8 @@ struct DerivingGen {
 }
 impl DerivingGen {
     fn generate_eq(&mut self, data: &DataDefinition<Name>) -> Binding<Id<Name>> {
-        self.make_binop("Eq", "==", data, |this, id_l, id_r| {
-            let alts = this.match_same_constructors(data, &id_r, |this, l, r| this.eq_fields(l, r));
+        self.make_binop("Eq", "==", data, &mut |this, id_l, id_r| {
+            let alts = this.match_same_constructors(data, &id_r, &mut |this, l, r| this.eq_fields(l, r));
             Case(box Identifier(id_l.clone()), alts)
         })
     }
@@ -62,10 +62,10 @@ impl DerivingGen {
     }
 
     fn generate_ord(&mut self, data: &DataDefinition<Name>) -> Binding<Id<Name>> {
-        self.make_binop("Ord", "compare", data, |this, id_l, id_r| {
+        self.make_binop("Ord", "compare", data, &mut |this, id_l, id_r| {
             //We first compare the tags of the arguments since this would otherwise the last of the alternatives
             let when_eq = {
-                let alts = this.match_same_constructors(data, &id_r, |this, l, r| this.ord_fields(l, r));
+                let alts = this.match_same_constructors(data, &id_r, &mut |this, l, r| this.ord_fields(l, r));
                 Case(box Identifier(id_l.clone()), alts)
             };
             let cmp = compare_tags(Identifier(id_l), Identifier(id_r));
@@ -91,7 +91,7 @@ impl DerivingGen {
 
     ///Creates a binary function binding with the name 'funcname' which is a function in an instance for 'data'
     ///This function takes two parameters of the type of 'data'
-    fn make_binop(&mut self, class: &str, funcname: &str, data: &DataDefinition<Name>, func: |&mut DerivingGen, Id<Name>, Id<Name>| -> Expr<Id<Name>>) -> Binding<Id<Name>> {
+    fn make_binop(&mut self, class: &str, funcname: &str, data: &DataDefinition<Name>, func: &mut FnMut(&mut DerivingGen, Id<Name>, Id<Name>) -> Expr<Id<Name>>) -> Binding<Id<Name>> {
         let arg_l = self.name_supply.anonymous();
         let arg_r = self.name_supply.anonymous();
         let mut id_r = Id::new(arg_r, data.typ.value.clone(), data.typ.constraints.clone());
@@ -103,7 +103,7 @@ impl DerivingGen {
         let data_name = extract_applied_type(&data.typ.value).ctor().name;
         let name = encode_binding_identifier(data_name, intern(funcname));
         //Create a constraint for each type parameter
-        fn make_constraints(mut result: Vec<Constraint<Name>>, class: InternedStr, typ: &Type) -> ~[Constraint<Name>] {
+        fn make_constraints(mut result: Vec<Constraint<Name>>, class: InternedStr, typ: &Type) -> Vec<Constraint<Name>> {
             match typ {
                 &TypeApplication(ref f, ref param) => {
                     result.push(Constraint { class: Name { name: class, uid: 0 }, variables: box [param.var().clone()] });
@@ -130,14 +130,14 @@ impl DerivingGen {
         ])
     }
 
-    fn match_same_constructors(&mut self, data: &DataDefinition<Name>, id_r: &Id<Name>, f: |&mut DerivingGen, &[Id<Name>], &[Id<Name>]| -> Expr<Id<Name>>) -> ~[Alternative<Id<Name>>] {
+    fn match_same_constructors(&mut self, data: &DataDefinition<Name>, id_r: &Id<Name>, f: &mut FnMut(&mut DerivingGen, &[Id<Name>], &[Id<Name>]) -> Expr<Id<Name>>) -> Vec<Alternative<Id<Name>>> {
         let alts: Vec<Alternative<Id<Name>>> = data.constructors.iter().map(|constructor| {
-            let args_l: ~[Id<Name>] = FromVec::<Id<Name>>::from_vec(
+            let args_l: Vec<Id<Name>> = FromVec::<Id<Name>>::from_vec(
                 ArgIterator { typ: &constructor.typ.value }
                 .map(|arg| Id::new(self.name_supply.anonymous(), arg.clone(), constructor.typ.constraints.clone()))
                 .collect());
             let iter = ArgIterator { typ: &constructor.typ.value };
-            let args_r: ~[Id<Name>] = FromVec::<Id<Name>>::from_vec(iter
+            let args_r: Vec<Id<Name>> = FromVec::<Id<Name>>::from_vec(iter
                 .map(|arg| Id::new(self.name_supply.anonymous(), arg.clone(), constructor.typ.constraints.clone()))
                 .collect());
             let ctor_id = Id::new(constructor.name, iter.typ.clone(), constructor.typ.constraints.clone());

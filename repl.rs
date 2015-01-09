@@ -38,7 +38,7 @@ fn compile_expr(prelude: &Assembly, expr_str: &str) -> Assembly {
 }
 
 ///Finds the main function and if it is an IO function, adds instructions to push the "RealWorld" argument
-fn find_main(assembly: &Assembly) -> (~[Instruction], Qualified<Type, Name>) {
+fn find_main(assembly: &Assembly) -> (Vec<Instruction>, Qualified<Type, Name>) {
     assembly.superCombinators.iter()
         .find(|sc| sc.name == Name { name: intern("main"), uid: 0 })
         .map(|sc| {

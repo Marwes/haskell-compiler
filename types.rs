@@ -27,10 +27,10 @@ pub enum Type {
 }
 #[deriving(Clone, Default, Hash)]
 pub struct Qualified<T, Ident = InternedStr> {
-    pub constraints: ~[Constraint<Ident>],
+    pub constraints: Vec<Constraint<Ident>>,
     pub value: T
 }
-pub fn qualified<Ident>(constraints: ~[Constraint<Ident>], typ: Type) -> Qualified<Type, Ident> {
+pub fn qualified<Ident>(constraints: Vec<Constraint<Ident>>, typ: Type) -> Qualified<Type, Ident> {
     Qualified { constraints: constraints, value: typ }
 }
 
@@ -42,7 +42,7 @@ impl Type {
     }
     ///Creates a new type which is a type variable which takes a number of types as arguments
     ///Gives the typevariable the correct kind arity.
-    pub fn new_var_args(id: VarId, types : ~[Type]) -> Type {
+    pub fn new_var_args(id: VarId, types : Vec<Type>) -> Type {
         Type::new_type_kind(TypeVariable(TypeVariable { id : id, kind: StarKind, age: 0 }), types)
     }
     ///Creates a new type variable with the specified kind
@@ -50,18 +50,18 @@ impl Type {
         TypeVariable(TypeVariable { id : id, kind: kind, age: 0 })
     }
     ///Creates a new type constructor with the specified argument and kind
-    pub fn new_op(name : InternedStr, types : ~[Type]) -> Type {
+    pub fn new_op(name : InternedStr, types : Vec<Type>) -> Type {
         Type::new_type_kind(TypeConstructor(TypeConstructor { name : name, kind: StarKind }), types)
     }
     ///Creates a new type constructor applied to the types and with a specific kind
-    pub fn new_op_kind(name : InternedStr, types : ~[Type], kind: Kind) -> Type {
+    pub fn new_op_kind(name : InternedStr, types : Vec<Type>, kind: Kind) -> Type {
         let mut result = TypeConstructor(TypeConstructor { name : name, kind: kind });
         for typ in types.move_iter() {
             result = TypeApplication(box result, box typ);
         }
         result
     }
-    fn new_type_kind(mut result: Type, types: ~[Type]) -> Type {
+    fn new_type_kind(mut result: Type, types: Vec<Type>) -> Type {
         *result.mut_kind() = Kind::new(types.len() as int + 1);
         for typ in types.move_iter() {
             result = TypeApplication(box result, box typ);
@@ -173,23 +173,23 @@ pub fn tuple_type(n: uint) -> (String, Type) {
 }
 ///Constructs a list type which holds elements of type 'typ'
 pub fn list_type(typ: Type) -> Type {
-    Type::new_op(intern("[]"), ~[typ])
+    Type::new_op(intern("[]"), vec![typ])
 }
 ///Returns the Type of the Char type
 pub fn char_type() -> Type {
-    Type::new_op(intern("Char"), ~[])
+    Type::new_op(intern("Char"), vec![])
 }
 ///Returns the type for the Int type
 pub fn int_type() -> Type {
-    Type::new_op(intern("Int"), ~[])
+    Type::new_op(intern("Int"), vec![])
 }
 ///Returns the type for the Bool type
 pub fn bool_type() -> Type {
-    Type::new_op(intern("Bool"), ~[])
+    Type::new_op(intern("Bool"), vec![])
 }
 ///Returns the type for the Double type
 pub fn double_type() -> Type {
-    Type::new_op(intern("Double"), ~[])
+    Type::new_op(intern("Double"), vec![])
 }
 ///Creates a function type
 pub fn function_type(arg: &Type, result: &Type) -> Type {
@@ -198,23 +198,23 @@ pub fn function_type(arg: &Type, result: &Type) -> Type {
 
 ///Creates a function type
 pub fn function_type_(func : Type, arg : Type) -> Type {
-    Type::new_op(intern("->"), ~[func, arg])
+    Type::new_op(intern("->"), vec![func, arg])
 }
 
 ///Creates a IO type
 pub fn io(typ: Type) -> Type {
-    Type::new_op(intern("IO"), ~[typ])
+    Type::new_op(intern("IO"), vec![typ])
 }
 ///Returns the unit type '()'
 pub fn unit() -> Type {
-    Type::new_op(intern("()"), ~[])
+    Type::new_op(intern("()"), vec![])
 }
 
 
 #[deriving(Clone, PartialEq, Eq, Hash)]
 pub struct Constraint<Ident = InternedStr> {
     pub class : Ident,
-    pub variables : ~[TypeVariable]
+    pub variables : Vec<TypeVariable>
 }
 
 #[deriving(Clone, PartialEq, Eq, Hash)]

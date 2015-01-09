@@ -8,14 +8,14 @@ pub use types::*;
 #[deriving(Clone)]
 pub struct Module<Ident = InternedStr> {
     pub name : Ident,
-    pub imports: ~[Import<Ident>],
-    pub bindings : ~[Binding<Ident>],
-    pub typeDeclarations : ~[TypeDeclaration<Ident>],
-    pub classes : ~[Class<Ident>],
-    pub instances : ~[Instance<Ident>],
-    pub dataDefinitions : ~[DataDefinition<Ident>],
-    pub newtypes : ~[Newtype<Ident>],
-    pub fixity_declarations : ~[FixityDeclaration<Ident>]
+    pub imports: Vec<Import<Ident>>,
+    pub bindings : Vec<Binding<Ident>>,
+    pub typeDeclarations : Vec<TypeDeclaration<Ident>>,
+    pub classes : Vec<Class<Ident>>,
+    pub instances : Vec<Instance<Ident>>,
+    pub dataDefinitions : Vec<DataDefinition<Ident>>,
+    pub newtypes : Vec<Newtype<Ident>>,
+    pub fixity_declarations : Vec<FixityDeclaration<Ident>>
 }
 
 #[deriving(Clone)]
@@ -23,22 +23,22 @@ pub struct Import<Ident> {
     pub module: InternedStr,
     //None if 'import Name'
     //Some(names) if 'import Name (names)'
-    pub imports: Option<~[Ident]>
+    pub imports: Option<Vec<Ident>>
 }
 
 #[deriving(Clone)]
 pub struct Class<Ident = InternedStr> {
-    pub constraints: ~[Constraint<Ident>],
+    pub constraints: Vec<Constraint<Ident>>,
     pub name : Ident,
     pub variable : TypeVariable,
-    pub declarations : ~[TypeDeclaration<Ident>],
-    pub bindings: ~[Binding<Ident>]
+    pub declarations : Vec<TypeDeclaration<Ident>>,
+    pub bindings: Vec<Binding<Ident>>
 }
 
 #[deriving(Clone)]
 pub struct Instance<Ident = InternedStr> {
-    pub bindings : ~[Binding<Ident>],
-    pub constraints : ~[Constraint<Ident>],
+    pub bindings : Vec<Binding<Ident>>,
+    pub constraints : Vec<Constraint<Ident>>,
     pub typ : Type,
     pub classname : Ident
 }
@@ -46,9 +46,9 @@ pub struct Instance<Ident = InternedStr> {
 #[deriving(Clone, PartialEq)]
 pub struct Binding<Ident = InternedStr> {
     pub name : Ident,
-    pub arguments: ~[Pattern<Ident>],
+    pub arguments: Vec<Pattern<Ident>>,
     pub matches: Match<Ident>,
-    pub where : Option<~[Binding<Ident>]>,
+    pub where_bindings : Option<Vec<Binding<Ident>>>,
     pub typ: Qualified<Type, Ident>
 }
 
@@ -62,10 +62,10 @@ pub struct Constructor<Ident = InternedStr> {
 
 #[deriving(PartialEq, Clone)]
 pub struct DataDefinition<Ident = InternedStr> {
-    pub constructors : ~[Constructor<Ident>],
+    pub constructors : Vec<Constructor<Ident>>,
     pub typ : Qualified<Type, Ident>,
     pub parameters : HashMap<InternedStr, int>,
-    pub deriving: ~[Ident]
+    pub deriving: Vec<Ident>
 }
 
 #[deriving(PartialEq, Clone)]
@@ -73,7 +73,7 @@ pub struct Newtype<Ident = InternedStr> {
     pub typ: Qualified<Type>,
     pub constructor_name: Ident,
     pub constructor_type: Qualified<Type, Ident>,
-    pub deriving: ~[Ident]
+    pub deriving: Vec<Ident>
 }
 
 #[deriving(PartialEq, Clone, Show)]
@@ -87,7 +87,7 @@ pub enum Assoc {
 pub struct FixityDeclaration<Ident = InternedStr> {
     pub assoc: Assoc,
     pub precedence: int,
-    pub operators: ~[Ident]
+    pub operators: Vec<Ident>
 }
 
 #[deriving(Clone, PartialEq, Eq, Default)]
@@ -134,20 +134,20 @@ impl TypedExpr {
 pub struct Alternative<Ident = InternedStr> {
     pub pattern : Located<Pattern<Ident>>,
     pub matches: Match<Ident>,
-    pub where : Option<~[Binding<Ident>]>
+    pub where_bindings : Option<Vec<Binding<Ident>>>
 }
 
 #[deriving(Clone, PartialOrd, PartialEq, Eq)]
 pub enum Pattern<Ident = InternedStr> {
     NumberPattern(int),
     IdentifierPattern(Ident),
-    ConstructorPattern(Ident, ~[Pattern<Ident>]),
+    ConstructorPattern(Ident, Vec<Pattern<Ident>>),
     WildCardPattern
 }
 
 #[deriving(Clone, PartialEq)]
 pub enum Match<Ident = InternedStr> {
-    Guards(~[Guard<Ident>]),
+    Guards(Vec<Guard<Ident>>),
     Simple(TypedExpr<Ident>)
 }
 impl <Ident> Match<Ident> {
@@ -167,7 +167,7 @@ pub struct Guard<Ident = InternedStr> {
 
 #[deriving(Clone, PartialEq)]
 pub enum DoBinding<Ident = InternedStr> {
-    DoLet(~[Binding<Ident>]),
+    DoLet(Vec<Binding<Ident>>),
     DoBind(Located<Pattern<Ident>>, TypedExpr<Ident>),
     DoExpr(TypedExpr<Ident>)
 }
@@ -186,10 +186,10 @@ pub enum Expr<Ident = InternedStr> {
     OpApply(Box<TypedExpr<Ident>>, Ident, Box<TypedExpr<Ident>>),
     Literal(Literal),
     Lambda(Pattern<Ident>, Box<TypedExpr<Ident>>),
-    Let(~[Binding<Ident>], Box<TypedExpr<Ident>>),
-    Case(Box<TypedExpr<Ident>>, ~[Alternative<Ident>]),
+    Let(Vec<Binding<Ident>>, Box<TypedExpr<Ident>>),
+    Case(Box<TypedExpr<Ident>>, Vec<Alternative<Ident>>),
     IfElse(Box<TypedExpr<Ident>>, Box<TypedExpr<Ident>>, Box<TypedExpr<Ident>>),
-    Do(~[DoBinding<Ident>], Box<TypedExpr<Ident>>),
+    Do(Vec<DoBinding<Ident>>, Box<TypedExpr<Ident>>),
     TypeSig(Box<TypedExpr<Ident>>, Qualified<Type, Ident>),
     Paren(Box<TypedExpr<Ident>>)
 }

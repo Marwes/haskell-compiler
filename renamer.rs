@@ -94,7 +94,7 @@ impl Renamer {
         Renamer { uniques: ScopedMap::new(), name_supply: NameSupply::new(), errors: Errors::new() }
     }
 
-    fn import_globals<T: Eq + Copy>(&mut self, module: &Module<T>, str_fn: |T| -> InternedStr, uid: uint) {
+    fn import_globals<T: Eq + Copy>(&mut self, module: &Module<T>, str_fn: &mut FnMut(T) -> InternedStr, uid: uint) {
         let mut names = module.dataDefinitions.iter()
             .flat_map(|data| data.constructors.iter().map(|ctor| ctor.name))
             .chain(module.newtypes.iter().map(|newtype| newtype.constructor_name))
@@ -115,7 +115,7 @@ impl Renamer {
     }
 
     fn insert_globals(&mut self, module_env: &[Module<Name>], module: &Module<InternedStr>, uid: uint) {
-        self.import_globals(module, |name| name, uid);
+        self.import_globals(module, &mut |name| name, uid);
         for import in module.imports.iter() {
             let imported_module = module_env.iter()
                 .find(|m| m.name.name == import.module)
@@ -128,13 +128,13 @@ impl Renamer {
                     }
                 }
                 None => {//Import everything
-                    self.import_globals(imported_module, |name| name.name, imported_module.name.uid)
+                    self.import_globals(imported_module, &mut |name| name.name, imported_module.name.uid)
                 }
             }
         }
     }
 
-    fn rename_bindings(&mut self, bindings: ~[Binding<InternedStr>], is_global: bool) -> ~[Binding<Name>] {
+    fn rename_bindings(&mut self, bindings: Vec<Binding<InternedStr>>, is_global: bool) -> Vec<Binding<Name>> {
         //Add all bindings in the scope
         if !is_global {
             for bind in binding_groups(bindings.as_slice()) {
@@ -142,7 +142,7 @@ impl Renamer {
             }
         }
         FromVec::<Binding<Name>>::from_vec(bindings.move_iter().map(|binding| {
-            let Binding { name: name, arguments: arguments, matches: matches, typ: typ, where: where  } = binding;
+            let Binding { name: name, arguments: arguments, matches: matches, typ: typ, where_bindings: where_bindings  } = binding;
             let n = self.uniques.find(&name)
                 .map(|u| u.clone())
                 .unwrap_or_else(|| fail!("Renaming error: Undefined variable {}", name));
@@ -150,7 +150,7 @@ impl Renamer {
             let b = Binding {
                 name: n,
                 arguments: self.rename_arguments(arguments),
-                where: where.map(|bs| self.rename_bindings(bs, false)),
+                where_bindings: where_bindings.map(|bs| self.rename_bindings(bs, false)),
                 matches: self.rename_matches(matches),
                 typ: self.rename_qualified_type(typ)
             };
@@ -184,12 +184,12 @@ impl Renamer {
                     let Alternative {
                         pattern: Located { location: loc, node: pattern },
                         matches: matches,
-                        where: where
+                        where_bindings: where_bindings
                     } = alt;
                     self.uniques.enter_scope();
                     let a = Alternative {
                         pattern: Located { location: loc, node: self.rename_pattern(pattern) },
-                        where: where.map(|bs| self.rename_bindings(bs, false)),
+                        where_bindings: where_bindings.map(|bs| self.rename_bindings(bs, false)),
                         matches: self.rename_matches(matches)
                     };
                     self.uniques.exit_scope();
@@ -258,7 +258,7 @@ impl Renamer {
         }
     }
 
-    fn rename_arguments(&mut self, arguments: ~[Pattern<InternedStr>]) -> ~[Pattern<Name>] {
+    fn rename_arguments(&mut self, arguments: Vec<Pattern<InternedStr>>) -> Vec<Pattern<Name>> {
         FromVec::<Pattern<Name>>::from_vec(arguments.move_iter().map(|a| self.rename_pattern(a)).collect())
     }
 
@@ -271,7 +271,7 @@ impl Renamer {
             .collect();
         qualified(FromVec::from_vec(constraints2), typ)
     }
-    fn rename_type_declarations(&mut self, decls: ~[TypeDeclaration<InternedStr>]) -> ~[TypeDeclaration<Name>] {
+    fn rename_type_declarations(&mut self, decls: Vec<TypeDeclaration<InternedStr>>) -> Vec<TypeDeclaration<Name>> {
         let decls2: Vec<TypeDeclaration<Name>> = decls.move_iter()
             .map(|decl| TypeDeclaration { name: self.get_name(decl.name), typ: self.rename_qualified_type(decl.typ) })
             .collect();

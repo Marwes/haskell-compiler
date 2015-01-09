@@ -41,7 +41,7 @@ impl Interner {
 
 ///Returns a reference to the interner stored in TLD
 pub fn get_local_interner() -> Rc<RefCell<Interner>> {
-    local_data_key!(key: Rc<RefCell<Interner>>)
+    local_data_key!(key: Rc<RefCell<Interner>>);
     match key.get() {
         Some(interner) => interner.clone(),
         None => {
