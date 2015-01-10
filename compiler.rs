@@ -1,10 +1,9 @@
 use interner::*;
 use core::*;
-use types::{int_type, double_type, function_type, function_type_, Qualified, qualified};
+use types::{int_type, double_type, function_type, function_type_, qualified};
 use typecheck::{Types, DataTypes, TypeEnvironment, find_specialized_instances};
 use scoped_map::ScopedMap;
 use std::iter::range_step;
-use std::vec::FromVec;
 use std::io::IoResult;
 
 use core::translate::{translate_module, translate_modules};
@@ -259,11 +258,11 @@ impl Types for Module<Id> {
         for instance in self.instances.iter() {
             let y = match extract_applied_type(&instance.typ) {
                 &TypeConstructor(ref x) => x,
-                _ => fail!()
+                _ => panic!()
             };
             let z = match extract_applied_type(typ) {
                 &TypeConstructor(ref x) => x,
-                _ => fail!()
+                _ => panic!()
             };
             if classname == instance.classname && y.name == z.name {
                 return Some((instance.constraints.as_slice(), &instance.typ));
@@ -318,15 +317,15 @@ impl Types for Assembly {
                 &TypeApplication(ref op, ref t) => {
                     let x = match extract_applied_type(*op) {
                         &TypeConstructor(ref x) => x,
-                        _ => fail!()
+                        _ => panic!()
                     };
                     let y = match extract_applied_type(*t) {
                         &TypeConstructor(ref x) => x,
-                        _ => fail!()
+                        _ => panic!()
                     };
                     let z = match extract_applied_type(typ) {
                         &TypeConstructor(ref x) => x,
-                        _ => fail!()
+                        _ => panic!()
                     };
                     if classname.name == x.name && y.name == z.name {
                         let o : &Type = *t;
@@ -439,16 +438,15 @@ impl <'a> Compiler<'a> {
         }
         self.module = None;
         Assembly {
-            superCombinators: FromVec::from_vec(superCombinators),
-            instance_dictionaries: FromVec::from_vec(instance_dictionaries),
+            superCombinators: superCombinators,
+            instance_dictionaries: instance_dictionaries,
             offset: self.assemblies.iter().flat_map(|assembly| assembly.superCombinators.iter()).len(),
             classes: module.classes.clone(),
-            instances: FromVec::<(Vec<Constraint<Name>>, Type)>::from_vec(
-                module.instances.iter()
+            instances: module.instances.iter()
                 .map(|x| (x.constraints.clone(), Type::new_op(x.classname.name, box [x.typ.clone()])))
                 .collect()
-            ),
-            data_definitions: FromVec::from_vec(data_definitions)
+            ,
+            data_definitions: data_definitions
         }
     }
 
@@ -476,7 +474,7 @@ impl <'a> Compiler<'a> {
             typ: bind.name.typ.clone(),
             name: bind.name.name,
             arity: arity,
-            instructions: FromVec::from_vec(instructions)
+            instructions: instructions
         }
     }
 
@@ -699,7 +697,7 @@ impl <'a> Compiler<'a> {
                     instructions.push(Eval);
                 }
             }
-            &Lambda(_, _) => fail!("Error: Found non-lifted lambda when compiling expression")
+            &Lambda(_, _) => panic!("Error: Found non-lifted lambda when compiling expression")
         }
     }
     fn compile_apply<'a>(&mut self, expr: &Expr<Id>, args: ArgList<'a>, instructions: &mut Vec<Instruction>, strict: bool) {
@@ -719,7 +717,7 @@ impl <'a> Compiler<'a> {
                 //might be created which is returned here and added to the assembly
                 let mut is_primitive = false;
                 let var = self.find(name.name)
-                    .unwrap_or_else(|| fail!("Error: Undefined variable {}", *name));
+                    .unwrap_or_else(|| panic!("Error: Undefined variable {}", *name));
                 match var {
                     PrimitiveVariable(..) => is_primitive = true,
                     _ => ()
@@ -748,7 +746,7 @@ impl <'a> Compiler<'a> {
                             instructions.push(instruction);
                         }
                         else {
-                            fail!("Expected {} arguments for {}, got {}", num_args, name, arg_length)
+                            panic!("Expected {} arguments for {}, got {}", num_args, name, arg_length)
                         }
                         is_function = false;
                     }
@@ -765,7 +763,7 @@ impl <'a> Compiler<'a> {
                                     GlobalVariable(index) => {
                                         instructions.push(PushGlobal(index));
                                     }
-                                    _ => fail!()
+                                    _ => panic!()
                                 }
                             }
                         }
@@ -820,7 +818,7 @@ impl <'a> Compiler<'a> {
                         instructions.push(PushGlobal(index));
                         instructions.push(Mkap);
                     }
-                    _ => fail!("Unregistered instance function {}", instance_fn_name)
+                    _ => panic!("Unregistered instance function {}", instance_fn_name)
                 }
             }
             None => {
@@ -900,14 +898,14 @@ impl <'a> Compiler<'a> {
                     debug!("No dict for {}", var);
                 }
             }
-            _ => fail!("Did not expect generic")
+            _ => panic!("Did not expect generic")
         }
     }
 
     ///Lookup which index in the instance dictionary that holds the function called 'name'
     fn push_dictionary_member(&self, constraints: &[Constraint<Name>], name: Name) -> Option<uint> {
         if constraints.len() == 0 {
-            fail!("Attempted to push dictionary member '{}' with no constraints", name)
+            panic!("Attempted to push dictionary member '{}' with no constraints", name)
         }
         let mut ii = 0;
         for c in constraints.iter() {
@@ -951,11 +949,11 @@ impl <'a> Compiler<'a> {
         }
 
         if constraints.len() == 0 {
-            fail!("Error: Attempted to compile dictionary with no constraints at <unknown>");
+            panic!("Error: Attempted to compile dictionary with no constraints at <unknown>");
         }
         let mut function_indexes = Vec::new();
         self.add_class(constraints, &mut function_indexes);
-        self.instance_dictionaries.push((constraints.to_owned(), FromVec::from_vec(function_indexes)));
+        self.instance_dictionaries.push((constraints.to_owned(), function_indexes));
         dict_len
     }
 
@@ -973,7 +971,7 @@ impl <'a> Compiler<'a> {
                 for decl in declarations.iter() {
                     let x = match extract_applied_type(typ) {
                         &TypeConstructor(ref x) => x,
-                        _ => fail!("{}", typ)
+                        _ => panic!("{}", typ)
                     };
                     let mut b = String::from_str("#");
                     b.push_str(x.name.as_slice());
@@ -987,7 +985,7 @@ impl <'a> Compiler<'a> {
                         Some(ConstraintVariable(index, _, _)) => {
                             function_indexes.push(index as uint);//TODO this is not really correct since this function requires a dictionary
                         }
-                        var => fail!("Did not find function {} {}", name, var)
+                        var => panic!("Did not find function {} {}", name, var)
                     }
                 }
                 None
@@ -1009,7 +1007,7 @@ impl <'a> Compiler<'a> {
                         branches.push(instructions.len());
                         instructions.push(Jump(0));
                     }
-                    _ => fail!("Undefined constructor {}", *name)
+                    _ => panic!("Undefined constructor {}", *name)
                 }
                 instructions.push(Split(patterns.len()));
                 self.stackSize += patterns.len();

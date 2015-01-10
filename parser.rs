@@ -1,7 +1,6 @@
 use std::mem::{swap};
-use std::vec::FromVec;
 use std::io::{IoResult, File};
-use collections::{HashSet, HashMap};
+use std::collections::{HashSet, HashMap};
 use lexer::*;
 use module::*;
 use interner::*;
@@ -37,7 +36,7 @@ fn require_next<'a>(&'a mut self, expected : TokenEnum) -> &'a Token {
         self.lexer.next().token
     };
 	if tok != expected {
-		fail!(parse_error(&self.lexer, expected));
+		panic!(parse_error(&self.lexer, expected));
     }
 	return self.lexer.current();
 }
@@ -55,7 +54,7 @@ pub fn module(&mut self) -> Module {
 		    //No module declaration was found so default to Main
 		    intern("Main")
 	    }
-        _ => fail!(parse_error(&self.lexer, LBRACE))
+        _ => panic!(parse_error(&self.lexer, LBRACE))
     };
 
     let mut imports = Vec::new();
@@ -122,14 +121,14 @@ pub fn module(&mut self) -> Module {
 
     Module {
         name : modulename,
-        imports : FromVec::from_vec(imports),
-        bindings : FromVec::from_vec(bindings),
-        typeDeclarations : FromVec::from_vec(type_declarations),
-        classes : FromVec::from_vec(classes),
-        instances : FromVec::from_vec(instances),
-        dataDefinitions : FromVec::from_vec(data_definitions),
-        newtypes: FromVec::from_vec(newtypes),
-        fixity_declarations : FromVec::from_vec(fixity_declarations)
+        imports : imports,
+        bindings : bindings,
+        typeDeclarations : type_declarations,
+        classes : classes,
+        instances : instances,
+        dataDefinitions : data_definitions,
+        newtypes: newtypes,
+        fixity_declarations : fixity_declarations
     }
 }
 
@@ -173,11 +172,11 @@ fn class(&mut self) -> Class {
                     TypeApplication(ref op, _) => {
                         let classname = match **op {
                             TypeConstructor(ref ctor) => ctor.name,
-                            _ => fail!("Expected type operator")
+                            _ => panic!("Expected type operator")
                         };
                         bind.name = encode_binding_identifier(classname, bind.name);
                     }
-                    _ => fail!("The name of the class must start with an uppercase letter")
+                    _ => panic!("The name of the class must start with an uppercase letter")
                 }
                 bindings.push(bind)
             }
@@ -193,11 +192,11 @@ fn class(&mut self) -> Class {
                 constraints: constraints,
                 name: classname.name,
                 variable: var,
-                declarations: FromVec::from_vec(declarations),
-                bindings: FromVec::from_vec(bindings)
+                declarations: declarations,
+                bindings: bindings
             }
         }
-        _ => fail!("Parse error in class declaration header")
+        _ => panic!("Parse error in class declaration header")
     }
 }
 
@@ -209,7 +208,7 @@ fn instance(&mut self) -> Instance {
         TypeApplication(op, arg) => {
             let classname = match *op {
                 TypeConstructor(TypeConstructor { name: classname, ..}) => classname,
-                _ => fail!("Expected type operator")
+                _ => panic!("Expected type operator")
             };
             self.require_next(WHERE);
             self.require_next(LBRACE);
@@ -225,14 +224,14 @@ fn instance(&mut self) -> Instance {
             self.require_next(RBRACE);
             Instance { typ : *arg, classname : classname, bindings : bindings, constraints: constraints }
         }
-        _ => fail!("TypeVariable in instance")
+        _ => panic!("TypeVariable in instance")
     }
 }
 
 pub fn expression_(&mut self) -> TypedExpr {
     match self.expression() {
         Some(expr) => expr,
-        None => fail!("Failed to parse expression at {}", self.lexer.current().location)
+        None => panic!("Failed to parse expression at {}", self.lexer.current().location)
     }
 }
 
@@ -306,7 +305,7 @@ fn sub_expression(&mut self) -> Option<TypedExpr> {
 
 			let inToken = self.lexer.next().token;
 			if inToken != IN {
-				fail!(parse_error(&self.lexer, IN));
+				panic!(parse_error(&self.lexer, IN));
             }
 			match self.expression() {
                 Some(e) => {
@@ -355,14 +354,14 @@ fn sub_expression(&mut self) -> Option<TypedExpr> {
             let bindings = self.sep_by_1(|this| this.do_binding(), SEMICOLON);
             self.require_next(RBRACE);
             if bindings.len() == 0 {
-                fail!("{}: Parse error: Empty do", self.lexer.current().location);
+                panic!("{}: Parse error: Empty do", self.lexer.current().location);
             }
             let mut bs: Vec<DoBinding> = bindings.move_iter().collect();
             let expr = match bs.pop().unwrap() {
                 DoExpr(e) => e,
-                _ => fail!("{}: Parse error: Last binding in do must be an expression", self.lexer.current().location)
+                _ => panic!("{}: Parse error: Last binding in do must be an expression", self.lexer.current().location)
             };
-            Some(TypedExpr::with_location(Do(FromVec::from_vec(bs), box expr), location))
+            Some(TypedExpr::with_location(Do(bs, box expr), location))
         }
         NAME => {
             let token = self.lexer.current();
@@ -411,7 +410,7 @@ fn do_binding(&mut self) -> DoBinding {
                 self.lexer.next();//Skip <-
                 return DoBind(p, self.expression_());
             }
-            EOF => { fail!("Unexpected EOF") }
+            EOF => { panic!("Unexpected EOF") }
             _ => { debug!("Lookahead {}", self.lexer.current()); }
         }
     }
@@ -521,17 +520,17 @@ fn binding(&mut self) -> Binding {
 		//Parse a name within parentheses
 		let functionName = self.lexer.next().token;
 		if functionName != NAME && functionName != OPERATOR {
-			fail!("Expected NAME or OPERATOR on left side of binding {}", self.lexer.current().token);
+			panic!("Expected NAME or OPERATOR on left side of binding {}", self.lexer.current().token);
 		}
 		name = self.lexer.current().value.clone();
 
 		let rParens = self.lexer.next().token;
 		if rParens != RPARENS {
-			fail!(parse_error(&self.lexer, RPARENS));
+			panic!(parse_error(&self.lexer, RPARENS));
 		}
 	}
 	else if nameToken != NAME {
-		fail!(parse_error(&self.lexer, NAME));
+		panic!(parse_error(&self.lexer, NAME));
 	}
 
 	//Parse the arguments for the binding
@@ -588,7 +587,7 @@ fn fixity_declaration(&mut self) -> FixityDeclaration {
             INFIXL => LeftAssoc,
             INFIXR => RightAssoc,
             INFIX => NoAssoc,
-            _ => fail!(parse_error2(&self.lexer, [INFIXL, INFIXR, INFIX]))
+            _ => panic!(parse_error2(&self.lexer, [INFIXL, INFIXR, INFIX]))
         }
     };
     let precedence = match self.lexer.next().token {
@@ -611,7 +610,7 @@ fn expr_or_guards(&mut self, end_token: TokenEnum) -> Match {
         Simple(self.expression_())
     }
     else {
-        fail!(parse_error2(&self.lexer, [end_token, PIPE]))
+        panic!(parse_error2(&self.lexer, [end_token, PIPE]))
     }
 }
 
@@ -652,7 +651,7 @@ fn pattern_arguments(&mut self) -> Vec<Pattern> {
 			}
             LBRACKET => {
                 if self.lexer.next().token != RBRACKET {
-                    fail!(parse_error(&self.lexer, RBRACKET));
+                    panic!(parse_error(&self.lexer, RBRACKET));
                 }
                 parameters.push(ConstructorPattern(intern("[]"), vec![]));
             }
@@ -660,7 +659,7 @@ fn pattern_arguments(&mut self) -> Vec<Pattern> {
 		}
 	}
 	self.lexer.backtrack();
-	return FromVec::from_vec(parameters);
+	return parameters;
 }
 
 fn located_pattern(&mut self) -> Located<Pattern> {
@@ -675,7 +674,7 @@ fn pattern(&mut self) -> Pattern {
     let pat = match nameToken {
         LBRACKET => {
             if self.lexer.next().token != RBRACKET {
-                fail!(parse_error(&self.lexer, RBRACKET));
+                panic!(parse_error(&self.lexer, RBRACKET));
             }
             ConstructorPattern(intern("[]"), vec![])
         }
@@ -697,7 +696,7 @@ fn pattern(&mut self) -> Pattern {
                 }
             }
         }
-        _ => { fail!("Error parsing pattern at token {}", self.lexer.current()) }
+        _ => { panic!("Error parsing pattern at token {}", self.lexer.current()) }
     };
     self.lexer.next();
     if self.lexer.current().token == OPERATOR && self.lexer.current().value.as_slice() == ":" {
@@ -718,21 +717,21 @@ fn type_declaration(&mut self) -> TypeDeclaration {
             //Parse a name within parentheses
             let functionName = self.lexer.next().token;
             if functionName != NAME && functionName != OPERATOR {
-                fail!("Expected NAME or OPERATOR on left side of binding {}", functionName);
+                panic!("Expected NAME or OPERATOR on left side of binding {}", functionName);
             }
             name = self.lexer.current().value.clone();
             let rParens = self.lexer.next().token;
             if rParens != RPARENS {
-                fail!(parse_error(&self.lexer, RPARENS));
+                panic!(parse_error(&self.lexer, RPARENS));
             }
         }
         else if nameToken != NAME {
-            fail!(parse_error(&self.lexer, NAME));
+            panic!(parse_error(&self.lexer, NAME));
         }
     }
 	let decl = self.lexer.next().token;
 	if decl != TYPEDECL {
-		fail!(parse_error(&self.lexer, TYPEDECL));
+		panic!(parse_error(&self.lexer, TYPEDECL));
 	}
     let (context, typ) = self.constrained_type();
 	TypeDeclaration { name : name, typ : Qualified { constraints : context, value: typ } }
@@ -827,7 +826,7 @@ fn newtype(&mut self) -> Newtype {
     let name = self.require_next(NAME).value;
     let location = self.lexer.current().location;
     let arg_type = self.sub_type()
-        .unwrap_or_else(|| fail!("Parse error when parsing argument to new type at  {}", location));
+        .unwrap_or_else(|| panic!("Parse error when parsing argument to new type at  {}", location));
     
     Newtype {
         typ: qualified(box [], typ.clone()),
@@ -933,7 +932,7 @@ fn parse_type(&mut self) -> Type {
                     self.parse_return_type(t)
                 }
                 else {
-                    fail!(parse_error2(&self.lexer, &[COMMA, RPARENS]))
+                    panic!(parse_error2(&self.lexer, &[COMMA, RPARENS]))
                 }
             }
 		}
@@ -954,7 +953,7 @@ fn parse_type(&mut self) -> Type {
 			};
 			self.parse_return_type(thisType)
 		}
-	    _ => fail!("Unexpected token when parsing type {}", self.lexer.current())
+	    _ => panic!("Unexpected token when parsing type {}", self.lexer.current())
 	}
 }
 
@@ -984,7 +983,7 @@ fn sep_by_1_func<T, F, P>(&mut self, f : F, sep: P) -> Vec<T>
             break;
         }
     }
-    FromVec::from_vec(result)
+    result
 }
 }//end impl Parser
 
@@ -994,7 +993,7 @@ fn make_constraints(types: Vec<Type>) -> Vec<Constraint> {
             TypeApplication(lhs, rhs) => {
                 Constraint { class: lhs.ctor().name.clone(), variables: box [rhs.var().clone()] }
             }
-            _ => fail!("Parse error in constraint, non applied type")
+            _ => panic!("Parse error in constraint, non applied type")
         }
     }).collect())
 }
@@ -1023,13 +1022,6 @@ fn new_tuple(arguments : Vec<TypedExpr>) -> TypedExpr {
 	make_application(name, arguments.move_iter())
 }
 
-fn extract_applied_type<'a>(typ: &'a Type) -> &'a Type {
-    match typ {
-        &TypeApplication(ref lhs, _) => extract_applied_type(*lhs),
-        _ => typ
-    }
-}
-
 fn make_tuple_type(types : Vec<Type>) -> Type {
     if types.len() == 1 {
         types[0]
@@ -1040,11 +1032,11 @@ fn make_tuple_type(types : Vec<Type>) -> Type {
 }
 
 fn parse_error2<Iter : Iterator<char>>(lexer : &Lexer<Iter>, expected : &[TokenEnum]) -> String {
-    format!("Expected {} but found {}\\{{}\\}, at {}", expected, lexer.current().token, lexer.current().value.as_slice(), lexer.current().location)
+    format!("Expected {} but found {}{{{}}}, at {}", expected, lexer.current().token, lexer.current().value.as_slice(), lexer.current().location)
     
 }
 fn parse_error<Iter : Iterator<char>>(lexer : &Lexer<Iter>, expected : TokenEnum) -> String {
-    format!("Expected {} but found {}\\{{}\\}, at {}", expected, lexer.current().token, lexer.current().value.as_slice(), lexer.current().location)
+    format!("Expected {} but found {}{{{}}}, at {}", expected, lexer.current().token, lexer.current().value.as_slice(), lexer.current().location)
 }
 
 pub fn parse_string(contents: &str) -> IoResult<Vec<Module>> {
@@ -1078,7 +1070,7 @@ fn parse_modules_(visited: &mut HashSet<InternedStr>, modules: &mut Vec<Module>,
     visited.insert(interned_name);
     for import in module.imports.iter() {
         if visited.contains(&import.module) {
-            fail!("Cyclic dependency in modules");
+            panic!("Cyclic dependency in modules");
         }
         else if modules.iter().all(|m| m.name != import.module) {
             //parse the module if it is not parsed
@@ -1424,10 +1416,10 @@ test = case a of
                     assert_eq!(w2[0].name, intern("z"));
                     assert_eq!(w2[0].matches, Simple(number(0)));
                 }
-                _ => fail!("Expected case")
+                _ => panic!("Expected case")
             }
         }
-        _ => fail!("Expected simple binding")
+        _ => panic!("Expected simple binding")
     }
     let binds = bind.where_bindings.as_ref().expect("Expected where_bindings");
     assert_eq!(binds[0].name, intern("a"));

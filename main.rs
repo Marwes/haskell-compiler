@@ -1,5 +1,6 @@
 #![crate_id = "vm#0.0"]
 #![crate_type = "bin"]
+#![feature(box_syntax)]
 #[macro_use]
 extern crate log;
 extern crate collections;
@@ -21,18 +22,18 @@ macro_rules! write_core_expr(
             Literal(ref l) => write!($f, "{}", *l),
             Lambda(ref arg, ref body) => write!($f, "({} -> {})", *arg, *body),
             Let(ref bindings, ref body) => {
-                try!(write!($f, "let \\{\n"));
+                try!(write!($f, "let {{\n"));
                 for bind in bindings.iter() {
                     try!(write!($f, "; {}\n", bind));
                 }
-                write!($f, "\\} in {}\n", *body)
+                write!($f, "}} in {}\n", *body)
             }
             Case(ref expr, ref alts) => {
-                try!(write!($f, "case {} of \\{\n", *expr));
+                try!(write!($f, "case {} of {{\n", *expr));
                 for alt in alts.iter() {
                     try!(write!($f, "; {}\n", alt));
                 }
-                write!($f, "\\}\n")
+                write!($f, "}}\n")
             }
             $($p => Ok(()))*
         }
@@ -68,7 +69,7 @@ fn main() {
     let matches = {
         let args = std::os::args();
         getopts(args.tail(), opts)
-            .unwrap_or_else(|err| fail!("{}", err))
+            .unwrap_or_else(|err| panic!("{}", err))
     };
 
     if matches.opt_present("h") {

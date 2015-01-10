@@ -1,6 +1,8 @@
 use std::fmt;
-pub use types::{Qualified, Type, TypeApplication, TypeConstructor, TypeVariable, Constraint};
-pub use module::{TypeDeclaration, DataDefinition, Newtype, Integral, Fractional, String, Char};
+pub use types::{Qualified, Type, Constraint};
+pub use types::Type::{TypeApplication, TypeConstructor, TypeVariable};
+pub use module::{TypeDeclaration, DataDefinition, Newtype};
+pub use module::Literal::{Integral, Fractional, String, Char};
 use module;
 use interner::*;
 pub use renamer::Name;
@@ -135,7 +137,7 @@ impl <Ident: Typed> Typed for Expr<Ident> {
             &Apply(ref func, _) => {
                 match func.get_type() {
                     &TypeApplication(_, ref a) => { let a2: &Type = *a; a2 }
-                    x => fail!("The function in Apply must be a type application, found {}", x)
+                    x => panic!("The function in Apply must be a type application, found {}", x)
                 }
             }
             &Lambda(ref arg, _) => arg.get_type(),
@@ -149,8 +151,8 @@ impl <Ident: Typed> Typed for Pattern<Ident> {
         match *self {
             IdentifierPattern(ref name) => name.get_type(),
             ConstructorPattern(ref name, _) => name.get_type(),
-            NumberPattern(_) => fail!(),
-            WildCardPattern(..) => fail!()
+            NumberPattern(_) => panic!(),
+            WildCardPattern(..) => panic!()
         }
     }
 }
@@ -192,61 +194,64 @@ impl <T> Typed for Id<T> {
     }
 }
 
-///Visitor for the types in the core language.
-///visit_ is called at the every value in the tree, if it is overriden
-///the appropriate walk_ methods need to be called to continue walking
-pub trait Visitor<Ident> {
-    fn visit_expr(&mut self, expr: &Expr<Ident>) {
-        walk_expr(self, expr)
-    }
-    fn visit_alternative(&mut self, alt: &Alternative<Ident>) {
-        walk_alternative(self, alt)
-    }
-    fn visit_pattern(&mut self, _pattern: &Pattern<Ident>) {
-    }
-    fn visit_binding(&mut self, binding: &Binding<Ident>) {
-        walk_binding(self, binding);
-    }
-    fn visit_module(&mut self, module: &Module<Ident>) {
-        walk_module(self, module);
-    }
-}
 
-pub fn walk_module<Ident>(visitor: &mut Visitor<Ident>, module: &Module<Ident>) {
-    for bind in module.bindings.iter() {
-        visitor.visit_binding(bind);
-    }
-}
-
-pub fn walk_binding<Ident>(visitor: &mut Visitor<Ident>, binding: &Binding<Ident>) {
-    visitor.visit_expr(&binding.expression);
-}
-
-pub fn walk_expr<Ident>(visitor: &mut Visitor<Ident>, expr: &Expr<Ident>) {
-    match expr {
-        &Apply(ref func, ref arg) => {
-            visitor.visit_expr(*func);
-            visitor.visit_expr(*arg);
+mod ref_ {
+    ///Visitor for the types in the core language.
+    ///visit_ is called at the every value in the tree, if it is overriden
+    ///the appropriate walk_ methods need to be called to continue walking
+    pub trait Visitor<Ident> {
+        fn visit_expr(&mut self, expr: &Expr<Ident>) {
+            walk_expr(self, expr)
         }
-        &Lambda(_, ref body) => visitor.visit_expr(*body),
-        &Let(ref binds, ref e) => {
-            for b in binds.iter() {
-                visitor.visit_binding(b);
+        fn visit_alternative(&mut self, alt: &Alternative<Ident>) {
+            walk_alternative(self, alt)
+        }
+        fn visit_pattern(&mut self, _pattern: &Pattern<Ident>) {
+        }
+        fn visit_binding(&mut self, binding: &Binding<Ident>) {
+            walk_binding(self, binding);
+        }
+        fn visit_module(&mut self, module: &Module<Ident>) {
+            walk_module(self, module);
+        }
+    }
+
+    pub fn walk_module<Ident>(visitor: &mut Visitor<Ident>, module: &Module<Ident>) {
+        for bind in module.bindings.iter() {
+            visitor.visit_binding(bind);
+        }
+    }
+
+    pub fn walk_binding<Ident>(visitor: &mut Visitor<Ident>, binding: &Binding<Ident>) {
+        visitor.visit_expr(&binding.expression);
+    }
+
+    pub fn walk_expr<Ident>(visitor: &mut Visitor<Ident>, expr: &Expr<Ident>) {
+        match expr {
+            &Apply(ref func, ref arg) => {
+                visitor.visit_expr(*func);
+                visitor.visit_expr(*arg);
             }
-            visitor.visit_expr(*e);
-        }
-        &Case(ref e, ref alts) => {
-            visitor.visit_expr(*e);
-            for alt in alts.iter() {
-                visitor.visit_alternative(alt);
+            &Lambda(_, ref body) => visitor.visit_expr(*body),
+            &Let(ref binds, ref e) => {
+                for b in binds.iter() {
+                    visitor.visit_binding(b);
+                }
+                visitor.visit_expr(*e);
             }
+            &Case(ref e, ref alts) => {
+                visitor.visit_expr(*e);
+                for alt in alts.iter() {
+                    visitor.visit_alternative(alt);
+                }
+            }
+            _ => ()
         }
-        _ => ()
     }
-}
 
-pub fn walk_alternative<Ident>(visitor: &mut Visitor<Ident>, alt: &Alternative<Ident>) {
-    visitor.visit_expr(&alt.expression);
+    pub fn walk_alternative<Ident>(visitor: &mut Visitor<Ident>, alt: &Alternative<Ident>) {
+        visitor.visit_expr(&alt.expression);
+    }
 }
 
 pub mod mutable {
@@ -309,7 +314,6 @@ pub mod mutable {
 
 pub mod result {
     use core::*;
-    use std::vec::FromVec;
 
     ///A visitor which takes the structs as values and in turn expects a value in return
     ///so that it can rebuild the tree
@@ -360,7 +364,7 @@ pub mod result {
                 let bs: Vec<Binding<Ident>> = binds.move_iter().map(|b| {
                     visitor.visit_binding(b)
                 }).collect();
-                Let(FromVec::from_vec(bs), box visitor.visit_expr(*e))
+                Let(bs, box visitor.visit_expr(*e))
             }
             Case(e, alts) => {
                 let e2 = visitor.visit_expr(*e);
@@ -382,13 +386,11 @@ pub mod result {
 ///The translate module takes the AST and translates it into the simpler core language.
 pub mod translate {
     use module;
-    use types::*;
     use core::*;
     use interner::*;
     use renamer::NameSupply;
-    use std::vec::FromVec;
     use deriving::*;
-    use collections::HashMap;
+    use std::collections::HashMap;
 
     struct Translator<'a> {
         name_supply: NameSupply,
@@ -399,7 +401,7 @@ pub mod translate {
     struct Equation<'a>(&'a [(Id<Name>, Pattern<Id<Name>>)], (&'a [Binding<Id<Name>>], &'a module::Match<Name>));
 
     pub fn translate_expr(expr: module::TypedExpr<Name>) -> Expr<Id<Name>> {
-        let mut translator = Translator { name_supply: NameSupply::new(), functions_in_class: |_| fail!() };
+        let mut translator = Translator { name_supply: NameSupply::new(), functions_in_class: |_| panic!() };
         translator.translate_expr(expr)
     }
 
@@ -465,7 +467,7 @@ pub mod translate {
                 constraints: constraints,
                 typ: instance_type,
                 classname: classname,
-                bindings: FromVec::from_vec(bs)
+                bindings: bs
             });
         }
         let bs: Vec<Binding<Id<Name>>> = translator.translate_bindings(bindings).move_iter().collect();
@@ -478,14 +480,14 @@ pub mod translate {
             let mut temp = box [];
             ::std::mem::swap(&mut temp, &mut instance.bindings);
             let vec: Vec<Binding<Id<Name>>> = temp.move_iter().chain(defaults.move_iter()).collect();
-            instance.bindings = FromVec::from_vec(vec);
+            instance.bindings = vec;
         }
         Module {
-            classes: FromVec::from_vec(classes2),
+            classes: classes2,
             data_definitions: dataDefinitions,
             newtypes: newtypes,
-            bindings: FromVec::from_vec(bs),
-            instances: FromVec::from_vec(new_instances)
+            bindings: bs,
+            instances: new_instances
         }
     }
 
@@ -544,14 +546,14 @@ impl <'a> Translator<'a> {
                     let argname = match arg {
                         module::IdentifierPattern(arg) => arg,
                         module::WildCardPattern => Name { name: intern("_"), uid: -1 },
-                        _ => fail!("Core translation of pattern matches in lambdas are not implemented")
+                        _ => panic!("Core translation of pattern matches in lambdas are not implemented")
                     };
                     let l = Lambda(Id::new(argname, typ.clone(), vec![]), box self.translate_expr_rest(*body));
                     let id = Id::new(self.name_supply.from_str("#lambda"), typ.clone(), vec![]);
                     let bind = Binding { name: id.clone(), expression: l };
                     Let(vec![bind], box Identifier(id))
                 }
-                _ => fail!()
+                _ => panic!()
             }
         }
         else {
@@ -577,7 +579,7 @@ impl <'a> Translator<'a> {
                 match arg {
                     module::IdentifierPattern(arg) => Lambda(Id::new(arg, typ, vec![]), box self.translate_expr_rest(*body)),
                     module::WildCardPattern => Lambda(Id::new(Name { name: intern("_"), uid: -1 }, typ, vec![]), box self.translate_expr_rest(*body)),
-                    _ => fail!("Core translation of pattern matches in lambdas are not implemented")
+                    _ => panic!("Core translation of pattern matches in lambdas are not implemented")
                 }
             }
             module::Let(bindings, body) => {
@@ -676,7 +678,7 @@ impl <'a> Translator<'a> {
         if vec.len() > 0 {
             result.push(self.translate_matching_groups(vec));
         }
-        FromVec::from_vec(result)
+        result
     }
     
     fn unwrap_pattern(&mut self, uid: uint, id: Id<Name>, pattern: module::Pattern<Name>, result: &mut Vec<(Id<Name>, Pattern<Id<Name>>)>) {
@@ -706,7 +708,7 @@ impl <'a> Translator<'a> {
                             ::std::mem::swap(p, &mut x);
                             let id = match *p {
                                 module::IdentifierPattern(ref n) => Id::new(n.clone(), Type::new_var(intern("a")), vec![]),
-                                _ => fail!()
+                                _ => panic!()
                             };
                             self.unwrap_pattern(uid, id, x, result);
                         }
@@ -744,7 +746,7 @@ impl <'a> Translator<'a> {
             Case(ref mut body, _) => {
                 **body = self.translate_expr(expr);
             }
-            _ => fail!("Not case")
+            _ => panic!("Not case")
         }
         x
     }
@@ -765,7 +767,7 @@ impl <'a> Translator<'a> {
                 match p {
                     module::IdentifierPattern(n) => n,
                     module::WildCardPattern => Name { name: intern("_"), uid: -1 },
-                    _ => fail!("simple_binding fail")
+                    _ => panic!("simple_binding fail")
                 }
             });
             let expr = {
@@ -897,7 +899,7 @@ impl <'a> Translator<'a> {
                 }
             }
             let body = box Identifier(ps[0].ref0().clone());
-            return Case(body, FromVec::from_vec(alts));
+            return Case(body, alts);
         }
         
         let mut last_index = 0;
@@ -986,7 +988,7 @@ impl <'a> Translator<'a> {
             }
             let &Equation(ps, _) = &equations[0];
             let body = box Identifier(ps[0].ref0().clone());
-            Case(body, FromVec::from_vec(alts))
+            Case(body, alts)
         }
     }
 
@@ -999,7 +1001,7 @@ impl <'a> Translator<'a> {
                     match pat {
                         module::IdentifierPattern(name) => Id::new(name, Type::new_var(intern("a")), vec![]),
                         module::WildCardPattern => Id::new(Name { name: intern("_"), uid: -1 }, Type::new_var(intern("a")), vec![]),
-                        _ => fail!("Nested pattern")
+                        _ => panic!("Nested pattern")
                     }
                 }).collect());
                 ConstructorPattern(Id::new(name, Type::new_var(intern("a")), vec![]), ps)
@@ -1074,7 +1076,7 @@ impl <'a> Translator<'a> {
             expr
         }
         else {
-            Let(FromVec::from_vec(bindings), box expr)
+            Let(bindings, box expr)
         }
     }
 
@@ -1088,7 +1090,7 @@ impl <'a> Translator<'a> {
             let other_id = match *ps[0].ref1() {
                 IdentifierPattern(ref name) => name.clone(),
                 WildCardPattern => Id::new(Name { name: intern("_"), uid: -1 }, Type::new_var(intern("a")), vec![]),
-                _ => fail!()
+                _ => panic!()
             };
             Binding { name: other_id, expression: Identifier(arg_id.clone()) }
         }).collect()

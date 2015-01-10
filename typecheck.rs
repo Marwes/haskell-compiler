@@ -1,15 +1,11 @@
-use collections::HashMap;
+use std::collections::HashMap;
 use std::mem::swap;
-use std::vec::FromVec;
 use std::io::IoResult;
 use module::*;
 use graph::{Graph, VertexIndex, strongly_connected_components};
 use builtins::builtins;
 use renamer::*;
 use interner::*;
-
-pub use lexer::Location;
-pub use module::Type;
 
 #[cfg(test)]
 use module::Alternative;
@@ -30,14 +26,6 @@ pub trait Types {
 ///A trait which also allows for lookup of data types
 pub trait DataTypes : Types {
     fn find_data_type<'a>(&'a self, name: InternedStr) -> Option<&'a DataDefinition<Name>>;
-}
-
-//Use this to get the constructor name, ie,  extract_applied_type(Either a b) == Either
-fn extract_applied_type<'a>(typ: &'a Type) -> &'a Type {
-    match typ {
-        &TypeApplication(ref lhs, _) => extract_applied_type(*lhs),
-        _ => typ
-    }
 }
 
 impl Types for Module<Name> {
@@ -268,7 +256,7 @@ impl <'a> TypeEnvironment<'a> {
 
     ///Typechecks a module
     ///If the typecheck is successful the types in the module are updated with the new types.
-    ///If any errors were found while typechecking fail! is called.
+    ///If any errors were found while typechecking panic! is called.
     pub fn typecheck_module(&mut self, module: &mut Module<Name>) {
         let start_var_age = self.variable_age + 1;
         for data_def in module.dataDefinitions.mut_iter() {
@@ -290,7 +278,7 @@ impl <'a> TypeEnvironment<'a> {
             for type_decl in class.declarations.mut_iter() {
                 var_kind = match find_kind(&class.variable, var_kind, &type_decl.typ.value) {
                     Ok(k) => k,
-                    Err(msg) => fail!("{}", msg)
+                    Err(msg) => panic!("{}", msg)
                 };
                 //If we found the variable, update it immediatly since the kind of th variable
                 //matters when looking for constraints, etc
@@ -342,7 +330,7 @@ impl <'a> TypeEnvironment<'a> {
                         .filter_map(|a| a.find_class(instance.classname))
                         .next()
                 })
-                .unwrap_or_else(|| fail!("Could not find class {}", instance.classname));
+                .unwrap_or_else(|| panic!("Could not find class {}", instance.classname));
             //Update the kind of the type for the instance to be the same as the class kind (since we have no proper kind inference
             match instance.typ {
                 TypeConstructor(ref mut op) => {
@@ -373,7 +361,7 @@ impl <'a> TypeEnvironment<'a> {
             }
             {
                 let mut missing_super_classes = self.find_class_constraints(instance.classname)
-                    .unwrap_or_else(|| fail!("Error: Missing class {}", instance.classname))
+                    .unwrap_or_else(|| panic!("Error: Missing class {}", instance.classname))
                     .iter()//Make sure we have an instance for all of the constraints
                     .filter(|constraint| self.has_instance(constraint.class, &instance.typ, &mut Vec::new()).is_err())
                     .peekable();
@@ -384,7 +372,7 @@ impl <'a> TypeEnvironment<'a> {
                         buffer.push_str(", ");
                         buffer.push_str(constraint.class.as_slice());
                     }
-                    fail!("The type {} does not have all necessary super class instances required for {}.\n Missing: {}",
+                    panic!("The type {} does not have all necessary super class instances required for {}.\n Missing: {}",
                         instance.typ, instance.classname, buffer);
                 }
             }
@@ -397,7 +385,7 @@ impl <'a> TypeEnvironment<'a> {
                 Some(bind) => {
                     bind.typ = type_decl.typ.clone();
                 }
-                None => fail!("Error: Type declaration for '{}' has no binding", type_decl.name)
+                None => panic!("Error: Type declaration for '{}' has no binding", type_decl.name)
             }
         }
 
@@ -407,7 +395,7 @@ impl <'a> TypeEnvironment<'a> {
         }
         if self.errors.has_errors() {
             self.errors.report_errors("typecheck");
-            fail!();
+            panic!();
         }
     }
 
@@ -421,7 +409,7 @@ impl <'a> TypeEnvironment<'a> {
         self.substitute(&mut subs, expr);
         if self.errors.has_errors() {
             self.errors.report_errors("typecheck");
-            fail!();
+            panic!();
         }
     }
 
@@ -642,7 +630,7 @@ impl <'a> TypeEnvironment<'a> {
                         expr.typ = t.clone();
                         t
                     }
-                    None => fail!("Undefined identifier '{}' at {}", *name, expr.location)
+                    None => panic!("Undefined identifier '{}' at {}", *name, expr.location)
                 }
             }
             Apply(ref mut func, ref mut arg) => {
@@ -652,7 +640,7 @@ impl <'a> TypeEnvironment<'a> {
             OpApply(ref mut lhs, ref op, ref mut rhs) => {
                 let op_type = match self.fresh(op) {
                     Some(typ) => typ,
-                    None => fail!("Undefined identifier '{}' at {}", *op, expr.location)
+                    None => panic!("Undefined identifier '{}' at {}", *op, expr.location)
                 };
                 let first = self.typecheck_apply(&expr.location, subs, op_type, *lhs);
                 self.typecheck_apply(&expr.location, subs, first, *rhs)
@@ -719,7 +707,7 @@ impl <'a> TypeEnvironment<'a> {
                             unify_location(self, subs, &e.location, &mut typ, &mut previous);
                             let inner_type = match typ {
                                 TypeApplication(_, ref mut t) => t,
-                                _ => fail!("Not a monadic type: {}", typ)
+                                _ => panic!("Not a monadic type: {}", typ)
                             };
                             self.typecheck_pattern(&pattern.location, subs, &pattern.node, *inner_type);
                         }
@@ -728,7 +716,7 @@ impl <'a> TypeEnvironment<'a> {
                         TypeApplication(ref mut _monad, ref mut typ) => {
                             **typ = self.new_var();
                         }
-                        _ => fail!()
+                        _ => panic!()
                     }
                 }
                 let mut typ = self.typecheck(*last_expr, subs);
@@ -753,7 +741,7 @@ impl <'a> TypeEnvironment<'a> {
         unify_location(self, subs, location, &mut func_type, &mut result);
         result = match result {
             TypeApplication(_, x) => *x,
-            _ => fail!("Must be a type application (should be a function type), found {}", result)
+            _ => panic!("Must be a type application (should be a function type), found {}", result)
         };
         result
     }
@@ -806,7 +794,7 @@ impl <'a> TypeEnvironment<'a> {
         let mut previous_type = None;
         for bind in bindings.mut_iter() {
             if argument_types.len() != bind.arguments.len() {
-                fail!("Binding {} do not have the same number of arguments", bind.name);//TODO re add location
+                panic!("Binding {} do not have the same number of arguments", bind.name);//TODO re add location
             }
             for (arg, typ) in bind.arguments.mut_iter().zip(argument_types.mut_iter()) {
                 self.typecheck_pattern(&Location::eof(), subs, arg, typ);
@@ -1015,7 +1003,7 @@ pub fn find_specialized_instances(typ: &Type, actual_type: &Type, constraints: &
     let mut result = Vec::new();
     find_specialized(&mut result, actual_type, typ, constraints);
     if constraints.len() == 0 {
-        fail!("Could not find the specialized instance between {} <-> {}", typ, actual_type);
+        panic!("Could not find the specialized instance between {} <-> {}", typ, actual_type);
     }
     FromVec::from_vec(result)
 }
@@ -1086,7 +1074,7 @@ pub fn replace_var(typ: &mut Type, var: &TypeVariable, replacement: &Type) {
             replace_var(*rhs, var, replacement);
             None
         }
-        &Generic(_) => fail!("replace_var called on Generic")
+        &Generic(_) => panic!("replace_var called on Generic")
     };
     match new {
         Some(x) => {
@@ -1142,7 +1130,7 @@ fn replace(constraints: &mut HashMap<TypeVariable, Vec<Name>>, old : &mut Type, 
             replace(constraints, *rhs, subs);
             None
         }
-        _ => None, //fail!("replace called on Generic")
+        _ => None, //panic!("replace called on Generic")
     };
     match replaced {
         Some(x) => *old = x,
@@ -1703,7 +1691,7 @@ fn typecheck_case() {
         &Case(ref case_expr, _) => {
             assert_eq!(case_expr.typ, list_type(type_int));
         }
-        _ => fail!("typecheck_case")
+        _ => panic!("typecheck_case")
     }
 }
 
@@ -1782,7 +1770,7 @@ in b".chars());
             assert_eq!(binds[1].name.as_slice(), "test");
             assert_eq!(binds[1].typ.value, list_type);
         }
-        _ => fail!("Error")
+        _ => panic!("Error")
     }
 }
 
@@ -2151,7 +2139,7 @@ import Prelude
 
 test x y = [x] == [y]
 ")
-    .unwrap_or_else(|err| fail!(err));
+    .unwrap_or_else(|err| panic!(err));
     let module = modules.last().unwrap();
     let a = Type::new_var(intern("a"));
     let cs = box [Constraint { class: intern("Eq"), variables: box [a.var().clone()] } ];
@@ -2171,7 +2159,7 @@ makeEven i
     | otherwise = undefined
 
 "
-).unwrap_or_else(|err| fail!(err));
+).unwrap_or_else(|err| panic!(err));
     let module = modules.last().unwrap();
     assert_eq!(un_name(module.bindings[0].typ.clone()), qualified(box [], function_type_(int_type(), Type::new_op(intern("Even"), box []))));
 }
@@ -2249,7 +2237,7 @@ test :: Test a => a -> a
 test x = test x
 
 test2 = test (Just True)")
-    .unwrap_or_else(|err| fail!(err));
+    .unwrap_or_else(|err| panic!(err));
 }
 
 #[test]
@@ -2263,7 +2251,7 @@ test = case 1 :: Int of
     where
         y = x 1
 ")
-        .unwrap_or_else(|err| fail!(err));
+        .unwrap_or_else(|err| panic!(err));
 }
 
 #[test]
@@ -2277,7 +2265,7 @@ newtype IntPair a = IntPair (a, Int)
 test = IntPair (True, False)
 
 "
-).unwrap_or_else(|err| fail!(err));
+).unwrap_or_else(|err| panic!(err));
 }
 
 #[bench]

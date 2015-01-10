@@ -1,10 +1,7 @@
-use module::{DataDefinition, encode_binding_identifier};
+use module::encode_binding_identifier;
 use core::*;
-use renamer::{Name, NameSupply};
-use types::*;
+use renamer::NameSupply;
 use interner::{intern, InternedStr};
-
-use std::vec::FromVec;
 
 pub fn generate_deriving(instances: &mut Vec<Instance<Id<Name>>>, data: &DataDefinition<Name>) {
     let mut gen = DerivingGen { name_supply: NameSupply::new() };
@@ -17,7 +14,7 @@ pub fn generate_deriving(instances: &mut Vec<Instance<Id<Name>>>, data: &DataDef
                     constraints: box [],
                     typ: data.typ.value.clone(),
                     classname: Name { name: intern("Eq"), uid: 0 },
-                    bindings: FromVec::from_vec(bindings)
+                    bindings: bindings
                 });
             }
             "Ord" => {
@@ -29,10 +26,10 @@ pub fn generate_deriving(instances: &mut Vec<Instance<Id<Name>>>, data: &DataDef
                     constraints: box [],
                     typ: data.typ.value.clone(),
                     classname: Name { name: intern("Ord"), uid: 0 },
-                    bindings: FromVec::from_vec(bindings)
+                    bindings: bindings
                 });
             }
-            x => fail!("Cannot generate instance for class {}", x)
+            x => panic!("Cannot generate instance for class {}", x)
         }
     }
 }
@@ -109,7 +106,7 @@ impl DerivingGen {
                     result.push(Constraint { class: Name { name: class, uid: 0 }, variables: box [param.var().clone()] });
                     make_constraints(result, class, *f)
                 }
-                _ => FromVec::from_vec(result)
+                _ => result
             }
         }
         let constraints = make_constraints(Vec::new(), intern(class), &data.typ.value);
@@ -132,14 +129,14 @@ impl DerivingGen {
 
     fn match_same_constructors(&mut self, data: &DataDefinition<Name>, id_r: &Id<Name>, f: &mut FnMut(&mut DerivingGen, &[Id<Name>], &[Id<Name>]) -> Expr<Id<Name>>) -> Vec<Alternative<Id<Name>>> {
         let alts: Vec<Alternative<Id<Name>>> = data.constructors.iter().map(|constructor| {
-            let args_l: Vec<Id<Name>> = FromVec::<Id<Name>>::from_vec(
+            let args_l: Vec<Id<Name>> = 
                 ArgIterator { typ: &constructor.typ.value }
                 .map(|arg| Id::new(self.name_supply.anonymous(), arg.clone(), constructor.typ.constraints.clone()))
-                .collect());
+                .collect();
             let iter = ArgIterator { typ: &constructor.typ.value };
-            let args_r: Vec<Id<Name>> = FromVec::<Id<Name>>::from_vec(iter
+            let args_r: Vec<Id<Name>> = iter
                 .map(|arg| Id::new(self.name_supply.anonymous(), arg.clone(), constructor.typ.constraints.clone()))
-                .collect());
+                .collect();
             let ctor_id = Id::new(constructor.name, iter.typ.clone(), constructor.typ.constraints.clone());
             let expr = f(self, args_l, args_r);
             let pattern_r = ConstructorPattern(ctor_id.clone(), args_r);
@@ -152,7 +149,7 @@ impl DerivingGen {
             ]);
             Alternative { pattern: ConstructorPattern(ctor_id, args_l), expression: inner }
         }).collect();
-        FromVec::from_vec(alts)
+        alts
     }
 }
 

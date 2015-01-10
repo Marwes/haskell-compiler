@@ -1,4 +1,3 @@
-use std::vec::FromVec;
 use module::*;
 use scoped_map::ScopedMap;
 use interner::*;
@@ -119,7 +118,7 @@ impl Renamer {
         for import in module.imports.iter() {
             let imported_module = module_env.iter()
                 .find(|m| m.name.name == import.module)
-                .unwrap_or_else(|| fail!("Module {} is not defined", import.module));
+                .unwrap_or_else(|| panic!("Module {} is not defined", import.module));
             let uid = imported_module.name.uid;
             match import.imports {
                 Some(ref imports) => {
@@ -145,7 +144,7 @@ impl Renamer {
             let Binding { name: name, arguments: arguments, matches: matches, typ: typ, where_bindings: where_bindings  } = binding;
             let n = self.uniques.find(&name)
                 .map(|u| u.clone())
-                .unwrap_or_else(|| fail!("Renaming error: Undefined variable {}", name));
+                .unwrap_or_else(|| panic!("Renaming error: Undefined variable {}", name));
             self.uniques.enter_scope();
             let b = Binding {
                 name: n,
@@ -195,7 +194,7 @@ impl Renamer {
                     self.uniques.exit_scope();
                     a
                 }).collect();
-                Case(box self.rename(*expr), FromVec::from_vec(a))
+                Case(box self.rename(*expr), a)
             }
             IfElse(pred, if_true, if_false) => {
                 IfElse(box self.rename(*pred),
@@ -214,7 +213,7 @@ impl Renamer {
                         }
                     }
                 }).collect();
-                Do(FromVec::from_vec(bs), box self.rename(*expr))
+                Do(bs, box self.rename(*expr))
             }
             TypeSig(expr, sig) => {
                 TypeSig(box self.rename(*expr), self.rename_qualified_type(sig))
@@ -231,7 +230,7 @@ impl Renamer {
             NumberPattern(i) => NumberPattern(i),
             ConstructorPattern(s, ps) => {
                 let ps2: Vec<Pattern<Name>> = ps.move_iter().map(|p| self.rename_pattern(p)).collect();
-                ConstructorPattern(self.get_name(s), FromVec::from_vec(ps2))
+                ConstructorPattern(self.get_name(s), ps2)
             }
             IdentifierPattern(s) => IdentifierPattern(self.make_unique(s)),
             WildCardPattern => WildCardPattern
@@ -269,13 +268,13 @@ impl Renamer {
                 Constraint { class: self.get_name(class), variables: variables }
             })
             .collect();
-        qualified(FromVec::from_vec(constraints2), typ)
+        qualified(constraints2, typ)
     }
     fn rename_type_declarations(&mut self, decls: Vec<TypeDeclaration<InternedStr>>) -> Vec<TypeDeclaration<Name>> {
         let decls2: Vec<TypeDeclaration<Name>> = decls.move_iter()
             .map(|decl| TypeDeclaration { name: self.get_name(decl.name), typ: self.rename_qualified_type(decl.typ) })
             .collect();
-        FromVec::from_vec(decls2)
+        decls2
     }
 
     ///Introduces a new Name to the current scope.
@@ -333,7 +332,7 @@ pub fn rename_module_(renamer: &mut Renamer, module_env: &[Module<Name>], module
             let is: Vec<Name> = x.iter()
                 .map(|&x| renamer.get_name(x))
                 .collect();
-            FromVec::from_vec(is)
+            is
         });
         Import { module: import.module, imports: imports }
     }).collect();
@@ -366,8 +365,8 @@ pub fn rename_module_(renamer: &mut Renamer, module_env: &[Module<Name>], module
         DataDefinition {
             typ : renamer.rename_qualified_type(typ),
             parameters : parameters,
-            constructors : FromVec::from_vec(c),
-            deriving : FromVec::from_vec(d)
+            constructors : c,
+            deriving : d
         }
     }).collect();
 
@@ -380,7 +379,7 @@ pub fn rename_module_(renamer: &mut Renamer, module_env: &[Module<Name>], module
             typ: typ,
             constructor_name: renamer.get_name(constructor_name),
             constructor_type: renamer.rename_qualified_type(constructor_type),
-            deriving: FromVec::from_vec(deriving2)
+            deriving: deriving2
         }
     }).collect();
     
@@ -398,7 +397,7 @@ pub fn rename_module_(renamer: &mut Renamer, module_env: &[Module<Name>], module
             .collect();
         Instance {
             bindings : renamer.rename_bindings(bindings, true),
-            constraints : FromVec::from_vec(constraints2),
+            constraints : constraints2,
             typ : typ,
             classname : renamer.get_name(classname)
         }
@@ -419,7 +418,7 @@ pub fn rename_module_(renamer: &mut Renamer, module_env: &[Module<Name>], module
             })
             .collect();
         Class {
-            constraints: FromVec::from_vec(constraints2),
+            constraints: constraints2,
             name: renamer.get_name(name),
             variable: var,
             declarations: renamer.rename_type_declarations(decls),
@@ -436,7 +435,7 @@ pub fn rename_module_(renamer: &mut Renamer, module_env: &[Module<Name>], module
                 .map(|s| renamer.get_name(s))
                 .collect();
             FixityDeclaration { assoc: assoc, precedence: precedence,
-                operators: FromVec::from_vec(ops)
+                operators: ops
             }
         })
         .collect();
@@ -444,14 +443,14 @@ pub fn rename_module_(renamer: &mut Renamer, module_env: &[Module<Name>], module
     renamer.uniques.exit_scope();
     Module {
         name: name,
-        imports: FromVec::from_vec(imports2),
-        classes : FromVec::from_vec(classes2),
-        dataDefinitions: FromVec::from_vec(data_definitions2),
+        imports: imports2,
+        classes : classes2,
+        dataDefinitions: data_definitions2,
         typeDeclarations: decls2,
         bindings : bindings2,
-        instances: FromVec::from_vec(instances2),
-        newtypes: FromVec::from_vec(newtypes2),
-        fixity_declarations: FromVec::from_vec(fixity_declarations2)
+        instances: instances2,
+        newtypes: newtypes2,
+        fixity_declarations: fixity_declarations2
     }
 }
 
@@ -470,7 +469,7 @@ pub fn rename_modules(modules: Vec<Module<InternedStr>>) -> Vec<Module<Name>> {
     }
     if renamer.errors.has_errors() {
         renamer.errors.report_errors("Renamer");
-        fail!();
+        panic!();
     }
     ms
 }
@@ -496,7 +495,7 @@ r"
 import Prelude (id)
 main = id";
         let modules = parse_string(file)
-            .unwrap_or_else(|err| fail!(err));
+            .unwrap_or_else(|err| panic!(err));
         rename_modules(modules);
     }
     #[test]

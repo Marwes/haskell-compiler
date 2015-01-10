@@ -104,21 +104,21 @@ impl <'a> fmt::Show for Node_<'a> {
                         }
                         _ => {
                             //Print a normal constructor
-                            try!(write!(f, "\\{{}", *tag));
+                            try!(write!(f, "{{{}", *tag));
                             for arg in args.iter() {
                                 try!(write!(f, " {}", *arg.borrow()));
                             }
-                            write!(f, "\\}")
+                            write!(f, "}}")
                         }
                     }
                 }
                 else {
                     //Print a normal constructor
-                    try!(write!(f, "\\{{}", *tag));
+                    try!(write!(f, "{{{}", *tag));
                     for arg in args.iter() {
                         try!(write!(f, " {}", *arg.borrow()));
                     }
-                    write!(f, "\\}")
+                    write!(f, "}}")
                 }
             }
             &Dictionary(ref dict) => write!(f, "{}", dict),
@@ -234,14 +234,14 @@ impl <'a> VM {
                     let top = stack.pop().unwrap();
                     stack.push(match *top.borrow() {
                         Int(i) => Node::new(Float(i as f64)),
-                        _ => fail!("Excpected Int in Int -> Double cast")
+                        _ => panic!("Excpected Int in Int -> Double cast")
                     });
                 }
                 DoubleToInt => {
                     let top = stack.pop().unwrap();
                     stack.push(match *top.borrow() {
                         Float(f) => Node::new(Int(f as int)),
-                        _ => fail!("Excpected Double in Double -> Int cast")
+                        _ => panic!("Excpected Double in Double -> Int cast")
                     });
                 }
                 PushInt(value) => { stack.push(Node::new(Int(value))); }
@@ -302,7 +302,7 @@ impl <'a> VM {
                             for j in range(stack.len() - arity - 1, stack.len() - 1) {
                                 *stack.get_mut(j) = match *stack.get(j).borrow() {
                                     Application(_, ref arg) => arg.clone(),
-                                    _ => fail!("Expected Application")
+                                    _ => panic!("Expected Application")
                                 };
                             }
                             let value = {
@@ -358,7 +358,7 @@ impl <'a> VM {
                                 stack.push(field.clone());
                             }
                         }
-                        _ => fail!("Expected constructor in Split instruction")
+                        _ => panic!("Expected constructor in Split instruction")
                     }
                 }
                 Pack(tag, arity) => {
@@ -387,7 +387,7 @@ impl <'a> VM {
                                 false
                             }
                         }
-                        ref x => fail!("Expected constructor when executing CaseJump, got {}", *x),
+                        ref x => panic!("Expected constructor when executing CaseJump, got {}", *x),
                     };
                     if !jumped {
                         stack.pop();
@@ -407,7 +407,7 @@ impl <'a> VM {
                         let x = stack.get(0).borrow();
                         let dict = match *x {
                             Dictionary(ref x) => x,
-                            ref x => fail!("Attempted to retrieve {} as dictionary", *x)
+                            ref x => panic!("Attempted to retrieve {} as dictionary", *x)
                         };
                         match **dict.entries.get(index) {
                             Function(gi) => {
@@ -430,7 +430,7 @@ impl <'a> VM {
                         Dictionary(ref d) => {
                             d
                         }
-                        _ => fail!()
+                        _ => panic!()
                     };
                     let func = stack.pop().unwrap();
                     let mut new_dict = InstanceDictionary { entries: Vec::new() };
@@ -441,11 +441,11 @@ impl <'a> VM {
                                     Function(index) => {
                                         new_dict.entries.push(Rc::new(App(index, arg.clone())));
                                     }
-                                    _ => fail!()
+                                    _ => panic!()
                                 }
                             }
                         }
-                        _ => fail!()
+                        _ => panic!()
                     }
                     stack.push(Node::new(Dictionary(new_dict)));
                 }
@@ -456,7 +456,7 @@ impl <'a> VM {
                             Dictionary(ref d) => {
                                 new_dict.entries.extend(d.entries.iter().map(|x| x.clone()));
                             }
-                            ref x => fail!("Unexpected {}", x)
+                            ref x => panic!("Unexpected {}", x)
                         }
                     }
                     stack.push(Node::new(Dictionary(new_dict)));
@@ -467,7 +467,7 @@ impl <'a> VM {
                         Dictionary(ref d) => {
                             new_dict.entries.extend(d.entries.iter().skip(start).take(size).map(|x| x.clone()));
                         }
-                        _ => fail!()
+                        _ => panic!()
                     }
                     stack.push(Node::new(Dictionary(new_dict)));
                 }
@@ -485,7 +485,7 @@ fn primitive_int<F>(stack: &mut Vec<Node>, f: F) where F: FnOnce(int, int) -> No
     let r = stack.pop().unwrap();
     match (&*l.borrow(), &*r.borrow()) {
         (&Int(lhs), &Int(rhs)) => stack.push(Node::new(f(lhs, rhs))),
-        (lhs, rhs) => fail!("Expected fully evaluted numbers in primitive instruction\n LHS: {}\nRHS: {} ", lhs, rhs)
+        (lhs, rhs) => panic!("Expected fully evaluted numbers in primitive instruction\n LHS: {}\nRHS: {} ", lhs, rhs)
     }
 }
 ///Exucutes a binary primitive instruction taking two doubles
@@ -494,7 +494,7 @@ fn primitive_float<F>(stack: &mut Vec<Node>, f: F) where F: FnOnce(f64, f64) -> 
     let r = stack.pop().unwrap();
     match (&*l.borrow(), &*r.borrow()) {
         (&Float(lhs), &Float(rhs)) => stack.push(Node::new(f(lhs, rhs))),
-        (lhs, rhs) => fail!("Expected fully evaluted numbers in primitive instruction\n LHS: {}\nRHS: {} ", lhs, rhs)
+        (lhs, rhs) => panic!("Expected fully evaluted numbers in primitive instruction\n LHS: {}\nRHS: {} ", lhs, rhs)
     }
 }
 fn primitive<F>(stack: &mut Vec<Node>, f: F) where F: FnOnce(int, int) -> int {
@@ -581,8 +581,10 @@ fn execute_main_module_(assemblies: Vec<Assembly>) -> IoResult<Option<VMResult>>
 mod primitive {
 
     use std::io::fs::File;
-    use vm::{VM, execute, deepseq, Node, Node_, Application, Constructor, BuiltinFunction, Char};
-    use compiler::{Instruction, Eval};
+    use vm::{VM, execute, deepseq, Node, Node_};
+    use vm::Node_::{Application, Constructor, BuiltinFunction, Char};
+    use compiler::Instruction;
+    use compiler::Instruction::Eval;
 
     pub fn get_builtin(i: uint) -> (uint, BuiltinFun) {
         match i {
@@ -593,7 +595,7 @@ mod primitive {
             4 => (2, io_return),
             5 => (2, putStrLn),
             6 => (2, compare_tags),
-            _ => fail!("undefined primitive")
+            _ => panic!("undefined primitive")
         }
     }
 
@@ -603,7 +605,7 @@ mod primitive {
         let mut vec = Vec::new();
         vec.push(stack[0].clone());
         let node = deepseq(vm, vec, 123);
-        fail!("error: {}", node)
+        panic!("error: {}", node)
     }
     fn eval<'a>(vm: &'a VM, node: Node<'a>) -> Node<'a> {
         static evalCode : &'static [Instruction] = &[Eval];
@@ -632,7 +634,7 @@ mod primitive {
         let aw = stack[0].borrow();
         let (a, rw) = match *aw {
             Constructor(_, ref args) => (args.get(0), args.get(1)),
-            _ => fail!("pass exepected constructor")
+            _ => panic!("pass exepected constructor")
         };
         Node::new(Application(Node::new(Application(stack[1].clone(), a.clone())), rw.clone()))
     }
@@ -647,11 +649,11 @@ mod primitive {
         let filename = get_string(&node_filename);
         let mut file = match File::open(&Path::new(filename.as_slice())) {
             Ok(f) => f,
-            Err(err) => fail!("error: readFile -> {}", err)
+            Err(err) => panic!("error: readFile -> {}", err)
         };
         let (begin, _end) = match file.read_to_str() {
             Ok(s) => create_string(s.as_slice()),
-            Err(err) => fail!("error: readFile -> {}", err)
+            Err(err) => panic!("error: readFile -> {}", err)
         };
         //Return (String, RealWorld)
         Node::new(Constructor(0, vec!(begin, stack[1].clone())))
@@ -672,12 +674,12 @@ mod primitive {
                     if args.len() == 2 {
                         match *args.get(0).borrow() {
                             Char(c) => buffer.push_char(c),
-                            _ => fail!("Unevaluated char")
+                            _ => panic!("Unevaluated char")
                         }
                         get_string_(buffer, &*args.get(1).borrow());
                     }
                 }
-                _ => fail!("Unevaluated list")
+                _ => panic!("Unevaluated list")
             }
         }
         let mut buffer = String::new();
@@ -695,7 +697,7 @@ mod primitive {
                     args.push(Node::new(Constructor(0, Vec::new())));
                     args.get(1).clone()
                 }
-                _ => fail!()
+                _ => panic!()
             };
         }
         (first, node)
@@ -972,7 +974,7 @@ test [] = False
 
 main = test [True, True]
 ")
-    .unwrap_or_else(|err| fail!(err));
+    .unwrap_or_else(|err| panic!(err));
     assert_eq!(result, Some(ConstructorResult(0, Vec::new())));
 }
 #[test]
@@ -991,7 +993,7 @@ test x _ = x
 main = (test 2 [], test 100 [], test 100 ['c'])
 
 ")
-    .unwrap_or_else(|err| fail!(err));
+    .unwrap_or_else(|err| panic!(err));
     assert_eq!(result, Some(ConstructorResult(0, vec!(IntResult(2), IntResult(1), IntResult(100)))));
 }
 
@@ -1011,7 +1013,7 @@ test x _ = x
 main = (test 2 [], test 100 [0], test 100 [0, 123])
 
 ")
-    .unwrap_or_else(|err| fail!(err));
+    .unwrap_or_else(|err| panic!(err));
     assert_eq!(result, Some(ConstructorResult(0, vec!(IntResult(2), IntResult(1), IntResult(100)))));
 }
 #[test]
@@ -1044,7 +1046,7 @@ import Prelude
 
 test x y = (x == y) || (x < y)
 main = (test (0 :: Int) 2) && not (test (1 :: Int) 0)")
-        .unwrap_or_else(|err| fail!("{}", err));
+        .unwrap_or_else(|err| panic!("{}", err));
     assert_eq!(result, Some(ConstructorResult(0, Vec::new())));
 }
 #[test]
@@ -1062,7 +1064,7 @@ instance Eq AB where
 test x y = x == y
 
 main = A == B && test A A")
-        .unwrap_or_else(|err| fail!("{}", err));
+        .unwrap_or_else(|err| panic!("{}", err));
     assert_eq!(result, Some(ConstructorResult(1, Vec::new())));
 }
 
@@ -1075,7 +1077,7 @@ data Test = A Int | B
     deriving(Eq)
 
 main = A 0 == A 2 || A 0 == B
-").unwrap_or_else(|err| fail!(err));
+").unwrap_or_else(|err| panic!(err));
     assert_eq!(result, Some(ConstructorResult(1, Vec::new())));
 }
 #[test]
@@ -1087,7 +1089,7 @@ data Test = A Int | B
     deriving(Eq, Ord)
 
 main = compare (A 0) (A 2) == LT && compare B (A 123) == GT
-").unwrap_or_else(|err| fail!(err));
+").unwrap_or_else(|err| panic!(err));
     assert_eq!(result, Some(ConstructorResult(0, Vec::new())));
 }
 
@@ -1098,7 +1100,7 @@ r"
 import Prelude
 test x y = x == y
 main = test [1 :: Int] [3]
-").unwrap_or_else(|err| fail!(err));
+").unwrap_or_else(|err| panic!(err));
     assert_eq!(result, Some(ConstructorResult(1, Vec::new())));
 }
 #[test]
@@ -1110,7 +1112,7 @@ import Prelude
 test :: Eq a => a -> a -> Bool
 test x y = [x] == [y]
 main = test [1 :: Int] [3]
-").unwrap_or_else(|err| fail!(err));
+").unwrap_or_else(|err| panic!(err));
     assert_eq!(result, Some(ConstructorResult(1, Vec::new())));
 }
 
@@ -1125,7 +1127,7 @@ main = let
     in if x < 0
         then x
         else 1
-").unwrap_or_else(|err| fail!(err));
+").unwrap_or_else(|err| panic!(err));
     assert_eq!(result, Some(IntResult(1)));
 }
 
@@ -1142,7 +1144,7 @@ makeEven i
     | otherwise = Nothing
 
 main = makeEven (100 * 3)
-").unwrap_or_else(|err| fail!(err));
+").unwrap_or_else(|err| panic!(err));
 
     assert_eq!(result, Some(ConstructorResult(0, vec![IntResult(300)])));
 }
@@ -1162,7 +1164,7 @@ main = case list of
             y = x + 10
     where
         list = [1::Int]
-").unwrap_or_else(|err| fail!(err));
+").unwrap_or_else(|err| panic!(err));
     assert_eq!(result, Some(IntResult(11)));
 }
 

@@ -1,7 +1,7 @@
 use module::*;
 use renamer::Name;
 use interner::intern;
-use collections::HashMap;
+use std::collections::HashMap;
 
 pub struct PrecedenceVisitor { precedence: HashMap<Name, (int, Assoc)>  }
 
@@ -80,7 +80,7 @@ impl PrecedenceVisitor {
                                             op_stack.push(op);
                                             break
                                         }
-                                        _ => fail!("Syntax error: mismatched associativity")
+                                        _ => panic!("Syntax error: mismatched associativity")
                                     }
                                 }
                                 else {

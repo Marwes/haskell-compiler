@@ -1,5 +1,4 @@
-use collections::HashMap;
-use std::vec::FromVec;
+use std::collections::HashMap;
 use std::iter::range_step;
 use std::default::Default;
 use std::fmt;
@@ -73,7 +72,7 @@ impl Type {
     pub fn var<'a>(&'a self) -> &'a TypeVariable {
         match self {
             &TypeVariable(ref var) => var,
-            _ => fail!("Tried to unwrap {} as a TypeVariable", self)
+            _ => panic!("Tried to unwrap {} as a TypeVariable", self)
         }
     }
 
@@ -82,7 +81,7 @@ impl Type {
     pub fn ctor<'a>(&'a self) -> &'a TypeConstructor {
         match self {
             &TypeConstructor(ref op) => op,
-            _ => fail!("Tried to unwrap {} as a TypeConstructor", self)
+            _ => panic!("Tried to unwrap {} as a TypeConstructor", self)
         }
     }
 
@@ -91,7 +90,7 @@ impl Type {
     pub fn appl<'a>(&'a self) -> &'a Type {
         match self {
             &TypeApplication(ref lhs, _) => { let l: &Type = *lhs; l }
-            _ => fail!("Error: Tried to unwrap {} as TypeApplication", self)
+            _ => panic!("Error: Tried to unwrap {} as TypeApplication", self)
         }
     }
     #[allow(dead_code)]
@@ -99,7 +98,7 @@ impl Type {
     pub fn appr<'a>(&'a self) -> &'a Type {
         match self {
             &TypeApplication(_, ref rhs) => { let r: &Type = *rhs; r }
-            _ => fail!("Error: Tried to unwrap TypeApplication")
+            _ => panic!("Error: Tried to unwrap TypeApplication")
         }
     }
 
@@ -115,7 +114,7 @@ impl Type {
                         let kind: &Kind = *k;
                         kind
                     }
-                    _ => fail!("Type application must have a kind of KindFunction, {}", self)
+                    _ => panic!("Type application must have a kind of KindFunction, {}", self)
                 },
             &Generic(ref v) => &v.kind
         }
@@ -131,7 +130,7 @@ impl Type {
                         let kind: &mut Kind = *k;
                         kind
                     }
-                    _ => fail!("Type application must have a kind of KindFunction")
+                    _ => panic!("Type application must have a kind of KindFunction")
                 },
             Generic(ref mut v) => &mut v.kind
         }
@@ -164,7 +163,7 @@ pub fn tuple_type(n: uint) -> (String, Type) {
         var_list.push(Generic(Type::new_var_kind(intern(c.to_str().as_slice()), star_kind.clone()).var().clone()));
     }
     let ident = tuple_name(n);
-    let mut typ = Type::new_op(intern(ident.as_slice()), FromVec::from_vec(var_list));
+    let mut typ = Type::new_op(intern(ident.as_slice()), var_list);
     for i in range_step(n as int - 1, -1, -1) {
         let c = (('a' as u8) + i as u8) as char;
         typ = function_type_(Generic(Type::new_var(intern(c.to_str().as_slice())).var().clone()), typ);

@@ -2,7 +2,6 @@
 ///functions which are mutually recursive
 
 use std::cmp::min;
-use std::vec::FromVec;
 
 #[deriving(PartialEq, Show)]
 pub struct VertexIndex(uint);
@@ -77,9 +76,10 @@ pub fn strongly_connected_components<T>(graph: &Graph<T>) -> Vec<Vec<VertexIndex
         }
     }
 
-    FromVec::<Vec<VertexIndex>>::from_vec(tarjan.connections
-        .move_iter()
-        .map(|vec| -> Vec<VertexIndex> FromVec::from_vec(vec)).collect())
+    tarjan.connections
+        .into_iter()
+        .map(|vec| -> Vec<VertexIndex> vec)
+        .collect()
 }
 
 struct TarjanComponents<'a, T>{

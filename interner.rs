@@ -1,4 +1,4 @@
-use collections::HashMap;
+use std::collections::HashMap;
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::fmt;
@@ -34,22 +34,15 @@ impl Interner {
             self.strings.get(i).as_slice()
         }
         else {
-            fail!("Invalid InternedStr {}", i)
+            panic!("Invalid InternedStr {}", i)
         }
     }
 }
 
 ///Returns a reference to the interner stored in TLD
 pub fn get_local_interner() -> Rc<RefCell<Interner>> {
-    local_data_key!(key: Rc<RefCell<Interner>>);
-    match key.get() {
-        Some(interner) => interner.clone(),
-        None => {
-            let interner = Rc::new(RefCell::new(Interner::new()));
-            key.replace(Some(interner.clone()));
-            interner
-        }
-    }
+    thread_local!(static INTERNER: Rc<RefCell<(Interner, Gc)>> = Rc::new(RefCell::new((Interner::new(), Gc::new()))));
+    INTERNER.with(|interner| interner.clone())
 }
 
 pub fn intern(s: &str) -> InternedStr {

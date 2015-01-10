@@ -1,8 +1,7 @@
 extern crate collections;
-use collections::HashMap;
-use collections::hashmap::MutEntries;
+use std::collections::HashMap;
+use std::collections::hash_map::IterMut;
 use std::hash::Hash;
-use std::hash::sip::SipHasher;
 
 ///A map struct which allows for the introduction of different scopes
 ///Introducing a new scope will make it possible to introduce additional
@@ -11,7 +10,7 @@ use std::hash::sip::SipHasher;
 pub struct ScopedMap<K, V> {
     ///A hashmap storing a key -> value mapping
     ///Stores a vector of values in which the value at the top is value returned from 'find'
-    map: HashMap<K, Vec<V>, SipHasher>,
+    map: HashMap<K, Vec<V>>,
     ///A vector of scopes, when entering a scope, None is added as a marker
     ///when later exiting a scope, values are removed from the map until the marker is found
     scopes: Vec<Option<K>>
@@ -70,7 +69,7 @@ impl <K: Eq + Hash + Clone, V> ScopedMap<K, V> {
         false
     }
     ///Returns an iterator of the (key, values) pairs inserted in the map
-    pub fn mut_iter<'a>(&'a mut self) -> MutEntries<'a, K, Vec<V>> {
+    pub fn mut_iter<'a>(&'a mut self) -> IterMut<'a, K, Vec<V>> {
         self.map.mut_iter()
     }
 }

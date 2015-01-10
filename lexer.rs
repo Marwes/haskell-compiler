@@ -1,5 +1,5 @@
 use std::fmt;
-use collections::{Deque, RingBuf};
+use std::collections::RingBuf;
 use std::iter::Peekable;
 use std::rc::Rc;
 use std::cell::RefCell;
@@ -220,7 +220,7 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
             self.offset -= 1;
             match self.tokens.iter().idx(self.tokens.len() - 1 - self.offset) {
                 Some(token) => token,
-                None => fail!("Impossible empty tokens stream")
+                None => panic!("Impossible empty tokens stream")
             }
         }
         else if self.unprocessedTokens.len() > 0 {
@@ -237,7 +237,7 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
     pub fn current<'a>(&'a self) -> &'a Token {
         match self.tokens.iter().idx(self.tokens.len() - 1 - self.offset) {
             Some(token) => token,
-            None => fail!("Attempted to access Lexer::current() on when tokens is empty")
+            None => panic!("Attempted to access Lexer::current() on when tokens is empty")
         }
     }
 
@@ -339,7 +339,7 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
                 //L (t:ts) (m:ms) 	= 	} : (L (t:ts) ms) 	if m /= 0 and parse-error(t)
                 let m = *self.indentLevels.get(self.indentLevels.len() - 1);
                 if m != 0 {//If not a explicit '}'
-                    debug!("ParseError on token {}, inserting \\}", self.current().token);
+                    debug!("ParseError on token {}, inserting }}", self.current().token);
                     self.indentLevels.pop();
                     let loc = self.current().location;
                     self.tokens.push_back(Token::new(&self.interner, RBRACE, "}", loc));
@@ -399,7 +399,7 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
                         else if tok.location.column < m {
                             //n < m
                             //TODO
-                            debug!("n < m, insert \\}");
+                            debug!("n < m, insert }}");
                             self.indentLevels.pop();
                             self.tokens.push_back(Token::new(&self.interner, RBRACE, "}", tok.location));
                             return;
@@ -421,7 +421,7 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
                         //m:ms
                         let m = *self.indentLevels.get(self.indentLevels.len() - 1);
                         if n > m {
-                            debug!("n > m + INDENTSTART, insert \\{");
+                            debug!("n > m + INDENTSTART, insert {{");
                             self.unprocessedTokens.pop();
                             self.tokens.push_back(Token::new(&self.interner, LBRACE, "{", tok.location));
                             self.indentLevels.push(n);
@@ -530,14 +530,14 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
         else if c == '`' {
             let x = self.read_char().expect("Unexpected end of input");
             if !x.is_alphabetic() && x != '_' {
-                fail!("Parse error on '{}'", x);
+                panic!("Parse error on '{}'", x);
             }
             let mut token = self.scan_identifier(x, startLocation);
             let end_tick = self.read_char();
             match end_tick {
                 Some('`') => (),
-                Some(x) => fail!("Parse error on '{}'", x),
-                None => fail!("Unexpected end of input")
+                Some(x) => panic!("Parse error on '{}'", x),
+                None => panic!("Unexpected end of input")
             }
             token.token = OPERATOR;
             return token;
@@ -548,7 +548,7 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
                 match self.read_char() {
                     Some('"') => return Token::new(&self.interner, STRING, string.as_slice(), startLocation),
                     Some(x) => string.push_char(x),
-                    None => fail!("Unexpected EOF")
+                    None => panic!("Unexpected EOF")
                 }
             }
         }
@@ -559,10 +559,10 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
                         return Token::new(&self.interner, CHAR, ::std::str::from_char(x).as_slice(), startLocation);
                     }
                     else {
-                        fail!("Multi char character")
+                        panic!("Multi char character")
                     }
                 }
-                None => fail!("Unexpected EOF")
+                None => panic!("Unexpected EOF")
             }
         }
         let tok = match c {

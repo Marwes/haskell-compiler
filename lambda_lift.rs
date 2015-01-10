@@ -1,5 +1,4 @@
-use collections::hashmap::HashMap;
-use std::vec::FromVec;
+use std::collections::HashMap;
 use core::*;
 use types::function_type_;
 use renamer::NameSupply;
@@ -138,7 +137,7 @@ pub fn lift_lambdas<T>(mut module: Module<T>) -> Module<T> {
                             new_binds.push(bind);
                         }
                     }
-                    *bindings = FromVec::from_vec(new_binds);
+                    *bindings = new_binds;
                     self.visit_expr(*body);
                 }
                 _ => walk_expr(self, expr)
@@ -153,7 +152,7 @@ pub fn lift_lambdas<T>(mut module: Module<T>) -> Module<T> {
     let vec : Vec<Binding<T>> = temp.move_iter()
         .chain(visitor.out_lambdas.move_iter())
         .collect();
-    module.bindings = FromVec::from_vec(vec);
+    module.bindings = vec;
     module
 }
 //Replaces let expressions with no binding with the expression itself
@@ -256,7 +255,7 @@ test2 x =
                 let a: &Expr<Id> = *arg;
                 match a {
                     &Identifier(ref i) => args.push(i.name.name),
-                    _ => fail!("Expected identifier as argument")
+                    _ => panic!("Expected identifier as argument")
                 }
                 get_let(*f, args)
             }

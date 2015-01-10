@@ -1,13 +1,11 @@
-use std::vec::FromVec;
 use compiler::*;
 use typecheck::*;
 use vm::*;
 use interner::*;
 use core::translate::*;
-use core::*;
 use lambda_lift::*;
 use parser::Parser;
-use renamer::{Name, rename_expr};
+use renamer::rename_expr;
 
 ///Returns whether the type in question is an IO action
 fn is_io(typ: &Type) -> bool {
@@ -51,7 +49,7 @@ fn find_main(assembly: &Assembly) -> (Vec<Instruction>, Qualified<Type, Name>) {
                 let len = vec.len();
                 vec.insert(len - 3, Mkap);
                 vec.insert(0, PushInt(42));//Realworld
-                (FromVec::from_vec(vec), sc.typ.clone())
+                (vec, sc.typ.clone())
             }
             else {
                 (sc.instructions.clone(), sc.typ.clone())
@@ -79,7 +77,7 @@ pub fn start() {
     for line in ::std::io::stdin().lines() {
         let expr_str = match line {
             Ok(l) => l,
-            Err(e) => fail!("Reading line failed with '{}'", e)
+            Err(e) => panic!("Reading line failed with '{}'", e)
         };
         let assembly = compile_expr(vm.get_assembly(0), expr_str.as_slice());
         let (instructions, typ) = find_main(&assembly);

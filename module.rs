@@ -1,8 +1,8 @@
 use std::fmt;
-use collections::HashMap;
+use std::collections::HashMap;
 use interner::{intern, InternedStr};
+use lexer::{Location, Located};
 pub use std::default::Default;
-pub use lexer::{Location, Located};
 pub use types::*;
 
 #[deriving(Clone)]
@@ -204,21 +204,21 @@ impl <T: fmt::Show> fmt::Show for Expr<T> {
         try!(write_core_expr!(*self, f, _));
         match *self {
             Do(ref bindings, ref expr) => {
-                try!(write!(f, "do \\{\n"));
+                try!(write!(f, "do {{\n"));
                 for bind in bindings.iter() {
                     match *bind {
                         DoLet(ref bindings) => {
-                            try!(write!(f, "let \\{\n"));
+                            try!(write!(f, "let {{\n"));
                             for bind in bindings.iter() {
                                 try!(write!(f, "; {} = {}\n", bind.name, bind.matches));
                             }
-                            try!(write!(f, "\\}\n"));
+                            try!(write!(f, "}}\n"));
                         }
                         DoBind(ref p, ref e) => try!(write!(f, "; {} <- {}\n", p.node, *e)),
                         DoExpr(ref e) => try!(write!(f, "; {}\n", *e))
                     }
                 }
-                write!(f, "{} \\}", *expr)
+                write!(f, "{} }}", *expr)
             }
             OpApply(ref lhs, ref op, ref rhs) => write!(f, "({} {} {})", lhs, op, rhs),
             TypeSig(ref expr, ref typ) => write!(f, "{} {}", expr, typ),
@@ -307,7 +307,7 @@ pub fn walk_module<Ident>(visitor: &mut Visitor<Ident>, module: &Module<Ident>) 
 pub fn walk_binding<Ident>(visitor: &mut Visitor<Ident>, binding: &Binding<Ident>) {
     match binding.matches {
         Simple(ref e) => visitor.visit_expr(e),
-        _ => fail!()
+        _ => panic!()
     }
 }
 
