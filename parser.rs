@@ -46,8 +46,7 @@ fn require_next<'a>(&'a mut self, expected : TokenEnum) -> &'a Token {
 }
 
 pub fn module(&mut self) -> Module {
-	let lBracketOrModule = self.lexer.module_next().token;//tokenizeModule??
-	let modulename = match lBracketOrModule {
+	let modulename = match self.lexer.module_next().token {
         MODULE => {
             let modulename = self.require_next(NAME).value.clone();
             self.require_next(WHERE);
@@ -308,8 +307,7 @@ fn sub_expression(&mut self) -> Option<TypedExpr> {
 	    LET => {
 			let binds = self.let_bindings();
 
-			let inToken = self.lexer.next().token;
-			if inToken != IN {
+			if self.lexer.next().token != IN {
 				panic!(parse_error(&self.lexer, IN));
             }
 			match self.expression() {
@@ -506,10 +504,10 @@ fn application(&mut self) -> Option<TypedExpr> {
     }
 }
 
-fn constructor(&mut self, dataDef : &DataDefinition) -> Constructor {
+fn constructor(&mut self, data_def : &DataDefinition) -> Constructor {
 	let name = self.require_next(NAME).value.clone();
 	let mut arity = 0;
-	let typ = self.constructor_type(&mut arity, dataDef);
+	let typ = self.constructor_type(&mut arity, data_def);
 	self.lexer.backtrack();
 	Constructor { name : name, typ : qualified(vec![], typ), tag : 0, arity : arity }
 }
@@ -519,22 +517,21 @@ fn binding(&mut self) -> Binding {
 	//name1 = expr
 	//or
 	//name2 x y = expr
-	let nameToken = self.lexer.next().token;
+	let name_token = self.lexer.next().token;
 	let mut name = self.lexer.current().value.clone();
-	if nameToken == LPARENS {
+	if name_token == LPARENS {
 		//Parse a name within parentheses
-		let functionName = self.lexer.next().token;
-		if functionName != NAME && functionName != OPERATOR {
+		let function_name = self.lexer.next().token;
+		if function_name != NAME && function_name != OPERATOR {
 			panic!("Expected NAME or OPERATOR on left side of binding {:?}", self.lexer.current().token);
 		}
 		name = self.lexer.current().value.clone();
 
-		let rParens = self.lexer.next().token;
-		if rParens != RPARENS {
+		if self.lexer.next().token != RPARENS {
 			panic!(parse_error(&self.lexer, RPARENS));
 		}
 	}
-	else if nameToken != NAME {
+	else if name_token != NAME {
 		panic!(parse_error(&self.lexer, NAME));
 	}
 
@@ -674,9 +671,9 @@ fn located_pattern(&mut self) -> Located<Pattern> {
 }
 
 fn pattern(&mut self) -> Pattern {
-	let nameToken = self.lexer.next().token;
+	let name_token = self.lexer.next().token;
     let name = self.lexer.current().value.clone();
-    let pat = match nameToken {
+    let pat = match name_token {
         LBRACKET => {
             if self.lexer.next().token != RBRACKET {
                 panic!(parse_error(&self.lexer, RBRACKET));
@@ -691,13 +688,13 @@ fn pattern(&mut self) -> Pattern {
                 Pattern::Constructor(intern("()"), vec![])
             }
             else {
-                let mut tupleArgs = self.sep_by_1(|this| this.pattern(), COMMA);
+                let mut tuple_args = self.sep_by_1(|this| this.pattern(), COMMA);
                 self.require_next(RPARENS);
-                if tupleArgs.len() == 1 {
-                    tupleArgs.pop().unwrap()
+                if tuple_args.len() == 1 {
+                    tuple_args.pop().unwrap()
                 }
                 else {
-                    Pattern::Constructor(intern(tuple_name(tupleArgs.len()).as_slice()), tupleArgs)
+                    Pattern::Constructor(intern(tuple_name(tuple_args.len()).as_slice()), tuple_args)
                 }
             }
         }
@@ -716,21 +713,20 @@ fn pattern(&mut self) -> Pattern {
 fn type_declaration(&mut self) -> TypeDeclaration {
     let mut name;
 	{
-        let nameToken = self.lexer.next().token;
+        let name_token = self.lexer.next().token;
         name = self.lexer.current().value.clone();
-        if nameToken == LPARENS {
+        if name_token == LPARENS {
             //Parse a name within parentheses
-            let functionName = self.lexer.next().token;
-            if functionName != NAME && functionName != OPERATOR {
-                panic!("Expected NAME or OPERATOR on left side of binding {:?}", functionName);
+            let function_name = self.lexer.next().token;
+            if function_name != NAME && function_name != OPERATOR {
+                panic!("Expected NAME or OPERATOR on left side of binding {:?}", function_name);
             }
             name = self.lexer.current().value.clone();
-            let rParens = self.lexer.next().token;
-            if rParens != RPARENS {
+            if self.lexer.next().token != RPARENS {
                 panic!(parse_error(&self.lexer, RPARENS));
             }
         }
-        else if nameToken != NAME {
+        else if name_token != NAME {
             panic!(parse_error(&self.lexer, NAME));
         }
     }
@@ -779,7 +775,7 @@ fn constrained_type(&mut self) -> (Vec<Constraint>, Type) {
 	(make_constraints(maybe_constraints), typ)
 }
 
-fn constructor_type(&mut self, arity : &mut isize, dataDef: &DataDefinition) -> Type {
+fn constructor_type(&mut self, arity : &mut isize, data_def: &DataDefinition) -> Type {
     debug!("Parse constructor type");
 	let token = self.lexer.next().token;
 	if token == NAME {
@@ -790,16 +786,16 @@ fn constructor_type(&mut self, arity : &mut isize, dataDef: &DataDefinition) -> 
 		else {
 			Type::new_op(self.lexer.current().value.clone(), Vec::new())
         };
-        function_type_(arg, self.constructor_type(arity, dataDef))
+        function_type_(arg, self.constructor_type(arity, data_def))
 	}
 	else if token == LPARENS {
         *arity += 1;
         let arg = self.parse_type();
         self.require_next(RPARENS);
-        function_type_(arg, self.constructor_type(arity, dataDef))
+        function_type_(arg, self.constructor_type(arity, data_def))
     }
     else {
-		dataDef.typ.value.clone()
+		data_def.typ.value.clone()
 	}
 }
 
@@ -906,16 +902,15 @@ fn parse_type(&mut self) -> Type {
 	match token.token {
 	    LBRACKET => {
             if self.lexer.next().token == RBRACKET {
-                let listType = Type::new_op_kind(intern("[]"), vec![], Kind::new(2));
-                self.parse_return_type(listType)
+                let list = Type::new_op_kind(intern("[]"), vec![], Kind::new(2));
+                self.parse_return_type(list)
             }
             else {
                 self.lexer.backtrack();
                 let t = self.parse_type();
                 self.require_next(RBRACKET);
-                let listType = list_type(t);
-                
-                self.parse_return_type(listType)
+                let list = list_type(t);
+                self.parse_return_type(list)
             }
 		}
 	    LPARENS => {
@@ -925,40 +920,41 @@ fn parse_type(&mut self) -> Type {
             }
             else {
                 let t = self.parse_type();
-                let maybeComma = self.lexer.next().token;
-                if maybeComma == COMMA {
-                    let mut tupleArgs: Vec<Type> = self.sep_by_1(|this| this.parse_type(), COMMA)
-                        .into_iter()
-                        .collect();
-                    tupleArgs.insert(0, t);
-                    self.require_next(RPARENS);
+                match self.lexer.next().token {
+                    COMMA => {
+                        let mut tuple_args: Vec<Type> = self.sep_by_1(|this| this.parse_type(), COMMA)
+                            .into_iter()
+                            .collect();
+                        tuple_args.insert(0, t);
+                        self.require_next(RPARENS);
 
-                    self.parse_return_type(make_tuple_type(tupleArgs))
-                }
-                else if maybeComma == RPARENS {
-                    self.parse_return_type(t)
-                }
-                else {
-                    panic!(parse_error2(&self.lexer, &[COMMA, RPARENS]))
+                        self.parse_return_type(make_tuple_type(tuple_args))
+                    }
+                    RPARENS => {
+                        self.parse_return_type(t)
+                    }
+                    _ => {
+                        panic!(parse_error2(&self.lexer, &[COMMA, RPARENS]))
+                    }
                 }
             }
 		}
 	    NAME => {
-			let mut typeArguments = Vec::new();
+			let mut type_arguments = Vec::new();
             loop {
                 match self.sub_type() {
-                    Some(typ) => typeArguments.push(typ),
+                    Some(typ) => type_arguments.push(typ),
                     None => break
                 }
             }
 
-			let thisType = if token.value.as_slice().char_at(0).is_uppercase() {
-				Type::new_op(token.value, typeArguments)
+			let this_type = if token.value.as_slice().char_at(0).is_uppercase() {
+				Type::new_op(token.value, type_arguments)
 			}
 			else {
-                Type::new_var_args(token.value, typeArguments)
+                Type::new_var_args(token.value, type_arguments)
 			};
-			self.parse_return_type(thisType)
+			self.parse_return_type(this_type)
 		}
 	    _ => panic!("Unexpected token when parsing type {:?}", self.lexer.current())
 	}
@@ -1099,7 +1095,7 @@ use lexer::{Location, Located };
 use parser::*;
 use module::*;
 use module::Expr::*;
-use typecheck::{identifier, apply, op_apply, number, rational, lambda, let_, case, if_else};
+use typecheck::{identifier, apply, op_apply, number, rational, let_, case, if_else};
 use std::io::File;
 use test::Bencher;
 
@@ -1171,14 +1167,14 @@ r"case [] of
 fn parse_type() {
     let mut parser = Parser::new(
 r"(.) :: (b -> c) -> (a -> b) -> (a -> c)".chars());
-    let typeDecl = parser.type_declaration();
+    let type_decl = parser.type_declaration();
     let a = &Type::new_var(intern("a"));
     let b = &Type::new_var(intern("b"));
     let c = &Type::new_var(intern("c"));
     let f = function_type(&function_type(b, c), &function_type(&function_type(a, b), &function_type(a, c)));
 
-    assert_eq!(typeDecl.name, intern("."));
-    assert_eq!(typeDecl.typ.value, f);
+    assert_eq!(type_decl.name, intern("."));
+    assert_eq!(type_decl.typ.value, f);
 }
 #[test]
 fn parse_data() {

@@ -89,9 +89,9 @@ pub struct TypeEnvironment<'a> {
     ///Stores references to imported modules or assemblies
     assemblies: Vec<&'a (DataTypes + 'a)>,
     ///A mapping of names to the type which those names are bound to.
-    namedTypes : HashMap<Name, Qualified<Type, Name>>,
+    named_types : HashMap<Name, Qualified<Type, Name>>,
     ///A mapping used for any variables declared inside any global binding.
-    ///Used in conjuction to the global 'namedTypes' map since the local table can
+    ///Used in conjuction to the global 'named_types' map since the local table can
     ///be cleared once those bindings are no longer in used which gives an overall speed up.
     local_types : HashMap<Name, Qualified<Type, Name>>,
     ///Stores the constraints for each typevariable since the typevariables cannot themselves store this.
@@ -241,7 +241,7 @@ impl <'a> TypeEnvironment<'a> {
         }
         TypeEnvironment {
             assemblies: Vec::new(),
-            namedTypes : globals,
+            named_types : globals,
             local_types : HashMap::new(),
             constraints: HashMap::new(),
             instances: Vec::new(),
@@ -265,14 +265,14 @@ impl <'a> TypeEnvironment<'a> {
             for constructor in data_def.constructors.iter_mut() {
                 let mut typ = constructor.typ.clone();
                 quantify(0, &mut typ);
-                self.namedTypes.insert(constructor.name.clone(), typ);
+                self.named_types.insert(constructor.name.clone(), typ);
             }
             self.data_definitions.push(data_def.clone());
         }
         for newtype in module.newtypes.iter() {
             let mut typ = newtype.constructor_type.clone();
             quantify(0, &mut typ);
-            self.namedTypes.insert(newtype.constructor_name.clone(), typ);
+            self.named_types.insert(newtype.constructor_name.clone(), typ);
         }
         for class in module.classes.iter_mut() {
             //Instantiate a new variable and replace all occurances of the class variable with this
@@ -301,7 +301,7 @@ impl <'a> TypeEnvironment<'a> {
                 }
                 let mut t = type_decl.typ.clone();
                 quantify(0, &mut t);
-                self.namedTypes.insert(type_decl.name.clone(), t);
+                self.named_types.insert(type_decl.name.clone(), t);
             }
             for binding in class.bindings.iter_mut() {
                 let classname = &class.name;
@@ -653,10 +653,10 @@ impl <'a> TypeEnvironment<'a> {
                 self.typecheck_apply(&expr.location, subs, first, &mut **rhs)
             }
             Lambda(ref arg, ref mut body) => {
-                let mut argType = self.new_var();
-                let mut result = function_type_(argType.clone(), self.new_var());
+                let mut arg_type = self.new_var();
+                let mut result = function_type_(arg_type.clone(), self.new_var());
 
-                self.typecheck_pattern(&expr.location, subs, arg, &mut argType);
+                self.typecheck_pattern(&expr.location, subs, arg, &mut arg_type);
                 let body_type = self.typecheck(&mut **body, subs);
                 with_arg_return(&mut result, |_, return_type| {
                     *return_type = body_type.clone();
@@ -868,15 +868,15 @@ impl <'a> TypeEnvironment<'a> {
 
         for group in groups.iter() {
             for index in group.iter() {
-                let bindIndex = graph.get_vertex(*index).value;
-                let binds = bindings.get_mut(bindIndex);
+                let bind_index = graph.get_vertex(*index).value;
+                let binds = bindings.get_mut(bind_index);
                 for bind in binds.iter_mut() {
                     if bind.typ.value == Type::new_var(intern("a")) {
                         bind.typ.value = self.new_var();
                     }
                 }
                 if is_global {
-                    self.namedTypes.insert(binds[0].name.clone(), binds[0].typ.clone());
+                    self.named_types.insert(binds[0].name.clone(), binds[0].typ.clone());
                 }
                 else {
                     self.local_types.insert(binds[0].name.clone(), binds[0].typ.clone());
@@ -884,14 +884,14 @@ impl <'a> TypeEnvironment<'a> {
             }
             for index in group.iter() {
                 {
-                    let bindIndex = graph.get_vertex(*index).value;
-                    let binds = bindings.get_mut(bindIndex);
+                    let bind_index = graph.get_vertex(*index).value;
+                    let binds = bindings.get_mut(bind_index);
                     self.typecheck_binding_group(subs, binds);
                 }
                 if is_global {
                     for index in group.iter() {
                         for bind in bindings.get_mut(graph.get_vertex(*index).value).iter() {
-                            replace(&mut self.constraints, &mut self.namedTypes[bind.name].value, subs);
+                            replace(&mut self.constraints, &mut self.named_types[bind.name].value, subs);
                         }
                     }
                     self.local_types.clear();
@@ -901,15 +901,15 @@ impl <'a> TypeEnvironment<'a> {
                 }
             }
             for index in group.iter() {
-                let bindIndex = graph.get_vertex(*index).value;
-                let binds = bindings.get_mut(bindIndex);
+                let bind_index = graph.get_vertex(*index).value;
+                let binds = bindings.get_mut(bind_index);
                 for constraint in binds[0].typ.constraints.iter() {
                     self.insert_constraint(&constraint.variables[0], constraint.class.clone());
                 }
                 for bind in binds.iter_mut() {
                     {
                         let typ = if is_global {
-                            &mut self.namedTypes[bind.name]
+                            &mut self.named_types[bind.name]
                         }
                         else {
                             &mut self.local_types[bind.name]
@@ -940,7 +940,7 @@ impl <'a> TypeEnvironment<'a> {
     ///Workaround to make all imported functions quantified without requiring their type variables to be generic
     fn find_fresh(&self, name: &Name) -> Option<Qualified<Type, Name>> {
         self.local_types.get(name)
-            .or_else(|| self.namedTypes.get(name))
+            .or_else(|| self.named_types.get(name))
             .map(|x| x.clone())
             .or_else(|| {
             for types in self.assemblies.iter() {
@@ -1149,8 +1149,8 @@ fn replace(constraints: &mut HashMap<TypeVariable, Vec<Name>>, old : &mut Type, 
 }
 
 ///Checks whether a typevariable occurs in another type
-fn occurs(type_var: &TypeVariable, inType: &Type) -> bool {
-    match inType {
+fn occurs(type_var: &TypeVariable, in_type: &Type) -> bool {
+    match in_type {
         &Type::Variable(ref var) => type_var.id == var.id,
         &Type::Application(ref lhs, ref rhs) => occurs(type_var, &**lhs) || occurs(type_var, &**rhs),
         _ => false

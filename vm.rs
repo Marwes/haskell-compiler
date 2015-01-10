@@ -165,7 +165,7 @@ impl <'a> VM {
     pub fn add_assembly(&mut self, assembly: Assembly) -> usize {
         self.assembly.push(assembly);
         let assembly_index = self.assembly.len() - 1;
-        for index in range(0, self.assembly.last().unwrap().superCombinators.len()) {
+        for index in range(0, self.assembly.last().unwrap().super_combinators.len()) {
             self.globals.push((assembly_index, index));
         }
         assembly_index
@@ -260,7 +260,7 @@ impl <'a> VM {
                 }
                 PushGlobal(index) => {
                     let (assembly_index, index) = self.globals[index];
-                    let sc = &self.assembly[assembly_index].superCombinators[index];
+                    let sc = &self.assembly[assembly_index].super_combinators[index];
                     stack.push(Node::new(Combinator(sc)));
                 }
                 PushBuiltin(index) => {
@@ -277,9 +277,9 @@ impl <'a> VM {
                 Eval => {
                     static UNWINDCODE : &'static [Instruction] = &[Unwind];
                     let old = stack.pop().unwrap();
-                    let mut newStack = vec!(old.clone());
-                    self.execute(&mut newStack, UNWINDCODE, assembly_id);
-                    stack.push(newStack.pop().unwrap());
+                    let mut new_stack = vec!(old.clone());
+                    self.execute(&mut new_stack, UNWINDCODE, assembly_id);
+                    stack.push(new_stack.pop().unwrap());
                     debug!("{:?}", stack.as_slice());
                     let new = stack.last().unwrap().borrow().clone();
                     *(*old.node).borrow_mut() = new;
@@ -415,11 +415,11 @@ impl <'a> VM {
                         match *dict.entries[index] {
                             DictionaryEntry::Function(gi) => {
                                 let (assembly_index, i) = self.globals[gi];
-                                Combinator(&self.assembly[assembly_index].superCombinators[i])
+                                Combinator(&self.assembly[assembly_index].super_combinators[i])
                             }
                             DictionaryEntry::App(gi, ref dict) => {
                                 let (assembly_index, i) = self.globals[gi];
-                                let sc = &self.assembly[assembly_index].superCombinators[i];
+                                let sc = &self.assembly[assembly_index].super_combinators[i];
                                 Application(Node::new(Combinator(sc)), Node::new(Dictionary(dict.clone())))
                             }
                         }
@@ -569,7 +569,7 @@ fn execute_main_module_(assemblies: Vec<Assembly>) -> IoResult<Option<VMResult>>
     for assembly in assemblies.into_iter() {
         vm.add_assembly(assembly);
     }
-    let x = vm.assembly.iter().flat_map(|a| a.superCombinators.iter()).find(|sc| sc.name.name == intern("main"));
+    let x = vm.assembly.iter().flat_map(|a| a.super_combinators.iter()).find(|sc| sc.name.name == intern("main"));
     match x {
         Some(sc) => {
             assert!(sc.arity == 0);
@@ -581,7 +581,7 @@ fn execute_main_module_(assemblies: Vec<Assembly>) -> IoResult<Option<VMResult>>
 }
 
 //We mirror the naming scheme from Haskell here which is camelCase
-#[allow(non_snake_case_functions)]
+#[allow(non_snake_case)]
 mod primitive {
 
     use std::io::fs::File;
@@ -736,7 +736,7 @@ use interner::*;
 fn execute_main<T : Iterator<Item=char>>(iterator: T) -> Option<VMResult> {
     let mut vm = VM::new();
     vm.add_assembly(compile_iter(iterator));
-    let x = vm.assembly.iter().flat_map(|a| a.superCombinators.iter()).find(|sc| sc.name.name == intern("main"));
+    let x = vm.assembly.iter().flat_map(|a| a.super_combinators.iter()).find(|sc| sc.name.name == intern("main"));
     match x {
         Some(sc) => {
             assert!(sc.arity == 0);
@@ -897,7 +897,7 @@ main = foldl add 0 [1,2,3,4]")
     let mut vm = VM::new();
     vm.add_assembly(prelude);
     vm.add_assembly(assembly);
-    let x = vm.assembly.iter().flat_map(|a| a.superCombinators.iter()).find(|sc| sc.name.name == intern("main"));
+    let x = vm.assembly.iter().flat_map(|a| a.super_combinators.iter()).find(|sc| sc.name.name == intern("main"));
     let result = match x {
         Some(sc) => {
             assert!(sc.arity == 0);
@@ -921,7 +921,7 @@ fn instance_super_class() {
     let mut vm = VM::new();
     vm.add_assembly(prelude);
     vm.add_assembly(assembly);
-    let x = vm.assembly.iter().flat_map(|a| a.superCombinators.iter()).find(|sc| sc.name.name == intern("main"));
+    let x = vm.assembly.iter().flat_map(|a| a.super_combinators.iter()).find(|sc| sc.name.name == intern("main"));
     let result = match x {
         Some(sc) => {
             assert!(sc.arity == 0);
@@ -953,7 +953,7 @@ main = test (Just 4) (Just 6)")
     let mut vm = VM::new();
     vm.add_assembly(prelude);
     vm.add_assembly(assembly);
-    let x = vm.assembly.iter().flat_map(|a| a.superCombinators.iter()).find(|sc| sc.name.name == intern("main"));
+    let x = vm.assembly.iter().flat_map(|a| a.super_combinators.iter()).find(|sc| sc.name.name == intern("main"));
     let result = match x {
         Some(sc) => {
             assert!(sc.arity == 0);
