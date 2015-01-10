@@ -1,6 +1,6 @@
 extern crate collections;
 use std::collections::HashMap;
-use std::collections::hash_map::IterMut;
+use std::collections::hash_map::{IterMut, Hasher};
 use std::hash::Hash;
 
 ///A map struct which allows for the introduction of different scopes
@@ -17,7 +17,7 @@ pub struct ScopedMap<K, V> {
 }
 
 #[allow(dead_code)]
-impl <K: Eq + Hash + Clone, V> ScopedMap<K, V> {
+impl <K: Eq + Hash<Hasher> + Clone, V> ScopedMap<K, V> {
     pub fn new() -> ScopedMap<K, V> {
         ScopedMap { map: HashMap::new(), scopes: Vec::new() }
     }
@@ -52,11 +52,6 @@ impl <K: Eq + Hash + Clone, V> ScopedMap<K, V> {
         }
     }
 
-    ///Like find but uses equiv to compare the keys
-    pub fn find_equiv<'a, Q: Hash + Equiv<K>>(&'a self, k: &Q) -> Option<&'a V> {
-        self.map.find_equiv(k).and_then(|x| x.last())
-    }
-
     ///Returns true if the key has a value declared in the last declared scope
     pub fn in_current_scope(&self, k: &K) -> bool {
         for n in self.scopes.iter().rev() {
@@ -72,27 +67,22 @@ impl <K: Eq + Hash + Clone, V> ScopedMap<K, V> {
     pub fn mut_iter<'a>(&'a mut self) -> IterMut<'a, K, Vec<V>> {
         self.map.mut_iter()
     }
-}
 
-impl <K: Eq + Hash, V> Map<K, V> for ScopedMap<K, V> {
     ///Returns a reference to the last inserted value corresponding to the key
     fn find<'a>(&'a self, k: &K) -> Option<&'a V> {
         self.map.find(k).and_then(|x| x.last())
     }
-}
-impl <K: Eq + Hash, V> Container for ScopedMap<K, V> {
+
     ///Returns the number of elements in the container.
     ///Shadowed elements are not counted
     fn len(&self) -> uint { self.map.len() }
-}
-impl <K: Eq + Hash, V> Mutable for ScopedMap<K, V> {
+
     ///Removes all elements
     fn clear(&mut self) {
         self.map.clear();
         self.scopes.clear();
     }
-}
-impl <K: Eq + Hash + Clone, V> MutableMap<K, V> for ScopedMap<K, V> {
+
     ///Swaps the value stored at key, or inserts it if it is not present
     fn swap(&mut self, k: K, v: V) -> Option<V> {
         let vec = self.map.find_or_insert(k.clone(), Vec::new());

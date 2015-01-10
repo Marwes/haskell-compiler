@@ -1,5 +1,7 @@
 use module::encode_binding_identifier;
 use core::*;
+use core::Expr::*;
+use types::{bool_type, function_type_};
 use renamer::NameSupply;
 use interner::{intern, InternedStr};
 
@@ -102,7 +104,7 @@ impl DerivingGen {
         //Create a constraint for each type parameter
         fn make_constraints(mut result: Vec<Constraint<Name>>, class: InternedStr, typ: &Type) -> Vec<Constraint<Name>> {
             match typ {
-                &TypeApplication(ref f, ref param) => {
+                &Type::Application(ref f, ref param) => {
                     result.push(Constraint { class: Name { name: class, uid: 0 }, variables: box [param.var().clone()] });
                     make_constraints(result, class, *f)
                 }
@@ -120,10 +122,10 @@ impl DerivingGen {
         let match_id = Id::new(self.name_supply.anonymous(), Type::new_op(intern("Ordering"), box []), box []);
         Case(box cmp, box [
             Alternative {
-                pattern: ConstructorPattern(id("EQ", Type::new_op(intern("Ordering"), box [])), box []),
+                pattern: Pattern::Constructor(id("EQ", Type::new_op(intern("Ordering"), box [])), box []),
                 expression: def
             },
-            Alternative { pattern: IdentifierPattern(match_id.clone()), expression: Identifier(match_id) }
+            Alternative { pattern: Pattern::Identifier(match_id.clone()), expression: Identifier(match_id) }
         ])
     }
 
@@ -139,15 +141,15 @@ impl DerivingGen {
                 .collect();
             let ctor_id = Id::new(constructor.name, iter.typ.clone(), constructor.typ.constraints.clone());
             let expr = f(self, args_l, args_r);
-            let pattern_r = ConstructorPattern(ctor_id.clone(), args_r);
+            let pattern_r = Pattern::Constructor(ctor_id.clone(), args_r);
             let inner = Case(box Identifier(id_r.clone()), box [
                 Alternative { pattern: pattern_r, expression: expr },
                 Alternative { 
-                    pattern: WildCardPattern,
+                    pattern: Pattern::WildCard,
                     expression: Identifier(Id::new(Name { uid: 0, name: intern("False") }, bool_type(), box []))
                 }
             ]);
-            Alternative { pattern: ConstructorPattern(ctor_id, args_l), expression: inner }
+            Alternative { pattern: Pattern::Constructor(ctor_id, args_l), expression: inner }
         }).collect();
         alts
     }
@@ -181,7 +183,8 @@ fn true_expr() -> Expr<Id<Name>> {
 struct ArgIterator<'a> {
     typ: &'a Type
 }
-impl <'a> Iterator<&'a Type> for ArgIterator<'a> {
+impl <'a> Iterator for ArgIterator<'a> {
+    type Item = &'a Type;
     fn next(&mut self) -> Option<&'a Type> {
         use types::try_get_function;
         match try_get_function(self.typ) {
@@ -195,7 +198,7 @@ impl <'a> Iterator<&'a Type> for ArgIterator<'a> {
 }
 fn extract_applied_type<'a>(typ: &'a Type) -> &'a Type {
     match typ {
-        &TypeApplication(ref lhs, _) => extract_applied_type(*lhs),
+        &Type::Application(ref lhs, _) => extract_applied_type(*lhs),
         _ => typ
     }
 }

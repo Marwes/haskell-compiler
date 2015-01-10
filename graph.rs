@@ -1,6 +1,7 @@
 ///Graph module, contains a simple graph structure which is when typechecking to find
 ///functions which are mutually recursive
 
+use std::iter::repeat;
 use std::cmp::min;
 
 #[deriving(PartialEq, Show)]
@@ -66,8 +67,9 @@ impl <T> Graph<T> {
 pub fn strongly_connected_components<T>(graph: &Graph<T>) -> Vec<Vec<VertexIndex>> {
     
     let mut tarjan = TarjanComponents { graph: graph, index: 1, stack: Vec::new(), connections: Vec::new(),
-        valid: Vec::from_fn(graph.len(), |_| 0),
-        lowlink: Vec::from_fn(graph.len(), |_| 0)};
+        valid: repeat(0).take(graph.len()).collect(),
+        lowlink: repeat(0).take(graph.len()).collect()
+    };
     
 
     for vert in range(0, graph.len()) {
@@ -82,7 +84,7 @@ pub fn strongly_connected_components<T>(graph: &Graph<T>) -> Vec<Vec<VertexIndex
         .collect()
 }
 
-struct TarjanComponents<'a, T>{
+struct TarjanComponents<'a, T: 'a>{
     index: uint,
     graph: &'a Graph<T>,
     valid: Vec<uint>,

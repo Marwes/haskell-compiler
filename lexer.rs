@@ -5,6 +5,8 @@ use std::rc::Rc;
 use std::cell::RefCell;
 use interner::*;
 
+use self::TokenEnum::*;
+
 #[deriving(Clone, PartialEq, Show)]
 pub enum TokenEnum {
 	EOF,
@@ -150,7 +152,7 @@ fn is_operator(first_char : char) -> bool {
     }
 }
 
-pub struct Lexer<Stream> {
+pub struct Lexer<Stream: Iterator<Item=char>> {
     ///The input which the lexer processes
     input : Peekable<char, Stream>,
     ///The current location of the lexer
@@ -168,7 +170,7 @@ pub struct Lexer<Stream> {
 }
 
 
-impl <Stream : Iterator<char>> Lexer<Stream> {
+impl <Stream : Iterator<Item=char>> Lexer<Stream> {
     
     ///Constructs a new lexer with a default sized token buffer and the local string interner
     pub fn new(input : Stream) -> Lexer<Stream> {
@@ -297,7 +299,7 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
     }
     ///Scans a number, float or integer and returns the appropriate token
     fn scan_number(&mut self, c : char, location : Location) -> Token {
-        let mut number = String::from_char(1, c);
+        let mut number = c.to_string();
         number.push_str(self.scan_digits().as_slice());
         let mut token = NUMBER;
         match self.peek_char() {
@@ -313,7 +315,7 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
     }
     ///Scans an identifier or a keyword
     fn scan_identifier(&mut self, c: char, startLocation: Location) -> Token {
-        let mut result = String::from_char(1, c);
+        let mut result = c.to_string();
         loop {
             match self.peek_char() {
                 Some(ch) => {
@@ -497,7 +499,7 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
         //Decide how to tokenize depending on what the first char is
         //ie if its an operator then more operators will follow
         if is_operator(c) {
-            let mut result = String::from_char(1, c);
+            let mut result = c.to_string();
             loop {
                 match self.peek_char() {
                     Some(ch) => {
@@ -556,7 +558,8 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
             match self.read_char() {
                 Some(x) => {
                     if self.read_char() == Some('\'') {
-                        return Token::new(&self.interner, CHAR, ::std::str::from_char(x).as_slice(), startLocation);
+                        //FIXME: Slow
+                        return Token::new(&self.interner, CHAR, &*x.to_string(), startLocation);
                     }
                     else {
                         panic!("Multi char character")
@@ -577,7 +580,8 @@ impl <Stream : Iterator<char>> Lexer<Stream> {
             '\\'=> LAMBDA,
             _   => EOF
         };
-        Token::new(&self.interner, tok, ::std::str::from_char(c).as_slice(), startLocation)
+        //FIXME: Slow
+        Token::new(&self.interner, tok, c.to_string().as_slice(), startLocation)
     }
 }
 

@@ -9,8 +9,8 @@ impl MutVisitor<Name> for PrecedenceVisitor {
     fn visit_expr(&mut self, expr: &mut TypedExpr<Name>) {
         walk_expr_mut(self, expr);
         match expr.expr {
-            OpApply(..) => {
-                let mut temp = TypedExpr::new(Identifier(Name { uid: -1, name: intern("") }));
+            Expr::OpApply(..) => {
+                let mut temp = TypedExpr::new(Expr::Identifier(Name { uid: -1, name: intern("") }));
                 ::std::mem::swap(&mut temp, expr);
                 temp = self.rewrite(box temp);
                 ::std::mem::swap(&mut temp, expr);
@@ -31,14 +31,14 @@ impl PrecedenceVisitor {
 
     pub fn new() -> PrecedenceVisitor {
         let mut map = HashMap::new();
-        map.insert(Name { uid: 0, name: intern(":") }, (5, RightAssoc));
+        map.insert(Name { uid: 0, name: intern(":") }, (5, Assoc::Right));
         PrecedenceVisitor { precedence: map }
     }
 
     fn get_precedence(&self, name: &Name) -> (int, Assoc) {
         self.precedence.find(name)
             .map(|x| *x)
-            .unwrap_or_else(|| (9, LeftAssoc))
+            .unwrap_or_else(|| (9, Assoc::Left))
     }
     
     ///Takes a operator expression the is in the form (1 + (2 * (3 - 4))) and rewrites it using the
@@ -51,14 +51,14 @@ impl PrecedenceVisitor {
             let rhs = expr_stack.pop().unwrap();
             let lhs = expr_stack.pop().unwrap();
             let loc = lhs.location;
-            expr_stack.push(box TypedExpr::with_location(OpApply(lhs, op, rhs), loc));
+            expr_stack.push(box TypedExpr::with_location(Expr::OpApply(lhs, op, rhs), loc));
         }
         let mut expr_stack = Vec::new();
         let mut op_stack = Vec::new();
         loop {
             let TypedExpr { typ: typ, location:location, expr: expr } = *input;
             match expr {
-                OpApply(l, op, r) => {
+                Expr::OpApply(l, op, r) => {
                     expr_stack.push(l);
                     input = r;
                     loop {
@@ -72,10 +72,10 @@ impl PrecedenceVisitor {
                                 }
                                 else if op_prec == prev_prec {
                                     match (op_assoc, prev_assoc) {
-                                        (LeftAssoc, LeftAssoc) => {
+                                        (Assoc::Left, Assoc::Left) => {
                                             reduce(&mut expr_stack, &mut op_stack);
                                         }
-                                        (RightAssoc, RightAssoc) => {
+                                        (Assoc::Right, Assoc::Right) => {
                                             debug!("Shift op {}", op);
                                             op_stack.push(op);
                                             break
@@ -100,7 +100,7 @@ impl PrecedenceVisitor {
                         assert!(expr_stack.len() >= 1);
                         let lhs = expr_stack.pop().unwrap();
                         let op = op_stack.pop().unwrap();
-                        result = TypedExpr::with_location(OpApply(lhs, op, box result), location);
+                        result = TypedExpr::with_location(Expr::OpApply(lhs, op, box result), location);
                     }
                     return result;
                 }

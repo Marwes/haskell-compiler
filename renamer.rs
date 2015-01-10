@@ -1,4 +1,5 @@
 use module::*;
+use lexer::Located;
 use scoped_map::ScopedMap;
 use interner::*;
 
@@ -140,7 +141,7 @@ impl Renamer {
                 self.make_unique(bind[0].name.clone());
             }
         }
-        FromVec::<Binding<Name>>::from_vec(bindings.move_iter().map(|binding| {
+        bindings.move_iter().map(|binding| {
             let Binding { name: name, arguments: arguments, matches: matches, typ: typ, where_bindings: where_bindings  } = binding;
             let n = self.uniques.find(&name)
                 .map(|u| u.clone())
@@ -155,10 +156,12 @@ impl Renamer {
             };
             self.uniques.exit_scope();
             b
-        }).collect())
+        }).collect()
     }
     
     fn rename(&mut self, input_expr: TypedExpr<InternedStr>) -> TypedExpr<Name> {
+        use module::Expr::*;
+        use module::DoBinding::*;
         let TypedExpr { expr: expr, typ: typ, location: location } = input_expr;
         let e = match expr {
             Literal(l) => Literal(l),
@@ -227,13 +230,13 @@ impl Renamer {
 
     fn rename_pattern(&mut self, pattern: Pattern<InternedStr>) -> Pattern<Name> {
         match pattern {
-            NumberPattern(i) => NumberPattern(i),
-            ConstructorPattern(s, ps) => {
+            Pattern::Number(i) => Pattern::Number(i),
+            Pattern::Constructor(s, ps) => {
                 let ps2: Vec<Pattern<Name>> = ps.move_iter().map(|p| self.rename_pattern(p)).collect();
-                ConstructorPattern(self.get_name(s), ps2)
+                Pattern::Constructor(self.get_name(s), ps2)
             }
-            IdentifierPattern(s) => IdentifierPattern(self.make_unique(s)),
-            WildCardPattern => WildCardPattern
+            Pattern::Identifier(s) => Pattern::Identifier(self.make_unique(s)),
+            Pattern::WildCard => Pattern::WildCard
         }
     }
     ///Turns the string into the Name which is currently in scope
@@ -247,18 +250,17 @@ impl Renamer {
 
     fn rename_matches(&mut self, matches: Match<InternedStr>) -> Match<Name> {
         match matches {
-            Simple(e) => Simple(self.rename(e)),
-            Guards(gs) => Guards(FromVec::<Guard<Name>>::from_vec(
-                gs.move_iter()
+            Match::Simple(e) => Match::Simple(self.rename(e)),
+            Match::Guards(gs) => Match::Guards(gs.move_iter()
                 .map(|Guard { predicate: p, expression: e }| 
                       Guard { predicate: self.rename(p), expression: self.rename(e) }
                 )
-                .collect()))
+                .collect())
         }
     }
 
     fn rename_arguments(&mut self, arguments: Vec<Pattern<InternedStr>>) -> Vec<Pattern<Name>> {
-        FromVec::<Pattern<Name>>::from_vec(arguments.move_iter().map(|a| self.rename_pattern(a)).collect())
+        arguments.move_iter().map(|a| self.rename_pattern(a)).collect()
     }
 
     fn rename_qualified_type(&mut self, typ: Qualified<Type, InternedStr>) -> Qualified<Type, Name> {

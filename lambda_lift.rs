@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use core::*;
+use core::Expr::*;
 use types::function_type_;
 use renamer::NameSupply;
 
@@ -15,8 +16,8 @@ struct FreeVariables {
 
 fn each_pattern_variables(pattern: &Pattern<Id>, f: &mut FnMut(&Name)) {
     match *pattern {
-        IdentifierPattern(ref ident) => (*f)(&ident.name),
-        ConstructorPattern(_, ref patterns) => {
+        Pattern::Identifier(ref ident) => (*f)(&ident.name),
+        Pattern::Constructor(_, ref patterns) => {
             for p in patterns.iter() {
                 (*f)(&p.name);
             }

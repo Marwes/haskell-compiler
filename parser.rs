@@ -1,8 +1,12 @@
 use std::mem::{swap};
 use std::io::{IoResult, File};
 use std::collections::{HashSet, HashMap};
+use std::str::FromStr;
 use lexer::*;
+use lexer::TokenEnum::*;
 use module::*;
+use module::Expr::*;
+use module::LiteralData::*;
 use interner::*;
 
 ///The Parser is a recursive descent parser which has a method for each production
@@ -12,7 +16,7 @@ use interner::*;
 ///If the methods returns an Option it will instead return None.
 ///In any case it is expected that a production method will place the parser in a position where_bindings
 ///it can continue parsing without having to move the lexer's position.
-pub struct Parser<Iter> {
+pub struct Parser<Iter: Iterator<Item=char>> {
     lexer : Lexer<Iter>,
 }
 
@@ -22,7 +26,7 @@ enum BindOrTypeDecl {
 }
 
 
-impl <Iter : Iterator<char>> Parser<Iter> {
+impl <Iter : Iterator<Item=char>> Parser<Iter> {
 
 pub fn new(iterator : Iter) -> Parser<Iter> {
     Parser { lexer : Lexer::new(iterator) }
@@ -85,8 +89,8 @@ pub fn module(&mut self) -> Module {
 		let token = self.lexer.peek().token;
 		if token == NAME || token == LPARENS {
             match self.binding_or_type_declaration() {
-                Binding(bind) => bindings.push(bind),
-                TypeDecl(decl) => type_declarations.push(decl)
+                BindOrTypeDecl::Binding(bind) => bindings.push(bind),
+                BindOrTypeDecl::TypeDecl(decl) => type_declarations.push(decl)
             }
 		}
 		else if token == CLASS {
@@ -165,13 +169,13 @@ fn class(&mut self) -> Class {
     let mut declarations = Vec::new();
     for decl_or_binding in x.move_iter() {
         match decl_or_binding {
-            Binding(mut bind) => {
+            BindOrTypeDecl::Binding(mut bind) => {
                 //Bindings need to have their name altered to distinguish them from
                 //the declarations name
                 match typ {
-                    TypeApplication(ref op, _) => {
+                    Type::Application(ref op, _) => {
                         let classname = match **op {
-                            TypeConstructor(ref ctor) => ctor.name,
+                            Type::Constructor(ref ctor) => ctor.name,
                             _ => panic!("Expected type operator")
                         };
                         bind.name = encode_binding_identifier(classname, bind.name);
@@ -180,14 +184,14 @@ fn class(&mut self) -> Class {
                 }
                 bindings.push(bind)
             }
-            TypeDecl(decl) => declarations.push(decl)
+            BindOrTypeDecl::TypeDecl(decl) => declarations.push(decl)
         }
     }
 	
 	self.require_next(RBRACE);
 
     match typ {
-        TypeApplication(box TypeConstructor(classname), box TypeVariable(var)) => {
+        Type::Application(box Type::Constructor(classname), box Type::Variable(var)) => {
             Class {
                 constraints: constraints,
                 name: classname.name,
@@ -205,9 +209,9 @@ fn instance(&mut self) -> Instance {
 
     let (constraints, instance_type) = self.constrained_type();
     match instance_type {
-        TypeApplication(op, arg) => {
+        Type::Application(op, arg) => {
             let classname = match *op {
-                TypeConstructor(TypeConstructor { name: classname, ..}) => classname,
+                Type::Constructor(TypeConstructor { name: classname, ..}) => classname,
                 _ => panic!("Expected type operator")
             };
             self.require_next(WHERE);
@@ -358,7 +362,7 @@ fn sub_expression(&mut self) -> Option<TypedExpr> {
             }
             let mut bs: Vec<DoBinding> = bindings.move_iter().collect();
             let expr = match bs.pop().unwrap() {
-                DoExpr(e) => e,
+                DoBinding::DoExpr(e) => e,
                 _ => panic!("{}: Parse error: Last binding in do must be an expression", self.lexer.current().location)
             };
             Some(TypedExpr::with_location(Do(bs, box expr), location))
@@ -369,11 +373,11 @@ fn sub_expression(&mut self) -> Option<TypedExpr> {
         }
         NUMBER => {
             let token = self.lexer.current();
-            Some(TypedExpr::with_location(Literal(Integral(from_str(token.value.as_slice()).unwrap())), token.location))
+            Some(TypedExpr::with_location(Literal(Integral(FromStr::from_str(token.value.as_slice()).unwrap())), token.location))
         }
 	    FLOAT => {
             let token = self.lexer.current();
-            Some(TypedExpr::with_location(Literal(Fractional(from_str(token.value.as_slice()).unwrap())), token.location))
+            Some(TypedExpr::with_location(Literal(Fractional(FromStr::from_str(token.value.as_slice()).unwrap())), token.location))
         }
         STRING => {
             let token = self.lexer.current();
@@ -392,7 +396,7 @@ fn sub_expression(&mut self) -> Option<TypedExpr> {
 
 fn do_binding(&mut self) -> DoBinding {
     if self.lexer.next().token == LET {
-        return DoLet(self.let_bindings());
+        return DoBinding::DoLet(self.let_bindings());
     }
     debug!("Do binding {}", self.lexer.current());
     self.lexer.backtrack();
@@ -402,13 +406,13 @@ fn do_binding(&mut self) -> DoBinding {
         match self.lexer.next().token {
             SEMICOLON | RBRACE => {
                 for _ in range(0, lookahead) { self.lexer.backtrack(); }
-                return DoExpr(self.expression_());
+                return DoBinding::DoExpr(self.expression_());
             }
             LARROW => {
                 for _ in range(0, lookahead) { self.lexer.backtrack(); }
                 let p = self.located_pattern();
                 self.lexer.next();//Skip <-
-                return DoBind(p, self.expression_());
+                return DoBinding::DoBind(p, self.expression_());
             }
             EOF => { panic!("Unexpected EOF") }
             _ => { debug!("Lookahead {}", self.lexer.current()); }
@@ -466,7 +470,7 @@ fn binary_expression(&mut self, lhs : Option<TypedExpr>) -> Option<TypedExpr> {
                     let mut apply = make_application(name, args.move_iter());
                     apply.location = loc;
                     let params = vec![intern("#")];
-                    Some(make_lambda(params.move_iter().map(|a| IdentifierPattern(a)), apply))
+                    Some(make_lambda(params.move_iter().map(|a| Pattern::Identifier(a)), apply))
                 }
             }
             (None, None) => return None
@@ -574,24 +578,24 @@ fn binding_or_type_declaration(&mut self) -> BindOrTypeDecl {
     };
 
     if maybe_type_decl == TYPEDECL {
-        TypeDecl(self.type_declaration())
+        BindOrTypeDecl::TypeDecl(self.type_declaration())
     }
     else {
-        Binding(self.binding())
+        BindOrTypeDecl::Binding(self.binding())
     }
 }
 
 fn fixity_declaration(&mut self) -> FixityDeclaration {
     let assoc = {
         match self.lexer.next().token {
-            INFIXL => LeftAssoc,
-            INFIXR => RightAssoc,
-            INFIX => NoAssoc,
+            INFIXL => Assoc::Left,
+            INFIXR => Assoc::Right,
+            INFIX => Assoc::No,
             _ => panic!(parse_error2(&self.lexer, [INFIXL, INFIXR, INFIX]))
         }
     };
     let precedence = match self.lexer.next().token {
-        NUMBER => from_str(self.lexer.current().value.as_slice()).unwrap(),
+        NUMBER => FromStr::from_str(self.lexer.current().value.as_slice()).unwrap(),
         _ => {
             self.lexer.backtrack();
             9
@@ -604,10 +608,10 @@ fn fixity_declaration(&mut self) -> FixityDeclaration {
 fn expr_or_guards(&mut self, end_token: TokenEnum) -> Match {
     let token = self.lexer.next().token;
     if token == PIPE {
-        Guards(self.sep_by_1(|this| this.guard(end_token), PIPE))
+        Match::Guards(self.sep_by_1(|this| this.guard(end_token), PIPE))
     }
     else if token == end_token {
-        Simple(self.expression_())
+        Match::Simple(self.expression_())
     }
     else {
         panic!(parse_error2(&self.lexer, [end_token, PIPE]))
@@ -624,13 +628,13 @@ fn make_pattern<F>(&mut self, name: InternedStr, args: F) -> Pattern
     where F: FnOnce(&mut Parser<Iter>) -> Vec<Pattern> {
     let c = name.as_slice().char_at(0);
     if c.is_uppercase() || name == intern(":") {
-        ConstructorPattern(name, args(self))
+        Pattern::Constructor(name, args(self))
     }
     else if c == '_' {
-        WildCardPattern
+        Pattern::WildCard
     }
     else {
-        IdentifierPattern(name)
+        Pattern::Identifier(name)
     }
 }
 
@@ -644,7 +648,7 @@ fn pattern_arguments(&mut self) -> Vec<Pattern> {
                 let p = self.make_pattern(name, |_| vec![]);
                 parameters.push(p);
             }
-            NUMBER => parameters.push(NumberPattern(from_str(self.lexer.current().value.as_slice()).unwrap())),
+            NUMBER => parameters.push(Pattern::Number(FromStr::from_str(self.lexer.current().value.as_slice()).unwrap())),
 		    LPARENS => {
                 self.lexer.backtrack();
 				parameters.push(self.pattern());
@@ -653,7 +657,7 @@ fn pattern_arguments(&mut self) -> Vec<Pattern> {
                 if self.lexer.next().token != RBRACKET {
                     panic!(parse_error(&self.lexer, RBRACKET));
                 }
-                parameters.push(ConstructorPattern(intern("[]"), vec![]));
+                parameters.push(Pattern::Constructor(intern("[]"), vec![]));
             }
 		    _ => { break; }
 		}
@@ -676,14 +680,14 @@ fn pattern(&mut self) -> Pattern {
             if self.lexer.next().token != RBRACKET {
                 panic!(parse_error(&self.lexer, RBRACKET));
             }
-            ConstructorPattern(intern("[]"), vec![])
+            Pattern::Constructor(intern("[]"), vec![])
         }
         NAME => self.make_pattern(name, |this| this.pattern_arguments()),
-        NUMBER => NumberPattern(from_str(name.as_slice()).unwrap()),
+        NUMBER => Pattern::Number(FromStr::from_str(name.as_slice()).unwrap()),
         LPARENS => {
             if self.lexer.peek().token == RPARENS {
                 self.lexer.next();
-                ConstructorPattern(intern("()"), vec![])
+                Pattern::Constructor(intern("()"), vec![])
             }
             else {
                 let tupleArgs = self.sep_by_1(|this| this.pattern(), COMMA);
@@ -692,7 +696,7 @@ fn pattern(&mut self) -> Pattern {
                     tupleArgs[0]
                 }
                 else {
-                    ConstructorPattern(intern(tuple_name(tupleArgs.len()).as_slice()), tupleArgs)
+                    Pattern::Constructor(intern(tuple_name(tupleArgs.len()).as_slice()), tupleArgs)
                 }
             }
         }
@@ -700,7 +704,7 @@ fn pattern(&mut self) -> Pattern {
     };
     self.lexer.next();
     if self.lexer.current().token == OPERATOR && self.lexer.current().value.as_slice() == ":" {
-        ConstructorPattern(self.lexer.current().value, vec![pat, self.pattern()])
+        Pattern::Constructor(self.lexer.current().value, vec![pat, self.pattern()])
     }
     else {
         self.lexer.backtrack();
@@ -838,9 +842,9 @@ fn newtype(&mut self) -> Newtype {
 
 fn data_lhs(&mut self) -> Type {
 	let name = self.require_next(NAME).value.clone();
-    let mut typ = TypeConstructor(TypeConstructor { name: name, kind: star_kind.clone() });
+    let mut typ = Type::Constructor(TypeConstructor { name: name, kind: star_kind.clone() });
 	while self.lexer.next().token == NAME {
-		typ = TypeApplication(box typ, box Type::new_var(self.lexer.current().value));
+		typ = Type::Application(box typ, box Type::new_var(self.lexer.current().value));
 	}
     self.lexer.backtrack();
     Parser::<Iter>::set_kind(&mut typ, 1);
@@ -862,7 +866,7 @@ fn deriving(&mut self) -> Vec<InternedStr> {
 
 fn set_kind(typ: &mut Type, kind: int) {
     match typ {
-        &TypeApplication(ref mut lhs, _) => {
+        &Type::Application(ref mut lhs, _) => {
             Parser::<Iter>::set_kind(*lhs, kind + 1)
         }
         _ => {
@@ -926,7 +930,7 @@ fn parse_type(&mut self) -> Type {
                     tupleArgs.unshift(t);
                     self.require_next(RPARENS);
 
-                    self.parse_return_type(make_tuple_type(FromVec::from_vec(tupleArgs)))
+                    self.parse_return_type(make_tuple_type(tupleArgs))
                 }
                 else if maybeComma == RPARENS {
                     self.parse_return_type(t)
@@ -946,10 +950,10 @@ fn parse_type(&mut self) -> Type {
             }
 
 			let thisType = if token.value.as_slice().char_at(0).is_uppercase() {
-				Type::new_op(token.value, FromVec::from_vec(typeArguments))
+				Type::new_op(token.value, typeArguments)
 			}
 			else {
-                Type::new_var_args(token.value, FromVec::from_vec(typeArguments))
+                Type::new_var_args(token.value, typeArguments)
 			};
 			self.parse_return_type(thisType)
 		}
@@ -988,17 +992,17 @@ fn sep_by_1_func<T, F, P>(&mut self, f : F, sep: P) -> Vec<T>
 }//end impl Parser
 
 fn make_constraints(types: Vec<Type>) -> Vec<Constraint> {
-    FromVec::<Constraint>::from_vec(types.move_iter().map(|typ| {
+    types.move_iter().map(|typ| {
         match typ {
-            TypeApplication(lhs, rhs) => {
+            Type::Application(lhs, rhs) => {
                 Constraint { class: lhs.ctor().name.clone(), variables: box [rhs.var().clone()] }
             }
             _ => panic!("Parse error in constraint, non applied type")
         }
-    }).collect())
+    }).collect()
 }
 
-fn make_application<I: Iterator<TypedExpr>>(f : TypedExpr, mut args : I) -> TypedExpr {
+fn make_application<I: Iterator<Item=TypedExpr>>(f : TypedExpr, mut args : I) -> TypedExpr {
     let mut func = f;
 	for a in args {
         let loc = func.location.clone();
@@ -1007,7 +1011,7 @@ fn make_application<I: Iterator<TypedExpr>>(f : TypedExpr, mut args : I) -> Type
     func
 }
 
-fn make_lambda<Iter: DoubleEndedIterator<Pattern<InternedStr>>>(args : Iter, body : TypedExpr) -> TypedExpr {
+fn make_lambda<Iter: DoubleEndedIterator<Item=Pattern<InternedStr>>>(args : Iter, body : TypedExpr) -> TypedExpr {
 	let mut body = body;
 	for a in args.rev() {
         let loc = body.location.clone();
@@ -1031,11 +1035,11 @@ fn make_tuple_type(types : Vec<Type>) -> Type {
     }
 }
 
-fn parse_error2<Iter : Iterator<char>>(lexer : &Lexer<Iter>, expected : &[TokenEnum]) -> String {
+fn parse_error2<Iter : Iterator<Item=char>>(lexer : &Lexer<Iter>, expected : &[TokenEnum]) -> ::std::string::String {
     format!("Expected {} but found {}{{{}}}, at {}", expected, lexer.current().token, lexer.current().value.as_slice(), lexer.current().location)
     
 }
-fn parse_error<Iter : Iterator<char>>(lexer : &Lexer<Iter>, expected : TokenEnum) -> String {
+fn parse_error<Iter : Iterator<Item=char>>(lexer : &Lexer<Iter>, expected : TokenEnum) -> ::std::string::String {
     format!("Expected {} but found {}{{{}}}, at {}", expected, lexer.current().token, lexer.current().value.as_slice(), lexer.current().location)
 }
 
@@ -1056,8 +1060,8 @@ pub fn parse_modules(modulename: &str) -> IoResult<Vec<Module>> {
     Ok(modules)
 }
 
-fn get_contents(modulename: &str) -> IoResult<String> {
-    let mut filename = String::from_str(modulename);
+fn get_contents(modulename: &str) -> IoResult<::std::string::String> {
+    let mut filename = ::std::string::String::from_str(modulename);
     filename.push_str(".hs");
     let mut file = File::open(&Path::new(filename.as_slice()));
     file.read_to_str()
@@ -1107,8 +1111,8 @@ fn binding()
 {
     let mut parser = Parser::new("test x = x + 3".chars());
     let bind = parser.binding();
-    assert_eq!(bind.arguments, vec![IdentifierPattern(intern("x"))]);
-    assert_eq!(bind.matches, Simple(op_apply(identifier("x"), intern("+"), number(3))));
+    assert_eq!(bind.arguments, vec![Pattern::Identifier(intern("x"))]);
+    assert_eq!(bind.matches, Match::Simple(op_apply(identifier("x"), intern("+"), number(3))));
     assert_eq!(bind.name, intern("test"));
 }
 
@@ -1117,7 +1121,7 @@ fn double()
 {
     let mut parser = Parser::new("test = 3.14".chars());
     let bind = parser.binding();
-    assert_eq!(bind.matches, Simple(rational(3.14)));
+    assert_eq!(bind.matches, Match::Simple(rational(3.14)));
     assert_eq!(bind.name, intern("test"));
 }
 
@@ -1130,7 +1134,7 @@ let
 in test - 2".chars());
     let expr = parser.expression_();
     let bind = Binding { arguments: vec![], name: intern("test"), typ: Default::default(),
-        matches: Simple(apply(apply(identifier("add"), number(3)), number(2))), where_bindings: None };
+        matches: Match::Simple(apply(apply(identifier("add"), number(3)), number(2))), where_bindings: None };
     assert_eq!(expr, let_(vec![bind], op_apply(identifier("test"), intern("-"), number(2))));
 }
 
@@ -1145,14 +1149,14 @@ r"case [] of
     let alt = Alternative {
         pattern: Located {
             location: Location::eof(),
-            node: ConstructorPattern(intern(":"), vec![IdentifierPattern(intern("x")), IdentifierPattern(intern("xs"))])
+            node: Pattern::Constructor(intern(":"), vec![Pattern::Identifier(intern("x")), Pattern::Identifier(intern("xs"))])
         },
-        matches: Simple(identifier("x")),
+        matches: Match::Simple(identifier("x")),
         where_bindings: None
     };
     let alt2 = Alternative {
-        pattern: Located { location: Location::eof(), node: ConstructorPattern(intern("[]"), vec![]) },
-        matches: Simple(number(2)),
+        pattern: Located { location: Location::eof(), node: Pattern::Constructor(intern("[]"), vec![]) },
+        matches: Match::Simple(number(2)),
         where_bindings: None
     };
     assert_eq!(expression, case(identifier("[]"), vec![alt, alt2]));
@@ -1217,8 +1221,8 @@ r"case () :: () of
 
     assert_eq!(expr, case(TypedExpr::new(TypeSig(box identifier("()"), qualified(vec![], Type::new_op(intern("()"), vec![])))), 
         vec![Alternative {
-        pattern: Located { location: Location::eof(), node: ConstructorPattern(intern("()"), vec![])  },
-        matches: Simple(number(1)),
+        pattern: Located { location: Location::eof(), node: Pattern::Constructor(intern("()"), vec![])  },
+        matches: Match::Simple(number(1)),
         where_bindings: None
     } ]));
 }
@@ -1279,16 +1283,16 @@ r"main = do
     let module = parser.module();
 
     let b = TypedExpr::new(Do(vec![
-        DoExpr(apply(identifier("putStrLn"), identifier("test"))),
-        DoBind(Located { location: Location::eof(), node: IdentifierPattern(intern("s")) }, identifier("getContents"))
+        DoBinding::DoExpr(apply(identifier("putStrLn"), identifier("test"))),
+        DoBinding::DoBind(Located { location: Location::eof(), node: Pattern::Identifier(intern("s")) }, identifier("getContents"))
         ], box apply(identifier("return"), identifier("s"))));
-    assert_eq!(module.bindings[0].matches, Simple(b));
+    assert_eq!(module.bindings[0].matches, Match::Simple(b));
 }
 #[test]
 fn lambda_pattern() {
     let mut parser = Parser::new(r"\(x, _) -> x".chars());
     let expr = parser.expression_();
-    let pattern = ConstructorPattern(intern("(,)"), vec![IdentifierPattern(intern("x")), WildCardPattern]);
+    let pattern = Pattern::Constructor(intern("(,)"), vec![Pattern::Identifier(intern("x")), Pattern::WildCard]);
     assert_eq!(expr, TypedExpr::new(Lambda(pattern, box identifier("x"))));
 }
 
@@ -1328,8 +1332,8 @@ test x
     | otherwise = 0
 ".chars());
     let binding = parser.binding();
-    let b2 = Binding { arguments: vec![IdentifierPattern(intern("x"))], name: intern("test"), typ: Default::default(),
-        matches: Guards(vec![
+    let b2 = Binding { arguments: vec![Pattern::Identifier(intern("x"))], name: intern("test"), typ: Default::default(),
+        matches: Match::Guards(vec![
             Guard { predicate: identifier("x"), expression: number(1) },
             Guard { predicate: identifier("otherwise"), expression: number(0) },
         ]),
@@ -1406,15 +1410,15 @@ test = case a of
 ".chars());
     let bind = parser.binding();
     match bind.matches {
-        Simple(ref e) => {
+        Match::Simple(ref e) => {
             match e.expr {
                 Case(_, ref alts) => {
                     let w = alts[0].where_bindings.as_ref().expect("Expected where_bindings");
                     assert_eq!(w[0].name, intern("z"));
-                    assert_eq!(w[0].matches, Simple(op_apply(identifier("x"), intern("+"), identifier("y"))));
+                    assert_eq!(w[0].matches, Match::Simple(op_apply(identifier("x"), intern("+"), identifier("y"))));
                     let w2 = alts[2].where_bindings.as_ref().expect("Expected where_bindings");
                     assert_eq!(w2[0].name, intern("z"));
-                    assert_eq!(w2[0].matches, Simple(number(0)));
+                    assert_eq!(w2[0].matches, Match::Simple(number(0)));
                 }
                 _ => panic!("Expected case")
             }
@@ -1423,7 +1427,7 @@ test = case a of
     }
     let binds = bind.where_bindings.as_ref().expect("Expected where_bindings");
     assert_eq!(binds[0].name, intern("a"));
-    assert_eq!(binds[0].matches, Simple(identifier("[]")));
+    assert_eq!(binds[0].matches, Match::Simple(identifier("[]")));
 }
 
 #[test]

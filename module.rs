@@ -5,6 +5,8 @@ use lexer::{Location, Located};
 pub use std::default::Default;
 pub use types::*;
 
+use self::Expr::*;
+
 #[deriving(Clone)]
 pub struct Module<Ident = InternedStr> {
     pub name : Ident,
@@ -78,9 +80,9 @@ pub struct Newtype<Ident = InternedStr> {
 
 #[deriving(PartialEq, Clone, Show)]
 pub enum Assoc {
-    LeftAssoc,
-    RightAssoc,
-    NoAssoc
+    Left,
+    Right,
+    No
 }
 
 #[deriving(PartialEq, Clone, Show)]
@@ -139,10 +141,10 @@ pub struct Alternative<Ident = InternedStr> {
 
 #[deriving(Clone, PartialOrd, PartialEq, Eq)]
 pub enum Pattern<Ident = InternedStr> {
-    NumberPattern(int),
-    IdentifierPattern(Ident),
-    ConstructorPattern(Ident, Vec<Pattern<Ident>>),
-    WildCardPattern
+    Number(int),
+    Identifier(Ident),
+    Constructor(Ident, Vec<Pattern<Ident>>),
+    WildCard
 }
 
 #[deriving(Clone, PartialEq)]
@@ -153,8 +155,8 @@ pub enum Match<Ident = InternedStr> {
 impl <Ident> Match<Ident> {
     pub fn location<'a>(&'a self) -> &'a Location {
         match *self {
-            Guards(ref gs) => &gs[0].predicate.location,
-            Simple(ref e) => &e.location
+            Match::Guards(ref gs) => &gs[0].predicate.location,
+            Match::Simple(ref e) => &e.location
         }
     }
 }
@@ -173,7 +175,7 @@ pub enum DoBinding<Ident = InternedStr> {
 }
 
 #[deriving(Clone, PartialEq)]
-pub enum Literal {
+pub enum LiteralData {
     Integral(int),
     Fractional(f64),
     String(InternedStr),
@@ -184,7 +186,7 @@ pub enum Expr<Ident = InternedStr> {
     Identifier(Ident),
     Apply(Box<TypedExpr<Ident>>, Box<TypedExpr<Ident>>),
     OpApply(Box<TypedExpr<Ident>>, Ident, Box<TypedExpr<Ident>>),
-    Literal(Literal),
+    Literal(LiteralData),
     Lambda(Pattern<Ident>, Box<TypedExpr<Ident>>),
     Let(Vec<Binding<Ident>>, Box<TypedExpr<Ident>>),
     Case(Box<TypedExpr<Ident>>, Vec<Alternative<Ident>>),
@@ -207,15 +209,15 @@ impl <T: fmt::Show> fmt::Show for Expr<T> {
                 try!(write!(f, "do {{\n"));
                 for bind in bindings.iter() {
                     match *bind {
-                        DoLet(ref bindings) => {
+                        DoBinding::DoLet(ref bindings) => {
                             try!(write!(f, "let {{\n"));
                             for bind in bindings.iter() {
                                 try!(write!(f, "; {} = {}\n", bind.name, bind.matches));
                             }
                             try!(write!(f, "}}\n"));
                         }
-                        DoBind(ref p, ref e) => try!(write!(f, "; {} <- {}\n", p.node, *e)),
-                        DoExpr(ref e) => try!(write!(f, "; {}\n", *e))
+                        DoBinding::DoBind(ref p, ref e) => try!(write!(f, "; {} <- {}\n", p.node, *e)),
+                        DoBinding::DoExpr(ref e) => try!(write!(f, "; {}\n", *e))
                     }
                 }
                 write!(f, "{} }}", *expr)
@@ -230,16 +232,16 @@ impl <T: fmt::Show> fmt::Show for Expr<T> {
 impl <T: fmt::Show> fmt::Show for Pattern<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            &IdentifierPattern(ref s) => write!(f, "{}", s),
-            &NumberPattern(ref i) => write!(f, "{}", i),
-            &ConstructorPattern(ref name, ref patterns) => {
+            &Pattern::Identifier(ref s) => write!(f, "{}", s),
+            &Pattern::Number(ref i) => write!(f, "{}", i),
+            &Pattern::Constructor(ref name, ref patterns) => {
                 try!(write!(f, "({} ", name));
                 for p in patterns.iter() {
                     try!(write!(f, " {}", p));
                 }
                 write!(f, ")")
             }
-            &WildCardPattern => write!(f, "_")
+            &Pattern::WildCard => write!(f, "_")
         }
     }
 }
@@ -252,8 +254,8 @@ impl <T: fmt::Show> fmt::Show for Alternative<T> {
 impl <T: fmt::Show> fmt::Show for Match<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            Simple(ref e) => write!(f, "{}", *e),
-            Guards(ref gs) => {
+            Match::Simple(ref e) => write!(f, "{}", *e),
+            Match::Guards(ref gs) => {
                 for g in gs.iter() {
                     try!(write!(f, "| {} -> {}\n", g.predicate, g.expression));
                 }
@@ -262,13 +264,13 @@ impl <T: fmt::Show> fmt::Show for Match<T> {
         }
     }
 }
-impl fmt::Show for Literal {
+impl fmt::Show for LiteralData {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            Integral(i) => write!(f, "{}", i),
-            Fractional(v) => write!(f, "{}", v),
-            String(ref s) => write!(f, "\"{}\"", *s),
-            Char(c) => write!(f, "'{}'", c)
+            LiteralData::Integral(i) => write!(f, "{}", i),
+            LiteralData::Fractional(v) => write!(f, "{}", v),
+            LiteralData::String(ref s) => write!(f, "\"{}\"", *s),
+            LiteralData::Char(c) => write!(f, "'{}'", c)
         }
     }
 }
@@ -306,7 +308,7 @@ pub fn walk_module<Ident>(visitor: &mut Visitor<Ident>, module: &Module<Ident>) 
 
 pub fn walk_binding<Ident>(visitor: &mut Visitor<Ident>, binding: &Binding<Ident>) {
     match binding.matches {
-        Simple(ref e) => visitor.visit_expr(e),
+        Match::Simple(ref e) => visitor.visit_expr(e),
         _ => panic!()
     }
 }
@@ -342,16 +344,16 @@ pub fn walk_expr<Ident>(visitor: &mut Visitor<Ident>, expr: &TypedExpr<Ident>) {
         &Do(ref binds, ref expr) => {
             for bind in binds.iter() {
                 match *bind {
-                    DoLet(ref bs) => {
+                    DoBinding::DoLet(ref bs) => {
                         for b in bs.iter() {
                             visitor.visit_binding(b);
                         }
                     }
-                    DoBind(ref pattern, ref e) => {
+                    DoBinding::DoBind(ref pattern, ref e) => {
                         visitor.visit_pattern(&pattern.node);
                         visitor.visit_expr(e);
                     }
-                    DoExpr(ref e) => visitor.visit_expr(e)
+                    DoBinding::DoExpr(ref e) => visitor.visit_expr(e)
                 }
             }
             visitor.visit_expr(*expr);
@@ -365,8 +367,8 @@ pub fn walk_expr<Ident>(visitor: &mut Visitor<Ident>, expr: &TypedExpr<Ident>) {
 pub fn walk_alternative<Ident>(visitor: &mut Visitor<Ident>, alt: &Alternative<Ident>) {
     visitor.visit_pattern(&alt.pattern.node);
     match alt.matches {
-        Simple(ref e) => visitor.visit_expr(e),
-        Guards(ref gs) => {
+        Match::Simple(ref e) => visitor.visit_expr(e),
+        Match::Guards(ref gs) => {
             for g in gs.iter() {
                 visitor.visit_expr(&g.predicate);
                 visitor.visit_expr(&g.expression);
@@ -385,7 +387,7 @@ pub fn walk_alternative<Ident>(visitor: &mut Visitor<Ident>, alt: &Alternative<I
 
 pub fn walk_pattern<Ident>(visitor: &mut Visitor<Ident>, pattern: &Pattern<Ident>) {
     match pattern {
-        &ConstructorPattern(_, ref ps) => {
+        &Pattern::Constructor(_, ref ps) => {
             for p in ps.iter() {
                 visitor.visit_pattern(p);
             }
@@ -425,8 +427,8 @@ pub fn walk_module_mut<Ident, V: MutVisitor<Ident>>(visitor: &mut V, module: &mu
 
 pub fn walk_binding_mut<Ident, V: MutVisitor<Ident>>(visitor: &mut V, binding: &mut Binding<Ident>) {
     match binding.matches {
-        Simple(ref mut e) => visitor.visit_expr(e),
-        Guards(ref mut gs) => {
+        Match::Simple(ref mut e) => visitor.visit_expr(e),
+        Match::Guards(ref mut gs) => {
             for g in gs.mut_iter() {
                 visitor.visit_expr(&mut g.predicate);
                 visitor.visit_expr(&mut g.expression);
@@ -466,16 +468,16 @@ pub fn walk_expr_mut<Ident, V: MutVisitor<Ident>>(visitor: &mut V, expr: &mut Ty
         Do(ref mut binds, ref mut expr) => {
             for bind in binds.mut_iter() {
                 match *bind {
-                    DoLet(ref mut bs) => {
+                    DoBinding::DoLet(ref mut bs) => {
                         for b in bs.mut_iter() {
                             visitor.visit_binding(b);
                         }
                     }
-                    DoBind(ref mut pattern, ref mut e) => {
+                    DoBinding::DoBind(ref mut pattern, ref mut e) => {
                         visitor.visit_pattern(&mut pattern.node);
                         visitor.visit_expr(e);
                     }
-                    DoExpr(ref mut e) => visitor.visit_expr(e)
+                    DoBinding::DoExpr(ref mut e) => visitor.visit_expr(e)
                 }
             }
             visitor.visit_expr(*expr);
@@ -489,8 +491,8 @@ pub fn walk_expr_mut<Ident, V: MutVisitor<Ident>>(visitor: &mut V, expr: &mut Ty
 pub fn walk_alternative_mut<Ident, V: MutVisitor<Ident>>(visitor: &mut V, alt: &mut Alternative<Ident>) {
     visitor.visit_pattern(&mut alt.pattern.node);
     match alt.matches {
-        Simple(ref mut e) => visitor.visit_expr(e),
-        Guards(ref mut gs) => {
+        Match::Simple(ref mut e) => visitor.visit_expr(e),
+        Match::Guards(ref mut gs) => {
             for g in gs.mut_iter() {
                 visitor.visit_expr(&mut g.predicate);
                 visitor.visit_expr(&mut g.expression);
@@ -509,7 +511,7 @@ pub fn walk_alternative_mut<Ident, V: MutVisitor<Ident>>(visitor: &mut V, alt: &
 
 pub fn walk_pattern_mut<Ident, V: MutVisitor<Ident>>(visitor: &mut V, pattern: &mut Pattern<Ident>) {
     match pattern {
-        &ConstructorPattern(_, ref mut ps) => {
+        &Pattern::Constructor(_, ref mut ps) => {
             for p in ps.mut_iter() {
                 visitor.visit_pattern(p);
             }
@@ -518,11 +520,13 @@ pub fn walk_pattern_mut<Ident, V: MutVisitor<Ident>>(visitor: &mut V, pattern: &
     }
 }
 
-struct Binds<'a, Ident> {
+struct Binds<'a, Ident: 'a> {
     vec: &'a [Binding<Ident>]
 }
 
-impl <'a, Ident: Eq> Iterator<&'a [Binding<Ident>]> for Binds<'a, Ident> {
+
+impl <'a, Ident: Eq> Iterator for Binds<'a, Ident> {
+    type Item = &'a [Binding<Ident>];
     fn next(&mut self) -> Option<&'a [Binding<Ident>]> {
         if self.vec.len() == 0 {
             None
@@ -561,7 +565,7 @@ pub fn encode_binding_identifier(instancename : InternedStr, bindingname : Inter
 
 pub fn extract_applied_type<'a>(typ: &'a Type) -> &'a Type {
     match typ {
-        &TypeApplication(ref lhs, _) => extract_applied_type(*lhs),
+        &Type::Application(ref lhs, _) => extract_applied_type(*lhs),
         _ => typ
     }
 }

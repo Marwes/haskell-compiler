@@ -2,17 +2,19 @@ use compiler::*;
 use typecheck::*;
 use vm::*;
 use interner::*;
+use core::{Module, Type, Qualified};
+use core::Type::{Application, Constructor};
 use core::translate::*;
 use lambda_lift::*;
 use parser::Parser;
-use renamer::rename_expr;
+use renamer::{Name, rename_expr};
 
 ///Returns whether the type in question is an IO action
 fn is_io(typ: &Type) -> bool {
     match *typ {
-        TypeApplication(ref lhs, _) => 
+        Type::Application(ref lhs, _) => 
             match **lhs {
-                TypeConstructor(ref op) => op.name.as_slice() == "IO",
+                Type::Constructor(ref op) => op.name.as_slice() == "IO",
                 _ => false
             },
         _ => false
@@ -47,8 +49,8 @@ fn find_main(assembly: &Assembly) -> (Vec<Instruction>, Qualified<Type, Name>) {
                 //to finish the expression
                 let mut vec: Vec<Instruction> = sc.instructions.iter().map(|x| x.clone()).collect();
                 let len = vec.len();
-                vec.insert(len - 3, Mkap);
-                vec.insert(0, PushInt(42));//Realworld
+                vec.insert(len - 3, Instruction::Mkap);
+                vec.insert(0, Instruction::PushInt(42));//Realworld
                 (vec, sc.typ.clone())
             }
             else {

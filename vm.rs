@@ -12,6 +12,8 @@ use renamer::rename_module;
 use vm::primitive::{BuiltinFun, get_builtin};
 use interner::*;
 
+use self::Node_::*;
+
 #[deriving(Clone)]
 struct InstanceDictionary {
     entries: Vec<Rc<DictionaryEntry>>
@@ -141,8 +143,8 @@ impl fmt::Show for InstanceDictionary {
 impl fmt::Show for DictionaryEntry {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            Function(index) => write!(f, "{}", index),
-            App(ref func, ref arg) => write!(f, "({} {})", *func, *arg)
+            DictionaryEntry::Function(index) => write!(f, "{}", index),
+            DictionaryEntry::App(ref func, ref arg) => write!(f, "({} {})", *func, *arg)
         }
     }
 }
@@ -182,7 +184,7 @@ impl <'a> VM {
     
     ///Evaluates the what is at the top of the stack into HNF
     fn deepseq<'a>(self_: &'a VM, mut stack: Vec<Node<'a>>, assembly_id: uint) -> Node_<'a> {
-        static evalCode : &'static [Instruction] = &[Eval];
+        static evalCode : &'static [Instruction] = &[Instruction::Eval];
         execute(self_, &mut stack, evalCode, assembly_id);
         match *stack.get(0).borrow() {
             Constructor(tag, ref vals) => {
@@ -200,6 +202,7 @@ impl <'a> VM {
 
     ///Executes a sequence of instructions, leaving the result on the top of the stack
     pub fn execute<'a>(self_: &'a VM, stack: &mut Vec<Node<'a>>, code: &[Instruction], assembly_id: uint) {
+        use compiler::Instruction::*;
         debug!("----------------------------");
         debug!("Entering frame with stack");
         for x in stack.iter() {
@@ -399,7 +402,7 @@ impl <'a> VM {
                 PushDictionary(index) => {
                     let assembly = self_.assembly.get(assembly_id);
                     let dict : &[uint] = assembly.instance_dictionaries[index];
-                    let dict = InstanceDictionary { entries: dict.iter().map(|i| Rc::new(Function(*i))).collect() };
+                    let dict = InstanceDictionary { entries: dict.iter().map(|i| Rc::new(DictionaryEntry::Function(*i))).collect() };
                     stack.push(Node::new(Dictionary(dict)));
                 }
                 PushDictionaryMember(index) => {
@@ -410,11 +413,11 @@ impl <'a> VM {
                             ref x => panic!("Attempted to retrieve {} as dictionary", *x)
                         };
                         match **dict.entries.get(index) {
-                            Function(gi) => {
+                            DictionaryEntry::Function(gi) => {
                                 let &(assembly_index, i) = self_.globals.get(gi);
                                 Combinator(&self_.assembly.get(assembly_index).superCombinators[i])
                             }
-                            App(gi, ref dict) => {
+                            DictionaryEntry::App(gi, ref dict) => {
                                 let &(assembly_index, i) = self_.globals.get(gi);
                                 let sc = &self_.assembly.get(assembly_index).superCombinators[i];
                                 Application(Node::new(Combinator(sc)), Node::new(Dictionary(dict.clone())))
@@ -438,8 +441,8 @@ impl <'a> VM {
                         Dictionary(ref d) => {
                             for entry in d.entries.iter() {
                                 match **entry {
-                                    Function(index) => {
-                                        new_dict.entries.push(Rc::new(App(index, arg.clone())));
+                                    DictionaryEntry::Function(index) => {
+                                        new_dict.entries.push(Rc::new(DictionaryEntry::App(index, arg.clone())));
                                     }
                                     _ => panic!()
                                 }
@@ -480,7 +483,7 @@ impl <'a> VM {
 
 
 ///Exucutes a binary primitive instruction taking two integers
-fn primitive_int<F>(stack: &mut Vec<Node>, f: F) where F: FnOnce(int, int) -> Node_ {
+fn primitive_int<'a, F>(stack: &mut Vec<Node<'a>>, f: F) where F: FnOnce(int, int) -> Node_<'a> {
     let l = stack.pop().unwrap();
     let r = stack.pop().unwrap();
     match (&*l.borrow(), &*r.borrow()) {
@@ -489,7 +492,7 @@ fn primitive_int<F>(stack: &mut Vec<Node>, f: F) where F: FnOnce(int, int) -> No
     }
 }
 ///Exucutes a binary primitive instruction taking two doubles
-fn primitive_float<F>(stack: &mut Vec<Node>, f: F) where F: FnOnce(f64, f64) -> Node_ {
+fn primitive_float<'a, F>(stack: &mut Vec<Node<'a>>, f: F) where F: FnOnce(f64, f64) -> Node_<'a> {
     let l = stack.pop().unwrap();
     let r = stack.pop().unwrap();
     match (&*l.borrow(), &*r.borrow()) {
@@ -508,7 +511,7 @@ enum VMResult {
     ConstructorResult(u16, Vec<VMResult>)
 }
 
-fn compile_iter<T : Iterator<char>>(iterator: T) -> Assembly {
+fn compile_iter<T : Iterator<Item=char>>(iterator: T) -> Assembly {
     let mut parser = Parser::new(iterator);
     let mut module = rename_module(parser.module());
     
@@ -528,6 +531,7 @@ pub fn compile_file(filename: &str) -> Assembly {
 }
 
 fn extract_result(node: Node_) -> Option<VMResult> {
+    use self::VMResult::*;
     match node {
         Constructor(tag, fields) => {
             let mut result = Vec::new();
@@ -729,7 +733,7 @@ use compiler::{compile_with_type_env};
 use vm::{VM, evaluate, compile_file, compile_iter, execute_main_module, execute_main_string, extract_result, VMResult, IntResult, DoubleResult, ConstructorResult};
 use interner::*;
 
-fn execute_main<T : Iterator<char>>(iterator: T) -> Option<VMResult> {
+fn execute_main<T : Iterator<Item=char>>(iterator: T) -> Option<VMResult> {
     let mut vm = VM::new();
     vm.add_assembly(compile_iter(iterator));
     let x = vm.assembly.iter().flat_map(|a| a.superCombinators.iter()).find(|sc| sc.name.name == intern("main"));

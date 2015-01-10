@@ -1,5 +1,6 @@
 use interner::*;
 use core::*;
+use core::Expr::*;
 use types::{int_type, double_type, function_type, function_type_, qualified};
 use typecheck::{Types, DataTypes, TypeEnvironment, find_specialized_instances};
 use scoped_map::ScopedMap;
@@ -10,6 +11,8 @@ use core::translate::{translate_module, translate_modules};
 use lambda_lift::do_lambda_lift;
 use renamer::rename_module;
 use builtins::builtins;
+
+use self::Instruction::*;
 
 #[deriving(PartialEq, Clone, Show)]
 pub enum Instruction {
@@ -60,14 +63,14 @@ pub enum Instruction {
 }
 #[deriving(Show)]
 enum Var<'a> {
-    StackVariable(uint),
-    GlobalVariable(uint),
-    ConstructorVariable(u16, u16),
-    ClassVariable(&'a Type, &'a [Constraint<Name>], &'a TypeVariable),
-    ConstraintVariable(uint, &'a Type, &'a[Constraint<Name>]),
-    BuiltinVariable(uint),
-    PrimitiveVariable(uint, Instruction),
-    NewtypeVariable
+    Stack(uint),
+    Global(uint),
+    Constructor(u16, u16),
+    Class(&'a Type, &'a [Constraint<Name>], &'a TypeVariable),
+    Constraint(uint, &'a Type, &'a[Constraint<Name>]),
+    Builtin(uint),
+    Primitive(uint, Instruction),
+    Newtype
 }
 
 static unary_primitives: &'static [(&'static str, Instruction)] = &[
@@ -102,14 +105,14 @@ static binary_primitives: &'static [(&'static str, Instruction)] = &[
 impl <'a> Clone for Var<'a> {
     fn clone(&self) -> Var<'a> {
         match *self {
-            StackVariable(x) => StackVariable(x),
-            GlobalVariable(x) => GlobalVariable(x),
-            ConstructorVariable(x, y) => ConstructorVariable(x, y),
-            ClassVariable(x, y, z) => ClassVariable(x, y, z),
-            ConstraintVariable(x, y, z) => ConstraintVariable(x, y, z),
-            BuiltinVariable(x) => BuiltinVariable(x),
-            PrimitiveVariable(x, y) => PrimitiveVariable(x, y),
-            NewtypeVariable => NewtypeVariable
+            Var::Stack(x) => Var::Stack(x),
+            Var::Global(x) => Var::Global(x),
+            Var::Constructor(x, y) => Var::Constructor(x, y),
+            Var::Class(x, y, z) => Var::Class(x, y, z),
+            Var::Constraint(x, y, z) => Var::Constraint(x, y, z),
+            Var::Builtin(x) => Var::Builtin(x),
+            Var::Primitive(x, y) => Var::Primitive(x, y),
+            Var::Newtype => Var::Newtype
         }
     }
 }
@@ -141,7 +144,7 @@ impl Globals for Assembly {
         for class in self.classes.iter() {
             for decl in class.declarations.iter() {
                 if decl.name == name {
-                    return Some(ClassVariable(&decl.typ.value, decl.typ.constraints, &class.variable));
+                    return Some(Var::Class(&decl.typ.value, decl.typ.constraints, &class.variable));
                 }
             }
         }
@@ -150,15 +153,15 @@ impl Globals for Assembly {
         for sc in self.superCombinators.iter() {
             if name == sc.name {
                 if sc.typ.constraints.len() > 0 {
-                    return Some(ConstraintVariable(self.offset + index, &sc.typ.value, sc.typ.constraints));
+                    return Some(Var::Constraint(self.offset + index, &sc.typ.value, sc.typ.constraints));
                 }
                 else {
-                    return Some(GlobalVariable(self.offset + index));
+                    return Some(Var::Global(self.offset + index));
                 }
             }
             index += 1;
         }
-        self.find_constructor(name).map(|(tag, arity)| ConstructorVariable(tag, arity))
+        self.find_constructor(name).map(|(tag, arity)| Var::Constructor(tag, arity))
     }
     fn find_constructor(&self, name: Name) -> Option<(u16, u16)> {
         for data_def in self.data_definitions.iter() {
@@ -177,7 +180,7 @@ fn find_global<'a>(module: &'a Module<Id>, offset: uint, name: Name) -> Option<V
     for class in module.classes.iter() {
         for decl in class.declarations.iter() {
             if decl.name == name {
-                return Some(ClassVariable(&decl.typ.value, decl.typ.constraints, &class.variable));
+                return Some(Var::Class(&decl.typ.value, decl.typ.constraints, &class.variable));
             }
         }
     }
@@ -192,20 +195,20 @@ fn find_global<'a>(module: &'a Module<Id>, offset: uint, name: Name) -> Option<V
             let typ = bind.expression.get_type();
             let constraints = &bind.name.typ.constraints;
             if constraints.len() > 0 {
-                ConstraintVariable(offset + global_index, typ, *constraints)
+                Var::Constraint(offset + global_index, typ, *constraints)
             }
             else {
-                GlobalVariable(offset + global_index)
+                Var::Global(offset + global_index)
             }
         })
         .or_else(|| {
             module.newtypes.iter()
                 .find(|newtype| newtype.constructor_name == name)
-                .map(|_| NewtypeVariable)
+                .map(|_| Var::Newtype)
         })
         .or_else(|| {
             find_constructor(module, name)
-                .map(|(tag, arity)| ConstructorVariable(tag, arity))
+                .map(|(tag, arity)| Var::Constructor(tag, arity))
         })
 }
 
@@ -257,11 +260,11 @@ impl Types for Module<Id> {
     fn find_instance<'a>(&'a self, classname: Name, typ: &Type) -> Option<(&'a [Constraint<Name>], &'a Type)> {
         for instance in self.instances.iter() {
             let y = match extract_applied_type(&instance.typ) {
-                &TypeConstructor(ref x) => x,
+                &Type::Constructor(ref x) => x,
                 _ => panic!()
             };
             let z = match extract_applied_type(typ) {
-                &TypeConstructor(ref x) => x,
+                &Type::Constructor(ref x) => x,
                 _ => panic!()
             };
             if classname == instance.classname && y.name == z.name {
@@ -274,7 +277,7 @@ impl Types for Module<Id> {
 
 fn extract_applied_type<'a>(typ: &'a Type) -> &'a Type {
     match typ {
-        &TypeApplication(ref lhs, _) => extract_applied_type(*lhs),
+        &Type::Application(ref lhs, _) => extract_applied_type(*lhs),
         _ => typ
     }
 }
@@ -314,17 +317,17 @@ impl Types for Assembly {
     fn find_instance<'a>(&'a self, classname: Name, typ: &Type) -> Option<(&'a [Constraint<Name>], &'a Type)> {
         for &(ref constraints, ref op) in self.instances.iter() {
             match op {
-                &TypeApplication(ref op, ref t) => {
+                &Type::Application(ref op, ref t) => {
                     let x = match extract_applied_type(*op) {
-                        &TypeConstructor(ref x) => x,
+                        &Type::Constructor(ref x) => x,
                         _ => panic!()
                     };
                     let y = match extract_applied_type(*t) {
-                        &TypeConstructor(ref x) => x,
+                        &Type::Constructor(ref x) => x,
                         _ => panic!()
                     };
                     let z = match extract_applied_type(typ) {
-                        &TypeConstructor(ref x) => x,
+                        &Type::Constructor(ref x) => x,
                         _ => panic!()
                     };
                     if classname.name == x.name && y.name == z.name {
@@ -394,13 +397,13 @@ impl <'a> Compiler<'a> {
     pub fn new() -> Compiler<'a> {
         let mut variables = ScopedMap::new();
         for (i, &(name, _)) in builtins().iter().enumerate() {
-            variables.insert(Name { name: intern(name), uid: 0}, BuiltinVariable(i));
+            variables.insert(Name { name: intern(name), uid: 0}, Var::Builtin(i));
         }
         for &(name, instruction) in binary_primitives.iter() {
-            variables.insert(Name { name: intern(name), uid: 0 }, PrimitiveVariable(2, instruction));
+            variables.insert(Name { name: intern(name), uid: 0 }, Var::Primitive(2, instruction));
         }
         for &(name, instruction) in unary_primitives.iter() {
-            variables.insert(Name { name: intern(name), uid: 0 }, PrimitiveVariable(1, instruction));
+            variables.insert(Name { name: intern(name), uid: 0 }, Var::Primitive(1, instruction));
         }
         Compiler { instance_dictionaries: Vec::new(),
             stackSize : 0, assemblies: Vec::new(),
@@ -520,7 +523,7 @@ impl <'a> Compiler<'a> {
             None
         }).or_else(|| {
             Compiler::find_builtin_constructor(identifier.name)
-                .map(|(x, y)| ConstructorVariable(x, y))
+                .map(|(x, y)| Var::Constructor(x, y))
         })
     }
 
@@ -570,11 +573,11 @@ impl <'a> Compiler<'a> {
     }
 
     fn new_stack_var(&mut self, identifier : Name) {
-        self.variables.insert(identifier, StackVariable(self.stackSize));
+        self.variables.insert(identifier, Var::Stack(self.stackSize));
         self.stackSize += 1;
     }
     fn new_var_at(&mut self, identifier : Name, index: uint) {
-        self.variables.insert(identifier, StackVariable(index));
+        self.variables.insert(identifier, Var::Stack(index));
     }
 
     fn scope(&mut self, f: &mut FnMut(&mut Compiler)) {
@@ -589,7 +592,7 @@ impl <'a> Compiler<'a> {
     fn compile(&mut self, expr : &Expr<Id>, instructions : &mut Vec<Instruction>, strict: bool) {
         match expr {
             &Identifier(_) => {
-                self.compile_apply(expr, Nil, instructions, strict);
+                self.compile_apply(expr, ArgList::Nil, instructions, strict);
             }
             &Literal(ref literal) => {
                 match &literal.value {
@@ -638,7 +641,7 @@ impl <'a> Compiler<'a> {
                 }
             }
             &Apply(..) => {
-                self.compile_apply(expr, Nil, instructions, strict);
+                self.compile_apply(expr, ArgList::Nil, instructions, strict);
             }
             &Let(ref bindings, ref body) => {
                 self.scope(&mut |this| {
@@ -704,7 +707,7 @@ impl <'a> Compiler<'a> {
         //Unroll the applications until the function is found
         match *expr {
             Apply(ref func, ref arg) => {
-                return self.compile_apply(*func, Cons(*arg, &args), instructions, strict)
+                return self.compile_apply(*func, ArgList::Cons(*arg, &args), instructions, strict)
             }
             _ => ()
         }
@@ -719,29 +722,29 @@ impl <'a> Compiler<'a> {
                 let var = self.find(name.name)
                     .unwrap_or_else(|| panic!("Error: Undefined variable {}", *name));
                 match var {
-                    PrimitiveVariable(..) => is_primitive = true,
+                    Var::Primitive(..) => is_primitive = true,
                     _ => ()
                 }
                 arg_length = self.compile_args(&args, instructions, is_primitive);
                 match var {
-                    StackVariable(index) => { instructions.push(Push(index)); }
-                    GlobalVariable(index) => { instructions.push(PushGlobal(index)); }
-                    ConstructorVariable(tag, arity) => {
+                    Var::Stack(index) => { instructions.push(Push(index)); }
+                    Var::Global(index) => { instructions.push(PushGlobal(index)); }
+                    Var::Constructor(tag, arity) => {
                         instructions.push(Pack(tag, arity));
                         is_function = false;
                     }
-                    BuiltinVariable(index) => { instructions.push(PushBuiltin(index)); }
-                    ClassVariable(typ, constraints, var) => {
-                        debug!("ClassVariable ({}, {}, {}) {}", typ, constraints, var, expr.get_type());
+                    Var::Builtin(index) => { instructions.push(PushBuiltin(index)); }
+                    Var::Class(typ, constraints, var) => {
+                        debug!("Var::Class ({}, {}, {}) {}", typ, constraints, var, expr.get_type());
                         self.compile_instance_variable(expr.get_type(), instructions, name.name, typ, constraints, var);
                     }
-                    ConstraintVariable(index, bind_type, constraints) => {
-                        debug!("ConstraintVariable {} ({}, {}, {})", name, index, bind_type, constraints);
+                    Var::Constraint(index, bind_type, constraints) => {
+                        debug!("Var::Constraint {} ({}, {}, {})", name, index, bind_type, constraints);
                         self.compile_with_constraints(name.name, expr.get_type(), bind_type, constraints, instructions);
                         instructions.push(PushGlobal(index));
                         instructions.push(Mkap);
                     }
-                    PrimitiveVariable(num_args, instruction) => {
+                    Var::Primitive(num_args, instruction) => {
                         if num_args == arg_length {
                             instructions.push(instruction);
                         }
@@ -750,9 +753,9 @@ impl <'a> Compiler<'a> {
                         }
                         is_function = false;
                     }
-                    NewtypeVariable => {
+                    Var::Newtype => {
                         match args {
-                            Cons(_, _) => {
+                            ArgList::Cons(_, _) => {
                                 //Do nothing
                             }
                             Nil => {
@@ -760,7 +763,7 @@ impl <'a> Compiler<'a> {
                                 let x = self.find(Name { name: intern("id"), uid: 0 })
                                     .expect("Compiler error: Prelude.id must be in scope for compilation of newtype");
                                 match x {
-                                    GlobalVariable(index) => {
+                                    Var::Global(index) => {
                                         instructions.push(PushGlobal(index));
                                     }
                                     _ => panic!()
@@ -789,14 +792,14 @@ impl <'a> Compiler<'a> {
 
     fn compile_args<'a>(&mut self, args: &ArgList<'a>, instructions: &mut Vec<Instruction>, strict: bool) -> uint {
         match *args {
-            Cons(arg, rest) => {
+            ArgList::Cons(arg, rest) => {
                 let i = self.compile_args(rest, instructions, strict);
                 //The stack has increased by 1 until the function compiles and reduces it wtih Pack or Mkap
                 self.compile(arg, instructions, strict);
                 self.stackSize += 1;
                 i + 1
             }
-            Nil => 0
+            ArgList::Nil => 0
         }
     }
 
@@ -805,15 +808,15 @@ impl <'a> Compiler<'a> {
         match try_find_instance_type(var, function_type, actual_type) {
             Some(typename) => {
                 //We should be able to retrieve the instance directly
-                let mut b = String::from_str("#");
+                let mut b = "#".to_string();
                 b.push_str(typename);
                 b.push_str(name.as_slice());
                 let instance_fn_name = Name { name: intern(b.as_slice()), uid: name.uid };
                 match self.find(instance_fn_name) {
-                    Some(GlobalVariable(index)) => {
+                    Some(Var::Global(index)) => {
                         instructions.push(PushGlobal(index));
                     }
-                    Some(ConstraintVariable(index, function_type, constraints)) => {
+                    Some(Var::Constraint(index, function_type, constraints)) => {
                         self.compile_with_constraints(instance_fn_name, actual_type, function_type, constraints, instructions);
                         instructions.push(PushGlobal(index));
                         instructions.push(Mkap);
@@ -830,7 +833,7 @@ impl <'a> Compiler<'a> {
     ///Compile the loading of a variable which has constraints and will thus need to load a dictionary with functions as well
     fn compile_with_constraints(&mut self, name: Name, actual_type: &Type, function_type: &Type, constraints: &[Constraint<Name>], instructions: &mut Vec<Instruction>) {
         match self.find(Name { name: intern("$dict"), uid: 0}) {
-            Some(StackVariable(_)) => {
+            Some(Var::Stack(_)) => {
                 //Push dictionary or member of dictionary
                 match self.push_dictionary_member(constraints, name) {
                     Some(index) => instructions.push(PushDictionaryMember(index)),
@@ -860,13 +863,13 @@ impl <'a> Compiler<'a> {
     //Writes instructions which pushes a dictionary for the type to the top of the stack
     fn fold_dictionary(&mut self, class: Name, typ: &Type, instructions: &mut Vec<Instruction>) {
         match *typ {
-            TypeConstructor(ref ctor) => {//Simple
+            Type::Constructor(ref ctor) => {//Simple
                 debug!("Simple for {}", ctor);
                 //Push static dictionary to the top of the stack
                 let index = self.find_dictionary_index(&[(class.clone(), typ.clone())]);
                 instructions.push(PushDictionary(index));
             }
-            TypeApplication(ref lhs, ref rhs) => {
+            Type::Application(ref lhs, ref rhs) => {
                 debug!("App for ({} {})", lhs, rhs);
                 //For function in functions
                 // Mkap function fold_dictionary(rhs)
@@ -874,7 +877,7 @@ impl <'a> Compiler<'a> {
                 self.fold_dictionary(class, *rhs, instructions);
                 instructions.push(MkapDictionary);
             }
-            TypeVariable(ref var) => {
+            Type::Variable(ref var) => {
                 //This variable must appear in the context
                 let mut has_constraint = false;
                 let mut index = 0;
@@ -961,7 +964,7 @@ impl <'a> Compiler<'a> {
 
         fn extract_applied_type<'a>(typ: &'a Type) -> &'a Type {
             match typ {
-                &TypeApplication(ref lhs, _) => extract_applied_type(*lhs),
+                &Type::Application(ref lhs, _) => extract_applied_type(*lhs),
                 _ => typ
             }
         }
@@ -970,19 +973,19 @@ impl <'a> Compiler<'a> {
             self.walk_classes(*class_name, &mut |declarations| -> Option<()> {
                 for decl in declarations.iter() {
                     let x = match extract_applied_type(typ) {
-                        &TypeConstructor(ref x) => x,
+                        &Type::Constructor(ref x) => x,
                         _ => panic!("{}", typ)
                     };
-                    let mut b = String::from_str("#");
+                    let mut b = "#".to_string();
                     b.push_str(x.name.as_slice());
                     b.push_str(decl.name.as_slice());
                     let f = intern(b.as_slice());
                     let name = Name { name: f, uid: decl.name.uid };
                     match self.find(name) {
-                        Some(GlobalVariable(index)) => {
+                        Some(Var::Global(index)) => {
                             function_indexes.push(index as uint);
                         }
-                        Some(ConstraintVariable(index, _, _)) => {
+                        Some(Var::Constraint(index, _, _)) => {
                             function_indexes.push(index as uint);//TODO this is not really correct since this function requires a dictionary
                         }
                         var => panic!("Did not find function {} {}", name, var)
@@ -999,7 +1002,7 @@ impl <'a> Compiler<'a> {
     fn compile_pattern(&mut self, pattern: &Pattern<Id>, branches: &mut Vec<uint>, instructions: &mut Vec<Instruction>, stack_size: uint) -> uint {
         debug!("Pattern {} at {}", pattern, stack_size);
         match pattern {
-            &ConstructorPattern(ref name, ref patterns) => {
+            &Pattern::Constructor(ref name, ref patterns) => {
                 instructions.push(Push(stack_size));
                 match self.find_constructor(name.name) {
                     Some((tag, _)) => {
@@ -1016,7 +1019,7 @@ impl <'a> Compiler<'a> {
                 }
                 patterns.len()
             }
-            &NumberPattern(number) => {
+            &Pattern::Number(number) => {
                 instructions.push(Push(stack_size));
                 instructions.push(Eval);
                 instructions.push(PushInt(number));
@@ -1024,11 +1027,11 @@ impl <'a> Compiler<'a> {
                 instructions.push(JumpFalse(0));
                 0
             }
-            &IdentifierPattern(ref ident) => {
+            &Pattern::Identifier(ref ident) => {
                 self.new_var_at(ident.name.clone(), stack_size);
                 0
             }
-            &WildCardPattern => {
+            &Pattern::WildCard => {
                 0
             }
         }
@@ -1038,18 +1041,18 @@ impl <'a> Compiler<'a> {
 ///Attempts to find the actual type of the for the variable which has a constraint
 fn try_find_instance_type<'a>(class_var: &TypeVariable, class_type: &Type, actual_type: &'a Type) -> Option<&'a str> {
     match (class_type, actual_type) {
-        (&TypeVariable(ref var), _) if var == class_var => {
+        (&Type::Variable(ref var), _) if var == class_var => {
             //Found the class variable so return the name of the type
             match extract_applied_type(actual_type) {
-                &TypeConstructor(ref op) => { Some(op.name.as_slice()) }
+                &Type::Constructor(ref op) => { Some(op.name.as_slice()) }
                 _ => None
             }
         }
-        (&TypeConstructor(ref class_op), &TypeConstructor(ref actual_op)) => {
+        (&Type::Constructor(ref class_op), &Type::Constructor(ref actual_op)) => {
             assert_eq!(class_op.name, actual_op.name);
             None
         }
-        (&TypeApplication(ref lhs1, ref rhs1), &TypeApplication(ref lhs2, ref rhs2)) => {
+        (&Type::Application(ref lhs1, ref rhs1), &Type::Application(ref lhs2, ref rhs2)) => {
             try_find_instance_type(class_var, *lhs1, *lhs2)
                 .or_else(|| try_find_instance_type(class_var, *rhs1, *rhs2))
         }

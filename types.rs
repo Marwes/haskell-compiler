@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::iter::range_step;
 use std::default::Default;
 use std::fmt;
+use std::iter;
 use interner::{InternedStr, intern};
 
 #[deriving(Clone, Default, PartialEq, Eq, Hash)]
@@ -19,9 +20,9 @@ pub struct TypeVariable {
 }
 #[deriving(Clone, Eq, Hash)]
 pub enum Type {
-    TypeVariable(TypeVariable),
-    TypeConstructor(TypeConstructor),
-    TypeApplication(Box<Type>, Box<Type>),
+    Variable(TypeVariable),
+    Constructor(TypeConstructor),
+    Application(Box<Type>, Box<Type>),
     Generic(TypeVariable)
 }
 #[deriving(Clone, Default, Hash)]
@@ -37,33 +38,33 @@ impl Type {
 
     ///Creates a new type variable with the specified id
     pub fn new_var(id : VarId) -> Type {
-        Type::new_var_kind(id, StarKind)
+        Type::new_var_kind(id, Kind::Star)
     }
     ///Creates a new type which is a type variable which takes a number of types as arguments
     ///Gives the typevariable the correct kind arity.
     pub fn new_var_args(id: VarId, types : Vec<Type>) -> Type {
-        Type::new_type_kind(TypeVariable(TypeVariable { id : id, kind: StarKind, age: 0 }), types)
+        Type::new_type_kind(Type::Variable(TypeVariable { id : id, kind: Kind::Star, age: 0 }), types)
     }
     ///Creates a new type variable with the specified kind
     pub fn new_var_kind(id : VarId, kind: Kind) -> Type {
-        TypeVariable(TypeVariable { id : id, kind: kind, age: 0 })
+        Type::Variable(TypeVariable { id : id, kind: kind, age: 0 })
     }
     ///Creates a new type constructor with the specified argument and kind
     pub fn new_op(name : InternedStr, types : Vec<Type>) -> Type {
-        Type::new_type_kind(TypeConstructor(TypeConstructor { name : name, kind: StarKind }), types)
+        Type::new_type_kind(Type::Constructor(TypeConstructor { name : name, kind: Kind::Star }), types)
     }
     ///Creates a new type constructor applied to the types and with a specific kind
     pub fn new_op_kind(name : InternedStr, types : Vec<Type>, kind: Kind) -> Type {
-        let mut result = TypeConstructor(TypeConstructor { name : name, kind: kind });
+        let mut result = Type::Constructor(TypeConstructor { name : name, kind: kind });
         for typ in types.move_iter() {
-            result = TypeApplication(box result, box typ);
+            result = Type::Application(box result, box typ);
         }
         result
     }
     fn new_type_kind(mut result: Type, types: Vec<Type>) -> Type {
         *result.mut_kind() = Kind::new(types.len() as int + 1);
         for typ in types.move_iter() {
-            result = TypeApplication(box result, box typ);
+            result = Type::Application(box result, box typ);
         }
         result
     }
@@ -71,7 +72,7 @@ impl Type {
     ///Returns a reference to the type variable or fails if it is not a variable
     pub fn var<'a>(&'a self) -> &'a TypeVariable {
         match self {
-            &TypeVariable(ref var) => var,
+            &Type::Variable(ref var) => var,
             _ => panic!("Tried to unwrap {} as a TypeVariable", self)
         }
     }
@@ -80,7 +81,7 @@ impl Type {
     #[allow(dead_code)]
     pub fn ctor<'a>(&'a self) -> &'a TypeConstructor {
         match self {
-            &TypeConstructor(ref op) => op,
+            &Type::Constructor(ref op) => op,
             _ => panic!("Tried to unwrap {} as a TypeConstructor", self)
         }
     }
@@ -89,7 +90,7 @@ impl Type {
     #[allow(dead_code)]
     pub fn appl<'a>(&'a self) -> &'a Type {
         match self {
-            &TypeApplication(ref lhs, _) => { let l: &Type = *lhs; l }
+            &Type::Application(ref lhs, _) => { let l: &Type = *lhs; l }
             _ => panic!("Error: Tried to unwrap {} as TypeApplication", self)
         }
     }
@@ -97,7 +98,7 @@ impl Type {
     ///Returns a reference to the the type argument or fails if it is not an application
     pub fn appr<'a>(&'a self) -> &'a Type {
         match self {
-            &TypeApplication(_, ref rhs) => { let r: &Type = *rhs; r }
+            &Type::Application(_, ref rhs) => { let r: &Type = *rhs; r }
             _ => panic!("Error: Tried to unwrap TypeApplication")
         }
     }
@@ -106,38 +107,38 @@ impl Type {
     ///Fails only if the type is a type application with an invalid kind
     pub fn kind<'a>(&'a self) -> &'a Kind {
         match self {
-            &TypeVariable(ref v) => &v.kind,
-            &TypeConstructor(ref v) => &v.kind,
-            &TypeApplication(ref lhs, _) => 
+            &Type::Variable(ref v) => &v.kind,
+            &Type::Constructor(ref v) => &v.kind,
+            &Type::Application(ref lhs, _) => 
                 match lhs.kind() {
-                    &KindFunction(_, ref k) => {
+                    &Kind::Function(_, ref k) => {
                         let kind: &Kind = *k;
                         kind
                     }
-                    _ => panic!("Type application must have a kind of KindFunction, {}", self)
+                    _ => panic!("Type application must have a kind of Kind::Function, {}", self)
                 },
-            &Generic(ref v) => &v.kind
+            &Type::Generic(ref v) => &v.kind
         }
     }
     ///Returns a mutable reference to the types kind
     pub fn mut_kind<'a>(&'a mut self) -> &'a mut Kind {
         match *self {
-            TypeVariable(ref mut v) => &mut v.kind,
-            TypeConstructor(ref mut v) => &mut v.kind,
-            TypeApplication(ref mut lhs, _) => 
+            Type::Variable(ref mut v) => &mut v.kind,
+            Type::Constructor(ref mut v) => &mut v.kind,
+            Type::Application(ref mut lhs, _) => 
                 match *lhs.mut_kind() {
-                    KindFunction(_, ref mut k) => {
+                    Kind::Function(_, ref mut k) => {
                         let kind: &mut Kind = *k;
                         kind
                     }
-                    _ => panic!("Type application must have a kind of KindFunction")
+                    _ => panic!("Type application must have a kind of Kind::Function")
                 },
-            Generic(ref mut v) => &mut v.kind
+            Type::Generic(ref mut v) => &mut v.kind
         }
     }
 }
 
-impl <S: Writer> ::std::hash::Hash<S> for TypeVariable {
+impl <S: ::std::hash::Hasher> ::std::hash::Hash<S> for TypeVariable {
     #[inline]
     fn hash(&self, state: &mut S) {
         //Only has the id since the kind should always be the same for two variables
@@ -147,12 +148,10 @@ impl <S: Writer> ::std::hash::Hash<S> for TypeVariable {
 
 ///Constructs a string which holds the name of an n-tuple
 pub fn tuple_name(n: uint) -> String {
-    let mut ident = String::from_char(1, '(');
-    for _ in range(1, n) {
-        ident.push_char(',');
-    }
-    ident.push_char(')');
-    ident
+    Some('(').into_iter()
+        .chain(iter::repeat(',').take(n - 1))
+        .chain(Some(')').into_iter())
+        .collect()
 }
 ///Returns the type of an n-tuple constructor as well as the name of the tuple
 pub fn tuple_type(n: uint) -> (String, Type) {
@@ -160,13 +159,13 @@ pub fn tuple_type(n: uint) -> (String, Type) {
     assert!(n < 26);
     for i in range(0, n) {
         let c = (('a' as u8) + i as u8) as char;
-        var_list.push(Generic(Type::new_var_kind(intern(c.to_str().as_slice()), star_kind.clone()).var().clone()));
+        var_list.push(Type::Generic(Type::new_var_kind(intern(c.to_str().as_slice()), star_kind.clone()).var().clone()));
     }
     let ident = tuple_name(n);
     let mut typ = Type::new_op(intern(ident.as_slice()), var_list);
     for i in range_step(n as int - 1, -1, -1) {
         let c = (('a' as u8) + i as u8) as char;
-        typ = function_type_(Generic(Type::new_var(intern(c.to_str().as_slice())).var().clone()), typ);
+        typ = function_type_(Type::Generic(Type::new_var(intern(c.to_str().as_slice())).var().clone()), typ);
     }
     (ident, typ)
 }
@@ -218,14 +217,14 @@ pub struct Constraint<Ident = InternedStr> {
 
 #[deriving(Clone, PartialEq, Eq, Hash)]
 pub enum Kind {
-    KindFunction(Box<Kind>, Box<Kind>),
-    StarKind
+    Function(Box<Kind>, Box<Kind>),
+    Star
 }
 impl fmt::Show for Kind {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            &StarKind => write!(f, "*"),
-            &KindFunction(ref lhs, ref rhs) => write!(f, "({} -> {})", *lhs, *rhs)
+            &Kind::Star => write!(f, "*"),
+            &Kind::Function(ref lhs, ref rhs) => write!(f, "({} -> {})", *lhs, *rhs)
         }
     }
 }
@@ -234,7 +233,7 @@ impl Kind {
     pub fn new(v: int) -> Kind {
         let mut kind = star_kind.clone();
         for _ in range(1, v) {
-            kind = KindFunction(box StarKind, box kind);
+            kind = Kind::Function(box Kind::Star, box kind);
         }
         kind
     }
@@ -242,10 +241,10 @@ impl Kind {
 
 impl Default for Kind {
     fn default() -> Kind {
-        StarKind
+        Kind::Star
     }
 }
-pub static star_kind : Kind = StarKind;
+pub static star_kind : Kind = Kind::Star;
 
 impl Default for Type {
     fn default() -> Type {
@@ -281,13 +280,13 @@ struct Prec<'a>(Prec_, &'a Type);
 ///otherwise it returns None
 pub fn try_get_function<'a>(typ: &'a Type) -> Option<(&'a Type, &'a Type)> {
     match *typ {
-        TypeApplication(ref xx, ref result) => {
+        Type::Application(ref xx, ref result) => {
             let y: &Type = *xx;
             match *y {
-                TypeApplication(ref xx, ref arg) => {
+                Type::Application(ref xx, ref arg) => {
                     let x: &Type = *xx;
                     match x {
-                        &TypeConstructor(ref op) if "->" == op.name.as_slice() => {
+                        &Type::Constructor(ref op) if "->" == op.name.as_slice() => {
                             let a: &Type = *arg;
                             let r: &Type = *result;
                             Some((a, r))
@@ -306,30 +305,30 @@ impl <'a> fmt::Show for Prec<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let Prec(p, t) = *self;
         match *t {
-            TypeVariable(ref var) => write!(f, "{}", *var),
-            TypeConstructor(ref op) => write!(f, "{}", *op),
-            Generic(ref var) => write!(f, "\\#{}", *var),
-            TypeApplication(ref lhs, ref rhs) => {
+            Type::Variable(ref var) => write!(f, "{}", *var),
+            Type::Constructor(ref op) => write!(f, "{}", *op),
+            Type::Generic(ref var) => write!(f, "\\#{}", *var),
+            Type::Application(ref lhs, ref rhs) => {
                 match try_get_function(t) {
                     Some((arg, result)) => {
-                        if p >= Function {
+                        if p >= Prec_::Function {
                             write!(f, "({} -> {})", *arg, result)
                         }
                         else {
-                            write!(f, "{} -> {}", Prec(Function, arg), result)
+                            write!(f, "{} -> {}", Prec(Prec_::Function, arg), result)
                         }
                     }
                     None => {
                         match **lhs {
-                            TypeConstructor(ref op) if "[]" == op.name.as_slice() => {
+                            Type::Constructor(ref op) if "[]" == op.name.as_slice() => {
                                 write!(f, "[{}]", rhs)
                             }
                             _ => {
-                                if p >= Constructor {
-                                    write!(f, "({} {})", Prec(Function, *lhs), Prec(Constructor, *rhs))
+                                if p >= Prec_::Constructor {
+                                    write!(f, "({} {})", Prec(Prec_::Function, *lhs), Prec(Prec_::Constructor, *rhs))
                                 }
                                 else {
-                                    write!(f, "{} {}", Prec(Function, *lhs), Prec(Constructor, *rhs))
+                                    write!(f, "{} {}", Prec(Prec_::Function, *lhs), Prec(Prec_::Constructor, *rhs))
                                 }
                             }
                         }
@@ -342,7 +341,7 @@ impl <'a> fmt::Show for Prec<'a> {
 
 impl fmt::Show for Type {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", Prec(Top, self))
+        write!(f, "{}", Prec(Prec_::Top, self))
     }
 }
 impl <I: fmt::Show> fmt::Show for Constraint<I> {
@@ -356,9 +355,9 @@ impl <I: fmt::Show> fmt::Show for Constraint<I> {
 }
 fn type_eq<'a>(mapping: &mut HashMap<&'a TypeVariable, &'a TypeVariable>, lhs: &'a Type, rhs: &'a Type) -> bool {
     match (lhs, rhs) {
-        (&TypeConstructor(ref l), &TypeConstructor(ref r)) => l.name == r.name,
-        (&TypeVariable(ref r), &TypeVariable(ref l)) => var_eq(mapping, r, l),
-        (&TypeApplication(ref lhs1, ref rhs1), &TypeApplication(ref lhs2, ref rhs2)) => {
+        (&Type::Constructor(ref l), &Type::Constructor(ref r)) => l.name == r.name,
+        (&Type::Variable(ref r), &Type::Variable(ref l)) => var_eq(mapping, r, l),
+        (&Type::Application(ref lhs1, ref rhs1), &Type::Application(ref lhs2, ref rhs2)) => {
             type_eq(mapping, *lhs1, *lhs2) && type_eq(mapping, *rhs1, *rhs2)
         }
         _ => false
