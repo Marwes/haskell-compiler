@@ -56,7 +56,8 @@ impl PrecedenceVisitor {
         let mut expr_stack = Vec::new();
         let mut op_stack = Vec::new();
         loop {
-            let TypedExpr { typ: typ, location:location, expr: expr } = *input;
+            let box temp = input;
+            let TypedExpr { typ: typ, location:location, expr: expr } = temp;
             match expr {
                 Expr::OpApply(l, op, r) => {
                     expr_stack.push(l);

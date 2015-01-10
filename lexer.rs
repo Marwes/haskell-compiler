@@ -7,7 +7,7 @@ use interner::*;
 
 use self::TokenEnum::*;
 
-#[derive(Clone, PartialEq, Show)]
+#[derive(Clone, Copy, PartialEq, Show)]
 pub enum TokenEnum {
 	EOF,
 	NAME,
@@ -54,7 +54,7 @@ pub enum TokenEnum {
     ELSE
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, Copy, PartialEq)]
 pub struct Location {
     pub column : int,
     pub row : int,

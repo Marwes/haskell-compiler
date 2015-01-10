@@ -15,7 +15,7 @@ use builtins::builtins;
 
 use self::Instruction::*;
 
-#[derive(PartialEq, Clone, Show)]
+#[derive(PartialEq, Clone, Copy, Show)]
 pub enum Instruction {
     Add,
     Sub,
@@ -662,7 +662,8 @@ impl <'a> Compiler<'a> {
                     self.scope(&mut |this| {
                         let pattern_start = instructions.len() as int;
                         let mut branches = Vec::new();
-                        let stack_increase = this.compile_pattern(&alt.pattern, &mut branches, instructions, this.stackSize - 1);
+                        let i = this.stackSize - 1;
+                        let stack_increase = this.compile_pattern(&alt.pattern, &mut branches, instructions, i);
                         let pattern_end = instructions.len() as int;
                         this.compile(&alt.expression, instructions, strict);
                         instructions.push(Slide(stack_increase));
@@ -1001,7 +1002,8 @@ impl <'a> Compiler<'a> {
                 instructions.push(Split(patterns.len()));
                 self.stackSize += patterns.len();
                 for (i, p) in patterns.iter().enumerate() {
-                    self.new_var_at(p.name.clone(), self.stackSize - patterns.len() + i);
+                    let index = self.stackSize - patterns.len() + i;
+                    self.new_var_at(p.name.clone(), index);
                 }
                 patterns.len()
             }

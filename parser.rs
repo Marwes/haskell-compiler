@@ -292,11 +292,12 @@ fn sub_expression(&mut self) -> Option<TypedExpr> {
                 Some(TypedExpr::with_location(Identifier(intern("()")), location))
             }
             else {
-                let expressions = self.sep_by_1(|this| this.expression_(), COMMA);
+                let mut expressions = self.sep_by_1(|this| this.expression_(), COMMA);
                 self.require_next(RPARENS);
                 if expressions.len() == 1 {
-                    let loc = expressions[0].location;
-                    Some(TypedExpr::with_location(Paren(box expressions[0]), loc))
+                    let expr = expressions.pop().unwrap();
+                    let loc = expr.location;
+                    Some(TypedExpr::with_location(Paren(box expr), loc))
                 }
                 else {
                     Some(new_tuple(expressions))
@@ -690,10 +691,10 @@ fn pattern(&mut self) -> Pattern {
                 Pattern::Constructor(intern("()"), vec![])
             }
             else {
-                let tupleArgs = self.sep_by_1(|this| this.pattern(), COMMA);
+                let mut tupleArgs = self.sep_by_1(|this| this.pattern(), COMMA);
                 self.require_next(RPARENS);
                 if tupleArgs.len() == 1 {
-                    tupleArgs[0]
+                    tupleArgs.pop().unwrap()
                 }
                 else {
                     Pattern::Constructor(intern(tuple_name(tupleArgs.len()).as_slice()), tupleArgs)
@@ -977,7 +978,7 @@ fn sep_by_1<T, F>(&mut self, f : F, sep : TokenEnum) -> Vec<T>
     self.sep_by_1_func(f, |tok| tok.token == sep)
 }
 
-fn sep_by_1_func<T, F, P>(&mut self, f : F, sep: P) -> Vec<T>
+fn sep_by_1_func<T, F, P>(&mut self, mut f : F, mut sep: P) -> Vec<T>
     where F: FnMut(&mut Parser<Iter>) -> T, P : FnMut(&Token) -> bool {
     let mut result = Vec::new();
     loop {
@@ -1026,9 +1027,9 @@ fn new_tuple(arguments : Vec<TypedExpr>) -> TypedExpr {
 	make_application(name, arguments.into_iter())
 }
 
-fn make_tuple_type(types : Vec<Type>) -> Type {
+fn make_tuple_type(mut types : Vec<Type>) -> Type {
     if types.len() == 1 {
-        types[0]
+        types.pop().unwrap()
     }
     else {
 	    Type::new_op(intern(tuple_name(types.len()).as_slice()), types)

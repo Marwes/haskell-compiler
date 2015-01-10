@@ -255,7 +255,7 @@ impl <'a> TypeEnvironment<'a> {
         }
     }
 
-    pub fn add_types(&'a mut self, types: &'a DataTypes) {
+    pub fn add_types(&mut self, types: &'a DataTypes) {
         self.assemblies.push(types);
     }
 
@@ -307,9 +307,10 @@ impl <'a> TypeEnvironment<'a> {
                 self.namedTypes.insert(type_decl.name.clone(), t);
             }
             for binding in class.bindings.iter_mut() {
+                let classname = &class.name;
                 let decl = class.declarations.iter()
                     .find(|decl| binding.name.name.as_slice().ends_with(decl.name.as_slice()))
-                    .unwrap_or_else(|| panic!("Could not find {:?} in class {:?}", binding.name, class.name));
+                    .unwrap_or_else(|| panic!("Could not find {:?} in class {:?}", binding.name, classname));
                 binding.typ = decl.typ.clone();
                 {
                     let mut context = vec![];
@@ -349,8 +350,9 @@ impl <'a> TypeEnvironment<'a> {
                 _ => ()
             }
             for binding in instance.bindings.iter_mut() {
+                let classname = &instance.classname;
                 let decl = class_decls.iter().find(|decl| binding.name.as_slice().ends_with(decl.name.as_slice()))
-                    .unwrap_or_else(|| panic!("Could not find {:?} in class {:?}", binding.name, instance.classname));
+                    .unwrap_or_else(|| panic!("Could not find {:?} in class {:?}", binding.name, classname));
                 binding.typ = decl.typ.clone();
                 replace_var(&mut binding.typ.value, class_var, &instance.typ);
                 self.freshen_qualified_type(&mut binding.typ, HashMap::new());
@@ -448,7 +450,7 @@ impl <'a> TypeEnvironment<'a> {
             let old = constraint.variables[0].clone();
             let new = match mapping.entry(old.clone()) {
                 Entry::Vacant(entry) => entry.insert(self.new_var_kind(old.kind.clone())),
-                Entry::Occupied(entry) => entry.get_mut()
+                Entry::Occupied(entry) => entry.into_mut()
             };
             constraint.variables[0] = new.var().clone();
         }
@@ -672,7 +674,7 @@ impl <'a> TypeEnvironment<'a> {
             Case(ref mut case_expr, ref mut alts) => {
                 let mut match_type = self.typecheck(&mut **case_expr, subs);
                 self.typecheck_pattern(&alts[0].pattern.location, subs, &alts[0].pattern.node, &mut match_type);
-                match alts[0].where_bindings {
+                match *&mut alts[0].where_bindings {
                     Some(ref mut bindings) => self.typecheck_local_bindings(subs, &mut BindingsWrapper { value: &mut **bindings }),
                     None => ()
                 }
@@ -930,7 +932,8 @@ impl <'a> TypeEnvironment<'a> {
     }
     ///Typechecks a group of local bindings (such as a let expression)
     fn typecheck_local_bindings(&mut self, subs: &mut Substitution, bindings: &mut Bindings) {
-        self.typecheck_mutually_recursive_bindings(self.variable_age + 1, subs, bindings, false);
+        let var = self.variable_age + 1;
+        self.typecheck_mutually_recursive_bindings(var, subs, bindings, false);
     }
     ///Typechecks a group of global bindings.
     fn typecheck_global_bindings(&mut self, start_var_age: int, subs: &mut Substitution, bindings: &mut Bindings) {
@@ -1406,9 +1409,9 @@ fn match_or_fail(env: &mut TypeEnvironment, subs: &mut Substitution, location: &
 fn match_(env: &mut TypeEnvironment, subs: &mut Substitution, lhs: &mut Type, rhs: &Type) -> Result<(), TypeError> {
     match (lhs, rhs) {
         (&mut Type::Application(ref mut l1, ref mut r1), &Type::Application(ref l2, ref r2)) => {
-            match_(env, subs, &mut **l1, &mut **l2).and_then(|_| {
+            match_(env, subs, &mut **l1, &**l2).and_then(|_| {
                 replace(&mut env.constraints, &mut **r1, subs);
-                match_(env, subs, &mut **r1, &mut **r2)
+                match_(env, subs, &mut **r1, &**r2)
             })
         }
         (&mut Type::Variable(ref mut lhs), &Type::Variable(ref rhs)) => {

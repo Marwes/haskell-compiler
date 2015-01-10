@@ -41,7 +41,7 @@ fn free_variables(&mut self, variables: &mut HashMap<Name, int>, free_vars: &mut
             if variables.get(&i.name).map(|x| *x > 0).unwrap_or(false) {
                 match variables.entry(i.name.clone()) {
                     Entry::Vacant(entry) => { entry.insert(1); }
-                    Entry::Occupied(entry) => *entry.get() += 1
+                    Entry::Occupied(mut entry) => *entry.get_mut() += 1
                 }
             }
         }
@@ -52,7 +52,7 @@ fn free_variables(&mut self, variables: &mut HashMap<Name, int>, free_vars: &mut
         Lambda(ref mut arg, ref mut body) => {
             match variables.entry(arg.name.clone()) {
                 Entry::Vacant(entry) => { entry.insert(1); }
-                Entry::Occupied(entry) => *entry.get() += 1
+                Entry::Occupied(mut entry) => *entry.get_mut() += 1
             }
             self.free_variables(variables, free_vars, &mut **body);
             *variables.get_mut(&arg.name).unwrap() -= 1;
@@ -62,7 +62,7 @@ fn free_variables(&mut self, variables: &mut HashMap<Name, int>, free_vars: &mut
             for bind in bindings.iter() {
                 match variables.entry(bind.name.name.clone()) {
                     Entry::Vacant(entry) => { entry.insert(1); }
-                    Entry::Occupied(entry) => *entry.get() += 1
+                    Entry::Occupied(mut entry) => *entry.get_mut() += 1
                 }
             }
             let mut free_vars2 = HashMap::new();
@@ -87,7 +87,7 @@ fn free_variables(&mut self, variables: &mut HashMap<Name, int>, free_vars: &mut
                 each_pattern_variables(&alt.pattern, &mut |name| {
                     match variables.entry(name.clone()) {
                         Entry::Vacant(entry) => { entry.insert(1); }
-                        Entry::Occupied(entry) => *entry.get() += 1
+                        Entry::Occupied(mut entry) => *entry.get_mut() += 1
                     }
                 });
                 self.free_variables(variables, free_vars, &mut alt.expression);

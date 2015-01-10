@@ -71,25 +71,25 @@ impl <K, V> ScopedMap<K, V>
     }
 
     ///Returns a reference to the last inserted value corresponding to the key
-    fn find<'a>(&'a self, k: &K) -> Option<&'a V> {
+    pub fn find<'a>(&'a self, k: &K) -> Option<&'a V> {
         self.map.get(k).and_then(|x| x.last())
     }
 
     ///Returns the number of elements in the container.
     ///Shadowed elements are not counted
-    fn len(&self) -> uint { self.map.len() }
+    pub fn len(&self) -> uint { self.map.len() }
 
     ///Removes all elements
-    fn clear(&mut self) {
+    pub fn clear(&mut self) {
         self.map.clear();
         self.scopes.clear();
     }
 
     ///Swaps the value stored at key, or inserts it if it is not present
-    fn swap(&mut self, k: K, v: V) -> Option<V> {
+    pub fn swap(&mut self, k: K, v: V) -> Option<V> {
         let vec = match self.map.entry(k.clone()) {
             Entry::Vacant(entry) => entry.insert(Vec::new()),
-            Entry::Occupied(entry) => entry.get_mut()
+            Entry::Occupied(entry) => entry.into_mut()
         };
         if vec.len() != 0 {
             let r  = vec.pop();
@@ -102,7 +102,7 @@ impl <K, V> ScopedMap<K, V>
             None
         }
     }
-    fn pop(&mut self, k: &K) -> Option<V> {
+    pub fn pop(&mut self, k: &K) -> Option<V> {
         match self.map.get_mut(k).and_then(|x| x.pop()) {
             Some(v) => {
                 let mut i = self.scopes.len() as int - 1;
@@ -117,13 +117,13 @@ impl <K, V> ScopedMap<K, V>
             None => None
         }
     }
-    fn find_mut<'a>(&'a mut self, key: &K) -> Option<&'a mut V> {
+    pub fn find_mut<'a>(&'a mut self, key: &K) -> Option<&'a mut V> {
         self.map.get_mut(key).and_then(|x| x.last_mut())
     }
-    fn insert(&mut self, k: K, v: V) -> bool {
+    pub fn insert(&mut self, k: K, v: V) -> bool {
         let vec = match self.map.entry(k.clone()) {
             Entry::Vacant(entry) => entry.insert(Vec::new()),
-            Entry::Occupied(entry) => entry.get_mut()
+            Entry::Occupied(entry) => entry.into_mut()
         };
         vec.push(v);
         self.scopes.push(Some(k));

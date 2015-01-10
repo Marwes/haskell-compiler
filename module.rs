@@ -78,7 +78,7 @@ pub struct Newtype<Ident = InternedStr> {
     pub deriving: Vec<Ident>
 }
 
-#[derive(PartialEq, Clone, Show)]
+#[derive(PartialEq, Clone, Copy, Show)]
 pub enum Assoc {
     Left,
     Right,

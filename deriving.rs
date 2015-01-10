@@ -135,8 +135,8 @@ impl DerivingGen {
                 ArgIterator { typ: &constructor.typ.value }
                 .map(|arg| Id::new(self.name_supply.anonymous(), arg.clone(), constructor.typ.constraints.clone()))
                 .collect();
-            let iter = ArgIterator { typ: &constructor.typ.value };
-            let args_r: Vec<Id<Name>> = iter
+            let mut iter = ArgIterator { typ: &constructor.typ.value };
+            let args_r: Vec<Id<Name>> = iter.by_ref()
                 .map(|arg| Id::new(self.name_supply.anonymous(), arg.clone(), constructor.typ.constraints.clone()))
                 .collect();
             let ctor_id = Id::new(constructor.name, iter.typ.clone(), constructor.typ.constraints.clone());

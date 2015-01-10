@@ -501,7 +501,7 @@ fn primitive_float<'a, F>(stack: &mut Vec<Node<'a>>, f: F) where F: FnOnce(f64, 
     }
 }
 fn primitive<F>(stack: &mut Vec<Node>, f: F) where F: FnOnce(int, int) -> int {
-    primitive_int(stack, |l, r| Int(f(l, r)))
+    primitive_int(stack, move |l, r| Int(f(l, r)))
 }
 
 #[derive(PartialEq, Show)]
@@ -637,7 +637,7 @@ mod primitive {
         eval(vm, stack[0].clone());
         let aw = stack[0].borrow();
         let (a, rw) = match *aw {
-            Constructor(_, ref args) => (args[0], args[1]),
+            Constructor(_, ref args) => (&args[0], &args[1]),
             _ => panic!("pass exepected constructor")
         };
         Node::new(Application(Node::new(Application(stack[1].clone(), a.clone())), rw.clone()))
@@ -694,8 +694,8 @@ mod primitive {
         let mut node = Node::new(Constructor(0, vec!()));
         let first = node.clone();
         for c in s.chars() {
-            node = match *node.borrow_mut() {
-                Constructor(ref mut tag, ref mut args) => {
+            node = match &mut *node.borrow_mut() {
+                &mut Constructor(ref mut tag, ref mut args) => {
                     *tag = 1;
                     args.push(Node::new(Char(c)));
                     args.push(Node::new(Constructor(0, Vec::new())));
@@ -708,14 +708,15 @@ mod primitive {
     }
     ///Compares the tags of two constructors, returning an Ordering
     fn compare_tags<'a>(vm: &'a VM, stack: &[Node<'a>]) -> Node<'a> {
+        use std::cmp::Ordering;
         assert_eq!(stack.len(), 2);
         let lhs = eval(vm, stack[0].clone());
         let rhs = eval(vm, stack[1].clone());
         let tag = match (&*lhs.borrow(), &*rhs.borrow()) {
             (&Constructor(lhs, _), &Constructor(rhs, _)) => match lhs.cmp(&rhs) {
-                Less => 0,
-                Equal => 1,
-                Greater => 2
+                Ordering::Less => 0,
+                Ordering::Equal => 1,
+                Ordering::Greater => 2
             },
             (_, _) => 1//EQ
         };

@@ -262,12 +262,13 @@ impl <T: fmt::Show, I: fmt::Show> fmt::Show for Qualified<T, I> {
     }
 }
 
-#[derive(PartialEq, PartialOrd)]
+#[derive(PartialEq, Copy, PartialOrd)]
 enum Prec_ {
     Top,
     Function,
     Constructor,
 }
+#[derive(Copy)]
 struct Prec<'a>(Prec_, &'a Type);
 
 ///If the type is a function it returns the type of the argument and the result type,

@@ -920,12 +920,13 @@ impl <'a> Translator<'a> {
                 let &Equation(ps, _) = &equations[last_index];
                 if ps.len() > 0  {
                     match ps[0].1 {
-                        Pattern::Constructor(..) | Pattern::Number(..)
-                        if visited.iter().find(|x| matching(**x, &ps[0])).is_none() => {
-                            pattern_test = Some(&ps[0]);
-                            visited.push(&ps[0]);
-                            last_index += 1;
-                            break;
+                        Pattern::Constructor(..) | Pattern::Number(..) => {
+                            if visited.iter().find(|x| matching(**x, &ps[0])).is_none() {
+                                pattern_test = Some(&ps[0]);
+                                visited.push(&ps[0]);
+                                last_index += 1;
+                                break;
+                            }
                         }
                         _ => ()
                     }
