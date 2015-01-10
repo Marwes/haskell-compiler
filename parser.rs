@@ -1240,13 +1240,13 @@ fn test_operators() {
 #[test]
 fn parse_instance_class() {
     let mut parser = Parser::new(
-r"class Eq a where_bindings
+r"class Eq a where
     (==) :: a -> a -> Bool
     (/=) x y = not (x == y)
     (/=) :: a -> a -> Bool
 
 
-instance Eq a => Eq [a] where_bindings
+instance Eq a => Eq [a] where
     (==) xs ys = undefined".chars());
     let module = parser.module();
 
@@ -1262,7 +1262,7 @@ instance Eq a => Eq [a] where_bindings
 #[test]
 fn parse_super_class() {
     let mut parser = Parser::new(
-r"class Eq a => Ord a where_bindings
+r"class Eq a => Ord a where
     (<) :: a -> a -> Bool
 
 ".chars());
@@ -1403,12 +1403,12 @@ fn where_bindings() {
 r"
 test = case a of
         x:y:xs -> z
-            where_bindings
+            where
             z = x + y
         x:xs -> x
         [] -> z
-            where_bindings z = 0
-    where_bindings
+            where z = 0
+    where
         a = []
 ".chars());
     let bind = parser.binding();
@@ -1416,7 +1416,7 @@ test = case a of
         Match::Simple(ref e) => {
             match e.expr {
                 Case(_, ref alts) => {
-                    let w = alts[0].where_bindings.as_ref().expect("Expected where_bindings");
+                    let w = alts[0].where_bindings.as_ref().expect("Expected where");
                     assert_eq!(w[0].name, intern("z"));
                     assert_eq!(w[0].matches, Match::Simple(op_apply(identifier("x"), intern("+"), identifier("y"))));
                     let w2 = alts[2].where_bindings.as_ref().expect("Expected where_bindings");
