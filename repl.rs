@@ -67,7 +67,7 @@ pub fn run_and_print_expr(expr_str: &str) {
     let assembly = compile_expr(vm.get_assembly(0), expr_str.as_slice());
     let (instructions, type_decl) = find_main(&assembly);
     let assembly_index = vm.add_assembly(assembly);
-    let result = evaluate(&vm, instructions, assembly_index);//TODO 0 is not necessarily correct
+    let result = evaluate(&vm, &*instructions, assembly_index);//TODO 0 is not necessarily correct
     println!("{:?}  {:?}", result, type_decl);
 }
 
@@ -76,7 +76,7 @@ pub fn start() {
     let prelude = compile_file("Prelude.hs");
     let mut vm = VM::new();
     vm.add_assembly(prelude);
-    for line in ::std::io::stdin().lines() {
+    for line in ::std::io::stdin().lock().lines() {
         let expr_str = match line {
             Ok(l) => l,
             Err(e) => panic!("Reading line failed with '{:?}'", e)
@@ -84,7 +84,7 @@ pub fn start() {
         let assembly = compile_expr(vm.get_assembly(0), expr_str.as_slice());
         let (instructions, typ) = find_main(&assembly);
         let assembly_index = vm.add_assembly(assembly);
-        let result = evaluate(&vm, instructions, assembly_index);//TODO 0 is not necessarily correct
+        let result = evaluate(&vm, &*instructions, assembly_index);//TODO 0 is not necessarily correct
         println!("{:?}  {:?}", result, typ);
     }
 }

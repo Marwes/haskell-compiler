@@ -68,12 +68,12 @@ fn main() {
     ];
     let matches = {
         let args = std::os::args();
-        getopts(args.tail(), opts)
+        getopts(args.tail(), &opts)
             .unwrap_or_else(|err| panic!("{:?}", err))
     };
 
     if matches.opt_present("h") {
-        println!("Usage: vm [OPTIONS|EXPRESSION] {:?}", usage("", opts));
+        println!("Usage: vm [OPTIONS|EXPRESSION] {:?}", usage("", &opts));
         return;
     }
     match matches.opt_str("l") {

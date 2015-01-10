@@ -409,7 +409,7 @@ impl <'a> Compiler<'a> {
             stackSize : 0, assemblies: Vec::new(),
             module: None,
             variables: variables,
-            context: box []
+            context: Vec::new()
         }
     }
     
@@ -446,7 +446,7 @@ impl <'a> Compiler<'a> {
             offset: self.assemblies.iter().flat_map(|assembly| assembly.superCombinators.iter()).len(),
             classes: module.classes.clone(),
             instances: module.instances.iter()
-                .map(|x| (x.constraints.clone(), Type::new_op(x.classname.name, box [x.typ.clone()])))
+                .map(|x| (x.constraints.clone(), Type::new_op(x.classname.name, vec![x.typ.clone()])))
                 .collect()
             ,
             data_definitions: data_definitions
@@ -1285,7 +1285,7 @@ test = Test [1::Int]";
     let assembly = compile(file);
 
     let test = assembly.superCombinators[0];
-    assert_eq!(test.instructions, box [Pack(0, 0), PushInt(1), Pack(1, 2), Update(0), Unwind]);
+    assert_eq!(test.instructions, vec![Pack(0, 0), PushInt(1), Pack(1, 2), Update(0), Unwind]);
 }
 
 #[bench]

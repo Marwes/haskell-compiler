@@ -143,7 +143,7 @@ fn import(&mut self) -> Import<InternedStr> {
         self.lexer.next();
         let x = if self.lexer.peek().token == RPARENS {
             self.lexer.next();
-            box []
+            Vec::new()
         }
         else {
             let imports = self.sep_by_1(|this| this.require_next(NAME).value, COMMA);
@@ -755,7 +755,7 @@ fn constrained_type(&mut self) -> (Vec<Constraint>, Type) {
     }
     else {
         self.lexer.backtrack();
-        box [self.parse_type()]
+        vec![self.parse_type()]
     };
     let maybeContextArrow = self.lexer.next().token;
     //If there is => arrow we proceed to parse the type
@@ -764,13 +764,13 @@ fn constrained_type(&mut self) -> (Vec<Constraint>, Type) {
     }
     else if maybeContextArrow == ARROW {
 	    self.lexer.backtrack();
-        let mut args = box [];
+        let mut args = Vec::new();
         swap(&mut args, &mut maybeConstraints);
         self.parse_return_type(make_tuple_type(args))
     }
     else {//If no => was found, translate the constraint list into a type
 	    self.lexer.backtrack();
-        let mut args = box [];
+        let mut args = Vec::new();
         swap(&mut args, &mut maybeConstraints);
         make_tuple_type(args)
     };
@@ -785,7 +785,7 @@ fn constructor_type(&mut self, arity : &mut int, dataDef: &DataDefinition) -> Ty
             Type::new_var(self.lexer.current().value)
 		}
 		else {
-			Type::new_op(self.lexer.current().value.clone(), box [])
+			Type::new_op(self.lexer.current().value.clone(), Vec::new())
         };
         function_type_(arg, self.constructor_type(arity, dataDef))
 	}
@@ -805,10 +805,10 @@ fn data_definition(&mut self) -> DataDefinition {
 	self.require_next(DATA);
 
 	let mut definition = DataDefinition {
-        constructors : box [],
+        constructors : Vec::new(),
         typ : qualified(vec![], Type::new_var(intern("a"))),
         parameters : HashMap::new(),
-        deriving: box []
+        deriving: Vec::new()
     };
     definition.typ.value = self.data_lhs();
     self.require_next(EQUALSSIGN);
@@ -833,9 +833,9 @@ fn newtype(&mut self) -> Newtype {
         .unwrap_or_else(|| panic!("Parse error when parsing argument to new type at  {:?}", location));
     
     Newtype {
-        typ: qualified(box [], typ.clone()),
+        typ: qualified(Vec::new(), typ.clone()),
         constructor_name: name,
-        constructor_type: qualified(box [], function_type_(arg_type, typ)),
+        constructor_type: qualified(Vec::new(), function_type_(arg_type, typ)),
         deriving: self.deriving()
     }
 }
@@ -860,7 +860,7 @@ fn deriving(&mut self) -> Vec<InternedStr> {
     }
     else {
 	    self.lexer.backtrack();
-        box []
+        Vec::new()
     }
 }
 
@@ -888,7 +888,7 @@ fn sub_type(&mut self) -> Option<Type> {
 		}
 	    NAME => {
 			if token.value.as_slice().char_at(0).is_uppercase() {
-				Some(Type::new_op(token.value, box []))
+				Some(Type::new_op(token.value, Vec::new()))
 			}
 			else {
 				Some(Type::new_var(token.value))
@@ -995,7 +995,7 @@ fn make_constraints(types: Vec<Type>) -> Vec<Constraint> {
     types.into_iter().map(|typ| {
         match typ {
             Type::Application(lhs, rhs) => {
-                Constraint { class: lhs.ctor().name.clone(), variables: box [rhs.var().clone()] }
+                Constraint { class: lhs.ctor().name.clone(), variables: vec![rhs.var().clone()] }
             }
             _ => panic!("Parse error in constraint, non applied type")
         }
@@ -1310,9 +1310,9 @@ import Prelude (id, sum)
     assert_eq!(module.imports[0].module.as_slice(), "Hello");
     assert_eq!(module.imports[0].imports, None);
     assert_eq!(module.imports[1].module.as_slice(), "World");
-    assert_eq!(module.imports[1].imports, Some(box []));
+    assert_eq!(module.imports[1].imports, Some(Vec::new()));
     assert_eq!(module.imports[2].module.as_slice(), "Prelude");
-    assert_eq!(module.imports[2].imports, Some(box [intern("id"), intern("sum")]));
+    assert_eq!(module.imports[2].imports, Some(vec![intern("id"), intern("sum")]));
 }
 #[test]
 fn parse_module_imports() {
@@ -1356,8 +1356,8 @@ test2 x y = 1
 ".chars());
     let module = parser.module();
     assert_eq!(module.fixity_declarations.as_slice(), &[
-        FixityDeclaration { assoc: RightAssoc, precedence: 5, operators: box [intern("test")] },
-        FixityDeclaration { assoc: RightAssoc, precedence: 6, operators: box [intern("test2"), intern("|<")] },
+        FixityDeclaration { assoc: RightAssoc, precedence: 5, operators: vec![intern("test")] },
+        FixityDeclaration { assoc: RightAssoc, precedence: 6, operators: vec![intern("test2"), intern("|<")] },
     ]);
 }
 
@@ -1371,7 +1371,7 @@ dummy = 1
 ".chars());
     let module = parser.module();
     let data = &module.dataDefinitions[0];
-    assert_eq!(data.typ, qualified(box [], Type::new_op(intern("Test"), box [])));
+    assert_eq!(data.typ, qualified(Vec::new(), Type::new_op(intern("Test"), Vec::new())));
     assert_eq!(data.deriving.as_slice(), &[intern("Eq"), intern("Show")]);
 }
 
@@ -1438,9 +1438,9 @@ newtype IntPair a = IntPair (a, Int)
 ";
     let module = Parser::new(s.chars()).module();
     let a = Type::new_var(intern("a"));
-    let typ = Type::new_op(intern("IntPair"), box [a.clone()]);
-    assert_eq!(module.newtypes[0].typ, qualified(box [], typ.clone()));
-    assert_eq!(module.newtypes[0].constructor_type.value, function_type_(Type::new_op(intern("(,)"), box [a, int_type()]), typ));
+    let typ = Type::new_op(intern("IntPair"), vec![a.clone()]);
+    assert_eq!(module.newtypes[0].typ, qualified(Vec::new(), typ.clone()));
+    assert_eq!(module.newtypes[0].constructor_type.value, function_type_(Type::new_op(intern("(,)"), vec![a, int_type()]), typ));
 }
 
 #[test]

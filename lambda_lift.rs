@@ -99,7 +99,7 @@ fn abstract_(&mut self, free_vars: &HashMap<Name, TypeAndStr>, input_expr: &mut 
                 rhs = Lambda(var.clone(), box rhs);
                 typ = function_type_(var.get_type().clone(), typ);
             }
-            let id = Id::new(self.name_supply.from_str("#sc"), typ.clone(), box []);
+            let id = Id::new(self.name_supply.from_str("#sc"), typ.clone(), Vec::new());
             let bind = Binding {
                 name: id.clone(),
                 expression: rhs
@@ -148,7 +148,7 @@ pub fn lift_lambdas<T>(mut module: Module<T>) -> Module<T> {
     }
     let mut visitor = LambdaLifter { out_lambdas: Vec::new() };
     visitor.visit_module(&mut module);
-    let mut temp = box [];
+    let mut temp = Vec::new();
     ::std::mem::swap(&mut temp, &mut module.bindings);
     let vec : Vec<Binding<T>> = temp.into_iter()
         .chain(visitor.out_lambdas.into_iter())

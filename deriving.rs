@@ -13,7 +13,7 @@ pub fn generate_deriving(instances: &mut Vec<Instance<Id<Name>>>, data: &DataDef
                 let mut bindings = Vec::new();
                 bindings.push(gen.generate_eq(data));
                 instances.push(Instance {
-                    constraints: box [],
+                    constraints: Vec::new(),
                     typ: data.typ.value.clone(),
                     classname: Name { name: intern("Eq"), uid: 0 },
                     bindings: bindings
@@ -25,7 +25,7 @@ pub fn generate_deriving(instances: &mut Vec<Instance<Id<Name>>>, data: &DataDef
                 debug!("Generated Ord {:?} ->>\n{:?}", data.typ, b);
                 bindings.push(b);
                 instances.push(Instance {
-                    constraints: box [],
+                    constraints: Vec::new(),
                     typ: data.typ.value.clone(),
                     classname: Name { name: intern("Ord"), uid: 0 },
                     bindings: bindings
@@ -73,7 +73,7 @@ impl DerivingGen {
     }
 
     fn ord_fields(&mut self, args_l: &[Id<Name>], args_r: &[Id<Name>]) -> Expr<Id<Name>> {
-        let ordering = Type::new_op(intern("Ordering"), box []);
+        let ordering = Type::new_op(intern("Ordering"), Vec::new());
         if args_l.len() >= 1 {
             let mut iter = args_l.iter().zip(args_r.iter()).rev();
             let (x, y) = iter.next().unwrap();
@@ -105,8 +105,8 @@ impl DerivingGen {
         fn make_constraints(mut result: Vec<Constraint<Name>>, class: InternedStr, typ: &Type) -> Vec<Constraint<Name>> {
             match typ {
                 &Type::Application(ref f, ref param) => {
-                    result.push(Constraint { class: Name { name: class, uid: 0 }, variables: box [param.var().clone()] });
-                    make_constraints(result, class, *f)
+                    result.push(Constraint { class: Name { name: class, uid: 0 }, variables: vec![param.var().clone()] });
+                    make_constraints(result, class, &**f)
                 }
                 _ => result
             }
@@ -119,10 +119,10 @@ impl DerivingGen {
     }
 
     fn eq_or_default(&mut self, cmp: Expr<Id<Name>>, def: Expr<Id<Name>>) -> Expr<Id<Name>> {
-        let match_id = Id::new(self.name_supply.anonymous(), Type::new_op(intern("Ordering"), box []), box []);
-        Case(box cmp, box [
+        let match_id = Id::new(self.name_supply.anonymous(), Type::new_op(intern("Ordering"), Vec::new()), Vec::new());
+        Case(box cmp, vec![
             Alternative {
-                pattern: Pattern::Constructor(id("EQ", Type::new_op(intern("Ordering"), box [])), box []),
+                pattern: Pattern::Constructor(id("EQ", Type::new_op(intern("Ordering"), Vec::new())), Vec::new()),
                 expression: def
             },
             Alternative { pattern: Pattern::Identifier(match_id.clone()), expression: Identifier(match_id) }
@@ -142,11 +142,11 @@ impl DerivingGen {
             let ctor_id = Id::new(constructor.name, iter.typ.clone(), constructor.typ.constraints.clone());
             let expr = f(self, args_l, args_r);
             let pattern_r = Pattern::Constructor(ctor_id.clone(), args_r);
-            let inner = Case(box Identifier(id_r.clone()), box [
+            let inner = Case(box Identifier(id_r.clone()), vec![
                 Alternative { pattern: pattern_r, expression: expr },
                 Alternative { 
                     pattern: Pattern::WildCard,
-                    expression: Identifier(Id::new(Name { uid: 0, name: intern("False") }, bool_type(), box []))
+                    expression: Identifier(Id::new(Name { uid: 0, name: intern("False") }, bool_type(), Vec::new()))
                 }
             ]);
             Alternative { pattern: Pattern::Constructor(ctor_id, args_l), expression: inner }
@@ -157,13 +157,13 @@ impl DerivingGen {
 
 
 fn id(s: &str, typ: Type) -> Id<Name> {
-    Id::new(Name {name: intern(s), uid: 0 }, typ, box [])
+    Id::new(Name {name: intern(s), uid: 0 }, typ, Vec::new())
 }
 
 fn compare_tags(lhs: Expr<Id<Name>>, rhs: Expr<Id<Name>>) -> Expr<Id<Name>> {
     let var = Type::new_var(intern("a"));
-    let typ = function_type_(var.clone(), function_type_(var.clone(), Type::new_op(intern("Ordering"), box [])));
-    let id = Id::new(Name { name: intern("#compare_tags"), uid: 0 }, typ, box []);
+    let typ = function_type_(var.clone(), function_type_(var.clone(), Type::new_op(intern("Ordering"), Vec::new())));
+    let id = Id::new(Name { name: intern("#compare_tags"), uid: 0 }, typ, Vec::new());
     Apply(box Apply(box Identifier(id), box lhs), box rhs)
 }
 
@@ -172,12 +172,12 @@ fn bool_binop(op: &str, lhs: Expr<Id<Name>>, rhs: Expr<Id<Name>>) -> Expr<Id<Nam
 }
 fn binop(op: &str, lhs: Expr<Id<Name>>, rhs: Expr<Id<Name>>, return_type: Type) -> Expr<Id<Name>> {
     let typ = function_type_(lhs.get_type().clone(), function_type_(rhs.get_type().clone(), return_type));
-    let f = Identifier(Id::new(Name { name: intern(op), uid: 0 }, typ, box []));
+    let f = Identifier(Id::new(Name { name: intern(op), uid: 0 }, typ, Vec::new()));
     Apply(box Apply(box f, box lhs), box rhs)
 }
 
 fn true_expr() -> Expr<Id<Name>> { 
-    Identifier(Id::new(Name { uid: 0, name: intern("True") }, bool_type(), box []))
+    Identifier(Id::new(Name { uid: 0, name: intern("True") }, bool_type(), Vec::new()))
 }
 
 struct ArgIterator<'a> {
@@ -198,7 +198,7 @@ impl <'a> Iterator for ArgIterator<'a> {
 }
 fn extract_applied_type<'a>(typ: &'a Type) -> &'a Type {
     match typ {
-        &Type::Application(ref lhs, _) => extract_applied_type(*lhs),
+        &Type::Application(ref lhs, _) => extract_applied_type(&**lhs),
         _ => typ
     }
 }

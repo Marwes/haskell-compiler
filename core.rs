@@ -20,7 +20,7 @@ impl Module<Id> {
         Module {
             classes: vec![],
             data_definitions: vec![],
-            newtypes: box [],
+            newtypes: Vec::new(),
             instances: vec![],
             bindings: vec![Binding {
                 name: Id::new(Name { name: intern("main"), uid: 0 }, expr.get_type().clone(), vec![]),
@@ -484,7 +484,7 @@ pub mod translate {
         for instance in new_instances.iter_mut() {
             let (class_var, class_decls) = (translator.functions_in_class)(instance.classname);
             let defaults = create_default_stubs(class_var, class_decls, instance);
-            let mut temp = box [];
+            let mut temp = Vec::new();
             ::std::mem::swap(&mut temp, &mut instance.bindings);
             let vec: Vec<Binding<Id<Name>>> = temp.into_iter().chain(defaults.into_iter()).collect();
             instance.bindings = vec;
@@ -509,7 +509,7 @@ pub mod translate {
                 let mut typ = decl.typ.clone();
                 ::typecheck::replace_var(&mut typ.value, class_var, &instance.typ);
                 {
-                    let context = ::std::mem::replace(&mut typ.constraints, box []);
+                    let context = ::std::mem::replace(&mut typ.constraints, Vec::new());
                     //Remove all constraints which refer to the class's variable
                     let vec_context: Vec<Constraint<Name>> = context.into_iter()
                         .filter(|c| c.variables[0] != *class_var)
@@ -597,7 +597,7 @@ impl <'a> Translator<'a> {
                 self.translate_case(*expr, alts)
             }
             module::Expr::IfElse(pred, if_true, if_false) => {
-                Case(box self.translate_expr(*pred), box [
+                Case(box self.translate_expr(*pred), vec![
                     Alternative { pattern: bool_pattern("True"), expression: self.translate_expr(*if_true) },
                     Alternative { pattern: bool_pattern("False"), expression: self.translate_expr(*if_false) }
                     ])
@@ -745,7 +745,7 @@ impl <'a> Translator<'a> {
         let dummy_var = [Id::new(self.name_supply.anonymous(), Type::new_var(intern("a")), vec![])];
         let uid = self.name_supply.next_id();
         for module::Alternative { pattern: pattern, matches: matches, where_bindings: where_bindings } in alts.into_iter() {
-            let bindings = where_bindings.map_or(box [], |bs| self.translate_bindings(bs));
+            let bindings = where_bindings.map_or(Vec::new(), |bs| self.translate_bindings(bs));
             vec.push((self.unwrap_patterns(uid, dummy_var, [pattern.node]), bindings, matches));
         }
         let mut x = self.translate_equations_(vec);
@@ -817,7 +817,7 @@ impl <'a> Translator<'a> {
                 where_bindings: where_bindings,
                 ..
             } = bind;
-            let where_bindings_binds = where_bindings.map_or(box [], |bs| self.translate_bindings(bs));
+            let where_bindings_binds = where_bindings.map_or(Vec::new(), |bs| self.translate_bindings(bs));
             (self.unwrap_patterns(uid, arg_ids.as_slice(), arguments), where_bindings_binds, matches)
         }).collect();
         let mut expr = self.translate_equations_(equations);

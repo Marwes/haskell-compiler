@@ -14,7 +14,7 @@ pub fn builtins() -> Vec<(&'static str, Type)> {
                                  io(var2.clone())))),
       ("io_return", function_type_(var.clone(), io(var.clone()))),
       ("putStrLn", function_type_(list_type(char_type()), io(unit()))),
-      ("#compare_tags", function_type_(var.clone(), function_type_(var.clone(), Type::new_op(intern("Ordering"), box [])))),
+      ("#compare_tags", function_type_(var.clone(), function_type_(var.clone(), Type::new_op(intern("Ordering"), Vec::new())))),
     ]
 }
 

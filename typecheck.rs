@@ -540,7 +540,7 @@ impl <'a> TypeEnvironment<'a> {
                                 Type::Variable(ref var) => {
                                     new_constraints.push(Constraint {
                                         class: constraint.class,
-                                        variables: box [var.clone()]
+                                        variables: vec![var.clone()]
                                     });
                                 }
                                 _ => ()
@@ -1937,7 +1937,7 @@ instance Eq a => Eq [a] where
     let typ = &module.instances[0].bindings[0].typ;
     let var = typ.value.appl().appr().appr();
     let list_type = list_type(var.clone());
-    assert_eq!(un_name(typ.clone()), qualified(box [Constraint { class: intern("Eq"), variables: box [var.var().clone()] }],
+    assert_eq!(un_name(typ.clone()), qualified(vec![Constraint { class: intern("Eq"), variables: vec![var.var().clone()] }],
         function_type_(list_type.clone(), function_type_(list_type, bool_type()))));
 }
 
@@ -2151,7 +2151,7 @@ test x y = [x] == [y]
     .unwrap_or_else(|err| panic!(err));
     let module = modules.last().unwrap();
     let a = Type::new_var(intern("a"));
-    let cs = box [Constraint { class: intern("Eq"), variables: box [a.var().clone()] } ];
+    let cs = vec![Constraint { class: intern("Eq"), variables: vec![a.var().clone()] } ];
     let typ = qualified(cs, function_type_(a.clone(), function_type_(a.clone(), bool_type())));
     assert_eq!(un_name(module.bindings[0].typ.clone()), typ);
 }
@@ -2170,7 +2170,7 @@ makeEven i
 "
 ).unwrap_or_else(|err| panic!(err));
     let module = modules.last().unwrap();
-    assert_eq!(un_name(module.bindings[0].typ.clone()), qualified(box [], function_type_(int_type(), Type::new_op(intern("Even"), box []))));
+    assert_eq!(un_name(module.bindings[0].typ.clone()), qualified(Vec::new(), function_type_(int_type(), Type::new_op(intern("Even"), Vec::new()))));
 }
 
 
