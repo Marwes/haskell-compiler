@@ -56,7 +56,7 @@ fn free_variables(&mut self, variables: &mut HashMap<Name, int>, free_vars: &mut
                 variables.insert_or_update_with(bind.name.name.clone(), 1, |_, v| *v += 1);
             }
             let mut free_vars2 = HashMap::new();
-            for bind in bindings.mut_iter() {
+            for bind in bindings.iter_mut() {
                 free_vars2.clear();
                 self.free_variables(variables, &mut free_vars2, &mut bind.expression);
                 //free_vars2 is the free variables for this binding
@@ -73,7 +73,7 @@ fn free_variables(&mut self, variables: &mut HashMap<Name, int>, free_vars: &mut
         }
         Case(ref mut expr, ref mut alts) => {
             self.free_variables(variables, free_vars, *expr);
-            for alt in alts.mut_iter() {
+            for alt in alts.iter_mut() {
                 each_pattern_variables(&alt.pattern, &mut |name| {
                     variables.insert_or_update_with(name.clone(), 1, |_, v| *v += 1);
                 });
@@ -125,7 +125,7 @@ pub fn lift_lambdas<T>(mut module: Module<T>) -> Module<T> {
                     let mut new_binds = Vec::new();
                     let mut bs = vec![];
                     ::std::mem::swap(&mut bs, bindings);
-                    for mut bind in bs.move_iter() {
+                    for mut bind in bs.into_iter() {
                         let is_lambda = match bind.expression {
                             Lambda(..) => true,
                             _ => false
@@ -150,8 +150,8 @@ pub fn lift_lambdas<T>(mut module: Module<T>) -> Module<T> {
     visitor.visit_module(&mut module);
     let mut temp = box [];
     ::std::mem::swap(&mut temp, &mut module.bindings);
-    let vec : Vec<Binding<T>> = temp.move_iter()
-        .chain(visitor.out_lambdas.move_iter())
+    let vec : Vec<Binding<T>> = temp.into_iter()
+        .chain(visitor.out_lambdas.into_iter())
         .collect();
     module.bindings = vec;
     module

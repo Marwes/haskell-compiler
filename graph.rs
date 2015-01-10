@@ -4,9 +4,9 @@
 use std::iter::repeat;
 use std::cmp::min;
 
-#[deriving(PartialEq, Show)]
+#[derive(PartialEq, Show)]
 pub struct VertexIndex(uint);
-#[deriving(PartialEq)]
+#[derive(PartialEq)]
 pub struct EdgeIndex(uint);
 
 impl VertexIndex {

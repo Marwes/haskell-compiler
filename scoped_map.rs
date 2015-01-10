@@ -1,6 +1,6 @@
 extern crate collections;
 use std::collections::HashMap;
-use std::collections::hash_map::{IterMut, Hasher};
+use std::collections::hash_map::{IterMut, RandomState};
 use std::hash::Hash;
 
 ///A map struct which allows for the introduction of different scopes
@@ -17,7 +17,7 @@ pub struct ScopedMap<K, V> {
 }
 
 #[allow(dead_code)]
-impl <K: Eq + Hash<Hasher> + Clone, V> ScopedMap<K, V> {
+impl <K: Eq + Hash<RandomState> + Clone, V> ScopedMap<K, V> {
     pub fn new() -> ScopedMap<K, V> {
         ScopedMap { map: HashMap::new(), scopes: Vec::new() }
     }
@@ -64,8 +64,8 @@ impl <K: Eq + Hash<Hasher> + Clone, V> ScopedMap<K, V> {
         false
     }
     ///Returns an iterator of the (key, values) pairs inserted in the map
-    pub fn mut_iter<'a>(&'a mut self) -> IterMut<'a, K, Vec<V>> {
-        self.map.mut_iter()
+    pub fn iter_mut<'a>(&'a mut self) -> IterMut<'a, K, Vec<V>> {
+        self.map.iter_mut()
     }
 
     ///Returns a reference to the last inserted value corresponding to the key

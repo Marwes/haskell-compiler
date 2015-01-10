@@ -3,7 +3,7 @@ use std::rc::Rc;
 use std::cell::RefCell;
 use std::fmt;
 
-#[deriving(Eq, PartialEq, Clone, Default, Hash)]
+#[derive(Eq, PartialEq, Clone, Default, Hash)]
 pub struct InternedStr(uint);
 
 pub struct Interner {
@@ -61,6 +61,11 @@ impl Str for InternedStr {
 }
 
 impl fmt::Show for InternedStr {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:?}", self.as_slice())
+    }
+}
+impl fmt::String for InternedStr {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.as_slice())
     }

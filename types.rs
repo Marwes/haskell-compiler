@@ -5,27 +5,27 @@ use std::fmt;
 use std::iter;
 use interner::{InternedStr, intern};
 
-#[deriving(Clone, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Default, PartialEq, Eq, Hash)]
 pub struct TypeConstructor {
     pub name : InternedStr,
     pub kind : Kind
 }
 
 pub type VarId = InternedStr;
-#[deriving(Clone, PartialEq, Eq, Default)]
+#[derive(Clone, PartialEq, Eq, Default)]
 pub struct TypeVariable {
     pub id : InternedStr,
     pub kind : Kind,
     pub age: int
 }
-#[deriving(Clone, Eq, Hash)]
+#[derive(Clone, Eq, Hash)]
 pub enum Type {
     Variable(TypeVariable),
     Constructor(TypeConstructor),
     Application(Box<Type>, Box<Type>),
     Generic(TypeVariable)
 }
-#[deriving(Clone, Default, Hash)]
+#[derive(Clone, Default, Hash)]
 pub struct Qualified<T, Ident = InternedStr> {
     pub constraints: Vec<Constraint<Ident>>,
     pub value: T
@@ -56,14 +56,14 @@ impl Type {
     ///Creates a new type constructor applied to the types and with a specific kind
     pub fn new_op_kind(name : InternedStr, types : Vec<Type>, kind: Kind) -> Type {
         let mut result = Type::Constructor(TypeConstructor { name : name, kind: kind });
-        for typ in types.move_iter() {
+        for typ in types.into_iter() {
             result = Type::Application(box result, box typ);
         }
         result
     }
     fn new_type_kind(mut result: Type, types: Vec<Type>) -> Type {
         *result.mut_kind() = Kind::new(types.len() as int + 1);
-        for typ in types.move_iter() {
+        for typ in types.into_iter() {
             result = Type::Application(box result, box typ);
         }
         result
@@ -209,13 +209,13 @@ pub fn unit() -> Type {
 }
 
 
-#[deriving(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct Constraint<Ident = InternedStr> {
     pub class : Ident,
     pub variables : Vec<TypeVariable>
 }
 
-#[deriving(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub enum Kind {
     Function(Box<Kind>, Box<Kind>),
     Star
@@ -268,7 +268,7 @@ impl <T: fmt::Show, I: fmt::Show> fmt::Show for Qualified<T, I> {
     }
 }
 
-#[deriving(PartialEq, PartialOrd)]
+#[derive(PartialEq, PartialOrd)]
 enum Prec_ {
     Top,
     Function,

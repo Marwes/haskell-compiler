@@ -14,11 +14,11 @@ use interner::*;
 
 use self::Node_::*;
 
-#[deriving(Clone)]
+#[derive(Clone)]
 struct InstanceDictionary {
     entries: Vec<Rc<DictionaryEntry>>
 }
-#[deriving(Clone)]
+#[derive(Clone)]
 enum DictionaryEntry {
     Function(uint),
     App(uint, InstanceDictionary)
@@ -51,7 +51,7 @@ impl <'a> Clone for Node_<'a> {
     }
 }
 
-#[deriving(Clone)]
+#[derive(Clone)]
 struct Node<'a> {
     node: Rc<RefCell<Node_<'a>>>
 }
@@ -504,7 +504,7 @@ fn primitive<F>(stack: &mut Vec<Node>, f: F) where F: FnOnce(int, int) -> int {
     primitive_int(stack, |l, r| Int(f(l, r)))
 }
 
-#[deriving(PartialEq, Show)]
+#[derive(PartialEq, Show)]
 enum VMResult {
     IntResult(int),
     DoubleResult(f64),
@@ -566,7 +566,7 @@ pub fn execute_main_module(modulename: &str) -> IoResult<Option<VMResult>> {
 
 fn execute_main_module_(assemblies: Vec<Assembly>) -> IoResult<Option<VMResult>> {
     let mut vm = VM::new();
-    for assembly in assemblies.move_iter() {
+    for assembly in assemblies.into_iter() {
         vm.add_assembly(assembly);
     }
     let x = vm.assembly.iter().flat_map(|a| a.superCombinators.iter()).find(|sc| sc.name.name == intern("main"));

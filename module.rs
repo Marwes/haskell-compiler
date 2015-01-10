@@ -7,7 +7,7 @@ pub use types::*;
 
 use self::Expr::*;
 
-#[deriving(Clone)]
+#[derive(Clone)]
 pub struct Module<Ident = InternedStr> {
     pub name : Ident,
     pub imports: Vec<Import<Ident>>,
@@ -20,7 +20,7 @@ pub struct Module<Ident = InternedStr> {
     pub fixity_declarations : Vec<FixityDeclaration<Ident>>
 }
 
-#[deriving(Clone)]
+#[derive(Clone)]
 pub struct Import<Ident> {
     pub module: InternedStr,
     //None if 'import Name'
@@ -28,7 +28,7 @@ pub struct Import<Ident> {
     pub imports: Option<Vec<Ident>>
 }
 
-#[deriving(Clone)]
+#[derive(Clone)]
 pub struct Class<Ident = InternedStr> {
     pub constraints: Vec<Constraint<Ident>>,
     pub name : Ident,
@@ -37,7 +37,7 @@ pub struct Class<Ident = InternedStr> {
     pub bindings: Vec<Binding<Ident>>
 }
 
-#[deriving(Clone)]
+#[derive(Clone)]
 pub struct Instance<Ident = InternedStr> {
     pub bindings : Vec<Binding<Ident>>,
     pub constraints : Vec<Constraint<Ident>>,
@@ -45,7 +45,7 @@ pub struct Instance<Ident = InternedStr> {
     pub classname : Ident
 }
 
-#[deriving(Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct Binding<Ident = InternedStr> {
     pub name : Ident,
     pub arguments: Vec<Pattern<Ident>>,
@@ -54,7 +54,7 @@ pub struct Binding<Ident = InternedStr> {
     pub typ: Qualified<Type, Ident>
 }
 
-#[deriving(PartialEq, Eq, Clone, Show)]
+#[derive(PartialEq, Eq, Clone, Show)]
 pub struct Constructor<Ident = InternedStr> {
     pub name : Ident,
     pub typ : Qualified<Type, Ident>,
@@ -62,7 +62,7 @@ pub struct Constructor<Ident = InternedStr> {
     pub arity : int
 }
 
-#[deriving(PartialEq, Clone)]
+#[derive(PartialEq, Clone)]
 pub struct DataDefinition<Ident = InternedStr> {
     pub constructors : Vec<Constructor<Ident>>,
     pub typ : Qualified<Type, Ident>,
@@ -70,7 +70,7 @@ pub struct DataDefinition<Ident = InternedStr> {
     pub deriving: Vec<Ident>
 }
 
-#[deriving(PartialEq, Clone)]
+#[derive(PartialEq, Clone)]
 pub struct Newtype<Ident = InternedStr> {
     pub typ: Qualified<Type>,
     pub constructor_name: Ident,
@@ -78,21 +78,21 @@ pub struct Newtype<Ident = InternedStr> {
     pub deriving: Vec<Ident>
 }
 
-#[deriving(PartialEq, Clone, Show)]
+#[derive(PartialEq, Clone, Show)]
 pub enum Assoc {
     Left,
     Right,
     No
 }
 
-#[deriving(PartialEq, Clone, Show)]
+#[derive(PartialEq, Clone, Show)]
 pub struct FixityDeclaration<Ident = InternedStr> {
     pub assoc: Assoc,
     pub precedence: int,
     pub operators: Vec<Ident>
 }
 
-#[deriving(Clone, PartialEq, Eq, Default)]
+#[derive(Clone, PartialEq, Eq, Default)]
 pub struct TypeDeclaration<Ident = InternedStr> {
     pub typ : Qualified<Type, Ident>,
     pub name : Ident
@@ -104,7 +104,7 @@ impl <T : fmt::Show> fmt::Show for TypeDeclaration<T> {
 }
 
 
-#[deriving(Clone)]
+#[derive(Clone)]
 pub struct TypedExpr<Ident = InternedStr> {
     pub expr : Expr<Ident>,
     pub typ : Type,
@@ -132,14 +132,14 @@ impl TypedExpr {
     }
 }
 
-#[deriving(Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct Alternative<Ident = InternedStr> {
     pub pattern : Located<Pattern<Ident>>,
     pub matches: Match<Ident>,
     pub where_bindings : Option<Vec<Binding<Ident>>>
 }
 
-#[deriving(Clone, PartialOrd, PartialEq, Eq)]
+#[derive(Clone, PartialOrd, PartialEq, Eq)]
 pub enum Pattern<Ident = InternedStr> {
     Number(int),
     Identifier(Ident),
@@ -147,7 +147,7 @@ pub enum Pattern<Ident = InternedStr> {
     WildCard
 }
 
-#[deriving(Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub enum Match<Ident = InternedStr> {
     Guards(Vec<Guard<Ident>>),
     Simple(TypedExpr<Ident>)
@@ -161,27 +161,27 @@ impl <Ident> Match<Ident> {
     }
 }
 
-#[deriving(Clone, PartialEq, Show)]
+#[derive(Clone, PartialEq, Show)]
 pub struct Guard<Ident = InternedStr> {
     pub predicate: TypedExpr<Ident>,
     pub expression: TypedExpr<Ident>
 }
 
-#[deriving(Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub enum DoBinding<Ident = InternedStr> {
     DoLet(Vec<Binding<Ident>>),
     DoBind(Located<Pattern<Ident>>, TypedExpr<Ident>),
     DoExpr(TypedExpr<Ident>)
 }
 
-#[deriving(Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub enum LiteralData {
     Integral(int),
     Fractional(f64),
     String(InternedStr),
     Char(char)
 }
-#[deriving(Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub enum Expr<Ident = InternedStr> {
     Identifier(Ident),
     Apply(Box<TypedExpr<Ident>>, Box<TypedExpr<Ident>>),
@@ -417,10 +417,10 @@ pub trait MutVisitor<Ident> {
 }
 
 pub fn walk_module_mut<Ident, V: MutVisitor<Ident>>(visitor: &mut V, module: &mut Module<Ident>) {
-    for bind in module.instances.mut_iter().flat_map(|i| i.bindings.mut_iter()) {
+    for bind in module.instances.iter_mut().flat_map(|i| i.bindings.iter_mut()) {
         visitor.visit_binding(bind);
     }
-    for bind in module.bindings.mut_iter() {
+    for bind in module.bindings.iter_mut() {
         visitor.visit_binding(bind);
     }
 }
@@ -429,7 +429,7 @@ pub fn walk_binding_mut<Ident, V: MutVisitor<Ident>>(visitor: &mut V, binding: &
     match binding.matches {
         Match::Simple(ref mut e) => visitor.visit_expr(e),
         Match::Guards(ref mut gs) => {
-            for g in gs.mut_iter() {
+            for g in gs.iter_mut() {
                 visitor.visit_expr(&mut g.predicate);
                 visitor.visit_expr(&mut g.expression);
             }
@@ -449,14 +449,14 @@ pub fn walk_expr_mut<Ident, V: MutVisitor<Ident>>(visitor: &mut V, expr: &mut Ty
         }
         Lambda(_, ref mut body) => visitor.visit_expr(*body),
         Let(ref mut binds, ref mut e) => {
-            for b in binds.mut_iter() {
+            for b in binds.iter_mut() {
                 visitor.visit_binding(b);
             }
             visitor.visit_expr(*e);
         }
         Case(ref mut e, ref mut alts) => {
             visitor.visit_expr(*e);
-            for alt in alts.mut_iter() {
+            for alt in alts.iter_mut() {
                 visitor.visit_alternative(alt);
             }
         }
@@ -466,10 +466,10 @@ pub fn walk_expr_mut<Ident, V: MutVisitor<Ident>>(visitor: &mut V, expr: &mut Ty
             visitor.visit_expr(*if_false);
         }
         Do(ref mut binds, ref mut expr) => {
-            for bind in binds.mut_iter() {
+            for bind in binds.iter_mut() {
                 match *bind {
                     DoBinding::DoLet(ref mut bs) => {
-                        for b in bs.mut_iter() {
+                        for b in bs.iter_mut() {
                             visitor.visit_binding(b);
                         }
                     }
@@ -493,7 +493,7 @@ pub fn walk_alternative_mut<Ident, V: MutVisitor<Ident>>(visitor: &mut V, alt: &
     match alt.matches {
         Match::Simple(ref mut e) => visitor.visit_expr(e),
         Match::Guards(ref mut gs) => {
-            for g in gs.mut_iter() {
+            for g in gs.iter_mut() {
                 visitor.visit_expr(&mut g.predicate);
                 visitor.visit_expr(&mut g.expression);
             }
@@ -501,7 +501,7 @@ pub fn walk_alternative_mut<Ident, V: MutVisitor<Ident>>(visitor: &mut V, alt: &
     }
     match alt.where {
         Some(ref mut bindings) => {
-            for bind in bindings.mut_iter() {
+            for bind in bindings.iter_mut() {
                 visitor.visit_binding(bind);
             }
         }
@@ -512,7 +512,7 @@ pub fn walk_alternative_mut<Ident, V: MutVisitor<Ident>>(visitor: &mut V, alt: &
 pub fn walk_pattern_mut<Ident, V: MutVisitor<Ident>>(visitor: &mut V, pattern: &mut Pattern<Ident>) {
     match pattern {
         &Pattern::Constructor(_, ref mut ps) => {
-            for p in ps.mut_iter() {
+            for p in ps.iter_mut() {
                 visitor.visit_pattern(p);
             }
         }

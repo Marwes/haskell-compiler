@@ -126,7 +126,7 @@ r"import Prelude
 test = 3 * 4 - 5 * 6").unwrap();
         let mut modules = rename_modules(m);
         let mut v = PrecedenceVisitor::new();
-        for module in modules.mut_iter() {
+        for module in modules.iter_mut() {
             v.visit_module(module);
         }
         assert_eq!(modules.last().unwrap().bindings[0].matches, Simple(rename_expr(op_apply(
@@ -142,7 +142,7 @@ r"import Prelude
 test = 3 * 4 * (5 - 6)").unwrap();
         let mut modules = rename_modules(m);
         let mut v = PrecedenceVisitor::new();
-        for module in modules.mut_iter() {
+        for module in modules.iter_mut() {
             v.visit_module(module);
         }
         assert_eq!(modules.last().unwrap().bindings[0].matches, Simple(rename_expr(op_apply(

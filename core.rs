@@ -30,7 +30,7 @@ impl Module<Id> {
     }
 }
 
-#[deriving(Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct Class<Ident> {
     pub constraints: Vec<Constraint<Name>>,
     pub name : Name,
@@ -39,7 +39,7 @@ pub struct Class<Ident> {
     pub bindings: Vec<Binding<Ident>>
 }
 
-#[deriving(Clone)]
+#[derive(Clone)]
 pub struct Instance<Ident = InternedStr> {
     pub bindings : Vec<Binding<Ident>>,
     pub constraints : Vec<Constraint<Name>>,
@@ -47,19 +47,19 @@ pub struct Instance<Ident = InternedStr> {
     pub classname : Name
 }
 
-#[deriving(Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct Binding<Ident> {
     pub name: Ident,
     pub expression: Expr<Ident>
 }
 
-#[deriving(Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct Alternative<Ident> {
     pub pattern : Pattern<Ident>,
     pub expression : Expr<Ident>
 }
 
-#[deriving(Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub enum Pattern<Ident> {
     Constructor(Ident, Vec<Ident>),
     Identifier(Ident),
@@ -67,7 +67,7 @@ pub enum Pattern<Ident> {
     WildCard
 }
 
-#[deriving(Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct LiteralData {
     pub typ: Type,
     pub value: Literal_
@@ -75,7 +75,7 @@ pub struct LiteralData {
 
 pub type Literal_ = module::LiteralData;
 
-#[deriving(Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub enum Expr<Ident> {
     Identifier(Ident),
     Apply(Box<Expr<Ident>>, Box<Expr<Ident>>),
@@ -165,7 +165,7 @@ impl PartialEq<str> for Name {
 }
 
 ///Id is a Name combined with a type
-#[deriving(PartialEq, Eq, Hash, Clone)]
+#[derive(PartialEq, Eq, Hash, Clone)]
 pub struct Id<T = Name> {
     pub name: T,
     pub typ: Qualified<Type, Name>
@@ -279,7 +279,7 @@ pub mod mutable {
     }
 
     pub fn walk_module<Ident, V: Visitor<Ident>>(visitor: &mut V, module: &mut Module<Ident>) {
-        for bind in module.bindings.mut_iter() {
+        for bind in module.bindings.iter_mut() {
             visitor.visit_binding(bind);
         }
     }
@@ -296,14 +296,14 @@ pub mod mutable {
             }
             &Lambda(_, ref mut body) => visitor.visit_expr(*body),
             &Let(ref mut binds, ref mut e) => {
-                for b in binds.mut_iter() {
+                for b in binds.iter_mut() {
                     visitor.visit_binding(b);
                 }
                 visitor.visit_expr(*e);
             }
             &Case(ref mut e, ref mut alts) => {
                 visitor.visit_expr(*e);
-                for alt in alts.mut_iter() {
+                for alt in alts.iter_mut() {
                     visitor.visit_alternative(alt);
                 }
             }
@@ -343,7 +343,7 @@ pub mod result {
     pub fn walk_module<Ident>(visitor: &mut Visitor<Ident>, mut module: Module<Ident>) -> Module<Ident> {
         let mut bindings = vec![];
         ::std::mem::swap(&mut module.bindings, &mut bindings);
-        module.bindings = bindings.move_iter()
+        module.bindings = bindings.into_iter()
             .map(|bind| visitor.visit_binding(bind))
             .collect();
         module
@@ -366,14 +366,14 @@ pub mod result {
             }
             Lambda(x, body) => Lambda(x, box visitor.visit_expr(*body)),
             Let(binds, e) => {
-                let bs: Vec<Binding<Ident>> = binds.move_iter().map(|b| {
+                let bs: Vec<Binding<Ident>> = binds.into_iter().map(|b| {
                     visitor.visit_binding(b)
                 }).collect();
                 Let(bs, box visitor.visit_expr(*e))
             }
             Case(e, alts) => {
                 let e2 = visitor.visit_expr(*e);
-                let alts2: Vec<Alternative<Ident>> = alts.move_iter()
+                let alts2: Vec<Alternative<Ident>> = alts.into_iter()
                     .map(|alt| visitor.visit_alternative(alt))
                     .collect();
                 Case(box e2, alts2)
@@ -404,7 +404,7 @@ pub mod translate {
         functions_in_class: &'a mut (FnMut(Name) -> (&'a TypeVariable, &'a [TypeDeclaration<Name>]) + 'a)
     }
     
-    #[deriving(Show)]
+    #[derive(Show)]
     struct Equation<'a>(&'a [(Id<Name>, Pattern<Id<Name>>)], (&'a [Binding<Id<Name>>], &'a module::Match<Name>));
 
     pub fn translate_expr(expr: module::TypedExpr<Name>) -> Expr<Id<Name>> {
@@ -424,7 +424,7 @@ pub mod translate {
                 (var, decls.as_slice())
             }
         };
-        modules.move_iter()
+        modules.into_iter()
             .map(|module| translate_module_(&mut translator, module))
             .collect()
     }
@@ -445,7 +445,7 @@ pub mod translate {
 
         let mut new_instances: Vec<Instance<Id<Name>>> = Vec::new();
 
-        let classes2 : Vec<Class<Id>> = classes.move_iter().map(|class| {
+        let classes2 : Vec<Class<Id>> = classes.into_iter().map(|class| {
             let module::Class {
                 constraints: cs,
                 name : name,
@@ -462,14 +462,14 @@ pub mod translate {
             }
         }).collect();
 
-        for instance in instances.move_iter() {
+        for instance in instances.into_iter() {
             let module::Instance {
                 classname: classname,
                 typ: instance_type,
                 constraints: constraints,
                 bindings: bindings
             } = instance;
-            let bs: Vec<Binding<Id<Name>>> = translator.translate_bindings(bindings).move_iter().collect();
+            let bs: Vec<Binding<Id<Name>>> = translator.translate_bindings(bindings).into_iter().collect();
             new_instances.push(Instance {
                 constraints: constraints,
                 typ: instance_type,
@@ -477,16 +477,16 @@ pub mod translate {
                 bindings: bs
             });
         }
-        let bs: Vec<Binding<Id<Name>>> = translator.translate_bindings(bindings).move_iter().collect();
+        let bs: Vec<Binding<Id<Name>>> = translator.translate_bindings(bindings).into_iter().collect();
         for data in dataDefinitions.iter() {
             generate_deriving(&mut new_instances, data);
         }
-        for instance in new_instances.mut_iter() {
+        for instance in new_instances.iter_mut() {
             let (class_var, class_decls) = (translator.functions_in_class)(instance.classname);
             let defaults = create_default_stubs(class_var, class_decls, instance);
             let mut temp = box [];
             ::std::mem::swap(&mut temp, &mut instance.bindings);
-            let vec: Vec<Binding<Id<Name>>> = temp.move_iter().chain(defaults.move_iter()).collect();
+            let vec: Vec<Binding<Id<Name>>> = temp.into_iter().chain(defaults.into_iter()).collect();
             instance.bindings = vec;
         }
         Module {
@@ -511,7 +511,7 @@ pub mod translate {
                 {
                     let context = ::std::mem::replace(&mut typ.constraints, box []);
                     //Remove all constraints which refer to the class's variable
-                    let vec_context: Vec<Constraint<Name>> = context.move_iter()
+                    let vec_context: Vec<Constraint<Name>> = context.into_iter()
                         .filter(|c| c.variables[0] != *class_var)
                         .collect();
                     typ.constraints = vec_context;
@@ -604,7 +604,7 @@ impl <'a> Translator<'a> {
             }
             module::Expr::Do(bindings, expr) => {
                 let mut result = self.translate_expr(*expr);
-                for bind in bindings.move_iter().rev() {
+                for bind in bindings.into_iter().rev() {
                     result = match bind {
                         module::DoBinding::DoExpr(e) => {
                             let core = self.translate_expr(e);
@@ -669,13 +669,13 @@ impl <'a> Translator<'a> {
             , Alternative { pattern: Pattern::WildCard, expression: Apply(box fail_ident, box string("Unmatched pattern in let")) } ]));
         let bind = Binding { name: func_ident.clone(), expression: func };
         
-        Let(vec![bind], box apply(bind_ident, (vec![expr, Identifier(func_ident)]).move_iter()))
+        Let(vec![bind], box apply(bind_ident, (vec![expr, Identifier(func_ident)]).into_iter()))
     }
 
     fn translate_bindings(&mut self, bindings: Vec<module::Binding<Name>>) -> Vec<Binding<Id<Name>>> {
         let mut result = Vec::new();
         let mut vec: Vec<module::Binding<Name>> = Vec::new();
-        for bind in bindings.move_iter() {
+        for bind in bindings.into_iter() {
             if vec.len() > 0 && vec.get(0).name != bind.name {
                 result.push(self.translate_matching_groups(vec));
                 vec = Vec::new();
@@ -695,7 +695,7 @@ impl <'a> Translator<'a> {
                 let mut name = ::std::string::String::from_str(id.name.name.as_slice());
                 let base_length = name.len();
                 result.push((id, Pattern::Number(0)));//Dummy
-                for (i, p) in patterns.mut_iter().enumerate() {
+                for (i, p) in patterns.iter_mut().enumerate() {
                     let x = match *p {
                         module::Pattern::Constructor(..) | module::Pattern::Number(..) => {
                             //HACK, by making the variable have the same uid as
@@ -744,7 +744,7 @@ impl <'a> Translator<'a> {
         let mut vec = Vec::new();
         let dummy_var = [Id::new(self.name_supply.anonymous(), Type::new_var(intern("a")), vec![])];
         let uid = self.name_supply.next_id();
-        for module::Alternative { pattern: pattern, matches: matches, where_bindings: where_bindings } in alts.move_iter() {
+        for module::Alternative { pattern: pattern, matches: matches, where_bindings: where_bindings } in alts.into_iter() {
             let bindings = where_bindings.map_or(box [], |bs| self.translate_bindings(bs));
             vec.push((self.unwrap_patterns(uid, dummy_var, [pattern.node]), bindings, matches));
         }
@@ -770,7 +770,7 @@ impl <'a> Translator<'a> {
                 typ: module::Qualified { constraints: constraints, value: typ, },
                 where_bindings: where_bindings
             } = bindings.pop().unwrap();
-            let arg_iterator = arguments.move_iter().map(|p| {
+            let arg_iterator = arguments.into_iter().map(|p| {
                 match p {
                     module::Pattern::Identifier(n) => n,
                     module::Pattern::WildCard => Name { name: intern("_"), uid: -1 },
@@ -783,7 +783,7 @@ impl <'a> Translator<'a> {
                     .map(|(typ, arg)| {
                     Id::new(arg, typ.clone(), vec![])
                 });
-                let where_bindings_binds = where_bindings.map_or(Vec::new(), |bs| self.translate_bindings(bs).move_iter().collect());
+                let where_bindings_binds = where_bindings.map_or(Vec::new(), |bs| self.translate_bindings(bs).into_iter().collect());
                 make_lambda(lambda_ids, make_let(where_bindings_binds, self.translate_match(matches)))
             };
             return Binding {
@@ -810,7 +810,7 @@ impl <'a> Translator<'a> {
         //First we flatten all the patterns that occur in each equation
         //(2:xs) -> [(x:xs), 2]
         let uid = self.name_supply.next_id();
-        let equations: Vec<_> = bindings.move_iter().map(|bind| {
+        let equations: Vec<_> = bindings.into_iter().map(|bind| {
             let module::Binding {
                 arguments: arguments,
                 matches: matches,
@@ -821,7 +821,7 @@ impl <'a> Translator<'a> {
             (self.unwrap_patterns(uid, arg_ids.as_slice(), arguments), where_bindings_binds, matches)
         }).collect();
         let mut expr = self.translate_equations_(equations);
-        expr = make_lambda(arg_ids.move_iter(), expr);
+        expr = make_lambda(arg_ids.into_iter(), expr);
         debug!("Desugared {} :: {}\n {}", name.name, name.typ, expr);
         Binding {
             name: name,
@@ -1004,7 +1004,7 @@ impl <'a> Translator<'a> {
             module::Pattern::Identifier(i) => Pattern::Identifier(Id::new(i, Type::new_var(intern("a")), vec![])),
             module::Pattern::Number(n) => Pattern::Number(n),
             module::Pattern::Constructor(name, patterns) => {
-                let ps = patterns.move_iter().map(|pat| {
+                let ps = patterns.into_iter().map(|pat| {
                     match pat {
                         module::Pattern::Identifier(name) => Id::new(name, Type::new_var(intern("a")), vec![]),
                         module::Pattern::WildCard => Id::new(Name { name: intern("_"), uid: -1 }, Type::new_var(intern("a")), vec![]),

@@ -167,7 +167,7 @@ fn class(&mut self) -> Class {
 	let x = self.sep_by_1(|this| this.binding_or_type_declaration(), SEMICOLON);
     let mut bindings = Vec::new();
     let mut declarations = Vec::new();
-    for decl_or_binding in x.move_iter() {
+    for decl_or_binding in x.into_iter() {
         match decl_or_binding {
             BindOrTypeDecl::Binding(mut bind) => {
                 //Bindings need to have their name altered to distinguish them from
@@ -220,7 +220,7 @@ fn instance(&mut self) -> Instance {
             let mut bindings = self.sep_by_1(|this| this.binding(), SEMICOLON);
             {
                 let inner_type = extract_applied_type(arg);
-                for bind in bindings.mut_iter() {
+                for bind in bindings.iter_mut() {
                     bind.name = encode_binding_identifier(inner_type.ctor().name, bind.name);
                 }
             }
@@ -275,9 +275,9 @@ fn list(&mut self) -> TypedExpr {
     self.require_next(RBRACKET);
 
 	let nil = TypedExpr::new(Identifier(intern("[]")));
-    expressions.move_iter().rev().fold(nil, |application, expr| {
+    expressions.into_iter().rev().fold(nil, |application, expr| {
 		let arguments = vec![expr, application];
-		make_application(TypedExpr::new(Identifier(intern(":"))), arguments.move_iter())
+		make_application(TypedExpr::new(Identifier(intern(":"))), arguments.into_iter())
 	})
 }
 
@@ -350,7 +350,7 @@ fn sub_expression(&mut self) -> Option<TypedExpr> {
         LAMBDA => {
             let args = self.pattern_arguments();
             self.require_next(ARROW);
-            Some(make_lambda(args.move_iter(), self.expression_()))
+            Some(make_lambda(args.into_iter(), self.expression_()))
         }
         DO => {
             let location = self.lexer.current().location;
@@ -360,7 +360,7 @@ fn sub_expression(&mut self) -> Option<TypedExpr> {
             if bindings.len() == 0 {
                 panic!("{}: Parse error: Empty do", self.lexer.current().location);
             }
-            let mut bs: Vec<DoBinding> = bindings.move_iter().collect();
+            let mut bs: Vec<DoBinding> = bindings.into_iter().collect();
             let expr = match bs.pop().unwrap() {
                 DoBinding::DoExpr(e) => e,
                 _ => panic!("{}: Parse error: Last binding in do must be an expression", self.lexer.current().location)
@@ -462,15 +462,15 @@ fn binary_expression(&mut self, lhs : Option<TypedExpr>) -> Option<TypedExpr> {
                 if op == intern("-") {
 		            let name = TypedExpr::with_location(Identifier(intern("negate")), loc);
                     let args = vec![rhs];
-                    Some(make_application(name, args.move_iter()))
+                    Some(make_application(name, args.into_iter()))
                 }
                 else {
 		            let name = TypedExpr::with_location(Identifier(intern("negate")), loc);
                     let args = vec![TypedExpr::with_location(Identifier(intern("#")), loc), rhs];
-                    let mut apply = make_application(name, args.move_iter());
+                    let mut apply = make_application(name, args.into_iter());
                     apply.location = loc;
                     let params = vec![intern("#")];
-                    Some(make_lambda(params.move_iter().map(|a| Pattern::Identifier(a)), apply))
+                    Some(make_lambda(params.into_iter().map(|a| Pattern::Identifier(a)), apply))
                 }
             }
             (None, None) => return None
@@ -496,7 +496,7 @@ fn application(&mut self) -> Option<TypedExpr> {
             }
             if expressions.len() > 0 {
                 let loc = lhs.location;
-                lhs = make_application(lhs, expressions.move_iter());//, loc);
+                lhs = make_application(lhs, expressions.into_iter());//, loc);
                 lhs.location = loc;
             }
             Some(lhs)
@@ -925,7 +925,7 @@ fn parse_type(&mut self) -> Type {
                 let maybeComma = self.lexer.next().token;
                 if maybeComma == COMMA {
                     let mut tupleArgs: Vec<Type> = self.sep_by_1(|this| this.parse_type(), COMMA)
-                        .move_iter()
+                        .into_iter()
                         .collect();
                     tupleArgs.unshift(t);
                     self.require_next(RPARENS);
@@ -992,7 +992,7 @@ fn sep_by_1_func<T, F, P>(&mut self, f : F, sep: P) -> Vec<T>
 }//end impl Parser
 
 fn make_constraints(types: Vec<Type>) -> Vec<Constraint> {
-    types.move_iter().map(|typ| {
+    types.into_iter().map(|typ| {
         match typ {
             Type::Application(lhs, rhs) => {
                 Constraint { class: lhs.ctor().name.clone(), variables: box [rhs.var().clone()] }
@@ -1023,7 +1023,7 @@ fn make_lambda<Iter: DoubleEndedIterator<Item=Pattern<InternedStr>>>(args : Iter
 //Create a tuple with the constructor name inferred from the number of arguments passed in
 fn new_tuple(arguments : Vec<TypedExpr>) -> TypedExpr {
 	let name = TypedExpr::new(Identifier(intern(tuple_name(arguments.len()).as_slice())));
-	make_application(name, arguments.move_iter())
+	make_application(name, arguments.into_iter())
 }
 
 fn make_tuple_type(types : Vec<Type>) -> Type {

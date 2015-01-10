@@ -7,7 +7,7 @@ use interner::*;
 
 use self::TokenEnum::*;
 
-#[deriving(Clone, PartialEq, Show)]
+#[derive(Clone, PartialEq, Show)]
 pub enum TokenEnum {
 	EOF,
 	NAME,
@@ -54,7 +54,7 @@ pub enum TokenEnum {
     ELSE
 }
 
-#[deriving(Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct Location {
     pub column : int,
     pub row : int,
@@ -66,7 +66,7 @@ impl Location {
         Location { column: -1, row: -1, absolute: -1 }
     }
 }
-#[deriving(Clone)]
+#[derive(Clone)]
 pub struct Located<T> {
     pub location: Location,
     pub node: T
@@ -90,7 +90,7 @@ impl fmt::Show for Location {
     }
 }
 
-#[deriving(Clone, Show)]
+#[derive(Clone, Show)]
 pub struct Token {
     pub token : TokenEnum,
     pub value : InternedStr,

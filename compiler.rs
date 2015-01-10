@@ -14,7 +14,7 @@ use builtins::builtins;
 
 use self::Instruction::*;
 
-#[deriving(PartialEq, Clone, Show)]
+#[derive(PartialEq, Clone, Show)]
 pub enum Instruction {
     Add,
     Sub,
@@ -61,7 +61,7 @@ pub enum Instruction {
     ConstructDictionary(uint),
     PushDictionaryRange(uint, uint)
 }
-#[deriving(Show)]
+#[derive(Show)]
 enum Var<'a> {
     Stack(uint),
     Global(uint),
@@ -1100,7 +1100,7 @@ pub fn compile_module(module: &str) -> IoResult<Vec<Assembly>> {
 fn compile_module_(modules: Vec<::module::Module<Name>>) -> IoResult<Vec<Assembly>> {
     use compiler::Compiler;
     let core_modules: Vec<Module<Id<Name>>> = translate_modules(modules)
-        .move_iter()
+        .into_iter()
         .map(|module| do_lambda_lift(module))
         .collect();
     let mut assemblies = Vec::new();
