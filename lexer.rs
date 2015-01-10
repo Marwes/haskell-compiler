@@ -191,8 +191,8 @@ impl <Stream : Iterator<Item=char>> Lexer<Stream> {
         let mut newline = false;
         let n = self.next_indent_token(&mut newline);
         self.unprocessedTokens.push(n);
-        let newTok = self.unprocessedTokens.get(self.unprocessedTokens.len() - 1).token;
-        let loc = self.unprocessedTokens.get(self.unprocessedTokens.len() - 1).location;
+        let newTok = self.unprocessedTokens.last().unwrap().token;
+        let loc = self.unprocessedTokens.last().unwrap().location;
 
         if newTok != LBRACE && newTok != MODULE {
             self.unprocessedTokens.push(Token::new(&self.interner, INDENTSTART, "{n}", loc));
@@ -210,9 +210,7 @@ impl <Stream : Iterator<Item=char>> Lexer<Stream> {
             self.next();
             self.backtrack();
         }
-        self.tokens.iter()
-            .idx(self.tokens.len() - self.offset)
-            .unwrap()
+        &self.tokens[self.tokens.len() - self.offset]
     }
     
     ///Returns the next token in the lexer
@@ -220,7 +218,7 @@ impl <Stream : Iterator<Item=char>> Lexer<Stream> {
         if self.offset > 0 {
             //backtrack has been used so simply return the next token from the buffer
             self.offset -= 1;
-            match self.tokens.iter().idx(self.tokens.len() - 1 - self.offset) {
+            match self.tokens.get(self.tokens.len() - 1 - self.offset) {
                 Some(token) => token,
                 None => panic!("Impossible empty tokens stream")
             }
@@ -237,7 +235,7 @@ impl <Stream : Iterator<Item=char>> Lexer<Stream> {
 
     ///Returns a reference to the current token
     pub fn current<'a>(&'a self) -> &'a Token {
-        match self.tokens.iter().idx(self.tokens.len() - 1 - self.offset) {
+        match self.tokens.get(self.tokens.len() - 1 - self.offset) {
             Some(token) => token,
             None => panic!("Attempted to access Lexer::current() on when tokens is empty")
         }
@@ -286,11 +284,11 @@ impl <Stream : Iterator<Item=char>> Lexer<Stream> {
         loop {
             match self.peek_char() {
                 Some(x) => {
-                    if !x.is_digit() {
+                    if !x.is_digit(10) {
                         break;
                     }
                     self.read_char();
-                    result.push_char(x)
+                    result.push(x)
                 }
                 None => break
             }
@@ -306,7 +304,7 @@ impl <Stream : Iterator<Item=char>> Lexer<Stream> {
             Some('.') => {
                 self.input.next();
                 token = FLOAT;
-                number.push_char('.');
+                number.push('.');
                 number.push_str(self.scan_digits().as_slice());
             }
             _ => ()
@@ -323,7 +321,7 @@ impl <Stream : Iterator<Item=char>> Lexer<Stream> {
                         break;
                     }
                     self.read_char();
-                    result.push_char(ch);
+                    result.push(ch);
                 }
                 None => break
             }
@@ -339,7 +337,7 @@ impl <Stream : Iterator<Item=char>> Lexer<Stream> {
         if self.next().token != RBRACE {
             if self.indentLevels.len() != 0 {
                 //L (t:ts) (m:ms) 	= 	} : (L (t:ts) ms) 	if m /= 0 and parse-error(t)
-                let m = *self.indentLevels.get(self.indentLevels.len() - 1);
+                let m = *self.indentLevels.last().unwrap();
                 if m != 0 {//If not a explicit '}'
                     debug!("ParseError on token {:?}, inserting }}", self.current().token);
                     self.indentLevels.pop();
@@ -359,13 +357,13 @@ impl <Stream : Iterator<Item=char>> Lexer<Stream> {
         let mut newline = false;
         let n = self.next_indent_token(&mut newline);
         self.unprocessedTokens.push(n);
-        let newTok = self.unprocessedTokens.get(self.unprocessedTokens.len() - 1).token;
+        let newTok = self.unprocessedTokens.last().unwrap().token;
 
         if newTok != LBRACE {
             match self.tokens.back() {
                 Some(tok) => {
                     if tok.token == LET || tok.token == WHERE || tok.token == OF || tok.token == DO {
-                        let loc = self.unprocessedTokens.get(self.unprocessedTokens.len() - 1).location;
+                        let loc = self.unprocessedTokens.last().unwrap().location;
                         let indentstart = Token::new(&self.interner, INDENTSTART, "{n}", loc);
                         self.unprocessedTokens.push(indentstart);
                     }
@@ -374,7 +372,7 @@ impl <Stream : Iterator<Item=char>> Lexer<Stream> {
             }
         }
         if newline {
-            let loc = self.unprocessedTokens.get(self.unprocessedTokens.len() - 1).location;
+            let loc = self.unprocessedTokens.last().unwrap().location;
             self.unprocessedTokens.push(Token::new(&self.interner, INDENTLEVEL, "<n>", loc));
         }
         self.layout_independent_token();
@@ -385,12 +383,12 @@ impl <Stream : Iterator<Item=char>> Lexer<Stream> {
     ///and returns a token which is not affected by indentation
     fn layout_independent_token(&mut self) {
         if self.unprocessedTokens.len() > 0 {
-            let tok = self.unprocessedTokens.get(self.unprocessedTokens.len() - 1).clone();//TODO dont use clone
+            let tok = self.unprocessedTokens.last().unwrap().clone();//TODO dont use clone
             match tok.token {
                 INDENTLEVEL => {
                     if self.indentLevels.len() > 0 {
                         //m:ms
-                        let m = *self.indentLevels.get(self.indentLevels.len() - 1);
+                        let m = *self.indentLevels.last().unwrap();
                         //m == n
                         if m == tok.location.column {
                             debug!("Indents are same, inserted semicolon");
@@ -421,7 +419,7 @@ impl <Stream : Iterator<Item=char>> Lexer<Stream> {
                     let n = tok.location.column;
                     if self.indentLevels.len() != 0 {
                         //m:ms
-                        let m = *self.indentLevels.get(self.indentLevels.len() - 1);
+                        let m = *self.indentLevels.last().unwrap();
                         if n > m {
                             debug!("n > m + INDENTSTART, insert {{");
                             self.unprocessedTokens.pop();
@@ -444,7 +442,7 @@ impl <Stream : Iterator<Item=char>> Lexer<Stream> {
                     return;
                 }
                 RBRACE => {
-                    if self.indentLevels.len() > 0 && *self.indentLevels.get(self.indentLevels.len() - 1) == 0 {
+                    if self.indentLevels.len() > 0 && *self.indentLevels.last().unwrap() == 0 {
                         self.tokens.push_back(self.unprocessedTokens.pop().unwrap());
                         self.indentLevels.pop();
                         return;
@@ -469,7 +467,7 @@ impl <Stream : Iterator<Item=char>> Lexer<Stream> {
                 //End of stream
                 return;
             }
-            else if *self.indentLevels.get(self.indentLevels.len() - 1) != 0 {
+            else if *self.indentLevels.last().unwrap() != 0 {
                 //Keep pusing right brackets
                 self.indentLevels.pop();
                 self.tokens.push_back(Token::new(&self.interner, RBRACE, "}", self.location));
@@ -507,7 +505,7 @@ impl <Stream : Iterator<Item=char>> Lexer<Stream> {
                             break;
                         }
                         self.read_char();
-                        result.push_char(ch);
+                        result.push(ch);
                     }
                     None => { break; }
                 }
@@ -523,7 +521,7 @@ impl <Stream : Iterator<Item=char>> Lexer<Stream> {
             };
             return Token::new(&self.interner, tok, result.as_slice(), startLocation);
         }
-        else if c.is_digit() {
+        else if c.is_digit(10) {
             return self.scan_number(c, startLocation);
         }
         else if c.is_alphabetic() || c == '_' {
@@ -549,7 +547,7 @@ impl <Stream : Iterator<Item=char>> Lexer<Stream> {
             loop {
                 match self.read_char() {
                     Some('"') => return Token::new(&self.interner, STRING, string.as_slice(), startLocation),
-                    Some(x) => string.push_char(x),
+                    Some(x) => string.push(x),
                     None => panic!("Unexpected EOF")
                 }
             }

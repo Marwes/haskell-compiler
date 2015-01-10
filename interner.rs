@@ -3,7 +3,7 @@ use std::rc::Rc;
 use std::cell::RefCell;
 use std::fmt;
 
-#[derive(Eq, PartialEq, Clone, Default, Hash)]
+#[derive(Eq, PartialEq, Clone, Copy, Default, Hash)]
 pub struct InternedStr(uint);
 
 pub struct Interner {
@@ -18,7 +18,7 @@ impl Interner {
     }
 
     pub fn intern(&mut self, s: &str) -> InternedStr {
-        match self.indexes.find_equiv(&s).map(|x| *x) {
+        match self.indexes.get(s).map(|x| *x) {
             Some(index) => InternedStr(index),
             None => {
                 let index = self.strings.len();
@@ -31,7 +31,7 @@ impl Interner {
 
     pub fn get_str<'a>(&'a self, InternedStr(i): InternedStr) -> &'a str {
         if i < self.strings.len() {
-            self.strings.get(i).as_slice()
+            &*self.strings[i]
         }
         else {
             panic!("Invalid InternedStr {:?}", i)

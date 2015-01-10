@@ -1,11 +1,12 @@
 use interner::*;
 use core::*;
 use core::Expr::*;
-use types::{int_type, double_type, function_type, function_type_, qualified};
+use types::{int_type, double_type, function_type, function_type_, qualified, extract_applied_type};
 use typecheck::{Types, DataTypes, TypeEnvironment, find_specialized_instances};
 use scoped_map::ScopedMap;
 use std::iter::range_step;
 use std::io::IoResult;
+use std::borrow::ToOwned;
 
 use core::translate::{translate_module, translate_modules};
 use lambda_lift::do_lambda_lift;
@@ -144,7 +145,7 @@ impl Globals for Assembly {
         for class in self.classes.iter() {
             for decl in class.declarations.iter() {
                 if decl.name == name {
-                    return Some(Var::Class(&decl.typ.value, decl.typ.constraints, &class.variable));
+                    return Some(Var::Class(&decl.typ.value, &*decl.typ.constraints, &class.variable));
                 }
             }
         }
@@ -153,7 +154,7 @@ impl Globals for Assembly {
         for sc in self.superCombinators.iter() {
             if name == sc.name {
                 if sc.typ.constraints.len() > 0 {
-                    return Some(Var::Constraint(self.offset + index, &sc.typ.value, sc.typ.constraints));
+                    return Some(Var::Constraint(self.offset + index, &sc.typ.value, &*sc.typ.constraints));
                 }
                 else {
                     return Some(Var::Global(self.offset + index));
@@ -180,7 +181,7 @@ fn find_global<'a>(module: &'a Module<Id>, offset: uint, name: Name) -> Option<V
     for class in module.classes.iter() {
         for decl in class.declarations.iter() {
             if decl.name == name {
-                return Some(Var::Class(&decl.typ.value, decl.typ.constraints, &class.variable));
+                return Some(Var::Class(&decl.typ.value, &*decl.typ.constraints, &class.variable));
             }
         }
     }
@@ -195,7 +196,7 @@ fn find_global<'a>(module: &'a Module<Id>, offset: uint, name: Name) -> Option<V
             let typ = bind.expression.get_type();
             let constraints = &bind.name.typ.constraints;
             if constraints.len() > 0 {
-                Var::Constraint(offset + global_index, typ, *constraints)
+                Var::Constraint(offset + global_index, typ, &**constraints)
             }
             else {
                 Var::Global(offset + global_index)
@@ -275,13 +276,6 @@ impl Types for Module<Id> {
     }
 }
 
-fn extract_applied_type<'a>(typ: &'a Type) -> &'a Type {
-    match typ {
-        &Type::Application(ref lhs, _) => extract_applied_type(*lhs),
-        _ => typ
-    }
-}
-
 impl Types for Assembly {
     ///Lookup a type
     fn find_type<'a>(&'a self, name: &Name) -> Option<&'a Qualified<Type, Name>> {
@@ -318,11 +312,11 @@ impl Types for Assembly {
         for &(ref constraints, ref op) in self.instances.iter() {
             match op {
                 &Type::Application(ref op, ref t) => {
-                    let x = match extract_applied_type(*op) {
+                    let x = match extract_applied_type(&**op) {
                         &Type::Constructor(ref x) => x,
                         _ => panic!()
                     };
-                    let y = match extract_applied_type(*t) {
+                    let y = match extract_applied_type(&**t) {
                         &Type::Constructor(ref x) => x,
                         _ => panic!()
                     };
@@ -331,8 +325,7 @@ impl Types for Assembly {
                         _ => panic!()
                     };
                     if classname.name == x.name && y.name == z.name {
-                        let o : &Type = *t;
-                        return Some((constraints.as_slice(), o));
+                        return Some((constraints.as_slice(), &**t));
                     }
                 }
                 _ => ()
@@ -443,7 +436,7 @@ impl <'a> Compiler<'a> {
         Assembly {
             superCombinators: superCombinators,
             instance_dictionaries: instance_dictionaries,
-            offset: self.assemblies.iter().flat_map(|assembly| assembly.superCombinators.iter()).len(),
+            offset: self.assemblies.iter().fold(0, |sum, assembly| sum + assembly.superCombinators.len()),
             classes: module.classes.clone(),
             instances: module.instances.iter()
                 .map(|x| (x.constraints.clone(), Type::new_op(x.classname.name, vec![x.typ.clone()])))
@@ -485,7 +478,7 @@ impl <'a> Compiler<'a> {
         match expr {
             &Lambda(ref ident, ref body) => {
                 self.new_stack_var(ident.name.clone());
-                1 + self.compile_lambda_binding(*body, instructions)
+                1 + self.compile_lambda_binding(&**body, instructions)
             }
             _ => {
                 self.compile(expr, instructions, true);
@@ -502,7 +495,7 @@ impl <'a> Compiler<'a> {
                 Some(ref module) => {
                     let n = self.assemblies.len();
                     let offset = if n > 0 {
-                        let assembly = self.assemblies.get(n-1);
+                        let assembly = self.assemblies[n - 1];
                         assembly.offset + assembly.superCombinators.len()
                     }
                     else {
@@ -608,7 +601,7 @@ impl <'a> Compiler<'a> {
                                 name: Name { name: intern("fromInteger"), uid: 0 }, 
                                 typ: qualified(vec![], function_type_(int_type(), literal.typ.clone())),
                             });
-                            let number = Literal(Literal { typ: int_type(), value: Integral(i) });
+                            let number = Literal(LiteralData { typ: int_type(), value: Integral(i) });
                             let apply = Apply(box fromInteger, box number);
                             self.compile(&apply, instructions, strict);
                         }
@@ -622,7 +615,7 @@ impl <'a> Compiler<'a> {
                                 name: Name { name: intern("fromRational"), uid: 0 }, 
                                 typ: qualified(vec![], function_type_(double_type(), literal.typ.clone())),
                             });
-                            let number = Literal(Literal {
+                            let number = Literal(LiteralData {
                                 typ: double_type(),
                                 value: Fractional(f)
                             });
@@ -653,12 +646,12 @@ impl <'a> Compiler<'a> {
                         this.compile(&bind.expression, instructions, false);
                         this.stackSize += 1;
                     }
-                    this.compile(*body, instructions, strict);
+                    this.compile(&**body, instructions, strict);
                     instructions.push(Slide(bindings.len()));
                 });
             }
             &Case(ref body, ref alternatives) => {
-                self.compile(*body, instructions, true);
+                self.compile(&**body, instructions, true);
                 self.stackSize += 1;
                 //Dummy variable for the case expression
                 //Storage for all the jumps that should go to the end of the case expression
@@ -680,11 +673,11 @@ impl <'a> Compiler<'a> {
                         //We need to set all the jump instructions to their actual location
                         //and append Slide instructions to bring the stack back to normal if the match fails
                         for j in range_step(pattern_end, pattern_start, -1) {
-                            match *instructions.get(j as uint) {
+                            match instructions[j as uint] {
                                 Jump(_) => {
-                                    *instructions.get_mut(j as uint) = Jump(instructions.len());
+                                    instructions[j as uint] = Jump(instructions.len());
                                 }
-                                JumpFalse(_) => *instructions.get_mut(j as uint) = JumpFalse(instructions.len()),
+                                JumpFalse(_) => instructions[j as uint] = JumpFalse(instructions.len()),
                                 Split(size) => instructions.push(Pop(size)),
                                 _ => ()
                             }
@@ -692,7 +685,7 @@ impl <'a> Compiler<'a> {
                     });
                 }
                 for branch in end_branches.iter() {
-                    *instructions.get_mut(*branch) = Jump(instructions.len());
+                    instructions[*branch] = Jump(instructions.len());
                 }
                 //Remove the matched expr
                 instructions.push(Slide(1));
@@ -707,7 +700,7 @@ impl <'a> Compiler<'a> {
         //Unroll the applications until the function is found
         match *expr {
             Apply(ref func, ref arg) => {
-                return self.compile_apply(*func, ArgList::Cons(*arg, &args), instructions, strict)
+                return self.compile_apply(&**func, ArgList::Cons(&**arg, &args), instructions, strict)
             }
             _ => ()
         }
@@ -839,7 +832,7 @@ impl <'a> Compiler<'a> {
                     Some(index) => instructions.push(PushDictionaryMember(index)),
                     None => {
                         let dictionary_key = find_specialized_instances(function_type, actual_type, constraints);
-                        self.push_dictionary(constraints, dictionary_key, instructions);
+                        self.push_dictionary(constraints, &*dictionary_key, instructions);
                     }
                 }
             }
@@ -847,7 +840,7 @@ impl <'a> Compiler<'a> {
                 //get dictionary index
                 //push dictionary
                 let dictionary_key = find_specialized_instances(function_type, actual_type, constraints);
-                self.push_dictionary(constraints, dictionary_key, instructions);
+                self.push_dictionary(constraints, &*dictionary_key, instructions);
             }
         }
     }
@@ -873,8 +866,8 @@ impl <'a> Compiler<'a> {
                 debug!("App for ({:?} {:?})", lhs, rhs);
                 //For function in functions
                 // Mkap function fold_dictionary(rhs)
-                self.fold_dictionary(class, *lhs, instructions);
-                self.fold_dictionary(class, *rhs, instructions);
+                self.fold_dictionary(class, &**lhs, instructions);
+                self.fold_dictionary(class, &**rhs, instructions);
                 instructions.push(MkapDictionary);
             }
             Type::Variable(ref var) => {
@@ -912,7 +905,7 @@ impl <'a> Compiler<'a> {
         }
         let mut ii = 0;
         for c in constraints.iter() {
-            let result = self.walk_classes(c.class, &mut |declarations| {
+            let result = self.walk_classes(c.class, &mut |declarations| -> Option<uint> {
                 for decl in declarations.iter() {
                     if decl.name == name {
                         return Some(ii)
@@ -946,7 +939,7 @@ impl <'a> Compiler<'a> {
         //Check if the dictionary already exist
         let dict_len = self.instance_dictionaries.len();
         for ii in range(0, dict_len) {
-            if self.instance_dictionaries.get(ii).ref0().equiv(&constraints) {
+            if self.instance_dictionaries[ii].0 == constraints {
                 return ii;
             }
         }
@@ -961,13 +954,6 @@ impl <'a> Compiler<'a> {
     }
 
     fn add_class(&self, constraints: &[(Name, Type)], function_indexes: &mut Vec<uint>) {
-
-        fn extract_applied_type<'a>(typ: &'a Type) -> &'a Type {
-            match typ {
-                &Type::Application(ref lhs, _) => extract_applied_type(*lhs),
-                _ => typ
-            }
-        }
 
         for &(ref class_name, ref typ) in constraints.iter() {
             self.walk_classes(*class_name, &mut |declarations| -> Option<()> {
@@ -1053,8 +1039,8 @@ fn try_find_instance_type<'a>(class_var: &TypeVariable, class_type: &Type, actua
             None
         }
         (&Type::Application(ref lhs1, ref rhs1), &Type::Application(ref lhs2, ref rhs2)) => {
-            try_find_instance_type(class_var, *lhs1, *lhs2)
-                .or_else(|| try_find_instance_type(class_var, *rhs1, *rhs2))
+            try_find_instance_type(class_var, &**lhs1, &**lhs2)
+                .or_else(|| try_find_instance_type(class_var, &**rhs1, &**rhs2))
         }
         _ => None
     }
@@ -1063,10 +1049,10 @@ fn try_find_instance_type<'a>(class_var: &TypeVariable, class_type: &Type, actua
 #[allow(dead_code)]
 pub fn compile(contents: &str) -> Assembly {
     let mut type_env = TypeEnvironment::new();
-    compile_with_type_env(&mut type_env, [], contents)
+    compile_with_type_env(&mut type_env, &[], contents)
 }
 #[allow(dead_code)]
-pub fn compile_with_type_env(type_env: &mut TypeEnvironment, assemblies: &[&Assembly], contents: &str) -> Assembly {
+pub fn compile_with_type_env<'a>(type_env: &'a mut TypeEnvironment<'a>, assemblies: &[&'a Assembly], contents: &str) -> Assembly {
     use parser::Parser;
 
     let mut parser = Parser::new(contents.as_slice().chars()); 

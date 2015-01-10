@@ -70,7 +70,7 @@ impl Type {
     }
 
     ///Returns a reference to the type variable or fails if it is not a variable
-    pub fn var<'a>(&'a self) -> &'a TypeVariable {
+    pub fn var(&self) -> &TypeVariable {
         match self {
             &Type::Variable(ref var) => var,
             _ => panic!("Tried to unwrap {:?} as a TypeVariable", self)
@@ -79,7 +79,7 @@ impl Type {
 
     ///Returns a reference to the type constructor or fails if it is not a constructor
     #[allow(dead_code)]
-    pub fn ctor<'a>(&'a self) -> &'a TypeConstructor {
+    pub fn ctor(&self) -> &TypeConstructor {
         match self {
             &Type::Constructor(ref op) => op,
             _ => panic!("Tried to unwrap {:?} as a TypeConstructor", self)
@@ -88,49 +88,43 @@ impl Type {
 
     ///Returns a reference to the the type function or fails if it is not an application
     #[allow(dead_code)]
-    pub fn appl<'a>(&'a self) -> &'a Type {
+    pub fn appl(&self) -> &Type {
         match self {
-            &Type::Application(ref lhs, _) => { let l: &Type = *lhs; l }
+            &Type::Application(ref lhs, _) => &**lhs,
             _ => panic!("Error: Tried to unwrap {:?} as TypeApplication", self)
         }
     }
     #[allow(dead_code)]
     ///Returns a reference to the the type argument or fails if it is not an application
-    pub fn appr<'a>(&'a self) -> &'a Type {
+    pub fn appr(&self) -> &Type {
         match self {
-            &Type::Application(_, ref rhs) => { let r: &Type = *rhs; r }
+            &Type::Application(_, ref rhs) => &**rhs,
             _ => panic!("Error: Tried to unwrap TypeApplication")
         }
     }
 
     ///Returns the kind of the type
     ///Fails only if the type is a type application with an invalid kind
-    pub fn kind<'a>(&'a self) -> &'a Kind {
+    pub fn kind(&self) -> &Kind {
         match self {
             &Type::Variable(ref v) => &v.kind,
             &Type::Constructor(ref v) => &v.kind,
             &Type::Application(ref lhs, _) => 
                 match lhs.kind() {
-                    &Kind::Function(_, ref k) => {
-                        let kind: &Kind = *k;
-                        kind
-                    }
+                    &Kind::Function(_, ref kind) => &**kind,
                     _ => panic!("Type application must have a kind of Kind::Function, {:?}", self)
                 },
             &Type::Generic(ref v) => &v.kind
         }
     }
     ///Returns a mutable reference to the types kind
-    pub fn mut_kind<'a>(&'a mut self) -> &'a mut Kind {
+    pub fn mut_kind(&mut self) -> &mut Kind {
         match *self {
             Type::Variable(ref mut v) => &mut v.kind,
             Type::Constructor(ref mut v) => &mut v.kind,
             Type::Application(ref mut lhs, _) => 
                 match *lhs.mut_kind() {
-                    Kind::Function(_, ref mut k) => {
-                        let kind: &mut Kind = *k;
-                        kind
-                    }
+                    Kind::Function(_, ref mut kind) => &mut **kind,
                     _ => panic!("Type application must have a kind of Kind::Function")
                 },
             Type::Generic(ref mut v) => &mut v.kind
@@ -138,7 +132,7 @@ impl Type {
     }
 }
 
-impl <S: ::std::hash::Hasher> ::std::hash::Hash<S> for TypeVariable {
+impl <S: ::std::hash::Hasher + ::std::hash::Writer> ::std::hash::Hash<S> for TypeVariable {
     #[inline]
     fn hash(&self, state: &mut S) {
         //Only has the id since the kind should always be the same for two variables
@@ -159,13 +153,13 @@ pub fn tuple_type(n: uint) -> (String, Type) {
     assert!(n < 26);
     for i in range(0, n) {
         let c = (('a' as u8) + i as u8) as char;
-        var_list.push(Type::Generic(Type::new_var_kind(intern(c.to_str().as_slice()), star_kind.clone()).var().clone()));
+        var_list.push(Type::Generic(Type::new_var_kind(intern(c.to_string().as_slice()), star_kind.clone()).var().clone()));
     }
     let ident = tuple_name(n);
     let mut typ = Type::new_op(intern(ident.as_slice()), var_list);
     for i in range_step(n as int - 1, -1, -1) {
         let c = (('a' as u8) + i as u8) as char;
-        typ = function_type_(Type::Generic(Type::new_var(intern(c.to_str().as_slice())).var().clone()), typ);
+        typ = function_type_(Type::Generic(Type::new_var(intern(c.to_string().as_slice())).var().clone()), typ);
     }
     (ident, typ)
 }
@@ -281,15 +275,11 @@ struct Prec<'a>(Prec_, &'a Type);
 pub fn try_get_function<'a>(typ: &'a Type) -> Option<(&'a Type, &'a Type)> {
     match *typ {
         Type::Application(ref xx, ref result) => {
-            let y: &Type = *xx;
-            match *y {
+            match **xx {
                 Type::Application(ref xx, ref arg) => {
-                    let x: &Type = *xx;
-                    match x {
-                        &Type::Constructor(ref op) if "->" == op.name.as_slice() => {
-                            let a: &Type = *arg;
-                            let r: &Type = *result;
-                            Some((a, r))
+                    match **xx {
+                        Type::Constructor(ref op) if "->" == op.name.as_slice() => {
+                            Some((&**arg, &**result))
                         }
                         _ => None
                     }
@@ -325,10 +315,10 @@ impl <'a> fmt::Show for Prec<'a> {
                             }
                             _ => {
                                 if p >= Prec_::Constructor {
-                                    write!(f, "({:?} {:?})", Prec(Prec_::Function, *lhs), Prec(Prec_::Constructor, *rhs))
+                                    write!(f, "({:?} {:?})", Prec(Prec_::Function, &**lhs), Prec(Prec_::Constructor, &**rhs))
                                 }
                                 else {
-                                    write!(f, "{:?} {:?}", Prec(Prec_::Function, *lhs), Prec(Prec_::Constructor, *rhs))
+                                    write!(f, "{:?} {:?}", Prec(Prec_::Function, &**lhs), Prec(Prec_::Constructor, &**rhs))
                                 }
                             }
                         }
@@ -358,14 +348,14 @@ fn type_eq<'a>(mapping: &mut HashMap<&'a TypeVariable, &'a TypeVariable>, lhs: &
         (&Type::Constructor(ref l), &Type::Constructor(ref r)) => l.name == r.name,
         (&Type::Variable(ref r), &Type::Variable(ref l)) => var_eq(mapping, r, l),
         (&Type::Application(ref lhs1, ref rhs1), &Type::Application(ref lhs2, ref rhs2)) => {
-            type_eq(mapping, *lhs1, *lhs2) && type_eq(mapping, *rhs1, *rhs2)
+            type_eq(mapping, &**lhs1, &**lhs2) && type_eq(mapping, &**rhs1, &**rhs2)
         }
         _ => false
     }
 }
 
 fn var_eq<'a>(mapping: &mut HashMap<&'a TypeVariable, &'a TypeVariable>, l: &'a TypeVariable, r: &'a TypeVariable) -> bool {
-    match mapping.find(&l) {
+    match mapping.get(&l) {
         Some(x) => return x.id == r.id,
         None => ()
     }
@@ -395,4 +385,9 @@ impl PartialEq for Type {
     }
 }
 
-
+pub fn extract_applied_type(typ: &Type) -> &Type {
+    match *typ {
+        Type::Application(ref lhs, _) => extract_applied_type(&**lhs),
+        _ => typ
+    }
+}

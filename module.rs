@@ -279,7 +279,7 @@ impl fmt::Show for LiteralData {
 ///The tree will be walked through automatically, calling the appropriate visit_ function
 ///If a visit_ function is overridden it will need to call the appropriate walk_function to
 ///recurse deeper into the AST
-pub trait Visitor<Ident> {
+pub trait Visitor<Ident> : Sized {
     fn visit_expr(&mut self, expr: &TypedExpr<Ident>) {
         walk_expr(self, expr)
     }
@@ -297,7 +297,7 @@ pub trait Visitor<Ident> {
     }
 }
 
-pub fn walk_module<Ident>(visitor: &mut Visitor<Ident>, module: &Module<Ident>) {
+pub fn walk_module<Ident, V: Visitor<Ident>>(visitor: &mut V, module: &Module<Ident>) {
     for bind in module.instances.iter().flat_map(|i| i.bindings.iter()) {
         visitor.visit_binding(bind);
     }
@@ -306,40 +306,40 @@ pub fn walk_module<Ident>(visitor: &mut Visitor<Ident>, module: &Module<Ident>) 
     }
 }
 
-pub fn walk_binding<Ident>(visitor: &mut Visitor<Ident>, binding: &Binding<Ident>) {
+pub fn walk_binding<Ident, V: Visitor<Ident>>(visitor: &mut V, binding: &Binding<Ident>) {
     match binding.matches {
         Match::Simple(ref e) => visitor.visit_expr(e),
         _ => panic!()
     }
 }
 
-pub fn walk_expr<Ident>(visitor: &mut Visitor<Ident>, expr: &TypedExpr<Ident>) {
+pub fn walk_expr<Ident, V: Visitor<Ident>>(visitor: &mut V, expr: &TypedExpr<Ident>) {
     match &expr.expr {
         &Apply(ref func, ref arg) => {
-            visitor.visit_expr(*func);
-            visitor.visit_expr(*arg);
+            visitor.visit_expr(&**func);
+            visitor.visit_expr(&**arg);
         }
         &OpApply(ref lhs, _, ref rhs) => {
-            visitor.visit_expr(*lhs);
-            visitor.visit_expr(*rhs);
+            visitor.visit_expr(&**lhs);
+            visitor.visit_expr(&**rhs);
         }
-        &Lambda(_, ref body) => visitor.visit_expr(*body),
+        &Lambda(_, ref body) => visitor.visit_expr(&**body),
         &Let(ref binds, ref e) => {
             for b in binds.iter() {
                 visitor.visit_binding(b);
             }
-            visitor.visit_expr(*e);
+            visitor.visit_expr(&**e);
         }
         &Case(ref e, ref alts) => {
-            visitor.visit_expr(*e);
+            visitor.visit_expr(&**e);
             for alt in alts.iter() {
                 visitor.visit_alternative(alt);
             }
         }
         &IfElse(ref pred, ref if_true, ref if_false) => {
-            visitor.visit_expr(*pred);
-            visitor.visit_expr(*if_true);
-            visitor.visit_expr(*if_false);
+            visitor.visit_expr(&**pred);
+            visitor.visit_expr(&**if_true);
+            visitor.visit_expr(&**if_false);
         }
         &Do(ref binds, ref expr) => {
             for bind in binds.iter() {
@@ -356,15 +356,15 @@ pub fn walk_expr<Ident>(visitor: &mut Visitor<Ident>, expr: &TypedExpr<Ident>) {
                     DoBinding::DoExpr(ref e) => visitor.visit_expr(e)
                 }
             }
-            visitor.visit_expr(*expr);
+            visitor.visit_expr(&**expr);
         }
-        &TypeSig(ref expr, _) => visitor.visit_expr(*expr),
-        &Paren(ref expr) => visitor.visit_expr(*expr),
+        &TypeSig(ref expr, _) => visitor.visit_expr(&**expr),
+        &Paren(ref expr) => visitor.visit_expr(&**expr),
         &Literal(..) | &Identifier(..) => ()
     }
 }
 
-pub fn walk_alternative<Ident>(visitor: &mut Visitor<Ident>, alt: &Alternative<Ident>) {
+pub fn walk_alternative<Ident, V: Visitor<Ident>>(visitor: &mut V, alt: &Alternative<Ident>) {
     visitor.visit_pattern(&alt.pattern.node);
     match alt.matches {
         Match::Simple(ref e) => visitor.visit_expr(e),
@@ -375,7 +375,7 @@ pub fn walk_alternative<Ident>(visitor: &mut Visitor<Ident>, alt: &Alternative<I
             }
         }
     }
-    match alt.where {
+    match alt.where_bindings {
         Some(ref bindings) => {
             for bind in bindings.iter() {
                 visitor.visit_binding(bind);
@@ -385,7 +385,7 @@ pub fn walk_alternative<Ident>(visitor: &mut Visitor<Ident>, alt: &Alternative<I
     }
 }
 
-pub fn walk_pattern<Ident>(visitor: &mut Visitor<Ident>, pattern: &Pattern<Ident>) {
+pub fn walk_pattern<Ident, V: Visitor<Ident>>(visitor: &mut V, pattern: &Pattern<Ident>) {
     match pattern {
         &Pattern::Constructor(_, ref ps) => {
             for p in ps.iter() {
@@ -398,7 +398,7 @@ pub fn walk_pattern<Ident>(visitor: &mut Visitor<Ident>, pattern: &Pattern<Ident
 
 
 
-pub trait MutVisitor<Ident> {
+pub trait MutVisitor<Ident> : Sized {
     fn visit_expr(&mut self, expr: &mut TypedExpr<Ident>) {
         walk_expr_mut(self, expr)
     }
@@ -440,30 +440,30 @@ pub fn walk_binding_mut<Ident, V: MutVisitor<Ident>>(visitor: &mut V, binding: &
 pub fn walk_expr_mut<Ident, V: MutVisitor<Ident>>(visitor: &mut V, expr: &mut TypedExpr<Ident>) {
     match expr.expr {
         Apply(ref mut func, ref mut arg) => {
-            visitor.visit_expr(*func);
-            visitor.visit_expr(*arg);
+            visitor.visit_expr(&mut **func);
+            visitor.visit_expr(&mut **arg);
         }
         OpApply(ref mut lhs, _, ref mut rhs) => {
-            visitor.visit_expr(*lhs);
-            visitor.visit_expr(*rhs);
+            visitor.visit_expr(&mut **lhs);
+            visitor.visit_expr(&mut **rhs);
         }
-        Lambda(_, ref mut body) => visitor.visit_expr(*body),
+        Lambda(_, ref mut body) => visitor.visit_expr(&mut **body),
         Let(ref mut binds, ref mut e) => {
             for b in binds.iter_mut() {
                 visitor.visit_binding(b);
             }
-            visitor.visit_expr(*e);
+            visitor.visit_expr(&mut **e);
         }
         Case(ref mut e, ref mut alts) => {
-            visitor.visit_expr(*e);
+            visitor.visit_expr(&mut **e);
             for alt in alts.iter_mut() {
                 visitor.visit_alternative(alt);
             }
         }
         IfElse(ref mut pred, ref mut if_true, ref mut if_false) => {
-            visitor.visit_expr(*pred);
-            visitor.visit_expr(*if_true);
-            visitor.visit_expr(*if_false);
+            visitor.visit_expr(&mut **pred);
+            visitor.visit_expr(&mut **if_true);
+            visitor.visit_expr(&mut **if_false);
         }
         Do(ref mut binds, ref mut expr) => {
             for bind in binds.iter_mut() {
@@ -480,10 +480,10 @@ pub fn walk_expr_mut<Ident, V: MutVisitor<Ident>>(visitor: &mut V, expr: &mut Ty
                     DoBinding::DoExpr(ref mut e) => visitor.visit_expr(e)
                 }
             }
-            visitor.visit_expr(*expr);
+            visitor.visit_expr(&mut **expr);
         }
-        TypeSig(ref mut expr, _) => visitor.visit_expr(*expr),
-        Paren(ref mut expr) => visitor.visit_expr(*expr),
+        TypeSig(ref mut expr, _) => visitor.visit_expr(&mut **expr),
+        Paren(ref mut expr) => visitor.visit_expr(&mut **expr),
         Literal(..) | Identifier(..) => ()
     }
 }
@@ -499,7 +499,7 @@ pub fn walk_alternative_mut<Ident, V: MutVisitor<Ident>>(visitor: &mut V, alt: &
             }
         }
     }
-    match alt.where {
+    match alt.where_bindings {
         Some(ref mut bindings) => {
             for bind in bindings.iter_mut() {
                 visitor.visit_binding(bind);
@@ -510,8 +510,8 @@ pub fn walk_alternative_mut<Ident, V: MutVisitor<Ident>>(visitor: &mut V, alt: &
 }
 
 pub fn walk_pattern_mut<Ident, V: MutVisitor<Ident>>(visitor: &mut V, pattern: &mut Pattern<Ident>) {
-    match pattern {
-        &Pattern::Constructor(_, ref mut ps) => {
+    match *pattern {
+        Pattern::Constructor(_, ref mut ps) => {
             for p in ps.iter_mut() {
                 visitor.visit_pattern(p);
             }
@@ -563,9 +563,3 @@ pub fn encode_binding_identifier(instancename : InternedStr, bindingname : Inter
     intern(buffer.as_slice())
 }
 
-pub fn extract_applied_type<'a>(typ: &'a Type) -> &'a Type {
-    match typ {
-        &Type::Application(ref lhs, _) => extract_applied_type(*lhs),
-        _ => typ
-    }
-}

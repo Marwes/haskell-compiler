@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::collections::hash_map::Entry;
 use core::*;
 use core::Expr::*;
 use types::function_type_;
@@ -37,23 +38,32 @@ fn free_variables(&mut self, variables: &mut HashMap<Name, int>, free_vars: &mut
     match *expr {
         Identifier(ref mut i) => {
             //If the identifier is a local, add it to the free variables
-            if variables.find(&i.name).map(|x| *x > 0).unwrap_or(false) {
-                free_vars.insert(i.name.clone(), i.clone());
+            if variables.get(&i.name).map(|x| *x > 0).unwrap_or(false) {
+                match variables.entry(i.name.clone()) {
+                    Entry::Vacant(entry) => { entry.insert(1); }
+                    Entry::Occupied(entry) => *entry.get() += 1
+                }
             }
         }
         Apply(ref mut func, ref mut arg) => {
-            self.free_variables(variables, free_vars, *func);
-            self.free_variables(variables, free_vars, *arg);
+            self.free_variables(variables, free_vars, &mut **func);
+            self.free_variables(variables, free_vars, &mut **arg);
         }
         Lambda(ref mut arg, ref mut body) => {
-            variables.insert_or_update_with(arg.name.clone(), 1, |_, v| *v += 1);
-            self.free_variables(variables, free_vars, *body);
-            *variables.get_mut(&arg.name) -= 1;
+            match variables.entry(arg.name.clone()) {
+                Entry::Vacant(entry) => { entry.insert(1); }
+                Entry::Occupied(entry) => *entry.get() += 1
+            }
+            self.free_variables(variables, free_vars, &mut **body);
+            *variables.get_mut(&arg.name).unwrap() -= 1;
             free_vars.remove(&arg.name);//arg was not actually a free variable
         }
         Let(ref mut bindings, ref mut expr) => {
             for bind in bindings.iter() {
-                variables.insert_or_update_with(bind.name.name.clone(), 1, |_, v| *v += 1);
+                match variables.entry(bind.name.name.clone()) {
+                    Entry::Vacant(entry) => { entry.insert(1); }
+                    Entry::Occupied(entry) => *entry.get() += 1
+                }
             }
             let mut free_vars2 = HashMap::new();
             for bind in bindings.iter_mut() {
@@ -65,21 +75,24 @@ fn free_variables(&mut self, variables: &mut HashMap<Name, int>, free_vars: &mut
                 }
                 self.abstract_(&free_vars2, &mut bind.expression);
             }
-            self.free_variables(variables, free_vars, *expr);
+            self.free_variables(variables, free_vars, &mut **expr);
             for bind in bindings.iter() {
-                *variables.get_mut(&bind.name.name) -= 1;
+                *variables.get_mut(&bind.name.name).unwrap() -= 1;
                 free_vars.remove(&bind.name.name);
             }
         }
         Case(ref mut expr, ref mut alts) => {
-            self.free_variables(variables, free_vars, *expr);
+            self.free_variables(variables, free_vars, &mut **expr);
             for alt in alts.iter_mut() {
                 each_pattern_variables(&alt.pattern, &mut |name| {
-                    variables.insert_or_update_with(name.clone(), 1, |_, v| *v += 1);
+                    match variables.entry(name.clone()) {
+                        Entry::Vacant(entry) => { entry.insert(1); }
+                        Entry::Occupied(entry) => *entry.get() += 1
+                    }
                 });
                 self.free_variables(variables, free_vars, &mut alt.expression);
                 each_pattern_variables(&alt.pattern, &mut |name| {
-                    *variables.get_mut(name) -= 1;
+                    *variables.get_mut(name).unwrap() -= 1;
                     free_vars.remove(name);//arg was not actually a free variable
                 });
             }
@@ -90,7 +103,7 @@ fn free_variables(&mut self, variables: &mut HashMap<Name, int>, free_vars: &mut
 ///Adds the free variables, if any, to the expression
 fn abstract_(&mut self, free_vars: &HashMap<Name, TypeAndStr>, input_expr: &mut Expr<TypeAndStr>) {
     if free_vars.len() != 0 {
-        let mut temp = Literal(Literal { typ: Type::new_var(self.name_supply.from_str("a").name), value: Integral(0) });
+        let mut temp = Literal(LiteralData { typ: Type::new_var(self.name_supply.from_str("a").name), value: Integral(0) });
         ::std::mem::swap(&mut temp, input_expr);
         let mut e = {
             let mut rhs = temp;
@@ -139,7 +152,7 @@ pub fn lift_lambdas<T>(mut module: Module<T>) -> Module<T> {
                         }
                     }
                     *bindings = new_binds;
-                    self.visit_expr(*body);
+                    self.visit_expr(&mut **body);
                 }
                 _ => walk_expr(self, expr)
             }

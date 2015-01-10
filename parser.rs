@@ -219,7 +219,7 @@ fn instance(&mut self) -> Instance {
 
             let mut bindings = self.sep_by_1(|this| this.binding(), SEMICOLON);
             {
-                let inner_type = extract_applied_type(arg);
+                let inner_type = extract_applied_type(&*arg);
                 for bind in bindings.iter_mut() {
                     bind.name = encode_binding_identifier(inner_type.ctor().name, bind.name);
                 }
@@ -591,7 +591,7 @@ fn fixity_declaration(&mut self) -> FixityDeclaration {
             INFIXL => Assoc::Left,
             INFIXR => Assoc::Right,
             INFIX => Assoc::No,
-            _ => panic!(parse_error2(&self.lexer, [INFIXL, INFIXR, INFIX]))
+            _ => panic!(parse_error2(&self.lexer, &[INFIXL, INFIXR, INFIX]))
         }
     };
     let precedence = match self.lexer.next().token {
@@ -614,7 +614,7 @@ fn expr_or_guards(&mut self, end_token: TokenEnum) -> Match {
         Match::Simple(self.expression_())
     }
     else {
-        panic!(parse_error2(&self.lexer, [end_token, PIPE]))
+        panic!(parse_error2(&self.lexer, &[end_token, PIPE]))
     }
 }
 
@@ -866,8 +866,8 @@ fn deriving(&mut self) -> Vec<InternedStr> {
 
 fn set_kind(typ: &mut Type, kind: int) {
     match typ {
-        &Type::Application(ref mut lhs, _) => {
-            Parser::<Iter>::set_kind(*lhs, kind + 1)
+        &mut Type::Application(ref mut lhs, _) => {
+            Parser::<Iter>::set_kind(&mut **lhs, kind + 1)
         }
         _ => {
             *typ.mut_kind() = Kind::new(kind)
@@ -927,7 +927,7 @@ fn parse_type(&mut self) -> Type {
                     let mut tupleArgs: Vec<Type> = self.sep_by_1(|this| this.parse_type(), COMMA)
                         .into_iter()
                         .collect();
-                    tupleArgs.unshift(t);
+                    tupleArgs.insert(0, t);
                     self.require_next(RPARENS);
 
                     self.parse_return_type(make_tuple_type(tupleArgs))
@@ -1064,7 +1064,7 @@ fn get_contents(modulename: &str) -> IoResult<::std::string::String> {
     let mut filename = ::std::string::String::from_str(modulename);
     filename.push_str(".hs");
     let mut file = File::open(&Path::new(filename.as_slice()));
-    file.read_to_str()
+    file.read_to_string()
 }
 
 fn parse_modules_(visited: &mut HashSet<InternedStr>, modules: &mut Vec<Module>, modulename: &str, contents: &str) -> IoResult<()> {
@@ -1318,9 +1318,9 @@ import Prelude (id, sum)
 fn parse_module_imports() {
     let modules = parse_modules("Test").unwrap();
 
-    assert_eq!(modules.get(0).name.as_slice(), "Prelude");
-    assert_eq!(modules.get(1).name.as_slice(), "Test");
-    assert_eq!(modules.get(1).imports[0].module.as_slice(), "Prelude");
+    assert_eq!(modules[0].name.as_slice(), "Prelude");
+    assert_eq!(modules[1].name.as_slice(), "Test");
+    assert_eq!(modules[1].imports[0].module.as_slice(), "Prelude");
 }
 
 #[test]
@@ -1446,7 +1446,7 @@ newtype IntPair a = IntPair (a, Int)
 #[test]
 fn parse_prelude() {
     let path = &Path::new("Prelude.hs");
-    let contents  = File::open(path).read_to_str().unwrap();
+    let contents  = File::open(path).read_to_string().unwrap();
     let mut parser = Parser::new(contents.as_slice().chars());
     let module = parser.module();
 
@@ -1458,7 +1458,7 @@ fn parse_prelude() {
 #[bench]
 fn bench_prelude(b: &mut Bencher) {
     let path = &Path::new("Prelude.hs");
-    let contents  = File::open(path).read_to_str().unwrap();
+    let contents  = File::open(path).read_to_string().unwrap();
     b.iter(|| {
         let mut parser = Parser::new(contents.as_slice().chars());
         parser.module();

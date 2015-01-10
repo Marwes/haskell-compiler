@@ -1,6 +1,6 @@
 extern crate collections;
 use std::collections::HashMap;
-use std::collections::hash_map::{IterMut, RandomState};
+use std::collections::hash_map::{Hasher, Entry, IterMut};
 use std::hash::Hash;
 
 ///A map struct which allows for the introduction of different scopes
@@ -17,7 +17,9 @@ pub struct ScopedMap<K, V> {
 }
 
 #[allow(dead_code)]
-impl <K: Eq + Hash<RandomState> + Clone, V> ScopedMap<K, V> {
+impl <K, V> ScopedMap<K, V>
+    where K: Eq + Hash<Hasher> + Clone {
+
     pub fn new() -> ScopedMap<K, V> {
         ScopedMap { map: HashMap::new(), scopes: Vec::new() }
     }
@@ -30,18 +32,18 @@ impl <K: Eq + Hash<RandomState> + Clone, V> ScopedMap<K, V> {
     pub fn exit_scope(&mut self) {
         loop {
             match self.scopes.pop() {
-                Some(Some(key)) => { self.map.find_mut(&key).map(|x| x.pop()); }
+                Some(Some(key)) => { self.map.get_mut(&key).map(|x| x.pop()); }
                 _ => break
             }
         }
     }
     ///Removes a previusly inserted value from the map.
     pub fn remove(&mut self, k: &K) -> bool {
-        match self.map.find_mut(k).map(|x| x.pop()) {
+        match self.map.get_mut(k).map(|x| x.pop()) {
             Some(..) => {
                 let mut i = self.scopes.len() as int - 1;
                 while i >= 0 {
-                    if self.scopes.get(i as uint).as_ref().map_or(false, |x| x == k) {
+                    if self.scopes[i as uint].as_ref().map_or(false, |x| x == k) {
                         self.scopes.remove(i as uint);
                     }
                     i -= 1;
@@ -70,7 +72,7 @@ impl <K: Eq + Hash<RandomState> + Clone, V> ScopedMap<K, V> {
 
     ///Returns a reference to the last inserted value corresponding to the key
     fn find<'a>(&'a self, k: &K) -> Option<&'a V> {
-        self.map.find(k).and_then(|x| x.last())
+        self.map.get(k).and_then(|x| x.last())
     }
 
     ///Returns the number of elements in the container.
@@ -85,7 +87,10 @@ impl <K: Eq + Hash<RandomState> + Clone, V> ScopedMap<K, V> {
 
     ///Swaps the value stored at key, or inserts it if it is not present
     fn swap(&mut self, k: K, v: V) -> Option<V> {
-        let vec = self.map.find_or_insert(k.clone(), Vec::new());
+        let vec = match self.map.entry(k.clone()) {
+            Entry::Vacant(entry) => entry.insert(Vec::new()),
+            Entry::Occupied(entry) => entry.get_mut()
+        };
         if vec.len() != 0 {
             let r  = vec.pop();
             vec.push(v);
@@ -98,11 +103,11 @@ impl <K: Eq + Hash<RandomState> + Clone, V> ScopedMap<K, V> {
         }
     }
     fn pop(&mut self, k: &K) -> Option<V> {
-        match self.map.find_mut(k).and_then(|x| x.pop()) {
+        match self.map.get_mut(k).and_then(|x| x.pop()) {
             Some(v) => {
                 let mut i = self.scopes.len() as int - 1;
                 while i >= 0 {
-                    if self.scopes.get(i as uint).as_ref().map_or(false, |x| x == k) {
+                    if self.scopes[i as uint].as_ref().map_or(false, |x| x == k) {
                         self.scopes.remove(i as uint);
                     }
                     i -= 1;
@@ -113,10 +118,13 @@ impl <K: Eq + Hash<RandomState> + Clone, V> ScopedMap<K, V> {
         }
     }
     fn find_mut<'a>(&'a mut self, key: &K) -> Option<&'a mut V> {
-        self.map.find_mut(key).and_then(|x| x.mut_last())
+        self.map.get_mut(key).and_then(|x| x.last_mut())
     }
     fn insert(&mut self, k: K, v: V) -> bool {
-        let vec = self.map.find_or_insert(k.clone(), Vec::new());
+        let vec = match self.map.entry(k.clone()) {
+            Entry::Vacant(entry) => entry.insert(Vec::new()),
+            Entry::Occupied(entry) => entry.get_mut()
+        };
         vec.push(v);
         self.scopes.push(Some(k));
         vec.len() == 1

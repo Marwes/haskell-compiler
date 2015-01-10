@@ -140,7 +140,7 @@ impl DerivingGen {
                 .map(|arg| Id::new(self.name_supply.anonymous(), arg.clone(), constructor.typ.constraints.clone()))
                 .collect();
             let ctor_id = Id::new(constructor.name, iter.typ.clone(), constructor.typ.constraints.clone());
-            let expr = f(self, args_l, args_r);
+            let expr = f(self, &*args_l, &*args_r);
             let pattern_r = Pattern::Constructor(ctor_id.clone(), args_r);
             let inner = Case(box Identifier(id_r.clone()), vec![
                 Alternative { pattern: pattern_r, expression: expr },

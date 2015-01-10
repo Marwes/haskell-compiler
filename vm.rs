@@ -85,15 +85,15 @@ impl <'a> fmt::Show for Node_<'a> {
             &Constructor(ref tag, ref args) => {
                 let cons = args;
                 if cons.len() > 0 {
-                    match *cons.get(0).borrow() {
+                    match *cons[0].borrow() {
                         Char(_) => {
                             fn print_string<'a>(f: &mut fmt::Formatter, cons: &Vec<Node<'a>>) -> fmt::Result {
                                 if cons.len() >= 2 {
-                                    match *cons.get(0).borrow() {
+                                    match *cons[0].borrow() {
                                         Char(c) =>  { try!(write!(f, "{:?}", c)); },
                                         _ => ()
                                     }
-                                    match *cons.get(1).borrow() {
+                                    match *cons[1].borrow() {
                                         Constructor(_, ref args2) => return print_string(f, args2),
                                         _ => ()
                                     }
@@ -132,7 +132,7 @@ impl fmt::Show for InstanceDictionary {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         try!(write!(f, "["));
         if self.entries.len() > 0 {
-            try!(write!(f, "{:?}", **self.entries.get(0)));
+            try!(write!(f, "{:?}", *self.entries[0]));
         }
         for entry in self.entries.iter().skip(1) {
             try!(write!(f, ", {:?}", **entry));
@@ -172,7 +172,7 @@ impl <'a> VM {
     }
     ///Returns a reference to the assembly at the index
     pub fn get_assembly<'a>(&'a self, index: uint) -> &'a Assembly {
-        self.assembly.get(index)
+        &self.assembly[index]
     }
 }
     ///Evaluates the code into Head Normal Form (HNF)
@@ -186,7 +186,7 @@ impl <'a> VM {
     fn deepseq<'a>(self_: &'a VM, mut stack: Vec<Node<'a>>, assembly_id: uint) -> Node_<'a> {
         static evalCode : &'static [Instruction] = &[Instruction::Eval];
         execute(self_, &mut stack, evalCode, assembly_id);
-        match *stack.get(0).borrow() {
+        match *stack[0].borrow() {
             Constructor(tag, ref vals) => {
                 let mut ret = Vec::new();
                 for v in vals.iter() {
@@ -196,7 +196,7 @@ impl <'a> VM {
                 }
                 Constructor(tag, ret)
             }
-            _ => stack.get(0).borrow().clone()
+            _ => stack[0].borrow().clone()
         }
     }
 
@@ -251,16 +251,16 @@ impl <'a> VM {
                 PushFloat(value) => { stack.push(Node::new(Float(value))); }
                 PushChar(value) => { stack.push(Node::new(Char(value))); }
                 Push(index) => {
-                    let x = stack.get(index).clone();
+                    let x = stack[index].clone();
                     debug!("Pushed {:?}", *x.borrow());
                     for j in range(0, stack.len()) {
-                        debug!(" {:?}  {:?}", j, *stack.get(j).borrow());
+                        debug!(" {:?}  {:?}", j, *stack[j].borrow());
                     }
                     stack.push(x);
                 }
                 PushGlobal(index) => {
-                    let &(assembly_index, index) = self_.globals.get(index);
-                    let sc = &self_.assembly.get(assembly_index).superCombinators[index];
+                    let (assembly_index, index) = self_.globals[index];
+                    let sc = &self_.assembly[assembly_index].superCombinators[index];
                     stack.push(Node::new(Combinator(sc)));
                 }
                 PushBuiltin(index) => {
@@ -291,7 +291,7 @@ impl <'a> VM {
                     }
                 }
                 Update(index) => {
-                    *stack.get_mut(index) = Node::new(Indirection(stack.last().unwrap().clone()));
+                    stack[index] = Node::new(Indirection(stack.last().unwrap().clone()));
                 }
                 Unwind => {
                     fn unwind<'a, F>(i_ptr: &mut uint, arity: uint, stack: &mut Vec<Node<'a>>, f: F)
@@ -303,7 +303,7 @@ impl <'a> VM {
                         }
                         else {
                             for j in range(stack.len() - arity - 1, stack.len() - 1) {
-                                *stack.get_mut(j) = match *stack.get(j).borrow() {
+                                stack[j] = match *stack[j].borrow() {
                                     Application(_, ref arg) => arg.clone(),
                                     _ => panic!("Expected Application")
                                 };
@@ -312,7 +312,7 @@ impl <'a> VM {
                                 let mut new_stack = Vec::new();
                                 for i in range(0, arity) {
                                     let index = stack.len() - i - 2;
-                                    new_stack.push(stack.get(index).clone());
+                                    new_stack.push(stack[index].clone());
                                 }
                                 f(&mut new_stack)
                             };
@@ -333,7 +333,7 @@ impl <'a> VM {
                         Combinator(comb) => {
                             debug!(">>> Call {:?}", comb.name);
                             unwind(&mut i, comb.arity, stack, |new_stack| {
-                                execute(self_, new_stack, comb.instructions, comb.assembly_id);
+                                execute(self_, new_stack, &*comb.instructions, comb.assembly_id);
                                 new_stack.pop().unwrap()
                             });
                         }
@@ -341,7 +341,7 @@ impl <'a> VM {
                             unwind(&mut i, arity, stack, |new_stack| func(self_, new_stack.as_slice()));
                         }
                         Indirection(node) => {
-                            *stack.mut_last().unwrap() = node;
+                            *stack.last_mut().unwrap() = node;
                             i -= 1;
                         }
                         _ => ()
@@ -400,26 +400,26 @@ impl <'a> VM {
                     i = to - 1;
                 }
                 PushDictionary(index) => {
-                    let assembly = self_.assembly.get(assembly_id);
-                    let dict : &[uint] = assembly.instance_dictionaries[index];
+                    let assembly = &self_.assembly[assembly_id];
+                    let dict : &[uint] = &*assembly.instance_dictionaries[index];
                     let dict = InstanceDictionary { entries: dict.iter().map(|i| Rc::new(DictionaryEntry::Function(*i))).collect() };
                     stack.push(Node::new(Dictionary(dict)));
                 }
                 PushDictionaryMember(index) => {
                     let sc = {
-                        let x = stack.get(0).borrow();
+                        let x = stack[0].borrow();
                         let dict = match *x {
                             Dictionary(ref x) => x,
                             ref x => panic!("Attempted to retrieve {:?} as dictionary", *x)
                         };
-                        match **dict.entries.get(index) {
+                        match *dict.entries[index] {
                             DictionaryEntry::Function(gi) => {
-                                let &(assembly_index, i) = self_.globals.get(gi);
-                                Combinator(&self_.assembly.get(assembly_index).superCombinators[i])
+                                let (assembly_index, i) = self_.globals[gi];
+                                Combinator(&self_.assembly[assembly_index].superCombinators[i])
                             }
                             DictionaryEntry::App(gi, ref dict) => {
-                                let &(assembly_index, i) = self_.globals.get(gi);
-                                let sc = &self_.assembly.get(assembly_index).superCombinators[i];
+                                let (assembly_index, i) = self_.globals[gi];
+                                let sc = &self_.assembly[assembly_index].superCombinators[i];
                                 Application(Node::new(Combinator(sc)), Node::new(Dictionary(dict.clone())))
                             }
                         }
@@ -466,7 +466,7 @@ impl <'a> VM {
                 }
                 PushDictionaryRange(start, size) => {
                     let mut new_dict = InstanceDictionary { entries: Vec::new() };
-                    match *stack.get(0).borrow() {
+                    match *stack[0].borrow() {
                         Dictionary(ref d) => {
                             new_dict.entries.extend(d.entries.iter().skip(start).take(size).map(|x| x.clone()));
                         }
@@ -526,7 +526,7 @@ fn compile_iter<T : Iterator<Item=char>>(iterator: T) -> Assembly {
 ///Compiles a single file
 pub fn compile_file(filename: &str) -> Assembly {
     let path = &Path::new(filename);
-    let contents = File::open(path).read_to_str().unwrap();
+    let contents = File::open(path).read_to_string().unwrap();
     compile_iter(contents.as_slice().chars())
 }
 
@@ -573,7 +573,7 @@ fn execute_main_module_(assemblies: Vec<Assembly>) -> IoResult<Option<VMResult>>
     match x {
         Some(sc) => {
             assert!(sc.arity == 0);
-            let result = evaluate(&vm, sc.instructions, sc.assembly_id);
+            let result = evaluate(&vm, &*sc.instructions, sc.assembly_id);
             Ok(extract_result(result))
         }
         None => Ok(None)
@@ -637,7 +637,7 @@ mod primitive {
         eval(vm, stack[0].clone());
         let aw = stack[0].borrow();
         let (a, rw) = match *aw {
-            Constructor(_, ref args) => (args.get(0), args.get(1)),
+            Constructor(_, ref args) => (args[0], args[1]),
             _ => panic!("pass exepected constructor")
         };
         Node::new(Application(Node::new(Application(stack[1].clone(), a.clone())), rw.clone()))
@@ -655,7 +655,7 @@ mod primitive {
             Ok(f) => f,
             Err(err) => panic!("error: readFile -> {:?}", err)
         };
-        let (begin, _end) = match file.read_to_str() {
+        let (begin, _end) = match file.read_to_string() {
             Ok(s) => create_string(s.as_slice()),
             Err(err) => panic!("error: readFile -> {:?}", err)
         };
@@ -676,11 +676,11 @@ mod primitive {
             match *node {
                 Constructor(_, ref args) => {
                     if args.len() == 2 {
-                        match *args.get(0).borrow() {
-                            Char(c) => buffer.push_char(c),
+                        match *args[0].borrow() {
+                            Char(c) => buffer.push(c),
                             _ => panic!("Unevaluated char")
                         }
-                        get_string_(buffer, &*args.get(1).borrow());
+                        get_string_(buffer, &*args[1].borrow());
                     }
                 }
                 _ => panic!("Unevaluated list")
@@ -694,12 +694,12 @@ mod primitive {
         let mut node = Node::new(Constructor(0, vec!()));
         let first = node.clone();
         for c in s.chars() {
-            node = match *node.borrow_mut().deref_mut() {
+            node = match *node.borrow_mut() {
                 Constructor(ref mut tag, ref mut args) => {
                     *tag = 1;
                     args.push(Node::new(Char(c)));
                     args.push(Node::new(Constructor(0, Vec::new())));
-                    args.get(1).clone()
+                    args[1].clone()
                 }
                 _ => panic!()
             };
@@ -886,7 +886,7 @@ main = testAdd True";
 #[test]
 fn test_run_prelude() {
     let mut type_env = TypeEnvironment::new();
-    let prelude = compile_with_type_env(&mut type_env, [], File::open(&Path::new("Prelude.hs")).read_to_str().unwrap().as_slice());
+    let prelude = compile_with_type_env(&mut type_env, [], File::open(&Path::new("Prelude.hs")).read_to_string().unwrap().as_slice());
 
     let assembly = compile_with_type_env(&mut type_env, [&prelude],
 r"add x y = primIntAdd x y

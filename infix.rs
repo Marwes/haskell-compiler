@@ -36,7 +36,7 @@ impl PrecedenceVisitor {
     }
 
     fn get_precedence(&self, name: &Name) -> (int, Assoc) {
-        self.precedence.find(name)
+        self.precedence.get(name)
             .map(|x| *x)
             .unwrap_or_else(|| (9, Assoc::Left))
     }

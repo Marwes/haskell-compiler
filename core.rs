@@ -137,7 +137,7 @@ impl <Ident: Typed> Typed for Expr<Ident> {
             &Expr::Literal(ref lit) => &lit.typ,
             &Expr::Apply(ref func, _) => {
                 match func.get_type() {
-                    &Type::Application(_, ref a) => { let a2: &Type = *a; a2 }
+                    &Type::Application(_, ref a) => { &**a }
                     x => panic!("The function in Apply must be a type application, found {:?}", x)
                 }
             }
@@ -202,7 +202,7 @@ mod ref_ {
     ///Visitor for the types in the core language.
     ///visit_ is called at the every value in the tree, if it is overriden
     ///the appropriate walk_ methods need to be called to continue walking
-    pub trait Visitor<Ident> {
+    pub trait Visitor<Ident> : Sized {
         fn visit_expr(&mut self, expr: &Expr<Ident>) {
             walk_expr(self, expr)
         }
@@ -219,31 +219,31 @@ mod ref_ {
         }
     }
 
-    pub fn walk_module<Ident>(visitor: &mut Visitor<Ident>, module: &Module<Ident>) {
+    pub fn walk_module<V: Visitor<Ident>, Ident>(visitor: &mut V, module: &Module<Ident>) {
         for bind in module.bindings.iter() {
             visitor.visit_binding(bind);
         }
     }
 
-    pub fn walk_binding<Ident>(visitor: &mut Visitor<Ident>, binding: &Binding<Ident>) {
+    pub fn walk_binding<V: Visitor<Ident>, Ident>(visitor: &mut V, binding: &Binding<Ident>) {
         visitor.visit_expr(&binding.expression);
     }
 
-    pub fn walk_expr<Ident>(visitor: &mut Visitor<Ident>, expr: &Expr<Ident>) {
+    pub fn walk_expr<V: Visitor<Ident>, Ident>(visitor: &mut V, expr: &Expr<Ident>) {
         match expr {
             &Apply(ref func, ref arg) => {
-                visitor.visit_expr(*func);
-                visitor.visit_expr(*arg);
+                visitor.visit_expr(&**func);
+                visitor.visit_expr(&**arg);
             }
-            &Lambda(_, ref body) => visitor.visit_expr(*body),
+            &Lambda(_, ref body) => visitor.visit_expr(&**body),
             &Let(ref binds, ref e) => {
                 for b in binds.iter() {
                     visitor.visit_binding(b);
                 }
-                visitor.visit_expr(*e);
+                visitor.visit_expr(&**e);
             }
             &Case(ref e, ref alts) => {
-                visitor.visit_expr(*e);
+                visitor.visit_expr(&**e);
                 for alt in alts.iter() {
                     visitor.visit_alternative(alt);
                 }
@@ -252,7 +252,7 @@ mod ref_ {
         }
     }
 
-    pub fn walk_alternative<Ident>(visitor: &mut Visitor<Ident>, alt: &Alternative<Ident>) {
+    pub fn walk_alternative<V: Visitor<Ident>, Ident>(visitor: &mut V, alt: &Alternative<Ident>) {
         visitor.visit_expr(&alt.expression);
     }
 }
@@ -261,7 +261,7 @@ pub mod mutable {
     use super::*;
     use super::Expr::*;
     
-    pub trait Visitor<Ident> {
+    pub trait Visitor<Ident>: Sized {
         fn visit_expr(&mut self, expr: &mut Expr<Ident>) {
             walk_expr(self, expr)
         }
@@ -290,19 +290,19 @@ pub mod mutable {
 
     pub fn walk_expr<Ident, V: Visitor<Ident>>(visitor: &mut V, expr: &mut Expr<Ident>) {
         match expr {
-            &Apply(ref mut func, ref mut arg) => {
-                visitor.visit_expr(*func);
-                visitor.visit_expr(*arg);
+            &mut Apply(ref mut func, ref mut arg) => {
+                visitor.visit_expr(&mut **func);
+                visitor.visit_expr(&mut **arg);
             }
-            &Lambda(_, ref mut body) => visitor.visit_expr(*body),
-            &Let(ref mut binds, ref mut e) => {
+            &mut Lambda(_, ref mut body) => visitor.visit_expr(&mut **body),
+            &mut Let(ref mut binds, ref mut e) => {
                 for b in binds.iter_mut() {
                     visitor.visit_binding(b);
                 }
-                visitor.visit_expr(*e);
+                visitor.visit_expr(&mut **e);
             }
-            &Case(ref mut e, ref mut alts) => {
-                visitor.visit_expr(*e);
+            &mut Case(ref mut e, ref mut alts) => {
+                visitor.visit_expr(&mut **e);
                 for alt in alts.iter_mut() {
                     visitor.visit_alternative(alt);
                 }
@@ -322,7 +322,7 @@ pub mod result {
 
     ///A visitor which takes the structs as values and in turn expects a value in return
     ///so that it can rebuild the tree
-    pub trait Visitor<Ident> {
+    pub trait Visitor<Ident> : Sized {
         fn visit_expr(&mut self, expr: Expr<Ident>) -> Expr<Ident> {
             walk_expr(self, expr)
         }
@@ -340,7 +340,7 @@ pub mod result {
         }
     }
 
-    pub fn walk_module<Ident>(visitor: &mut Visitor<Ident>, mut module: Module<Ident>) -> Module<Ident> {
+    pub fn walk_module<V: Visitor<Ident>, Ident>(visitor: &mut V, mut module: Module<Ident>) -> Module<Ident> {
         let mut bindings = vec![];
         ::std::mem::swap(&mut module.bindings, &mut bindings);
         module.bindings = bindings.into_iter()
@@ -349,7 +349,7 @@ pub mod result {
         module
     }
 
-    pub fn walk_binding<Ident>(visitor: &mut Visitor<Ident>, binding: Binding<Ident>) -> Binding<Ident> {
+    pub fn walk_binding<V: Visitor<Ident>, Ident>(visitor: &mut V, binding: Binding<Ident>) -> Binding<Ident> {
         let Binding { name: name, expression: expression } = binding;
         Binding {
             name: name,
@@ -357,7 +357,7 @@ pub mod result {
         }
     }
 
-    pub fn walk_expr<Ident>(visitor: &mut Visitor<Ident>, expr: Expr<Ident>) -> Expr<Ident> {
+    pub fn walk_expr<V: Visitor<Ident>, Ident>(visitor: &mut V, expr: Expr<Ident>) -> Expr<Ident> {
         match expr {
             Apply(func, arg) => {
                 let f = visitor.visit_expr(*func);
@@ -382,7 +382,7 @@ pub mod result {
         }
     }
 
-    pub fn walk_alternative<Ident>(visitor: &mut Visitor<Ident>, alt: Alternative<Ident>) -> Alternative<Ident> {
+    pub fn walk_alternative<V: Visitor<Ident>, Ident>(visitor: &mut V, alt: Alternative<Ident>) -> Alternative<Ident> {
         let Alternative { pattern: pattern, expression: expression } = alt;
         Alternative { pattern: visitor.visit_pattern(pattern), expression: visitor.visit_expr(expression) }
     }
@@ -408,7 +408,7 @@ pub mod translate {
     struct Equation<'a>(&'a [(Id<Name>, Pattern<Id<Name>>)], (&'a [Binding<Id<Name>>], &'a module::Match<Name>));
 
     pub fn translate_expr(expr: module::TypedExpr<Name>) -> Expr<Id<Name>> {
-        let mut translator = Translator { name_supply: NameSupply::new(), functions_in_class: |_| panic!() };
+        let mut translator = Translator { name_supply: NameSupply::new(), functions_in_class: &mut |_| panic!() };
         translator.translate_expr(expr)
     }
 
@@ -419,8 +419,8 @@ pub mod translate {
         }
         let mut translator = Translator {
             name_supply: NameSupply::new(),
-            functions_in_class: |name| {
-                let &(ref var, ref decls) = map.get(&name);
+            functions_in_class: &mut |name| {
+                let &(ref var, ref decls) = map.get(&name).unwrap();
                 (var, decls.as_slice())
             }
         };
@@ -534,7 +534,7 @@ impl <'a> Translator<'a> {
     fn translate_match(&mut self, matches: module::Match<Name>) -> Expr<Id<Name>> {
         match matches {
             module::Match::Simple(e) => self.translate_expr(e),
-            module::Match::Guards(ref gs) => self.translate_guards(unmatched_guard(), *gs)
+            module::Match::Guards(ref gs) => self.translate_guards(unmatched_guard(), &**gs)
         }
     }
 
@@ -581,7 +581,7 @@ impl <'a> Translator<'a> {
                                                typ));
                 Apply(box Apply(box Identifier(Id::new(op, func_type, vec![])), l), r)
             }
-            module::Expr::Literal(l) => Literal(Literal { typ: typ, value: l }),
+            module::Expr::Literal(l) => Literal(LiteralData { typ: typ, value: l }),
             module::Expr::Lambda(arg, body) => {
                 match arg {
                     module::Pattern::Identifier(arg) => Lambda(Id::new(arg, typ, vec![]), box self.translate_expr_rest(*body)),
@@ -676,7 +676,7 @@ impl <'a> Translator<'a> {
         let mut result = Vec::new();
         let mut vec: Vec<module::Binding<Name>> = Vec::new();
         for bind in bindings.into_iter() {
-            if vec.len() > 0 && vec.get(0).name != bind.name {
+            if vec.len() > 0 && vec[0].name != bind.name {
                 result.push(self.translate_matching_groups(vec));
                 vec = Vec::new();
             }
@@ -692,7 +692,7 @@ impl <'a> Translator<'a> {
         match pattern {
             module::Pattern::Constructor(ctor_name, mut patterns) => {
                 let index = result.len();
-                let mut name = ::std::string::String::from_str(id.name.name.as_slice());
+                let mut name = id.name.name.to_string();
                 let base_length = name.len();
                 result.push((id, Pattern::Number(0)));//Dummy
                 for (i, p) in patterns.iter_mut().enumerate() {
@@ -702,8 +702,8 @@ impl <'a> Translator<'a> {
                             //the index the newly generated pattern will be recognized
                             //as the same since their binding variable are the same
                             name.truncate(base_length);
-                            name.push_char('_');
-                            name.push_str(i.to_str().as_slice());
+                            name.push('_');
+                            name.push_str(&*i.to_string());
 
                             let n = Name { name: intern(name.as_slice()), uid: uid };
                             Some(module::Pattern::Identifier(n))
@@ -722,7 +722,7 @@ impl <'a> Translator<'a> {
                         None => ()
                     }
                 }
-                *result.get_mut(index).mut1() = self.translate_pattern(module::Pattern::Constructor(ctor_name, patterns));
+                result[index].1 = self.translate_pattern(module::Pattern::Constructor(ctor_name, patterns));
             }
             _ => result.push((id, self.translate_pattern(pattern)))
         }
@@ -742,11 +742,11 @@ impl <'a> Translator<'a> {
     ///multiple case expressions.
     fn translate_case(&mut self, expr: module::TypedExpr<Name>, alts: Vec<module::Alternative<Name>>) -> Expr<Id<Name>> {
         let mut vec = Vec::new();
-        let dummy_var = [Id::new(self.name_supply.anonymous(), Type::new_var(intern("a")), vec![])];
+        let dummy_var = &[Id::new(self.name_supply.anonymous(), Type::new_var(intern("a")), vec![])];
         let uid = self.name_supply.next_id();
         for module::Alternative { pattern: pattern, matches: matches, where_bindings: where_bindings } in alts.into_iter() {
             let bindings = where_bindings.map_or(Vec::new(), |bs| self.translate_bindings(bs));
-            vec.push((self.unwrap_patterns(uid, dummy_var, [pattern.node]), bindings, matches));
+            vec.push((self.unwrap_patterns(uid, dummy_var, &[pattern.node]), bindings, matches));
         }
         let mut x = self.translate_equations_(vec);
         match x {
@@ -763,7 +763,7 @@ impl <'a> Translator<'a> {
     fn translate_matching_groups(&mut self, mut bindings: Vec<module::Binding<Name>>) -> Binding<Id<Name>> {
         //If the binding group is simple (no patterns and only one binding)
         //then we do a simple translation to preserve the names for the arguments.
-        if bindings.len() == 1 && simple_binding(bindings.get(0)) {
+        if bindings.len() == 1 && simple_binding(&bindings[0]) {
             let module::Binding {
                 name: name,
                 arguments: arguments, matches: matches,
@@ -795,7 +795,7 @@ impl <'a> Translator<'a> {
         let mut arg_ids = Vec::new();
         let name;
         {
-            let binding0 = bindings.get(0);
+            let binding0 = &bindings[0];
             name = Id::new(binding0.name.clone(), binding0.typ.value.clone(), binding0.typ.constraints.clone());
             let mut typ = &binding0.typ.value;
             for _ in range(0, binding0.arguments.len()) {
@@ -818,7 +818,7 @@ impl <'a> Translator<'a> {
                 ..
             } = bind;
             let where_bindings_binds = where_bindings.map_or(Vec::new(), |bs| self.translate_bindings(bs));
-            (self.unwrap_patterns(uid, arg_ids.as_slice(), arguments), where_bindings_binds, matches)
+            (self.unwrap_patterns(uid, arg_ids.as_slice(), &*arguments), where_bindings_binds, matches)
         }).collect();
         let mut expr = self.translate_equations_(equations);
         expr = make_lambda(arg_ids.into_iter(), expr);
@@ -854,10 +854,10 @@ impl <'a> Translator<'a> {
     fn translate_equations(&mut self, equations: &[Equation]) -> Expr<Id<Name>> {
         ///Returns true if the two patterns would match for the same values
         fn matching<T: PartialEq>(lhs: &(T, Pattern<T>), rhs: &(T, Pattern<T>)) -> bool {
-            if lhs.ref0() != rhs.ref0() {
+            if lhs.0 != rhs.0 {
                 return false;
             }
-            match (lhs.ref1(), rhs.ref1()) {
+            match (&lhs.1, &rhs.1) {
                 (&Pattern::Constructor(ref l, _), &Pattern::Constructor(ref r, _)) => *l == *r,
                 (&Pattern::Constructor(..), &Pattern::Number(..)) => false,
                 (&Pattern::Number(..), &Pattern::Constructor(..)) => false,
@@ -885,7 +885,7 @@ impl <'a> Translator<'a> {
                         }
                         else {
                             Alternative {
-                                pattern: ps[0].ref1().clone(),
+                                pattern: ps[0].1.clone(),
                                 expression: make_let(bindings, self.translate_expr((*e).clone()))
                             }
                         };
@@ -899,13 +899,13 @@ impl <'a> Translator<'a> {
                             self.translate_equations(equations.slice_from(i + 1))
                         };
                         alts.push(Alternative {
-                            pattern: ps[0].ref1().clone(),
-                            expression: make_let(bindings, self.translate_guards(fallthrough, *guards))
+                            pattern: ps[0].1.clone(),
+                            expression: make_let(bindings, self.translate_guards(fallthrough, &**guards))
                         });
                     }
                 }
             }
-            let body = box Identifier(ps[0].ref0().clone());
+            let body = box Identifier(ps[0].0.clone());
             return Case(body, alts);
         }
         
@@ -919,7 +919,7 @@ impl <'a> Translator<'a> {
             while last_index < equations.len() {
                 let &Equation(ps, _) = &equations[last_index];
                 if ps.len() > 0  {
-                    match *ps[0].ref1() {
+                    match ps[0].1 {
                         Pattern::Constructor(..) | Pattern::Number(..)
                         if visited.iter().find(|x| matching(**x, &ps[0])).is_none() => {
                             pattern_test = Some(&ps[0]);
@@ -942,7 +942,7 @@ impl <'a> Translator<'a> {
                             vec.push(Equation(patterns.slice_from(1), expr));
                             //If the patter_test is a constructor we need to add the variables
                             //of the other patterns in a let binding to make sure that all names exist
-                            match (patterns[0].ref1(), pattern_test.ref1()) {
+                            match (&patterns[0].1, &pattern_test.1) {
                                 (&Pattern::Constructor(_, ref l_vars), &Pattern::Constructor(_, ref r_vars)) => {
                                     for (l_var, r_var) in l_vars.iter().zip(r_vars.iter()) {
                                         if l_var != r_var {
@@ -960,10 +960,10 @@ impl <'a> Translator<'a> {
                     //For all the pattern that match the pattern we need to generate new case expressions
                     let e = make_let(variable_bindings, self.translate_equations(vec.as_slice()));
 
-                    let arg_id = ps[0].ref0();
+                    let arg_id = &ps[0].0;
                     let bs = needed_variables(arg_id, equations);
                     alts.push(Alternative {
-                        pattern: pattern_test.ref1().clone(),
+                        pattern: pattern_test.1.clone(),
                         expression: make_let(bs, e)
                     });
                 }
@@ -975,17 +975,17 @@ impl <'a> Translator<'a> {
                 vec.push(Equation(patterns.slice_from(1), expr));
             }
             let &Equation(ps, _) = &equations[0];
-            let arg_id = ps[0].ref0();
+            let arg_id = &ps[0].0;
             let bs = needed_variables(arg_id, equations);
             make_let(bs, self.translate_equations(vec.as_slice()))
         }
         else {
             let defaults: Vec<Equation> = equations.iter()
-                .filter(|& &Equation(ps, _)| ps.len() > 0 && (match *ps[0].ref1() { Pattern::WildCard | Pattern::Identifier(..) => true, _ => false }))
+                .filter(|& &Equation(ps, _)| ps.len() > 0 && (match ps[0].1 { Pattern::WildCard | Pattern::Identifier(..) => true, _ => false }))
                 .map(|&Equation(ps, e)| Equation(ps.slice_from(1), e))
                 .collect();
             if defaults.len() != 0 {
-                let arg_id = ps[0].ref0();
+                let arg_id = &ps[0].0;
                 let bs = needed_variables(arg_id, equations);
                 let e = make_let(bs, self.translate_equations(defaults.as_slice()));
                 alts.push(Alternative {
@@ -994,7 +994,7 @@ impl <'a> Translator<'a> {
                 });
             }
             let &Equation(ps, _) = &equations[0];
-            let body = box Identifier(ps[0].ref0().clone());
+            let body = box Identifier(ps[0].0.clone());
             Case(body, alts)
         }
     }
@@ -1092,10 +1092,10 @@ impl <'a> Translator<'a> {
     ///of bindings which need to be added to make sure no variables are missing
     fn needed_variables(arg_id: &Id<Name>, equations: &[Equation]) -> Vec<Binding<Id<Name>>> {
         equations.iter()
-            .filter(|& &Equation(ps, _)| ps.len() > 0 && (match *ps[0].ref1() { Pattern::WildCard | Pattern::Identifier(..) => true, _ => false }))
+            .filter(|& &Equation(ps, _)| ps.len() > 0 && (match ps[0].1 { Pattern::WildCard | Pattern::Identifier(..) => true, _ => false }))
             .map(|eq| {
             let &Equation(ps, _) = eq;
-            let other_id = match *ps[0].ref1() {
+            let other_id = match ps[0].1 {
                 Pattern::Identifier(ref name) => name.clone(),
                 Pattern::WildCard => Id::new(Name { name: intern("_"), uid: -1 }, Type::new_var(intern("a")), vec![]),
                 _ => panic!()
@@ -1105,7 +1105,7 @@ impl <'a> Translator<'a> {
     }
     ///Creates a string literal expressions from a &str
     fn string(s: &str) -> Expr<Id<Name>> {
-        Literal(Literal { typ: list_type(char_type()), value: String(intern(s)) })
+        Literal(LiteralData { typ: list_type(char_type()), value: String(intern(s)) })
     }
     ///Creates an expression which reports an unmatched guard error when executed
     fn unmatched_guard() -> Expr<Id<Name>> {

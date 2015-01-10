@@ -91,7 +91,7 @@ fn main() {
         repl::start();
         return;
     }
-    let expr_str = &**matches.free.get(0).unwrap();
+    let expr_str = &*matches.free[0];
     repl::run_and_print_expr(expr_str);
 }
 

@@ -43,17 +43,17 @@ impl <T> Graph<T> {
     
     ///Connects two vertices with an edge
     pub fn connect(&mut self, from: VertexIndex, to: VertexIndex) {
-        self.vertices.get_mut(from.get()).edges.push(EdgeIndex(self.edges.len()));
+        self.vertices[from.get()].edges.push(EdgeIndex(self.edges.len()));
         self.edges.push(Edge { from: from, to: to });
     }
     ///Returns the vertex at the index
     pub fn get_vertex<'a>(&'a self, v: VertexIndex) -> &'a Vertex<T> {
-        self.vertices.get(v.get())
+        &self.vertices[v.get()]
     }
 
     ///Returns the edge at the index
     pub fn get_edge<'a>(&'a self, edge: EdgeIndex) -> &'a Edge<T> {
-        self.edges.get(edge.get())
+        &self.edges[edge.get()]
     }
 
     ///Returns how many vertices are in the graph
@@ -73,15 +73,12 @@ pub fn strongly_connected_components<T>(graph: &Graph<T>) -> Vec<Vec<VertexIndex
     
 
     for vert in range(0, graph.len()) {
-        if *tarjan.valid.get(vert) == 0 {
+        if tarjan.valid[vert] == 0 {
             tarjan.strong_connect(VertexIndex(vert));
         }
     }
 
     tarjan.connections
-        .into_iter()
-        .map(|vec| -> Vec<VertexIndex> vec)
-        .collect()
 }
 
 struct TarjanComponents<'a, T: 'a>{
@@ -95,19 +92,19 @@ struct TarjanComponents<'a, T: 'a>{
 ///Implementation of "Tarjan's strongly connected components algorithm"
 impl <'a, T> TarjanComponents<'a, T> {
     fn strong_connect(&mut self, v: VertexIndex) {
-        *self.valid.get_mut(v.get()) = self.index;
-        *self.lowlink.get_mut(v.get()) = self.index;
+        self.valid[v.get()] = self.index;
+        self.lowlink[v.get()] = self.index;
         self.index += 1;
         self.stack.push(v);
 
         for edge_index in self.graph.get_vertex(v).edges.iter() {
             let edge = self.graph.get_edge(*edge_index);
-            if *self.valid.get(edge.to.get()) == 0 {
+            if self.valid[edge.to.get()] == 0 {
                 self.strong_connect(edge.to);
-                *self.lowlink.get_mut(v.get()) = min(*self.lowlink.get(v.get()), *self.lowlink.get(edge.to.get())); 
+                    self.lowlink[v.get()] = min(self.lowlink[v.get()], self.lowlink[edge.to.get()]); 
             }
             else if self.stack.iter().any(|x| *x == edge.to) {
-                *self.lowlink.get_mut(v.get()) = min(*self.lowlink.get(v.get()), *self.valid.get(edge.to.get()));
+                self.lowlink[v.get()] = min(self.lowlink[v.get()], self.valid[edge.to.get()]);
             }
         }
 

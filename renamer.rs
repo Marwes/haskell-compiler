@@ -4,7 +4,7 @@ use scoped_map::ScopedMap;
 use interner::*;
 
 ///A Name is a reference to a specific identifier in the program, guaranteed to be unique
-#[derive(PartialEq, Eq, Hash, Clone)]
+#[derive(PartialEq, Eq, Hash, Clone, Copy)]
 pub struct Name {
     pub name: InternedStr,
     pub uid: uint
@@ -101,7 +101,7 @@ impl Renamer {
             .chain(module.classes.iter().flat_map(|class|
                 Some(class.name).into_iter()
                 .chain(class.declarations.iter().map(|decl| decl.name))
-                .chain(binding_groups(class.bindings).map(|binds| binds[0].name))))
+                .chain(binding_groups(&*class.bindings).map(|binds| binds[0].name))))
             .chain(binding_groups(module.bindings.as_slice()).map(|binds| binds[0].name));
         for name in names {
             self.declare_global(str_fn(name), uid);
