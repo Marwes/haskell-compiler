@@ -3,7 +3,7 @@ use renamer::Name;
 use interner::intern;
 use std::collections::HashMap;
 
-pub struct PrecedenceVisitor { precedence: HashMap<Name, (int, Assoc)>  }
+pub struct PrecedenceVisitor { precedence: HashMap<Name, (isize, Assoc)>  }
 
 impl MutVisitor<Name> for PrecedenceVisitor {
     fn visit_expr(&mut self, expr: &mut TypedExpr<Name>) {
@@ -35,7 +35,7 @@ impl PrecedenceVisitor {
         PrecedenceVisitor { precedence: map }
     }
 
-    fn get_precedence(&self, name: &Name) -> (int, Assoc) {
+    fn get_precedence(&self, name: &Name) -> (isize, Assoc) {
         self.precedence.get(name)
             .map(|x| *x)
             .unwrap_or_else(|| (9, Assoc::Left))

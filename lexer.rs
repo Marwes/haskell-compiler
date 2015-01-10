@@ -56,9 +56,9 @@ pub enum TokenEnum {
 
 #[derive(Clone, Copy, PartialEq)]
 pub struct Location {
-    pub column : int,
-    pub row : int,
-    pub absolute : int
+    pub column : isize,
+    pub row : isize,
+    pub absolute : isize
 }
 
 impl Location {
@@ -162,9 +162,9 @@ pub struct Lexer<Stream: Iterator<Item=char>> {
     ///The token buffer which contains the last n produced tokens.
     tokens : RingBuf<Token>,
     ///A stack which contains the indentation levels of automatically inserted '{'
-    indentLevels : Vec<int>,
+    indentLevels : Vec<isize>,
     ///The offset into the token buffer at which the current token is at
-    offset : uint,
+    offset : usize,
     ///The string interner, cached here for efficency
     interner: Rc<RefCell<Interner>>
 }
@@ -295,7 +295,7 @@ impl <Stream : Iterator<Item=char>> Lexer<Stream> {
         }
         result
     }
-    ///Scans a number, float or integer and returns the appropriate token
+    ///Scans a number, float or isizeeger and returns the appropriate token
     fn scan_number(&mut self, c : char, location : Location) -> Token {
         let mut number = c.to_string();
         number.push_str(self.scan_digits().as_slice());

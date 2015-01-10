@@ -34,7 +34,7 @@ impl FreeVariables {
 //free variables to its arguments and performs an immediate application
 //@variables All the local variables in scope, values are how many of the name there exists
 //@free_vars The free variables for the returned expression
-fn free_variables(&mut self, variables: &mut HashMap<Name, int>, free_vars: &mut HashMap<Name, TypeAndStr>, expr: &mut Expr<TypeAndStr>) {
+fn free_variables(&mut self, variables: &mut HashMap<Name, isize>, free_vars: &mut HashMap<Name, TypeAndStr>, expr: &mut Expr<TypeAndStr>) {
     match *expr {
         Identifier(ref mut i) => {
             //If the identifier is a local, add it to the free variables
@@ -262,7 +262,7 @@ test2 x =
     }
 
     struct CheckAbstract {
-        count: int
+        count: isize
     }
     
     fn get_let<'a>(expr: &'a Expr<Id>, args: &mut Vec<InternedStr>) -> &'a Expr<Id> {

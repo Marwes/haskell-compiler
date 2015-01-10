@@ -105,7 +105,7 @@ pub struct TypeEnvironment<'a> {
     data_definitions : Vec<DataDefinition<Name>>,
     ///The current age for newly created variables.
     ///Age is used to determine whether variables need to be quantified or not.
-    variable_age : int,
+    variable_age : isize,
     errors: Errors<TypeErrorInfo>
 }
 
@@ -118,13 +118,13 @@ struct Substitution {
 
 ///Trait which provides access to the bindings in a struct.
 trait Bindings {
-    fn get_mut(&mut self, idx: (uint, uint)) -> &mut [Binding<Name>];
+    fn get_mut(&mut self, idx: (usize, usize)) -> &mut [Binding<Name>];
 
-    fn each_binding(&self, func: &mut FnMut(&[Binding<Name>], (uint, uint)));
+    fn each_binding(&self, func: &mut FnMut(&[Binding<Name>], (usize, usize)));
 }
 
 impl Bindings for Module<Name> {
-    fn get_mut(&mut self, (instance_idx, idx): (uint, uint)) -> &mut [Binding<Name>] {
+    fn get_mut(&mut self, (instance_idx, idx): (usize, usize)) -> &mut [Binding<Name>] {
         let bindings = if instance_idx == 0 {
             &mut *self.bindings
         }
@@ -137,7 +137,7 @@ impl Bindings for Module<Name> {
         mut_bindings_at(bindings, idx)
     }
 
-    fn each_binding(&self, func: &mut FnMut(&[Binding<Name>], (uint, uint))) {
+    fn each_binding(&self, func: &mut FnMut(&[Binding<Name>], (usize, usize))) {
         let mut index = 0;
         for binds in binding_groups(self.bindings.as_slice()) {
             func(binds, (0, index));
@@ -160,7 +160,7 @@ impl Bindings for Module<Name> {
     }
 }
 
-fn mut_bindings_at<'a, Ident: Eq>(bindings: &'a mut [Binding<Ident>], idx: uint) -> &'a mut [Binding<Ident>] {
+fn mut_bindings_at<'a, Ident: Eq>(bindings: &'a mut [Binding<Ident>], idx: usize) -> &'a mut [Binding<Ident>] {
     let end = bindings
         .slice_from(idx)
         .iter()
@@ -175,11 +175,11 @@ struct BindingsWrapper<'a> {
 }
 
 impl <'a> Bindings for BindingsWrapper<'a> {
-    fn get_mut(&mut self, (_, idx): (uint, uint)) -> &mut [Binding<Name>] {
+    fn get_mut(&mut self, (_, idx): (usize, usize)) -> &mut [Binding<Name>] {
         mut_bindings_at(self.value, idx)
     }
 
-    fn each_binding(&self, func: &mut FnMut(&[Binding<Name>], (uint, uint))) {
+    fn each_binding(&self, func: &mut FnMut(&[Binding<Name>], (usize, usize))) {
         let mut index = 0;
         for binds in binding_groups(self.value.as_slice()) {
             func(binds, (0, index));
@@ -226,7 +226,7 @@ impl <'a> TypeEnvironment<'a> {
         add_primitives(&mut globals, "Double");
         insert_to(&mut globals,"primIntToDouble", function_type_(int_type(), double_type()));
         insert_to(&mut globals, "primDoubleToInt", function_type_(double_type(), int_type()));
-        let var = Type::Generic(Type::new_var_kind(intern("a"), star_kind.clone()).var().clone());
+        let var = Type::Generic(Type::new_var_kind(intern("a"), Kind::Star.clone()).var().clone());
         
         for (name, typ) in builtins().into_iter() {
             insert_to(&mut globals, name, typ);
@@ -235,7 +235,7 @@ impl <'a> TypeEnvironment<'a> {
         insert_to(&mut globals, "[]", list.clone());
         insert_to(&mut globals, ":", function_type(&var, &function_type(&list, &list)));
         insert_to(&mut globals, "()", unit());
-        for i in range(2 as uint, 10) {
+        for i in range(2 as usize, 10) {
             let (name, typ) = tuple_type(i);
             insert_to(&mut globals, name.as_slice(), typ);
         }
@@ -610,14 +610,14 @@ impl <'a> TypeEnvironment<'a> {
                     Integral(_) => {
                         self.constraints.insert(expr.typ.var().clone(), vec![prelude_name("Num")]);
                         match expr.typ {
-                            Type::Variable(ref mut v) => v.kind = star_kind.clone(),
+                            Type::Variable(ref mut v) => v.kind = Kind::Star.clone(),
                             _ => ()
                         }
                     }
                     Fractional(_) => {
                         self.constraints.insert(expr.typ.var().clone(), vec![prelude_name("Fractional")]);
                         match expr.typ {
-                            Type::Variable(ref mut v) => v.kind = star_kind.clone(),
+                            Type::Variable(ref mut v) => v.kind = Kind::Star.clone(),
                             _ => ()
                         }
                     }
@@ -778,7 +778,7 @@ impl <'a> TypeEnvironment<'a> {
         }
     }
     ///Walks through the arguments of a pattern and typechecks each of them.
-    fn pattern_rec(&mut self, i: uint, location: &Location, subs: &mut Substitution, patterns: &[Pattern<Name>], func_type: &mut Type) {
+    fn pattern_rec(&mut self, i: usize, location: &Location, subs: &mut Substitution, patterns: &[Pattern<Name>], func_type: &mut Type) {
         if i < patterns.len() {
             let p = &patterns[i];
             with_arg_return(func_type, |arg_type, return_type| {
@@ -858,7 +858,7 @@ impl <'a> TypeEnvironment<'a> {
     ///and a global indicating wheter the bindings are global (true if at the module level, false otherwise, ex. 'let' binding)
     pub fn typecheck_mutually_recursive_bindings
             (&mut self
-            , start_var_age: int
+            , start_var_age: isize
             , subs: &mut Substitution
             , bindings: &mut Bindings
             , is_global: bool) {
@@ -933,7 +933,7 @@ impl <'a> TypeEnvironment<'a> {
         self.typecheck_mutually_recursive_bindings(var, subs, bindings, false);
     }
     ///Typechecks a group of global bindings.
-    fn typecheck_global_bindings(&mut self, start_var_age: int, subs: &mut Substitution, bindings: &mut Bindings) {
+    fn typecheck_global_bindings(&mut self, start_var_age: isize, subs: &mut Substitution, bindings: &mut Bindings) {
         self.typecheck_mutually_recursive_bindings(start_var_age, subs, bindings, true);
     }
     
@@ -1045,8 +1045,8 @@ fn find_specialized(result: &mut Vec<(Name, Type)>, actual_type: &Type, typ: &Ty
 
 ///Quantifies all type variables with an age greater that start_var_age
 ///A quantified variable will when it is instantiated have new type variables
-fn quantify(start_var_age: int, typ: &mut Qualified<Type, Name>) {
-    fn quantify_(start_var_age: int, typ: &mut Type) {
+fn quantify(start_var_age: isize, typ: &mut Qualified<Type, Name>) {
+    fn quantify_(start_var_age: isize, typ: &mut Type) {
         let x = match *typ {
             Type::Variable(ref id) if id.age >= start_var_age => Some(id.clone()),
             Type::Application(ref mut lhs, ref mut rhs) => {
@@ -1309,10 +1309,10 @@ fn bind_variable(env: &mut TypeEnvironment, subs: &mut Substitution, var: &TypeV
                                 Err(missing_instance) => {
                                     match *typ {
                                         Type::Constructor(ref op) => {
-                                            if c.name == intern("Num") && (op.name == intern("Int") || op.name == intern("Double")) && *typ.kind() == star_kind {
+                                            if c.name == intern("Num") && (op.name == intern("Int") || op.name == intern("Double")) && *typ.kind() == Kind::Star {
                                                 continue;
                                             }
-                                            else if c.name == intern("Fractional") && intern("Double") == op.name && *typ.kind() == star_kind {
+                                            else if c.name == intern("Fractional") && intern("Double") == op.name && *typ.kind() == Kind::Star {
                                                 continue;
                                             }
                                         }
@@ -1432,7 +1432,7 @@ fn match_(env: &mut TypeEnvironment, subs: &mut Substitution, lhs: &mut Type, rh
 
 ///Creates a graph containing a vertex for each binding and edges from every binding to every other
 ///binding that it references
-fn build_graph(bindings: &Bindings) -> Graph<(uint, uint)> {
+fn build_graph(bindings: &Bindings) -> Graph<(usize, usize)> {
     let mut graph = Graph::new();
     let mut map = HashMap::new();
     bindings.each_binding(&mut |binds, i| {
@@ -1550,7 +1550,7 @@ pub fn lambda(arg : &str, body : TypedExpr) -> TypedExpr {
     TypedExpr::new(Lambda(Pattern::Identifier(intern(arg)), box body))
 }
 #[cfg(test)]
-pub fn number(i : int) -> TypedExpr {
+pub fn number(i : isize) -> TypedExpr {
     TypedExpr::new(Literal(Integral(i)))
 }
 #[cfg(test)]
@@ -1642,7 +1642,7 @@ pub fn do_typecheck_with(input: &str, types: &[&DataTypes]) -> Module<Name> {
 }
 
 fn un_name(typ: Qualified<Type, Name>) -> Qualified<Type, InternedStr> {
-    let Qualified { constraints: constraints, value: typ } = typ;
+    let Qualified { constraints, value: typ } = typ;
     let constraints2: Vec<Constraint> = constraints.into_iter()
         .map(|c| Constraint { class: c.class.name, variables: c.variables })
         .collect();

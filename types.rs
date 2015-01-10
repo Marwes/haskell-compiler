@@ -16,7 +16,7 @@ pub type VarId = InternedStr;
 pub struct TypeVariable {
     pub id : InternedStr,
     pub kind : Kind,
-    pub age: int
+    pub age: isize
 }
 #[derive(Clone, Eq, Hash)]
 pub enum Type {
@@ -62,7 +62,7 @@ impl Type {
         result
     }
     fn new_type_kind(mut result: Type, types: Vec<Type>) -> Type {
-        *result.mut_kind() = Kind::new(types.len() as int + 1);
+        *result.mut_kind() = Kind::new(types.len() as isize + 1);
         for typ in types.into_iter() {
             result = Type::Application(box result, box typ);
         }
@@ -141,23 +141,23 @@ impl <S: ::std::hash::Hasher + ::std::hash::Writer> ::std::hash::Hash<S> for Typ
 }
 
 ///Constructs a string which holds the name of an n-tuple
-pub fn tuple_name(n: uint) -> String {
+pub fn tuple_name(n: usize) -> String {
     Some('(').into_iter()
         .chain(iter::repeat(',').take(n - 1))
         .chain(Some(')').into_iter())
         .collect()
 }
 ///Returns the type of an n-tuple constructor as well as the name of the tuple
-pub fn tuple_type(n: uint) -> (String, Type) {
+pub fn tuple_type(n: usize) -> (String, Type) {
     let mut var_list = Vec::new();
     assert!(n < 26);
     for i in range(0, n) {
         let c = (('a' as u8) + i as u8) as char;
-        var_list.push(Type::Generic(Type::new_var_kind(intern(c.to_string().as_slice()), star_kind.clone()).var().clone()));
+        var_list.push(Type::Generic(Type::new_var_kind(intern(c.to_string().as_slice()), Kind::Star.clone()).var().clone()));
     }
     let ident = tuple_name(n);
     let mut typ = Type::new_op(intern(ident.as_slice()), var_list);
-    for i in range_step(n as int - 1, -1, -1) {
+    for i in range_step(n as isize - 1, -1, -1) {
         let c = (('a' as u8) + i as u8) as char;
         typ = function_type_(Type::Generic(Type::new_var(intern(c.to_string().as_slice())).var().clone()), typ);
     }
@@ -224,8 +224,8 @@ impl fmt::Show for Kind {
 }
 
 impl Kind {
-    pub fn new(v: int) -> Kind {
-        let mut kind = star_kind.clone();
+    pub fn new(v: isize) -> Kind {
+        let mut kind = Kind::Star.clone();
         for _ in range(1, v) {
             kind = Kind::Function(box Kind::Star, box kind);
         }
@@ -238,7 +238,6 @@ impl Default for Kind {
         Kind::Star
     }
 }
-pub static star_kind : Kind = Kind::Star;
 
 impl Default for Type {
     fn default() -> Type {

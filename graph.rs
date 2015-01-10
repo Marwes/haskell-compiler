@@ -5,15 +5,15 @@ use std::iter::repeat;
 use std::cmp::min;
 
 #[derive(PartialEq, Copy, Show)]
-pub struct VertexIndex(uint);
+pub struct VertexIndex(usize);
 #[derive(PartialEq, Copy, Show)]
-pub struct EdgeIndex(uint);
+pub struct EdgeIndex(usize);
 
 impl VertexIndex {
-    fn get(&self) -> uint { let VertexIndex(v) = *self; v }
+    fn get(&self) -> usize { let VertexIndex(v) = *self; v }
 }
 impl EdgeIndex {
-    fn get(&self) -> uint { let EdgeIndex(v) = *self; v }
+    fn get(&self) -> usize { let EdgeIndex(v) = *self; v }
 }
 
 struct Vertex<T> {
@@ -57,7 +57,7 @@ impl <T> Graph<T> {
     }
 
     ///Returns how many vertices are in the graph
-    pub fn len(&self) -> uint {
+    pub fn len(&self) -> usize {
         self.vertices.len()
     }
 }
@@ -82,10 +82,10 @@ pub fn strongly_connected_components<T>(graph: &Graph<T>) -> Vec<Vec<VertexIndex
 }
 
 struct TarjanComponents<'a, T: 'a>{
-    index: uint,
+    index: usize,
     graph: &'a Graph<T>,
-    valid: Vec<uint>,
-    lowlink: Vec<uint>,
+    valid: Vec<usize>,
+    lowlink: Vec<usize>,
     stack: Vec<VertexIndex>,
     connections: Vec<Vec<VertexIndex>>
 }

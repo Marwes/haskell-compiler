@@ -58,15 +58,15 @@ pub struct Binding<Ident = InternedStr> {
 pub struct Constructor<Ident = InternedStr> {
     pub name : Ident,
     pub typ : Qualified<Type, Ident>,
-    pub tag : int,
-    pub arity : int
+    pub tag : isize,
+    pub arity : isize
 }
 
 #[derive(PartialEq, Clone)]
 pub struct DataDefinition<Ident = InternedStr> {
     pub constructors : Vec<Constructor<Ident>>,
     pub typ : Qualified<Type, Ident>,
-    pub parameters : HashMap<InternedStr, int>,
+    pub parameters : HashMap<InternedStr, isize>,
     pub deriving: Vec<Ident>
 }
 
@@ -88,7 +88,7 @@ pub enum Assoc {
 #[derive(PartialEq, Clone, Show)]
 pub struct FixityDeclaration<Ident = InternedStr> {
     pub assoc: Assoc,
-    pub precedence: int,
+    pub precedence: isize,
     pub operators: Vec<Ident>
 }
 
@@ -141,7 +141,7 @@ pub struct Alternative<Ident = InternedStr> {
 
 #[derive(Clone, PartialOrd, PartialEq, Eq)]
 pub enum Pattern<Ident = InternedStr> {
-    Number(int),
+    Number(isize),
     Identifier(Ident),
     Constructor(Ident, Vec<Pattern<Ident>>),
     WildCard
@@ -176,7 +176,7 @@ pub enum DoBinding<Ident = InternedStr> {
 
 #[derive(Clone, PartialEq)]
 pub enum LiteralData {
-    Integral(int),
+    Integral(isize),
     Fractional(f64),
     String(InternedStr),
     Char(char)

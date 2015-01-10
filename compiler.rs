@@ -39,38 +39,38 @@ pub enum Instruction {
     DoubleGE,
     IntToDouble,
     DoubleToInt,
-    Push(uint),
-    PushGlobal(uint),
-    PushInt(int),
+    Push(usize),
+    PushGlobal(usize),
+    PushInt(isize),
     PushFloat(f64),
     PushChar(char),
     Mkap,
     Eval,
     Unwind,
-    Update(uint),
-    Pop(uint),
-    Slide(uint),
-    Split(uint),
+    Update(usize),
+    Pop(usize),
+    Slide(usize),
+    Split(usize),
     Pack(u16, u16),
-    CaseJump(uint),
-    Jump(uint),
-    JumpFalse(uint),
-    PushDictionary(uint),
-    PushDictionaryMember(uint),
-    PushBuiltin(uint),
+    CaseJump(usize),
+    Jump(usize),
+    JumpFalse(usize),
+    PushDictionary(usize),
+    PushDictionaryMember(usize),
+    PushBuiltin(usize),
     MkapDictionary,
-    ConstructDictionary(uint),
-    PushDictionaryRange(uint, uint)
+    ConstructDictionary(usize),
+    PushDictionaryRange(usize, usize)
 }
 #[derive(Show)]
 enum Var<'a> {
-    Stack(uint),
-    Global(uint),
+    Stack(usize),
+    Global(usize),
     Constructor(u16, u16),
     Class(&'a Type, &'a [Constraint<Name>], &'a TypeVariable),
-    Constraint(uint, &'a Type, &'a[Constraint<Name>]),
-    Builtin(uint),
-    Primitive(uint, Instruction),
+    Constraint(usize, &'a Type, &'a[Constraint<Name>]),
+    Builtin(usize),
+    Primitive(usize, Instruction),
     Newtype
 }
 
@@ -119,19 +119,19 @@ impl <'a> Clone for Var<'a> {
 }
 
 pub struct SuperCombinator {
-    pub arity : uint,
+    pub arity : usize,
     pub name: Name,
-    pub assembly_id: uint,
+    pub assembly_id: usize,
     pub instructions : Vec<Instruction>,
     pub typ: Qualified<Type, Name>
 }
 pub struct Assembly {
     pub superCombinators: Vec<SuperCombinator>,
-    pub instance_dictionaries: Vec<Vec<uint>>,
+    pub instance_dictionaries: Vec<Vec<usize>>,
     pub classes: Vec<Class<Id>>,
     pub instances: Vec<(Vec<Constraint<Name>>, Type)>,
     pub data_definitions: Vec<DataDefinition<Name>>,
-    pub offset: uint
+    pub offset: usize
 }
 
 trait Globals {
@@ -176,7 +176,7 @@ impl Globals for Assembly {
     }
 }
 
-fn find_global<'a>(module: &'a Module<Id>, offset: uint, name: Name) -> Option<Var<'a>> {
+fn find_global<'a>(module: &'a Module<Id>, offset: usize, name: Name) -> Option<Var<'a>> {
     
     for class in module.classes.iter() {
         for decl in class.declarations.iter() {
@@ -347,7 +347,7 @@ impl DataTypes for Assembly {
 }
 
 impl Instruction {
-    fn stack_change(&self) -> int {
+    fn stack_change(&self) -> isize {
         match *self {
             Add | Sub | Multiply | Divide | Remainder | IntEQ | IntLT | IntLE | IntGT | IntGE | 
             DoubleAdd |  DoubleSub |  DoubleMultiply |  DoubleDivide |  DoubleRemainder |  DoubleEQ |
@@ -356,14 +356,14 @@ impl Instruction {
             Push(..) | PushGlobal(..) | PushInt(..) | PushFloat(..) | PushChar(..) => 1,
             Mkap => -1,
             Eval | Unwind | Update(..) => 0,
-            Pop(s) => -(s as int),
-            Slide(s) => -(s as int),
-            Split(s) => (s as int) - 1, 
-            Pack(_, s) => 1 - (s as int),
+            Pop(s) => -(s as isize),
+            Slide(s) => -(s as isize),
+            Split(s) => (s as isize) - 1, 
+            Pack(_, s) => 1 - (s as isize),
             CaseJump(..) | Jump(..) | JumpFalse(..) => 0,
             PushDictionary(..) | PushDictionaryMember(..) | PushBuiltin(..) => 1,
             MkapDictionary => -1,
-            ConstructDictionary(size) => (size as int) - 1,
+            ConstructDictionary(size) => (size as isize) - 1,
             PushDictionaryRange(..) => 1
         }
     }
@@ -376,8 +376,8 @@ enum ArgList<'a> {
 
 pub struct Compiler<'a> {
     ///Hashmap containging class names mapped to the functions it contains
-    pub instance_dictionaries: Vec<(Vec<(Name, Type)>, Vec<uint>)>,
-    pub stackSize : uint,
+    pub instance_dictionaries: Vec<(Vec<(Name, Type)>, Vec<usize>)>,
+    pub stackSize : usize,
     ///Array of all the assemblies which can be used to lookup functions in
     pub assemblies: Vec<&'a Assembly>,
     module: Option<&'a Module<Id>>,
@@ -474,7 +474,7 @@ impl <'a> Compiler<'a> {
         }
     }
 
-    fn compile_lambda_binding(&mut self, expr: &Expr<Id>, instructions: &mut Vec<Instruction>) -> uint {
+    fn compile_lambda_binding(&mut self, expr: &Expr<Id>, instructions: &mut Vec<Instruction>) -> usize {
         match expr {
             &Lambda(ref ident, ref body) => {
                 self.new_stack_var(ident.name.clone());
@@ -569,7 +569,7 @@ impl <'a> Compiler<'a> {
         self.variables.insert(identifier, Var::Stack(self.stackSize));
         self.stackSize += 1;
     }
-    fn new_var_at(&mut self, identifier : Name, index: uint) {
+    fn new_var_at(&mut self, identifier : Name, index: usize) {
         self.variables.insert(identifier, Var::Stack(index));
     }
 
@@ -660,11 +660,11 @@ impl <'a> Compiler<'a> {
                     let alt = &alternatives[i];
 
                     self.scope(&mut |this| {
-                        let pattern_start = instructions.len() as int;
+                        let pattern_start = instructions.len() as isize;
                         let mut branches = Vec::new();
                         let i = this.stackSize - 1;
                         let stack_increase = this.compile_pattern(&alt.pattern, &mut branches, instructions, i);
-                        let pattern_end = instructions.len() as int;
+                        let pattern_end = instructions.len() as isize;
                         this.compile(&alt.expression, instructions, strict);
                         instructions.push(Slide(stack_increase));
                         instructions.push(Jump(0));//Should jump to the end
@@ -674,11 +674,11 @@ impl <'a> Compiler<'a> {
                         //We need to set all the jump instructions to their actual location
                         //and append Slide instructions to bring the stack back to normal if the match fails
                         for j in range_step(pattern_end, pattern_start, -1) {
-                            match instructions[j as uint] {
+                            match instructions[j as usize] {
                                 Jump(_) => {
-                                    instructions[j as uint] = Jump(instructions.len());
+                                    instructions[j as usize] = Jump(instructions.len());
                                 }
-                                JumpFalse(_) => instructions[j as uint] = JumpFalse(instructions.len()),
+                                JumpFalse(_) => instructions[j as usize] = JumpFalse(instructions.len()),
                                 Split(size) => instructions.push(Pop(size)),
                                 _ => ()
                             }
@@ -784,7 +784,7 @@ impl <'a> Compiler<'a> {
         }
     }
 
-    fn compile_args(&mut self, args: &ArgList, instructions: &mut Vec<Instruction>, strict: bool) -> uint {
+    fn compile_args(&mut self, args: &ArgList, instructions: &mut Vec<Instruction>, strict: bool) -> usize {
         match *args {
             ArgList::Cons(arg, rest) => {
                 let i = self.compile_args(rest, instructions, strict);
@@ -900,13 +900,13 @@ impl <'a> Compiler<'a> {
     }
 
     ///Lookup which index in the instance dictionary that holds the function called 'name'
-    fn push_dictionary_member(&self, constraints: &[Constraint<Name>], name: Name) -> Option<uint> {
+    fn push_dictionary_member(&self, constraints: &[Constraint<Name>], name: Name) -> Option<usize> {
         if constraints.len() == 0 {
             panic!("Attempted to push dictionary member '{:?}' with no constraints", name)
         }
         let mut ii = 0;
         for c in constraints.iter() {
-            let result = self.walk_classes(c.class, &mut |declarations| -> Option<uint> {
+            let result = self.walk_classes(c.class, &mut |declarations| -> Option<usize> {
                 for decl in declarations.iter() {
                     if decl.name == name {
                         return Some(ii)
@@ -936,7 +936,7 @@ impl <'a> Compiler<'a> {
 
     ///Find the index of the instance dictionary for the constraints and types in 'constraints'
     ///Returns the index
-    fn find_dictionary_index(&mut self, constraints: &[(Name, Type)]) -> uint {
+    fn find_dictionary_index(&mut self, constraints: &[(Name, Type)]) -> usize {
         //Check if the dictionary already exist
         let dict_len = self.instance_dictionaries.len();
         for ii in range(0, dict_len) {
@@ -954,7 +954,7 @@ impl <'a> Compiler<'a> {
         dict_len
     }
 
-    fn add_class(&self, constraints: &[(Name, Type)], function_indexes: &mut Vec<uint>) {
+    fn add_class(&self, constraints: &[(Name, Type)], function_indexes: &mut Vec<usize>) {
 
         for &(ref class_name, ref typ) in constraints.iter() {
             self.walk_classes(*class_name, &mut |declarations| -> Option<()> {
@@ -970,10 +970,10 @@ impl <'a> Compiler<'a> {
                     let name = Name { name: f, uid: decl.name.uid };
                     match self.find(name) {
                         Some(Var::Global(index)) => {
-                            function_indexes.push(index as uint);
+                            function_indexes.push(index as usize);
                         }
                         Some(Var::Constraint(index, _, _)) => {
-                            function_indexes.push(index as uint);//TODO this is not really correct since this function requires a dictionary
+                            function_indexes.push(index as usize);//TODO this is not really correct since this function requires a dictionary
                         }
                         var => panic!("Did not find function {:?} {:?}", name, var)
                     }
@@ -986,14 +986,14 @@ impl <'a> Compiler<'a> {
     ///Compiles a pattern.
     ///An index to the Jump instruction which is taken when the match fails is stored in the branches vector
     ///These instructions will need to be updated later with the correct jump location.
-    fn compile_pattern(&mut self, pattern: &Pattern<Id>, branches: &mut Vec<uint>, instructions: &mut Vec<Instruction>, stack_size: uint) -> uint {
+    fn compile_pattern(&mut self, pattern: &Pattern<Id>, branches: &mut Vec<usize>, instructions: &mut Vec<Instruction>, stack_size: usize) -> usize {
         debug!("Pattern {:?} at {:?}", pattern, stack_size);
         match pattern {
             &Pattern::Constructor(ref name, ref patterns) => {
                 instructions.push(Push(stack_size));
                 match self.find_constructor(name.name) {
                     Some((tag, _)) => {
-                        instructions.push(CaseJump(tag as uint));
+                        instructions.push(CaseJump(tag as usize));
                         branches.push(instructions.len());
                         instructions.push(Jump(0));
                     }

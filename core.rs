@@ -63,7 +63,7 @@ pub struct Alternative<Ident> {
 pub enum Pattern<Ident> {
     Constructor(Ident, Vec<Ident>),
     Identifier(Ident),
-    Number(int),
+    Number(isize),
     WildCard
 }
 
@@ -688,7 +688,7 @@ impl <'a> Translator<'a> {
         result
     }
     
-    fn unwrap_pattern(&mut self, uid: uint, id: Id<Name>, pattern: module::Pattern<Name>, result: &mut Vec<(Id<Name>, Pattern<Id<Name>>)>) {
+    fn unwrap_pattern(&mut self, uid: usize, id: Id<Name>, pattern: module::Pattern<Name>, result: &mut Vec<(Id<Name>, Pattern<Id<Name>>)>) {
         match pattern {
             module::Pattern::Constructor(ctor_name, mut patterns) => {
                 let index = result.len();
@@ -729,7 +729,7 @@ impl <'a> Translator<'a> {
     }
     ///Translates a pattern list of patterns into a list of patterns which are not nested.
     ///The first argument of each tuple is the identifier that is expected to be passed to the case.
-    fn unwrap_patterns(&mut self, uid: uint, arg_ids: &[Id<Name>], arguments: &[module::Pattern<Name>]) -> Vec<(Id<Name>, Pattern<Id<Name>>)> {
+    fn unwrap_patterns(&mut self, uid: usize, arg_ids: &[Id<Name>], arguments: &[module::Pattern<Name>]) -> Vec<(Id<Name>, Pattern<Id<Name>>)> {
         let mut result = Vec::new();
         for (p, id) in arguments.iter().zip(arg_ids.iter()) {
             self.unwrap_pattern(uid, id.clone(), p.clone(), &mut result);

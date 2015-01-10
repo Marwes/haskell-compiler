@@ -3,10 +3,10 @@ use std::collections::HashMap;
 use std::collections::hash_map::{Hasher, Entry, IterMut};
 use std::hash::Hash;
 
-///A map struct which allows for the introduction of different scopes
-///Introducing a new scope will make it possible to introduce additional
+///A map struct which allows for the isizeroduction of different scopes
+///Introducing a new scope will make it possible to isizeroduce additional
 ///variables with names already defined, shadowing the old name
-///After exiting a scope the shadowed variable will again be re introduced
+///After exiting a scope the shadowed variable will again be re isizeroduced
 pub struct ScopedMap<K, V> {
     ///A hashmap storing a key -> value mapping
     ///Stores a vector of values in which the value at the top is value returned from 'find'
@@ -41,10 +41,10 @@ impl <K, V> ScopedMap<K, V>
     pub fn remove(&mut self, k: &K) -> bool {
         match self.map.get_mut(k).map(|x| x.pop()) {
             Some(..) => {
-                let mut i = self.scopes.len() as int - 1;
+                let mut i = self.scopes.len() as isize - 1;
                 while i >= 0 {
-                    if self.scopes[i as uint].as_ref().map_or(false, |x| x == k) {
-                        self.scopes.remove(i as uint);
+                    if self.scopes[i as usize].as_ref().map_or(false, |x| x == k) {
+                        self.scopes.remove(i as usize);
                     }
                     i -= 1;
                 }
@@ -77,7 +77,7 @@ impl <K, V> ScopedMap<K, V>
 
     ///Returns the number of elements in the container.
     ///Shadowed elements are not counted
-    pub fn len(&self) -> uint { self.map.len() }
+    pub fn len(&self) -> usize { self.map.len() }
 
     ///Removes all elements
     pub fn clear(&mut self) {
@@ -105,10 +105,10 @@ impl <K, V> ScopedMap<K, V>
     pub fn pop(&mut self, k: &K) -> Option<V> {
         match self.map.get_mut(k).and_then(|x| x.pop()) {
             Some(v) => {
-                let mut i = self.scopes.len() as int - 1;
+                let mut i = self.scopes.len() as isize - 1;
                 while i >= 0 {
-                    if self.scopes[i as uint].as_ref().map_or(false, |x| x == k) {
-                        self.scopes.remove(i as uint);
+                    if self.scopes[i as usize].as_ref().map_or(false, |x| x == k) {
+                        self.scopes.remove(i as usize);
                     }
                     i -= 1;
                 }

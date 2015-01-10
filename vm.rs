@@ -20,20 +20,20 @@ struct InstanceDictionary {
 }
 #[derive(Clone)]
 enum DictionaryEntry {
-    Function(uint),
-    App(uint, InstanceDictionary)
+    Function(usize),
+    App(usize, InstanceDictionary)
 }
 
 enum Node_<'a> {
     Application(Node<'a>, Node<'a>),
-    Int(int),
+    Int(isize),
     Float(f64),
     Char(char),
     Combinator(&'a SuperCombinator),
     Indirection(Node<'a>),
     Constructor(u16, Vec<Node<'a>>),
     Dictionary(InstanceDictionary),
-    BuiltinFunction(uint, BuiltinFun)
+    BuiltinFunction(usize, BuiltinFun)
 }
 impl <'a> Clone for Node_<'a> {
     fn clone(&self) -> Node_<'a> {
@@ -153,7 +153,7 @@ pub struct VM {
     ///Vector of all assemblies which are loaded.
     assembly : Vec<Assembly>,
     ///A pair of (assembly_index, function_index).
-    globals: Vec<(uint, uint)>,
+    globals: Vec<(usize, usize)>,
 }
 
 impl <'a> VM {
@@ -162,7 +162,7 @@ impl <'a> VM {
     }
 
     ///Adds an assembly to the VM, adding entries to the global table as necessary
-    pub fn add_assembly(&mut self, assembly: Assembly) -> uint {
+    pub fn add_assembly(&mut self, assembly: Assembly) -> usize {
         self.assembly.push(assembly);
         let assembly_index = self.assembly.len() - 1;
         for index in range(0, self.assembly.last().unwrap().superCombinators.len()) {
@@ -171,19 +171,19 @@ impl <'a> VM {
         assembly_index
     }
     ///Returns a reference to the assembly at the index
-    pub fn get_assembly(&self, index: uint) -> &Assembly {
+    pub fn get_assembly(&self, index: usize) -> &Assembly {
         &self.assembly[index]
     }
 
     ///Evaluates the code into Head Normal Form (HNF)
-    pub fn evaluate(&self, code: &[Instruction], assembly_id: uint) -> Node_ {
+    pub fn evaluate(&self, code: &[Instruction], assembly_id: usize) -> Node_ {
         let mut stack = Vec::new();
         self.execute(&mut stack, code, assembly_id);
         self.deepseq(stack, assembly_id)
     }
     
     ///Evaluates the what is at the top of the stack into HNF
-    fn deepseq(&'a self, mut stack: Vec<Node<'a>>, assembly_id: uint) -> Node_<'a> {
+    fn deepseq(&'a self, mut stack: Vec<Node<'a>>, assembly_id: usize) -> Node_<'a> {
         static EVALCODE : &'static [Instruction] = &[Instruction::Eval];
         self.execute(&mut stack, EVALCODE, assembly_id);
         match *stack[0].borrow() {
@@ -201,7 +201,7 @@ impl <'a> VM {
     }
 
     ///Executes a sequence of instructions, leaving the result on the top of the stack
-    pub fn execute(&'a self, stack: &mut Vec<Node<'a>>, code: &[Instruction], assembly_id: uint) {
+    pub fn execute(&'a self, stack: &mut Vec<Node<'a>>, code: &[Instruction], assembly_id: usize) {
         use compiler::Instruction::*;
         debug!("----------------------------");
         debug!("Entering frame with stack");
@@ -243,7 +243,7 @@ impl <'a> VM {
                 DoubleToInt => {
                     let top = stack.pop().unwrap();
                     stack.push(match *top.borrow() {
-                        Float(f) => Node::new(Int(f as int)),
+                        Float(f) => Node::new(Int(f as isize)),
                         _ => panic!("Excpected Double in Double -> Int cast")
                     });
                 }
@@ -294,7 +294,7 @@ impl <'a> VM {
                     stack[index] = Node::new(Indirection(stack.last().unwrap().clone()));
                 }
                 Unwind => {
-                    fn unwind<'a, F>(i_ptr: &mut uint, arity: uint, stack: &mut Vec<Node<'a>>, f: F)
+                    fn unwind<'a, F>(i_ptr: &mut usize, arity: usize, stack: &mut Vec<Node<'a>>, f: F)
                         where F: FnOnce(&mut Vec<Node<'a>>) -> Node<'a> {
                         if stack.len() - 1 < arity {
                             while stack.len() > 1 {
@@ -382,7 +382,7 @@ impl <'a> VM {
                 CaseJump(jump_tag) => {
                     let jumped = match *stack.last().unwrap().borrow() {
                         Constructor(tag, _) => {
-                            if jump_tag == tag as uint {
+                            if jump_tag == tag as usize {
                                 i += 1;//Skip the jump instruction ie continue to the next test
                                 true
                             }
@@ -401,7 +401,7 @@ impl <'a> VM {
                 }
                 PushDictionary(index) => {
                     let assembly = &self.assembly[assembly_id];
-                    let dict : &[uint] = &*assembly.instance_dictionaries[index];
+                    let dict : &[usize] = &*assembly.instance_dictionaries[index];
                     let dict = InstanceDictionary { entries: dict.iter().map(|i| Rc::new(DictionaryEntry::Function(*i))).collect() };
                     stack.push(Node::new(Dictionary(dict)));
                 }
@@ -484,7 +484,7 @@ impl <'a> VM {
 
 
 ///Exucutes a binary primitive instruction taking two integers
-fn primitive_int<'a, F>(stack: &mut Vec<Node<'a>>, f: F) where F: FnOnce(int, int) -> Node_<'a> {
+fn primitive_int<'a, F>(stack: &mut Vec<Node<'a>>, f: F) where F: FnOnce(isize, isize) -> Node_<'a> {
     let l = stack.pop().unwrap();
     let r = stack.pop().unwrap();
     match (&*l.borrow(), &*r.borrow()) {
@@ -501,13 +501,13 @@ fn primitive_float<'a, F>(stack: &mut Vec<Node<'a>>, f: F) where F: FnOnce(f64, 
         (lhs, rhs) => panic!("Expected fully evaluted numbers in primitive instruction\n LHS: {:?}\nRHS: {:?} ", lhs, rhs)
     }
 }
-fn primitive<F>(stack: &mut Vec<Node>, f: F) where F: FnOnce(int, int) -> int {
+fn primitive<F>(stack: &mut Vec<Node>, f: F) where F: FnOnce(isize, isize) -> isize {
     primitive_int(stack, move |l, r| Int(f(l, r)))
 }
 
 #[derive(PartialEq, Show)]
 enum VMResult {
-    Int(int),
+    Int(isize),
     Double(f64),
     Constructor(u16, Vec<VMResult>)
 }
@@ -590,7 +590,7 @@ mod primitive {
     use compiler::Instruction;
     use compiler::Instruction::Eval;
 
-    pub fn get_builtin(i: uint) -> (uint, BuiltinFun) {
+    pub fn get_builtin(i: usize) -> (usize, BuiltinFun) {
         match i {
             0 => (1, error),
             1 => (2, seq),

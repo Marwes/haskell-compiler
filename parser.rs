@@ -778,7 +778,7 @@ fn constrained_type(&mut self) -> (Vec<Constraint>, Type) {
 	(make_constraints(maybeConstraints), typ)
 }
 
-fn constructor_type(&mut self, arity : &mut int, dataDef: &DataDefinition) -> Type {
+fn constructor_type(&mut self, arity : &mut isize, dataDef: &DataDefinition) -> Type {
 	let token = self.lexer.next().token;
 	if token == NAME {
 		*arity += 1;
@@ -817,7 +817,7 @@ fn data_definition(&mut self) -> DataDefinition {
 	definition.constructors = self.sep_by_1_func(|this| this.constructor(&definition),
 		|t : &Token| t.token == PIPE);
 	for ii in range(0, definition.constructors.len()) {
-		definition.constructors[ii].tag = ii as int;
+		definition.constructors[ii].tag = ii as isize;
 	}
     definition.deriving = self.deriving();
 	definition
@@ -843,7 +843,7 @@ fn newtype(&mut self) -> Newtype {
 
 fn data_lhs(&mut self) -> Type {
 	let name = self.require_next(NAME).value.clone();
-    let mut typ = Type::Constructor(TypeConstructor { name: name, kind: star_kind.clone() });
+    let mut typ = Type::Constructor(TypeConstructor { name: name, kind: Kind::Star.clone() });
 	while self.lexer.next().token == NAME {
 		typ = Type::Application(box typ, box Type::new_var(self.lexer.current().value));
 	}
@@ -865,7 +865,7 @@ fn deriving(&mut self) -> Vec<InternedStr> {
     }
 }
 
-fn set_kind(typ: &mut Type, kind: int) {
+fn set_kind(typ: &mut Type, kind: isize) {
     match typ {
         &mut Type::Application(ref mut lhs, _) => {
             Parser::<Iter>::set_kind(&mut **lhs, kind + 1)

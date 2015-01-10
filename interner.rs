@@ -4,10 +4,10 @@ use std::cell::RefCell;
 use std::fmt;
 
 #[derive(Eq, PartialEq, Clone, Copy, Default, Hash)]
-pub struct InternedStr(uint);
+pub struct InternedStr(usize);
 
 pub struct Interner {
-    indexes: HashMap<String, uint>,
+    indexes: HashMap<String, usize>,
     strings: Vec<String>
 }
 

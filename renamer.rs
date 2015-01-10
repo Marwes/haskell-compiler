@@ -7,7 +7,7 @@ use interner::*;
 #[derive(PartialEq, Eq, Hash, Clone, Copy)]
 pub struct Name {
     pub name: InternedStr,
-    pub uid: uint
+    pub uid: usize
 }
 
 impl Str for Name {
@@ -48,7 +48,7 @@ impl <T: ::std::fmt::Show> Errors<T> {
 
 ///A NameSupply can turn simple strings into unique Names
 pub struct NameSupply {
-    unique_id: uint
+    unique_id: usize
 }
 impl NameSupply {
     
@@ -67,7 +67,7 @@ impl NameSupply {
     pub fn from_interned(&mut self, s: InternedStr) -> Name {
         Name { name: s, uid: self.next_id() }
     }
-    pub fn next_id(&mut self) -> uint {
+    pub fn next_id(&mut self) -> usize {
         self.unique_id += 1;
         self.unique_id
     }
@@ -79,7 +79,7 @@ impl NameSupply {
 ///Each module gets one uid which it uses for a top level declarations (bindings, types, etc)
 ///All functions which are in a class or an instance gets the same id as the class has,
 ///this is to allow the compiler to find the specific instance/class functions when it constructs dictionaries
-///All uid's of the other names can have any uid (as long as it introduces no name collisions)
+///All uid's of the other names can have any uid (as long as it isizeroduces no name collisions)
 struct Renamer {
     ///Mapping of strings into the unique name
     uniques: ScopedMap<InternedStr, Name>,
@@ -94,7 +94,7 @@ impl Renamer {
         Renamer { uniques: ScopedMap::new(), name_supply: NameSupply::new(), errors: Errors::new() }
     }
 
-    fn import_globals<T: Eq + Copy>(&mut self, module: &Module<T>, str_fn: &mut FnMut(T) -> InternedStr, uid: uint) {
+    fn import_globals<T: Eq + Copy>(&mut self, module: &Module<T>, str_fn: &mut FnMut(T) -> InternedStr, uid: usize) {
         let mut names = module.data_definitions.iter()
             .flat_map(|data| data.constructors.iter().map(|ctor| ctor.name))
             .chain(module.newtypes.iter().map(|newtype| newtype.constructor_name))
@@ -114,7 +114,7 @@ impl Renamer {
         }
     }
 
-    fn insert_globals(&mut self, module_env: &[Module<Name>], module: &Module<InternedStr>, uid: uint) {
+    fn insert_globals(&mut self, module_env: &[Module<Name>], module: &Module<InternedStr>, uid: usize) {
         self.import_globals(module, &mut |name| name, uid);
         for import in module.imports.iter() {
             let imported_module = module_env.iter()
@@ -292,7 +292,7 @@ impl Renamer {
             u
         }
     }
-    fn declare_global(&mut self, s: InternedStr, module_id: uint) -> Name {
+    fn declare_global(&mut self, s: InternedStr, module_id: usize) -> Name {
         self.make_unique(s);
         let name = self.uniques.find_mut(&s).unwrap();
         name.uid = module_id;
