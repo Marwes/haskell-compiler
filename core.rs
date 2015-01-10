@@ -196,7 +196,7 @@ impl <T> Typed for Id<T> {
 }
 
 
-mod ref_ {
+pub mod ref_ {
     use super::*;
     use super::Expr::*;
     ///Visitor for the types in the core language.

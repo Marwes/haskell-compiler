@@ -208,9 +208,11 @@ mod tests {
     use test::Bencher;
     use interner::*;
     use lambda_lift::*;
-    use collections::hashmap::HashSet;
+    use std::collections::HashSet;
     use parser::Parser;
     use core::*;
+    use core::Expr::*;
+    use core::ref_::*;
     use core::translate::translate_module;
     use renamer::rename_module;
     use typecheck::TypeEnvironment;
@@ -249,12 +251,12 @@ test2 x =
             in add x test
     in f x".chars());
         let module = translate_module(rename_module(parser.module()));
-        (&mut visitor as &mut Visitor<Id>).visit_module(&module);
+        visitor.visit_module(&module);
     }
 
     fn check_args(expr: &Expr<Id>, args: &[InternedStr]) -> bool {
         match expr {
-            &Lambda(ref arg, ref body) => arg.name.name == args[0] && check_args(*body, args.slice_from(1)),
+            &Lambda(ref arg, ref body) => arg.name.name == args[0] && check_args(&**body, args.slice_from(1)),
             _ => args.len() == 0
         }
     }
@@ -266,12 +268,11 @@ test2 x =
     fn get_let<'a>(expr: &'a Expr<Id>, args: &mut Vec<InternedStr>) -> &'a Expr<Id> {
         match expr {
             &Apply(ref f, ref arg) => {
-                let a: &Expr<Id> = *arg;
-                match a {
-                    &Identifier(ref i) => args.push(i.name.name),
+                match **arg {
+                    Identifier(ref i) => args.push(i.name.name),
                     _ => panic!("Expected identifier as argument")
                 }
-                get_let(*f, args)
+                get_let(&**f, args)
             }
             _ => expr
         }
@@ -325,7 +326,7 @@ test2 x =
 	TypeEnvironment::new().typecheck_module(&mut module);
         let m = translate_module(module);
         let module = abstract_module(m);
-        (&mut visitor as &mut Visitor<Id>).visit_module(&module);
+        visitor.visit_module(&module);
         assert_eq!(visitor.count, 2);
     }
 
@@ -342,9 +343,9 @@ test2 x =
     }
     #[test]
     fn no_local_lambdas() {
-        fn skip_lambdas<'a, T>(expr: &'a Expr<T>) -> &'a Expr<T> {
+        fn skip_lambdas<T>(expr: &Expr<T>) -> &Expr<T> {
             match expr {
-                &Lambda(_, ref body) => skip_lambdas(*body),
+                &Lambda(_, ref body) => skip_lambdas(&**body),
                 _ => expr
             }
         }
@@ -363,7 +364,7 @@ test2 x =
         let m = translate_module(rename_module(parser.module()));
         let module = lift_lambdas(m);
         for bind in module.bindings.iter() {
-            (&mut visitor as &mut Visitor<TypeAndStr>).visit_expr(skip_lambdas(&bind.expression));
+            visitor.visit_expr(skip_lambdas(&bind.expression));
         }
     }
 
@@ -373,7 +374,7 @@ test2 x =
         use typecheck::test::do_typecheck;
 
         let path = &Path::new("Prelude.hs");
-        let contents = File::open(path).read_to_str().unwrap();
+        let contents = File::open(path).read_to_string().unwrap();
         let module = do_typecheck(contents.as_slice());
         b.iter(|| {
             do_lambda_lift(translate_module(module.clone()))

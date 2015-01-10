@@ -1093,8 +1093,10 @@ fn parse_modules_(visited: &mut HashSet<InternedStr>, modules: &mut Vec<Module>,
 mod tests {
 
 use interner::*;
+use lexer::{Location, Located };
 use parser::*;
 use module::*;
+use module::Expr::*;
 use typecheck::{identifier, apply, op_apply, number, rational, lambda, let_, case, if_else};
 use std::io::File;
 use test::Bencher;
@@ -1266,7 +1268,7 @@ r"class Eq a => Ord a where_bindings
 ".chars());
     let module = parser.module();
 
-    let cls = module.classes[0];
+    let cls = &module.classes[0];
     let a = Type::new_var(intern("a")).var().clone();
     assert_eq!(cls.name, intern("Ord"));
     assert_eq!(cls.variable, a);
@@ -1356,9 +1358,9 @@ infixr 6 `test2`, |<
 test2 x y = 1
 ".chars());
     let module = parser.module();
-    assert_eq!(module.fixity_declarations.as_slice(), &[
-        FixityDeclaration { assoc: RightAssoc, precedence: 5, operators: vec![intern("test")] },
-        FixityDeclaration { assoc: RightAssoc, precedence: 6, operators: vec![intern("test2"), intern("|<")] },
+    assert_eq!(module.fixity_declarations, [
+        FixityDeclaration { assoc: Assoc::Right, precedence: 5, operators: vec![intern("test")] },
+        FixityDeclaration { assoc: Assoc::Right, precedence: 6, operators: vec![intern("test2"), intern("|<")] },
     ]);
 }
 
@@ -1373,7 +1375,7 @@ dummy = 1
     let module = parser.module();
     let data = &module.dataDefinitions[0];
     assert_eq!(data.typ, qualified(Vec::new(), Type::new_op(intern("Test"), Vec::new())));
-    assert_eq!(data.deriving.as_slice(), &[intern("Eq"), intern("Show")]);
+    assert_eq!(data.deriving, [intern("Eq"), intern("Show")]);
 }
 
 #[test]

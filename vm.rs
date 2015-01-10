@@ -506,9 +506,9 @@ fn primitive<F>(stack: &mut Vec<Node>, f: F) where F: FnOnce(int, int) -> int {
 
 #[derive(PartialEq, Show)]
 enum VMResult {
-    IntResult(int),
-    DoubleResult(f64),
-    ConstructorResult(u16, Vec<VMResult>)
+    Int(int),
+    Double(f64),
+    Constructor(u16, Vec<VMResult>)
 }
 
 fn compile_iter<T : Iterator<Item=char>>(iterator: T) -> Assembly {
@@ -531,7 +531,6 @@ pub fn compile_file(filename: &str) -> Assembly {
 }
 
 fn extract_result(node: Node_) -> Option<VMResult> {
-    use self::VMResult::*;
     match node {
         Constructor(tag, fields) => {
             let mut result = Vec::new();
@@ -541,10 +540,10 @@ fn extract_result(node: Node_) -> Option<VMResult> {
                     None => return None
                 }
             }
-            Some(ConstructorResult(tag, result))
+            Some(VMResult::Constructor(tag, result))
         }
-        Int(i) => Some(IntResult(i)),
-        Float(i) => Some(DoubleResult(i)),
+        Int(i) => Some(VMResult::Int(i)),
+        Float(i) => Some(VMResult::Double(i)),
         x => {
             println!("Can't extract result {:?}", x);
             None
@@ -731,7 +730,8 @@ use std::path::Path;
 use std::io::File;
 use typecheck::TypeEnvironment;
 use compiler::{compile_with_type_env};
-use vm::{VM, evaluate, compile_file, compile_iter, execute_main_module, execute_main_string, extract_result, VMResult, IntResult, DoubleResult, ConstructorResult};
+use vm::{VM, evaluate, compile_file, compile_iter, execute_main_module, execute_main_string, extract_result, VMResult};
+use vm::VMResult::{Int, Double, Constructor};
 use interner::*;
 
 fn execute_main<T : Iterator<Item=char>>(iterator: T) -> Option<VMResult> {
@@ -741,7 +741,7 @@ fn execute_main<T : Iterator<Item=char>>(iterator: T) -> Option<VMResult> {
     match x {
         Some(sc) => {
             assert!(sc.arity == 0);
-            let result = evaluate(&vm, sc.instructions, sc.assembly_id);
+            let result = evaluate(&vm, &*sc.instructions, sc.assembly_id);
             extract_result(result)
         }
         None => None
@@ -751,14 +751,14 @@ fn execute_main<T : Iterator<Item=char>>(iterator: T) -> Option<VMResult> {
 #[test]
 fn test_primitive()
 {
-    assert_eq!(execute_main("main = primIntAdd 10 5".chars()), Some(IntResult(15)));
-    assert_eq!(execute_main("main = primIntSubtract 7 (primIntMultiply 2 3)".chars()), Some(IntResult(1)));
-    assert_eq!(execute_main("main = primIntDivide 10 (primIntRemainder 6 4)".chars()), Some(IntResult(5)));
-    assert_eq!(execute_main("main = primDoubleDivide 3. 2.".chars()), Some(DoubleResult(1.5)));
+    assert_eq!(execute_main("main = primIntAdd 10 5".chars()), Some(VMResult::Int(15)));
+    assert_eq!(execute_main("main = primIntSubtract 7 (primIntMultiply 2 3)".chars()), Some(VMResult::Int(1)));
+    assert_eq!(execute_main("main = primIntDivide 10 (primIntRemainder 6 4)".chars()), Some(VMResult::Int(5)));
+    assert_eq!(execute_main("main = primDoubleDivide 3. 2.".chars()), Some(VMResult::Double(1.5)));
     let s = 
 r"data Bool = True | False
 main = primIntLT 1 2";
-    assert_eq!(execute_main(s.chars()), Some(ConstructorResult(0, Vec::new())));
+    assert_eq!(execute_main(s.chars()), Some(VMResult::Constructor(0, Vec::new())));
 }
 
 #[test]
@@ -768,7 +768,7 @@ fn test_function()
 r"mult2 x = primIntMultiply x 2
 
 main = mult2 10";
-    assert_eq!(execute_main(module.chars()), Some(IntResult(20)));
+    assert_eq!(execute_main(module.chars()), Some(VMResult::Int(20)));
 
     let module2 = 
 r"mult2 x = primIntMultiply x 2
@@ -776,7 +776,7 @@ r"mult2 x = primIntMultiply x 2
 add x y = primIntAdd y x
 
 main = add 3 (mult2 10)";
-    assert_eq!(execute_main(module2.chars()), Some(IntResult(23)));
+    assert_eq!(execute_main(module2.chars()), Some(VMResult::Int(23)));
 }
 #[test]
 fn test_case()
@@ -787,7 +787,7 @@ r"mult2 x = primIntMultiply x 2
 main = case [mult2 123, 0] of
     x:xs -> x
     [] -> 10";
-    assert_eq!(execute_main(module.chars()), Some(IntResult(246)));
+    assert_eq!(execute_main(module.chars()), Some(VMResult::Int(246)));
 }
 
 #[test]
@@ -798,7 +798,7 @@ r"mult2 x = primIntMultiply x 2
 main = case [mult2 123, 0] of
     246:xs -> primIntAdd 0 246
     [] -> 10";
-    assert_eq!(execute_main(module.chars()), Some(IntResult(246)));
+    assert_eq!(execute_main(module.chars()), Some(VMResult::Int(246)));
 }
 
 #[test]
@@ -810,7 +810,7 @@ main = case [mult2 123, 0] of
     246:[] -> primIntAdd 0 246
     x:xs -> 20
     [] -> 10";
-    assert_eq!(execute_main(module.chars()), Some(IntResult(20)));
+    assert_eq!(execute_main(module.chars()), Some(VMResult::Int(20)));
 }
 #[test]
 fn local_function() {
@@ -822,7 +822,7 @@ r"main =
                 g x = primIntAdd x y
             in g (primIntAdd 1 x)
     in f (primIntAdd 2 0) (primIntAdd 3 0)";
-    assert_eq!(execute_main(module.chars()), Some(IntResult(6)));
+    assert_eq!(execute_main(module.chars()), Some(VMResult::Int(6)));
 }
 
 #[test]
@@ -836,7 +836,7 @@ test = False
 main = case test of
     False -> primIntAdd 0 0
     True -> primIntAdd 1 0";
-    assert_eq!(execute_main(module.chars()), Some(IntResult(0)));
+    assert_eq!(execute_main(module.chars()), Some(VMResult::Int(0)));
 }
 
 #[test]
@@ -858,7 +858,7 @@ instance Test Bool where
 
 
 main = primIntSubtract (test (primIntAdd 5 0)) (test True)";
-    assert_eq!(execute_main(module.chars()), Some(IntResult(4)));
+    assert_eq!(execute_main(module.chars()), Some(VMResult::Int(4)));
 }
 
 #[test]
@@ -881,17 +881,19 @@ instance Test Bool where
 testAdd y = primIntAdd (test (primIntAdd 5 0)) (test y)
 
 main = testAdd True";
-    assert_eq!(execute_main(module.chars()), Some(IntResult(6)));
+    assert_eq!(execute_main(module.chars()), Some(VMResult::Int(6)));
 }
 
 #[test]
 fn test_run_prelude() {
-    let mut type_env = TypeEnvironment::new();
-    let prelude = compile_with_type_env(&mut type_env, [], File::open(&Path::new("Prelude.hs")).read_to_string().unwrap().as_slice());
+    let prelude = compile_file("Prelude.hs");
+    let assembly = {
+        let mut type_env = TypeEnvironment::new();
 
-    let assembly = compile_with_type_env(&mut type_env, [&prelude],
+        compile_with_type_env(&mut type_env, &[&prelude],
 r"add x y = primIntAdd x y
-main = foldl add 0 [1,2,3,4]");
+main = foldl add 0 [1,2,3,4]")
+    };
 
     let mut vm = VM::new();
     vm.add_assembly(prelude);
@@ -900,20 +902,22 @@ main = foldl add 0 [1,2,3,4]");
     let result = match x {
         Some(sc) => {
             assert!(sc.arity == 0);
-            let result = evaluate(&vm, sc.instructions, sc.assembly_id);
+            let result = evaluate(&vm, &*sc.instructions, sc.assembly_id);
             extract_result(result)
         }
         None => None
     };
-    assert_eq!(result, Some(IntResult(10)));
+    assert_eq!(result, Some(VMResult::Int(10)));
 }
 
 #[test]
 fn instance_super_class() {
     let prelude = compile_file("Prelude.hs");
 
-    let mut type_env = TypeEnvironment::new();
-    let assembly = compile_with_type_env(&mut type_env, [&prelude], "main = [primIntAdd 0 1,2,3,4] == [1,2,3]");
+    let assembly = {
+        let mut type_env = TypeEnvironment::new();
+        compile_with_type_env(&mut type_env, &[&prelude], "main = [primIntAdd 0 1,2,3,4] == [1,2,3]")
+    };
 
     let mut vm = VM::new();
     vm.add_assembly(prelude);
@@ -922,20 +926,21 @@ fn instance_super_class() {
     let result = match x {
         Some(sc) => {
             assert!(sc.arity == 0);
-            let result = evaluate(&vm, sc.instructions, sc.assembly_id);
+            let result = evaluate(&vm, &*sc.instructions, sc.assembly_id);
             extract_result(result)
         }
         None => None
     };
-    assert_eq!(result, Some(ConstructorResult(1, Vec::new())));
+    assert_eq!(result, Some(VMResult::Constructor(1, Vec::new())));
 }
 
 #[test]
 fn monad_do() {
     let prelude = compile_file("Prelude.hs");
 
-    let mut type_env = TypeEnvironment::new();
-    let assembly = compile_with_type_env(&mut type_env, [&prelude],
+    let assembly = {
+        let mut type_env = TypeEnvironment::new();
+        compile_with_type_env(&mut type_env, &[&prelude],
 "
 test :: Maybe Int -> Maybe Int -> Maybe Int
 test x y = do
@@ -943,7 +948,8 @@ test x y = do
     y
     return (x1 + 1)
 
-main = test (Just 4) (Just 6)");
+main = test (Just 4) (Just 6)")
+    };
 
     let mut vm = VM::new();
     vm.add_assembly(prelude);
@@ -952,18 +958,18 @@ main = test (Just 4) (Just 6)");
     let result = match x {
         Some(sc) => {
             assert!(sc.arity == 0);
-            let result = evaluate(&vm, sc.instructions, sc.assembly_id);
+            let result = evaluate(&vm, &*sc.instructions, sc.assembly_id);
             extract_result(result)
         }
         None => None
     };
-    assert_eq!(result, Some(ConstructorResult(0, vec!(IntResult(5)))));
+    assert_eq!(result, Some(VMResult::Constructor(0, vec!(VMResult::Int(5)))));
 }
 
 #[test]
 fn import() {
     let result = execute_main_module("Test");
-    assert_eq!(result, Ok(Some(IntResult(6))));
+    assert_eq!(result, Ok(Some(VMResult::Int(6))));
 }
 
 #[test]
@@ -980,7 +986,7 @@ test [] = False
 main = test [True, True]
 ")
     .unwrap_or_else(|err| panic!(err));
-    assert_eq!(result, Some(ConstructorResult(0, Vec::new())));
+    assert_eq!(result, Some(VMResult::Constructor(0, Vec::new())));
 }
 #[test]
 fn pattern_guards() {
@@ -999,7 +1005,7 @@ main = (test 2 [], test 100 [], test 100 ['c'])
 
 ")
     .unwrap_or_else(|err| panic!(err));
-    assert_eq!(result, Some(ConstructorResult(0, vec!(IntResult(2), IntResult(1), IntResult(100)))));
+    assert_eq!(result, Some(VMResult::Constructor(0, vec!(VMResult::Int(2), VMResult::Int(1), VMResult::Int(100)))));
 }
 
 #[test]
@@ -1019,7 +1025,7 @@ main = (test 2 [], test 100 [0], test 100 [0, 123])
 
 ")
     .unwrap_or_else(|err| panic!(err));
-    assert_eq!(result, Some(ConstructorResult(0, vec!(IntResult(2), IntResult(1), IntResult(100)))));
+    assert_eq!(result, Some(VMResult::Constructor(0, vec!(VMResult::Int(2), VMResult::Int(1), VMResult::Int(100)))));
 }
 #[test]
 fn test_class_default_function()
@@ -1040,7 +1046,7 @@ instance Test Bool where
     test2 = 2
 
 main = (test True, test (1 :: Int))";
-    assert_eq!(execute_main(module.chars()), Some(ConstructorResult(0, vec![IntResult(42), IntResult(1)])));
+    assert_eq!(execute_main(module.chars()), Some(VMResult::Constructor(0, vec![VMResult::Int(42), VMResult::Int(1)])));
 }
 
 #[test]
@@ -1052,7 +1058,7 @@ import Prelude
 test x y = (x == y) || (x < y)
 main = (test (0 :: Int) 2) && not (test (1 :: Int) 0)")
         .unwrap_or_else(|err| panic!("{:?}", err));
-    assert_eq!(result, Some(ConstructorResult(0, Vec::new())));
+    assert_eq!(result, Some(VMResult::Constructor(0, Vec::new())));
 }
 #[test]
 fn implement_class() {
@@ -1070,7 +1076,7 @@ test x y = x == y
 
 main = A == B && test A A")
         .unwrap_or_else(|err| panic!("{:?}", err));
-    assert_eq!(result, Some(ConstructorResult(1, Vec::new())));
+    assert_eq!(result, Some(VMResult::Constructor(1, Vec::new())));
 }
 
 #[test]
@@ -1083,7 +1089,7 @@ data Test = A Int | B
 
 main = A 0 == A 2 || A 0 == B
 ").unwrap_or_else(|err| panic!(err));
-    assert_eq!(result, Some(ConstructorResult(1, Vec::new())));
+    assert_eq!(result, Some(VMResult::Constructor(1, Vec::new())));
 }
 #[test]
 fn deriving_ord() {
@@ -1095,7 +1101,7 @@ data Test = A Int | B
 
 main = compare (A 0) (A 2) == LT && compare B (A 123) == GT
 ").unwrap_or_else(|err| panic!(err));
-    assert_eq!(result, Some(ConstructorResult(0, Vec::new())));
+    assert_eq!(result, Some(VMResult::Constructor(0, Vec::new())));
 }
 
 #[test]
@@ -1106,7 +1112,7 @@ import Prelude
 test x y = x == y
 main = test [1 :: Int] [3]
 ").unwrap_or_else(|err| panic!(err));
-    assert_eq!(result, Some(ConstructorResult(1, Vec::new())));
+    assert_eq!(result, Some(VMResult::Constructor(1, Vec::new())));
 }
 #[test]
 fn build_dictionary() {
@@ -1118,7 +1124,7 @@ test :: Eq a => a -> a -> Bool
 test x y = [x] == [y]
 main = test [1 :: Int] [3]
 ").unwrap_or_else(|err| panic!(err));
-    assert_eq!(result, Some(ConstructorResult(1, Vec::new())));
+    assert_eq!(result, Some(VMResult::Constructor(1, Vec::new())));
 }
 
 #[test]
@@ -1133,7 +1139,7 @@ main = let
         then x
         else 1
 ").unwrap_or_else(|err| panic!(err));
-    assert_eq!(result, Some(IntResult(1)));
+    assert_eq!(result, Some(VMResult::Int(1)));
 }
 
 #[test]
@@ -1151,7 +1157,7 @@ makeEven i
 main = makeEven (100 * 3)
 ").unwrap_or_else(|err| panic!(err));
 
-    assert_eq!(result, Some(ConstructorResult(0, vec![IntResult(300)])));
+    assert_eq!(result, Some(VMResult::Constructor(0, vec![VMResult::Int(300)])));
 }
 
 #[test]
@@ -1170,7 +1176,7 @@ main = case list of
     where
         list = [1::Int]
 ").unwrap_or_else(|err| panic!(err));
-    assert_eq!(result, Some(IntResult(11)));
+    assert_eq!(result, Some(VMResult::Int(11)));
 }
 
 }

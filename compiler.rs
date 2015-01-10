@@ -1054,7 +1054,7 @@ pub fn compile(contents: &str) -> Assembly {
     compile_with_type_env(&mut type_env, &[], contents)
 }
 #[allow(dead_code)]
-pub fn compile_with_type_env<'a>(type_env: &'a mut TypeEnvironment<'a>, assemblies: &[&'a Assembly], contents: &str) -> Assembly {
+pub fn compile_with_type_env<'a>(type_env: &mut TypeEnvironment<'a>, assemblies: &[&'a Assembly], contents: &str) -> Assembly {
     use parser::Parser;
 
     let mut parser = Parser::new(contents.as_slice().chars()); 
@@ -1110,6 +1110,7 @@ mod tests {
 
 use interner::*;
 use compiler::*;
+use compiler::Instruction::*;
 use typecheck::TypeEnvironment;
 use std::io::File;
 use test::Bencher;
@@ -1212,7 +1213,7 @@ instance Test Int where
 main x = primIntAdd (test x) 6";
     let assembly = compile(file);
 
-    let main = assembly.superCombinators[0];
+    let main = &assembly.superCombinators[0];
     assert_eq!(main.name.name, intern("main"));
     assert_eq!(main.instructions, vec![PushInt(6), Push(1), PushDictionaryMember(0), Mkap, Eval, Add, Update(0), Pop(2), Unwind]);
 }
@@ -1220,9 +1221,9 @@ main x = primIntAdd (test x) 6";
 #[test]
 fn compile_prelude() {
     let mut type_env = TypeEnvironment::new();
-    let prelude = compile_with_type_env(&mut type_env, [], File::open(&Path::new("Prelude.hs")).read_to_str().unwrap().as_slice());
+    let prelude = compile_with_type_env(&mut type_env, &[], File::open(&Path::new("Prelude.hs")).read_to_string().unwrap().as_slice());
 
-    let assembly = compile_with_type_env(&mut type_env, [&prelude], r"main = id (primIntAdd 2 0)");
+    let assembly = compile_with_type_env(&mut type_env, &[&prelude], r"main = id (primIntAdd 2 0)");
 
     let sc = &assembly.superCombinators[0];
     let id_index = prelude.superCombinators.iter().position(|sc| sc.name.name == intern("id")).unwrap();
@@ -1272,7 +1273,7 @@ newtype Test a = Test [a]
 test = Test [1::Int]";
     let assembly = compile(file);
 
-    let test = assembly.superCombinators[0];
+    let test = &assembly.superCombinators[0];
     assert_eq!(test.instructions, vec![Pack(0, 0), PushInt(1), Pack(1, 2), Update(0), Unwind]);
 }
 
@@ -1284,7 +1285,7 @@ fn bench_prelude(b: &mut Bencher) {
     use parser::Parser;
 
     let path = &Path::new("Prelude.hs");
-    let contents = File::open(path).read_to_str().unwrap();
+    let contents = File::open(path).read_to_string().unwrap();
     let mut parser = Parser::new(contents.as_slice().chars());
     let mut module = rename_module(parser.module());
     let mut type_env = TypeEnvironment::new();

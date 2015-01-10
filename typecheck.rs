@@ -12,9 +12,6 @@ use builtins::builtins;
 use renamer::*;
 use interner::*;
 
-#[cfg(test)]
-use module::Alternative;
-
 ///Trait which can be implemented by types where types can be looked up by name
 pub trait Types {
     fn find_type<'a>(&'a self, name: &Name) -> Option<&'a Qualified<Type, Name>>;
@@ -1621,6 +1618,7 @@ fn typecheck_modules_common(modules: Vec<Module>) -> Vec<Module<Name>> {
 pub mod test {
 use interner::*;
 use module::*;
+use module::Expr::*;
 use typecheck::*;
 use renamer::*;
 
@@ -1630,7 +1628,7 @@ use std::io::File;
 use test::Bencher;
 
 pub fn do_typecheck(input: &str) -> Module<Name> {
-    do_typecheck_with(input, [])
+    do_typecheck_with(input, &[])
 }
 pub fn do_typecheck_with(input: &str, types: &[&DataTypes]) -> Module<Name> {
     let mut parser = ::parser::Parser::new(input.chars());
@@ -1684,7 +1682,7 @@ fn typecheck_let() {
 
     //let test x = add x in test
     let unary_bind = lambda("x", apply(apply(identifier("primIntAdd"), identifier("x")), number(1)));
-    let e = let_(vec![Binding { arguments: vec![], name: intern("test"), matches: Simple(unary_bind), typ: Default::default() , where: None }], identifier("test"));
+    let e = let_(vec![Binding { arguments: vec![], name: intern("test"), matches: Match::Simple(unary_bind), typ: Default::default() , where_bindings: None }], identifier("test"));
     let mut expr = rename_expr(e);
     env.typecheck_expr(&mut expr);
 
@@ -1746,7 +1744,7 @@ fn typecheck_tuple() {
 }
 
 #[test]
-fn typecheck_module() {
+fn typecheck_module_() {
 
     let file =
 r"data Bool = True | False
@@ -1754,8 +1752,7 @@ test x = True";
     let module = do_typecheck(file);
 
     let typ = function_type_(Type::new_var(intern("a")), bool_type());
-    let bind_type0 = module.bindings[0].typ.value;
-    assert_eq!(bind_type0, typ);
+    assert_eq!(module.bindings[0].typ.value, typ);
 }
 
 
@@ -1954,8 +1951,7 @@ r"test x = primDoubleAdd 0 x";
     let module = do_typecheck(file);
 
     let typ = function_type_(double_type(), double_type());
-    let bind_type0 = module.bindings[0].typ.value;
-    assert_eq!(bind_type0, typ);
+    assert_eq!(module.bindings[0].typ.value, typ);
 }
 
 #[test]
@@ -2000,7 +1996,7 @@ main = fmap add2 3");
 #[test]
 fn typecheck_prelude() {
     let path = &Path::new("Prelude.hs");
-    let contents = File::open(path).read_to_str().unwrap();
+    let contents = File::open(path).read_to_string().unwrap();
     let module = do_typecheck(contents.as_slice());
 
     let id = module.bindings.iter().find(|bind| bind.name.as_slice() == "id");
@@ -2014,7 +2010,7 @@ fn typecheck_import() {
    
     let prelude = {
         let path = &Path::new("Prelude.hs");
-        let contents = File::open(path).read_to_str().unwrap();
+        let contents = File::open(path).read_to_string().unwrap();
         do_typecheck(contents.as_slice())
     };
 
@@ -2022,7 +2018,7 @@ fn typecheck_import() {
 r"
 test1 = map not [True, False]
 test2 = id (primIntAdd 2 0)";
-    let module = do_typecheck_with(file, [&prelude as &DataTypes]);
+    let module = do_typecheck_with(file, &[&prelude as &DataTypes]);
 
     assert_eq!(module.bindings[0].name.as_slice(), "test1");
     assert_eq!(module.bindings[0].typ.value, list_type(bool_type()));
@@ -2053,7 +2049,7 @@ fn do_expr_simple() {
     
     let prelude = {
         let path = &Path::new("Prelude.hs");
-        let contents = File::open(path).read_to_str().unwrap();
+        let contents = File::open(path).read_to_string().unwrap();
         do_typecheck(contents.as_slice())
     };
 
@@ -2065,7 +2061,7 @@ test x = do
         t = [2::Int]
     putStrLn y
 ";
-    let module = do_typecheck_with(file, [&prelude as &DataTypes]);
+    let module = do_typecheck_with(file, &[&prelude as &DataTypes]);
 
     assert_eq!(module.bindings[0].typ.value, function_type_(list_type(char_type()), io(unit())));
 }
@@ -2075,7 +2071,7 @@ fn do_expr_pattern() {
     
     let prelude = {
         let path = &Path::new("Prelude.hs");
-        let contents = File::open(path).read_to_str().unwrap();
+        let contents = File::open(path).read_to_string().unwrap();
         do_typecheck(contents.as_slice())
     };
 
@@ -2085,7 +2081,7 @@ test x = do
     y:ys <- x
     return y
 ";
-    let module = do_typecheck_with(file, [&prelude as &DataTypes]);
+    let module = do_typecheck_with(file, &[&prelude as &DataTypes]);
 
     let var = Type::new_var(intern("a"));
     let t = function_type_(Type::new_var_args(intern("c"), vec![list_type(var.clone())]), Type::new_var_args(intern("c"), vec![var.clone()]));
@@ -2193,7 +2189,7 @@ fn do_expr_wrong_monad() {
     
     let prelude = {
         let path = &Path::new("Prelude.hs");
-        let contents = File::open(path).read_to_str().unwrap();
+        let contents = File::open(path).read_to_string().unwrap();
         do_typecheck(contents.as_slice())
     };
 
@@ -2202,7 +2198,7 @@ r"
 test x = do
     putStrLn x
     reverse [primIntAdd 0 0, 1, 2]";
-    do_typecheck_with(file, [&prelude as &DataTypes]);
+    do_typecheck_with(file, &[&prelude as &DataTypes]);
 }
 
 #[test]
@@ -2285,7 +2281,7 @@ test = IntPair (True, False)
 #[bench]
 fn bench_prelude(b: &mut Bencher) {
     let path = &Path::new("Prelude.hs");
-    let contents = File::open(path).read_to_str().unwrap();
+    let contents = File::open(path).read_to_string().unwrap();
     let mut parser = Parser::new(contents.as_slice().chars());
     let module = rename_module(parser.module());
 

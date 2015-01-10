@@ -587,6 +587,7 @@ impl <Stream : Iterator<Item=char>> Lexer<Stream> {
 mod tests {
 
 use lexer::*;
+use lexer::TokenEnum::*;
 
 #[test]
 fn simple() {

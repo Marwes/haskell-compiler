@@ -130,7 +130,7 @@ test = 3 * 4 - 5 * 6").unwrap();
         for module in modules.iter_mut() {
             v.visit_module(module);
         }
-        assert_eq!(modules.last().unwrap().bindings[0].matches, Simple(rename_expr(op_apply(
+        assert_eq!(modules.last().unwrap().bindings[0].matches, Match::Simple(rename_expr(op_apply(
             op_apply(number(3), intern("*"), number(4)),
             intern("-"),
             op_apply(number(5), intern("*"), number(6))))));
@@ -146,7 +146,7 @@ test = 3 * 4 * (5 - 6)").unwrap();
         for module in modules.iter_mut() {
             v.visit_module(module);
         }
-        assert_eq!(modules.last().unwrap().bindings[0].matches, Simple(rename_expr(op_apply(
+        assert_eq!(modules.last().unwrap().bindings[0].matches, Match::Simple(rename_expr(op_apply(
             op_apply(number(3), intern("*"), number(4)),
             intern("*"),
             paren(op_apply(number(5), intern("-"), number(6)))))));
