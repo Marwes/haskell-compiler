@@ -1,6 +1,6 @@
-#![crate_id = "vm#0.0"]
 #![crate_type = "bin"]
 #![feature(box_syntax)]
+#![allow(unstable)]
 #[macro_use]
 extern crate log;
 extern crate collections;

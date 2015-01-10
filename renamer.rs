@@ -95,7 +95,7 @@ impl Renamer {
     }
 
     fn import_globals<T: Eq + Copy>(&mut self, module: &Module<T>, str_fn: &mut FnMut(T) -> InternedStr, uid: uint) {
-        let mut names = module.dataDefinitions.iter()
+        let mut names = module.data_definitions.iter()
             .flat_map(|data| data.constructors.iter().map(|ctor| ctor.name))
             .chain(module.newtypes.iter().map(|newtype| newtype.constructor_name))
             .chain(module.classes.iter().flat_map(|class|
@@ -142,7 +142,7 @@ impl Renamer {
             }
         }
         bindings.into_iter().map(|binding| {
-            let Binding { name: name, arguments: arguments, matches: matches, typ: typ, where_bindings: where_bindings  } = binding;
+            let Binding { name, arguments, matches, typ, where_bindings  } = binding;
             let n = self.uniques.find(&name)
                 .map(|u| u.clone())
                 .unwrap_or_else(|| panic!("Renaming error: Undefined variable {:?}", name));
@@ -162,7 +162,7 @@ impl Renamer {
     fn rename(&mut self, input_expr: TypedExpr<InternedStr>) -> TypedExpr<Name> {
         use module::Expr::*;
         use module::DoBinding::*;
-        let TypedExpr { expr: expr, typ: typ, location: location } = input_expr;
+        let TypedExpr { expr, typ, location } = input_expr;
         let e = match expr {
             Literal(l) => Literal(l),
             Identifier(i) => Identifier(self.get_name(i)),
@@ -185,8 +185,8 @@ impl Renamer {
                 let a: Vec<Alternative<Name>> = alts.into_iter().map(|alt| {
                     let Alternative {
                         pattern: Located { location: loc, node: pattern },
-                        matches: matches,
-                        where_bindings: where_bindings
+                        matches,
+                        where_bindings
                     } = alt;
                     self.uniques.enter_scope();
                     let a = Alternative {
@@ -210,7 +210,7 @@ impl Renamer {
                         DoExpr(expr) => DoExpr(self.rename(expr)),
                         DoLet(bs) => DoLet(self.rename_bindings(bs, false)),
                         DoBind(pattern, expr) => {
-                            let Located { location: location, node: node } = pattern;
+                            let Located { location, node } = pattern;
                             let loc = Located { location: location, node: self.rename_pattern(node) };
                             DoBind(loc, self.rename(expr))
                         }
@@ -243,7 +243,7 @@ impl Renamer {
     ///If the name was not found it is assumed to be global
     fn get_name(&self, s: InternedStr) -> Name {
         match self.uniques.find(&s) {
-            Some(&Name { uid: uid, .. }) => Name { name: s, uid: uid },
+            Some(&Name { uid, .. }) => Name { name: s, uid: uid },
             None => Name { name: s, uid: 0 }//Primitive
         }
     }
@@ -264,9 +264,9 @@ impl Renamer {
     }
 
     fn rename_qualified_type(&mut self, typ: Qualified<Type, InternedStr>) -> Qualified<Type, Name> {
-        let Qualified { constraints: constraints, value: typ } = typ;
+        let Qualified { constraints, value: typ } = typ;
         let constraints2: Vec<Constraint<Name>> = constraints.into_iter()
-            .map(|Constraint { class: class, variables: variables }| {
+            .map(|Constraint { class, variables }| {
                 Constraint { class: self.get_name(class), variables: variables }
             })
             .collect();
@@ -319,14 +319,14 @@ pub fn rename_module_(renamer: &mut Renamer, module_env: &[Module<Name>], module
     renamer.insert_globals(module_env, &module, name.uid);
     let Module {
         name: _,
-        imports: imports,
-        classes : classes,
-        dataDefinitions: data_definitions,
-        newtypes: newtypes,
-        typeDeclarations: typeDeclarations,
-        bindings : bindings,
-        instances: instances,
-        fixity_declarations: fixity_declarations
+        imports,
+        classes,
+        data_definitions,
+        newtypes,
+        type_declarations,
+        bindings,
+        instances,
+        fixity_declarations
     } = module;
 
     let imports2: Vec<Import<Name>> = imports.into_iter().map(|import| {
@@ -341,17 +341,17 @@ pub fn rename_module_(renamer: &mut Renamer, module_env: &[Module<Name>], module
 
     let data_definitions2 : Vec<DataDefinition<Name>> = data_definitions.into_iter().map(|data| {
         let DataDefinition {
-            constructors : ctors,
-            typ : typ,
-            parameters : parameters,
+            constructors,
+            typ,
+            parameters,
             deriving
         } = data;
-        let c: Vec<Constructor<Name>> = ctors.into_iter().map(|ctor| {
+        let c: Vec<Constructor<Name>> = constructors.into_iter().map(|ctor| {
             let Constructor {
-                name : name,
-                typ : typ,
-                tag : tag,
-                arity : arity
+                name,
+                typ,
+                tag,
+                arity
             } = ctor;
             Constructor {
                 name : renamer.get_name(name),
@@ -373,7 +373,7 @@ pub fn rename_module_(renamer: &mut Renamer, module_env: &[Module<Name>], module
     }).collect();
 
     let newtypes2: Vec<Newtype<Name>> = newtypes.into_iter().map(|newtype| {
-        let Newtype { typ: typ, constructor_name: constructor_name, constructor_type: constructor_type, deriving: deriving } = newtype;
+        let Newtype { typ, constructor_name, constructor_type, deriving } = newtype;
         let deriving2: Vec<Name> = deriving.into_iter().map(|s| {
             renamer.get_name(s)
         }).collect();
@@ -387,13 +387,13 @@ pub fn rename_module_(renamer: &mut Renamer, module_env: &[Module<Name>], module
     
     let instances2: Vec<Instance<Name>> = instances.into_iter().map(|instance| {
         let Instance {
-            bindings : bindings,
-            constraints : constraints,
-            typ : typ,
-            classname : classname
+            bindings,
+            constraints,
+            typ,
+            classname
         } = instance;
         let constraints2: Vec<Constraint<Name>> = constraints.into_iter()
-            .map(|Constraint { class: class, variables: variables }| {
+            .map(|Constraint { class, variables }| {
                 Constraint { class: renamer.get_name(class), variables: variables }
             })
             .collect();
@@ -408,22 +408,22 @@ pub fn rename_module_(renamer: &mut Renamer, module_env: &[Module<Name>], module
     
     let classes2 : Vec<Class<Name>> = classes.into_iter().map(|class| {
         let Class {
-            constraints: cs,
-            name : name,
-            variable : var,
-            declarations : decls,
-            bindings: bindings
+            constraints,
+            name,
+            variable,
+            declarations,
+            bindings
         } = class;
-        let constraints2: Vec<Constraint<Name>> = cs.into_iter()
-            .map(|Constraint { class: class, variables: variables }| {
+        let constraints2: Vec<Constraint<Name>> = constraints.into_iter()
+            .map(|Constraint { class, variables }| {
                 Constraint { class: renamer.get_name(class), variables: variables }
             })
             .collect();
         Class {
             constraints: constraints2,
             name: renamer.get_name(name),
-            variable: var,
-            declarations: renamer.rename_type_declarations(decls),
+            variable: variable,
+            declarations: renamer.rename_type_declarations(declarations),
             bindings: renamer.rename_bindings(bindings, true)
         }
     }).collect();
@@ -431,7 +431,7 @@ pub fn rename_module_(renamer: &mut Renamer, module_env: &[Module<Name>], module
     let bindings2 = renamer.rename_bindings(bindings, true);
 
     let fixity_declarations2: Vec<FixityDeclaration<Name>> = fixity_declarations.into_iter()
-        .map(|FixityDeclaration { assoc: assoc, precedence: precedence, operators: operators }| {
+        .map(|FixityDeclaration { assoc, precedence, operators }| {
             
             let ops: Vec<Name> = operators.into_iter()
                 .map(|s| renamer.get_name(s))
@@ -441,14 +441,14 @@ pub fn rename_module_(renamer: &mut Renamer, module_env: &[Module<Name>], module
             }
         })
         .collect();
-    let decls2 = renamer.rename_type_declarations(typeDeclarations);
+    let decls2 = renamer.rename_type_declarations(type_declarations);
     renamer.uniques.exit_scope();
     Module {
         name: name,
         imports: imports2,
         classes : classes2,
-        dataDefinitions: data_definitions2,
-        typeDeclarations: decls2,
+        data_definitions: data_definitions2,
+        type_declarations: decls2,
         bindings : bindings2,
         instances: instances2,
         newtypes: newtypes2,

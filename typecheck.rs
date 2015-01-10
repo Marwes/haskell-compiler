@@ -45,7 +45,7 @@ impl Types for Module<Name> {
                 }
             }
         }
-        for data in self.dataDefinitions.iter() {
+        for data in self.data_definitions.iter() {
             for ctor in data.constructors.iter() {
                 if *name == ctor.name {
                     return Some(&ctor.typ);
@@ -75,7 +75,7 @@ impl Types for Module<Name> {
 
 impl DataTypes for Module<Name> {
     fn find_data_type<'a>(&'a self, name: InternedStr) -> Option<&'a DataDefinition<Name>> {
-        for data in self.dataDefinitions.iter() {
+        for data in self.data_definitions.iter() {
             if name == extract_applied_type(&data.typ.value).ctor().name {
                 return Some(data);
             }
@@ -261,7 +261,7 @@ impl <'a> TypeEnvironment<'a> {
     ///If any errors were found while typechecking panic! is called.
     pub fn typecheck_module(&mut self, module: &mut Module<Name>) {
         let start_var_age = self.variable_age + 1;
-        for data_def in module.dataDefinitions.iter_mut() {
+        for data_def in module.data_definitions.iter_mut() {
             for constructor in data_def.constructors.iter_mut() {
                 let mut typ = constructor.typ.clone();
                 quantify(0, &mut typ);
@@ -323,7 +323,7 @@ impl <'a> TypeEnvironment<'a> {
             }
             self.classes.push((class.constraints.clone(), class.name.clone()));
         }
-        let data_definitions = module.dataDefinitions.clone();
+        let data_definitions = module.data_definitions.clone();
         for instance in module.instances.iter_mut() {
             let (class_constraints, class_var, class_decls) = module.classes.iter()
                 .find(|class| class.name == instance.classname)
@@ -383,7 +383,7 @@ impl <'a> TypeEnvironment<'a> {
             self.instances.push((instance.constraints.clone(), instance.classname.clone(), instance.typ.clone()));
         }
         
-        for type_decl in module.typeDeclarations.iter_mut() {
+        for type_decl in module.type_declarations.iter_mut() {
 
             match module.bindings.iter_mut().find(|bind| bind.name == type_decl.name) {
                 Some(bind) => {
@@ -2041,7 +2041,7 @@ test2 :: Test a => a -> Int -> Int
 test2 x y = primIntAdd (test x) y";
     let module = do_typecheck(input);
 
-    assert_eq!(module.bindings[0].typ, module.typeDeclarations[0].typ);
+    assert_eq!(module.bindings[0].typ, module.type_declarations[0].typ);
 }
 
 #[test]

@@ -53,7 +53,7 @@ pub fn intern(s: &str) -> InternedStr {
 impl Str for InternedStr {
     fn as_slice<'a>(&'a self) -> &'a str {
         let interner = get_local_interner();
-        let mut x = (*interner).borrow_mut();
+        let x = (*interner).borrow_mut();
         let r: &str = x.get_str(*self);
         //The interner is task local and will never remove a string so this is safe
         unsafe { ::std::mem::transmute(r) }

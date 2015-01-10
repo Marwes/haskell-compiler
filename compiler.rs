@@ -74,12 +74,12 @@ enum Var<'a> {
     Newtype
 }
 
-static unary_primitives: &'static [(&'static str, Instruction)] = &[
+static UNARY_PRIMITIVES: &'static [(&'static str, Instruction)] = &[
     ("primIntToDouble", IntToDouble),
     ("primDoubleToInt", DoubleToInt),
 ];
 
-static binary_primitives: &'static [(&'static str, Instruction)] = &[
+static BINARY_PRIMITIVES: &'static [(&'static str, Instruction)] = &[
     ("primIntAdd", Add),
     ("primIntSubtract", Sub),
     ("primIntMultiply", Multiply),
@@ -392,10 +392,10 @@ impl <'a> Compiler<'a> {
         for (i, &(name, _)) in builtins().iter().enumerate() {
             variables.insert(Name { name: intern(name), uid: 0}, Var::Builtin(i));
         }
-        for &(name, instruction) in binary_primitives.iter() {
+        for &(name, instruction) in BINARY_PRIMITIVES.iter() {
             variables.insert(Name { name: intern(name), uid: 0 }, Var::Primitive(2, instruction));
         }
-        for &(name, instruction) in unary_primitives.iter() {
+        for &(name, instruction) in UNARY_PRIMITIVES.iter() {
             variables.insert(Name { name: intern(name), uid: 0 }, Var::Primitive(1, instruction));
         }
         Compiler { instance_dictionaries: Vec::new(),
@@ -552,7 +552,7 @@ impl <'a> Compiler<'a> {
         }
     }
 
-    fn find_class<'a>(&'a self, name: Name) -> Option<(&'a [Constraint<Name>], &'a TypeVariable, &'a [TypeDeclaration<Name>])> {
+    fn find_class(&self, name: Name) -> Option<(&[Constraint<Name>], &TypeVariable, &[TypeDeclaration<Name>])> {
         self.module.and_then(|m| m.find_class(name))
             .or_else(|| {
             for types in self.assemblies.iter() {
@@ -697,7 +697,7 @@ impl <'a> Compiler<'a> {
             &Lambda(_, _) => panic!("Error: Found non-lifted lambda when compiling expression")
         }
     }
-    fn compile_apply<'a>(&mut self, expr: &Expr<Id>, args: ArgList<'a>, instructions: &mut Vec<Instruction>, strict: bool) {
+    fn compile_apply(&mut self, expr: &Expr<Id>, args: ArgList, instructions: &mut Vec<Instruction>, strict: bool) {
         //Unroll the applications until the function is found
         match *expr {
             Apply(ref func, ref arg) => {
@@ -752,7 +752,7 @@ impl <'a> Compiler<'a> {
                             ArgList::Cons(_, _) => {
                                 //Do nothing
                             }
-                            Nil => {
+                            ArgList::Nil => {
                                 //translate into id application
                                 let x = self.find(Name { name: intern("id"), uid: 0 })
                                     .expect("Compiler error: Prelude.id must be in scope for compilation of newtype");
@@ -784,7 +784,7 @@ impl <'a> Compiler<'a> {
         }
     }
 
-    fn compile_args<'a>(&mut self, args: &ArgList<'a>, instructions: &mut Vec<Instruction>, strict: bool) -> uint {
+    fn compile_args(&mut self, args: &ArgList, instructions: &mut Vec<Instruction>, strict: bool) -> uint {
         match *args {
             ArgList::Cons(arg, rest) => {
                 let i = self.compile_args(rest, instructions, strict);

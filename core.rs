@@ -350,7 +350,7 @@ pub mod result {
     }
 
     pub fn walk_binding<V: Visitor<Ident>, Ident>(visitor: &mut V, binding: Binding<Ident>) -> Binding<Ident> {
-        let Binding { name: name, expression: expression } = binding;
+        let Binding { name, expression } = binding;
         Binding {
             name: name,
             expression: visitor.visit_expr(expression)
@@ -383,7 +383,7 @@ pub mod result {
     }
 
     pub fn walk_alternative<V: Visitor<Ident>, Ident>(visitor: &mut V, alt: Alternative<Ident>) -> Alternative<Ident> {
-        let Alternative { pattern: pattern, expression: expression } = alt;
+        let Alternative { pattern, expression } = alt;
         Alternative { pattern: visitor.visit_pattern(pattern), expression: visitor.visit_expr(expression) }
     }
 }
@@ -434,12 +434,12 @@ pub mod translate {
     fn translate_module_<'a>(translator: &mut Translator<'a>, module: module::Module<Name>) -> Module<Id<Name>> {
         let module::Module { name : _name,
             imports : _imports,
-            bindings : bindings,
-            typeDeclarations : _typeDeclarations,
-            newtypes : newtypes,
-            classes : classes,
-            instances : instances,
-            dataDefinitions : dataDefinitions,
+            bindings,
+            type_declarations : _type_declarations,
+            newtypes,
+            classes,
+            instances,
+            data_definitions,
             fixity_declarations : _fixity_declarations
         } = module;
 
@@ -447,38 +447,38 @@ pub mod translate {
 
         let classes2 : Vec<Class<Id>> = classes.into_iter().map(|class| {
             let module::Class {
-                constraints: cs,
-                name : name,
-                variable : var,
-                declarations : decls,
-                bindings: bindings
+                constraints,
+                name,
+                variable,
+                declarations,
+                bindings
             } = class;
             Class {
-                constraints: cs,
+                constraints: constraints,
                 name: name,
-                variable: var,
-                declarations: decls,
+                variable: variable,
+                declarations: declarations,
                 bindings: translator.translate_bindings(bindings)
             }
         }).collect();
 
         for instance in instances.into_iter() {
             let module::Instance {
-                classname: classname,
-                typ: instance_type,
-                constraints: constraints,
-                bindings: bindings
+                classname,
+                typ,
+                constraints,
+                bindings
             } = instance;
             let bs: Vec<Binding<Id<Name>>> = translator.translate_bindings(bindings).into_iter().collect();
             new_instances.push(Instance {
                 constraints: constraints,
-                typ: instance_type,
+                typ: typ,
                 classname: classname,
                 bindings: bs
             });
         }
         let bs: Vec<Binding<Id<Name>>> = translator.translate_bindings(bindings).into_iter().collect();
-        for data in dataDefinitions.iter() {
+        for data in data_definitions.iter() {
             generate_deriving(&mut new_instances, data);
         }
         for instance in new_instances.iter_mut() {
@@ -491,7 +491,7 @@ pub mod translate {
         }
         Module {
             classes: classes2,
-            data_definitions: dataDefinitions,
+            data_definitions: data_definitions,
             newtypes: newtypes,
             bindings: bs,
             instances: new_instances
@@ -516,7 +516,7 @@ pub mod translate {
                         .collect();
                     typ.constraints = vec_context;
                 }
-                let Qualified { value: typ, constraints: constraints } = typ;
+                let Qualified { value: typ, constraints } = typ;
                 let default_name = module::encode_binding_identifier(instance.classname.name, decl.name.name);
                 let typ_name = module::extract_applied_type(&instance.typ).ctor().name;
                 let instance_fn_name = module::encode_binding_identifier(typ_name, decl.name.name);
@@ -546,7 +546,7 @@ impl <'a> Translator<'a> {
             _ => false
         };
         if is_lambda {
-            let module::TypedExpr { typ: typ, expr: expr, ..} = input_expr;
+            let module::TypedExpr { typ, expr, ..} = input_expr;
             match expr {
                 module::Expr::Lambda(arg, body) => {
                     //TODO need to make unique names for the lambdas created here
@@ -569,7 +569,7 @@ impl <'a> Translator<'a> {
     }
 
     fn translate_expr_rest(&mut self, input_expr: module::TypedExpr<Name>) -> Expr<Id<Name>> {
-        let module::TypedExpr { typ: typ, expr: expr, ..} = input_expr;
+        let module::TypedExpr { typ, expr, ..} = input_expr;
         match expr {
             module::Expr::Identifier(s) => Identifier(Id::new(s, typ, vec![])),
             module::Expr::Apply(func, arg) => Apply(box self.translate_expr(*func), box self.translate_expr(*arg)),
@@ -744,7 +744,7 @@ impl <'a> Translator<'a> {
         let mut vec = Vec::new();
         let dummy_var = &[Id::new(self.name_supply.anonymous(), Type::new_var(intern("a")), vec![])];
         let uid = self.name_supply.next_id();
-        for module::Alternative { pattern: pattern, matches: matches, where_bindings: where_bindings } in alts.into_iter() {
+        for module::Alternative { pattern, matches, where_bindings } in alts.into_iter() {
             let bindings = where_bindings.map_or(Vec::new(), |bs| self.translate_bindings(bs));
             vec.push((self.unwrap_patterns(uid, dummy_var, &[pattern.node]), bindings, matches));
         }
@@ -765,10 +765,11 @@ impl <'a> Translator<'a> {
         //then we do a simple translation to preserve the names for the arguments.
         if bindings.len() == 1 && simple_binding(&bindings[0]) {
             let module::Binding {
-                name: name,
-                arguments: arguments, matches: matches,
-                typ: module::Qualified { constraints: constraints, value: typ, },
-                where_bindings: where_bindings
+                name,
+                arguments,
+                matches,
+                typ: module::Qualified { constraints, value: typ, },
+                where_bindings
             } = bindings.pop().unwrap();
             let arg_iterator = arguments.into_iter().map(|p| {
                 match p {
@@ -812,9 +813,9 @@ impl <'a> Translator<'a> {
         let uid = self.name_supply.next_id();
         let equations: Vec<_> = bindings.into_iter().map(|bind| {
             let module::Binding {
-                arguments: arguments,
-                matches: matches,
-                where_bindings: where_bindings,
+                arguments,
+                matches,
+                where_bindings,
                 ..
             } = bind;
             let where_bindings_binds = where_bindings.map_or(Vec::new(), |bs| self.translate_bindings(bs));

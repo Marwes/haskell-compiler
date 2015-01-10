@@ -12,10 +12,10 @@ pub struct Module<Ident = InternedStr> {
     pub name : Ident,
     pub imports: Vec<Import<Ident>>,
     pub bindings : Vec<Binding<Ident>>,
-    pub typeDeclarations : Vec<TypeDeclaration<Ident>>,
+    pub type_declarations : Vec<TypeDeclaration<Ident>>,
     pub classes : Vec<Class<Ident>>,
     pub instances : Vec<Instance<Ident>>,
-    pub dataDefinitions : Vec<DataDefinition<Ident>>,
+    pub data_definitions : Vec<DataDefinition<Ident>>,
     pub newtypes : Vec<Newtype<Ident>>,
     pub fixity_declarations : Vec<FixityDeclaration<Ident>>
 }

@@ -127,10 +127,10 @@ pub fn module(&mut self) -> Module {
         name : modulename,
         imports : imports,
         bindings : bindings,
-        typeDeclarations : type_declarations,
+        type_declarations : type_declarations,
         classes : classes,
         instances : instances,
-        dataDefinitions : data_definitions,
+        data_definitions : data_definitions,
         newtypes: newtypes,
         fixity_declarations : fixity_declarations
     }
@@ -1373,7 +1373,7 @@ r"data Test = A | B
 dummy = 1
 ".chars());
     let module = parser.module();
-    let data = &module.dataDefinitions[0];
+    let data = &module.data_definitions[0];
     assert_eq!(data.typ, qualified(Vec::new(), Type::new_op(intern("Test"), Vec::new())));
     assert_eq!(data.deriving, [intern("Eq"), intern("Show")]);
 }
