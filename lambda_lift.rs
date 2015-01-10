@@ -39,10 +39,7 @@ fn free_variables(&mut self, variables: &mut HashMap<Name, isize>, free_vars: &m
         Identifier(ref mut i) => {
             //If the identifier is a local, add it to the free variables
             if variables.get(&i.name).map(|x| *x > 0).unwrap_or(false) {
-                match variables.entry(i.name.clone()) {
-                    Entry::Vacant(entry) => { entry.insert(1); }
-                    Entry::Occupied(mut entry) => *entry.get_mut() += 1
-                }
+                free_vars.insert(i.name.clone(), i.clone());
             }
         }
         Apply(ref mut func, ref mut arg) => {

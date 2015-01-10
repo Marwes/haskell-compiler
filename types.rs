@@ -142,8 +142,9 @@ impl <S: ::std::hash::Hasher + ::std::hash::Writer> ::std::hash::Hash<S> for Typ
 
 ///Constructs a string which holds the name of an n-tuple
 pub fn tuple_name(n: usize) -> String {
+    let commas = if n == 0 { 0 } else { n - 1 };
     Some('(').into_iter()
-        .chain(iter::repeat(',').take(n - 1))
+        .chain(iter::repeat(',').take(commas))
         .chain(Some(')').into_iter())
         .collect()
 }

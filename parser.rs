@@ -743,7 +743,8 @@ fn type_declaration(&mut self) -> TypeDeclaration {
 }
 
 fn constrained_type(&mut self) -> (Vec<Constraint>, Type) {
-    let mut maybeConstraints = if self.lexer.next().token == LPARENS {
+    debug!("Parse constrained type");
+    let mut maybe_constraints = if self.lexer.next().token == LPARENS {
         if self.lexer.peek().token == RPARENS {
             self.lexer.next();
             vec![]
@@ -758,27 +759,28 @@ fn constrained_type(&mut self) -> (Vec<Constraint>, Type) {
         self.lexer.backtrack();
         vec![self.parse_type()]
     };
-    let maybeContextArrow = self.lexer.next().token;
+    debug!("{:?}", maybe_constraints);
     //If there is => arrow we proceed to parse the type
-    let typ = if maybeContextArrow == CONTEXTARROW {
-        self.parse_type()
-    }
-    else if maybeContextArrow == ARROW {
-	    self.lexer.backtrack();
-        let mut args = Vec::new();
-        swap(&mut args, &mut maybeConstraints);
-        self.parse_return_type(make_tuple_type(args))
-    }
-    else {//If no => was found, translate the constraint list into a type
-	    self.lexer.backtrack();
-        let mut args = Vec::new();
-        swap(&mut args, &mut maybeConstraints);
-        make_tuple_type(args)
+    let typ = match self.lexer.next().token {
+        CONTEXTARROW => self.parse_type(),
+        ARROW => {
+            self.lexer.backtrack();
+            let mut args = Vec::new();
+            swap(&mut args, &mut maybe_constraints);
+            self.parse_return_type(make_tuple_type(args))
+        }
+        _ => {//If no => was found, translate the constraint list into a type
+            self.lexer.backtrack();
+            let mut args = Vec::new();
+            swap(&mut args, &mut maybe_constraints);
+            make_tuple_type(args)
+        }
     };
-	(make_constraints(maybeConstraints), typ)
+	(make_constraints(maybe_constraints), typ)
 }
 
 fn constructor_type(&mut self, arity : &mut isize, dataDef: &DataDefinition) -> Type {
+    debug!("Parse constructor type");
 	let token = self.lexer.next().token;
 	if token == NAME {
 		*arity += 1;
