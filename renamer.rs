@@ -18,7 +18,7 @@ impl Str for Name {
 
 impl ::std::fmt::Show for Name {
     fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-        write!(f, "{}_{}", self.name, self.uid)
+        write!(f, "{:?}_{:?}", self.name, self.uid)
     }
 }
 
@@ -39,9 +39,9 @@ impl <T> Errors<T> {
 }
 impl <T: ::std::fmt::Show> Errors<T> {
     pub fn report_errors(&self, pass: &str) {
-        println!("Found {} errors in compiler pass: {}", self.errors.len(), pass);
+        println!("Found {:?} errors in compiler pass: {:?}", self.errors.len(), pass);
         for error in self.errors.iter() {
-            println!("{}", error);
+            println!("{:?}", error);
         }
     }
 }
@@ -119,7 +119,7 @@ impl Renamer {
         for import in module.imports.iter() {
             let imported_module = module_env.iter()
                 .find(|m| m.name.name == import.module)
-                .unwrap_or_else(|| panic!("Module {} is not defined", import.module));
+                .unwrap_or_else(|| panic!("Module {:?} is not defined", import.module));
             let uid = imported_module.name.uid;
             match import.imports {
                 Some(ref imports) => {
@@ -145,7 +145,7 @@ impl Renamer {
             let Binding { name: name, arguments: arguments, matches: matches, typ: typ, where_bindings: where_bindings  } = binding;
             let n = self.uniques.find(&name)
                 .map(|u| u.clone())
-                .unwrap_or_else(|| panic!("Renaming error: Undefined variable {}", name));
+                .unwrap_or_else(|| panic!("Renaming error: Undefined variable {:?}", name));
             self.uniques.enter_scope();
             let b = Binding {
                 name: n,
@@ -283,7 +283,7 @@ impl Renamer {
     ///If the name was already declared in the current scope an error is added
     fn make_unique(&mut self, name: InternedStr) -> Name {
         if self.uniques.in_current_scope(&name) {
-            self.errors.insert(format!("{} is defined multiple times", name));
+            self.errors.insert(format!("{:?} is defined multiple times", name));
             self.uniques.find(&name).map(|x| x.clone()).unwrap()
         }
         else {

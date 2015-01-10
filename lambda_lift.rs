@@ -275,7 +275,7 @@ test2 x =
                         assert!(check_args(&binds[0].expression, args.as_slice()));
                         assert_eq!(Identifier(binds[0].name.clone()), **body);
                     }
-                    _ => assert!(false, "Expected Let, found {}", bind.expression)
+                    _ => assert!(false, "Expected Let, found {:?}", bind.expression)
                 }
                 self.count += 1;
             }

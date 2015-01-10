@@ -113,7 +113,7 @@ pub fn module(&mut self) -> Module {
 			break;
 		}
 		let semicolon = self.lexer.next();
-        debug!("More bindings? {}", semicolon.token);
+        debug!("More bindings? {:?}", semicolon.token);
 	    if semicolon.token != SEMICOLON {
             break;
         }
@@ -235,7 +235,7 @@ fn instance(&mut self) -> Instance {
 pub fn expression_(&mut self) -> TypedExpr {
     match self.expression() {
         Some(expr) => expr,
-        None => panic!("Failed to parse expression at {}", self.lexer.current().location)
+        None => panic!("Failed to parse expression at {:?}", self.lexer.current().location)
     }
 }
 
@@ -283,7 +283,7 @@ fn list(&mut self) -> TypedExpr {
 
 fn sub_expression(&mut self) -> Option<TypedExpr> {
 	let token = self.lexer.next().token;
-    debug!("Begin SubExpr {}", self.lexer.current());
+    debug!("Begin SubExpr {:?}", self.lexer.current());
 	match token {
 	    LPARENS => {
             let location = self.lexer.current().location;
@@ -358,12 +358,12 @@ fn sub_expression(&mut self) -> Option<TypedExpr> {
             let bindings = self.sep_by_1(|this| this.do_binding(), SEMICOLON);
             self.require_next(RBRACE);
             if bindings.len() == 0 {
-                panic!("{}: Parse error: Empty do", self.lexer.current().location);
+                panic!("{:?}: Parse error: Empty do", self.lexer.current().location);
             }
             let mut bs: Vec<DoBinding> = bindings.into_iter().collect();
             let expr = match bs.pop().unwrap() {
                 DoBinding::DoExpr(e) => e,
-                _ => panic!("{}: Parse error: Last binding in do must be an expression", self.lexer.current().location)
+                _ => panic!("{:?}: Parse error: Last binding in do must be an expression", self.lexer.current().location)
             };
             Some(TypedExpr::with_location(Do(bs, box expr), location))
         }
@@ -398,7 +398,7 @@ fn do_binding(&mut self) -> DoBinding {
     if self.lexer.next().token == LET {
         return DoBinding::DoLet(self.let_bindings());
     }
-    debug!("Do binding {}", self.lexer.current());
+    debug!("Do binding {:?}", self.lexer.current());
     self.lexer.backtrack();
     let mut lookahead = 0;
     loop {
@@ -415,7 +415,7 @@ fn do_binding(&mut self) -> DoBinding {
                 return DoBinding::DoBind(p, self.expression_());
             }
             EOF => { panic!("Unexpected EOF") }
-            _ => { debug!("Lookahead {}", self.lexer.current()); }
+            _ => { debug!("Lookahead {:?}", self.lexer.current()); }
         }
     }
 }
@@ -444,7 +444,7 @@ fn alternative(&mut self) -> Alternative {
 }
 
 fn binary_expression(&mut self, lhs : Option<TypedExpr>) -> Option<TypedExpr> {
-    debug!("Parse operator expression, {}", self.lexer.current());
+    debug!("Parse operator expression, {:?}", self.lexer.current());
     if self.lexer.next().token == OPERATOR {
 		let op = self.lexer.current().value;
         let loc = self.lexer.current().location;
@@ -524,7 +524,7 @@ fn binding(&mut self) -> Binding {
 		//Parse a name within parentheses
 		let functionName = self.lexer.next().token;
 		if functionName != NAME && functionName != OPERATOR {
-			panic!("Expected NAME or OPERATOR on left side of binding {}", self.lexer.current().token);
+			panic!("Expected NAME or OPERATOR on left side of binding {:?}", self.lexer.current().token);
 		}
 		name = self.lexer.current().value.clone();
 
@@ -700,7 +700,7 @@ fn pattern(&mut self) -> Pattern {
                 }
             }
         }
-        _ => { panic!("Error parsing pattern at token {}", self.lexer.current()) }
+        _ => { panic!("Error parsing pattern at token {:?}", self.lexer.current()) }
     };
     self.lexer.next();
     if self.lexer.current().token == OPERATOR && self.lexer.current().value.as_slice() == ":" {
@@ -721,7 +721,7 @@ fn type_declaration(&mut self) -> TypeDeclaration {
             //Parse a name within parentheses
             let functionName = self.lexer.next().token;
             if functionName != NAME && functionName != OPERATOR {
-                panic!("Expected NAME or OPERATOR on left side of binding {}", functionName);
+                panic!("Expected NAME or OPERATOR on left side of binding {:?}", functionName);
             }
             name = self.lexer.current().value.clone();
             let rParens = self.lexer.next().token;
@@ -830,7 +830,7 @@ fn newtype(&mut self) -> Newtype {
     let name = self.require_next(NAME).value;
     let location = self.lexer.current().location;
     let arg_type = self.sub_type()
-        .unwrap_or_else(|| panic!("Parse error when parsing argument to new type at  {}", location));
+        .unwrap_or_else(|| panic!("Parse error when parsing argument to new type at  {:?}", location));
     
     Newtype {
         typ: qualified(box [], typ.clone()),
@@ -957,7 +957,7 @@ fn parse_type(&mut self) -> Type {
 			};
 			self.parse_return_type(thisType)
 		}
-	    _ => panic!("Unexpected token when parsing type {}", self.lexer.current())
+	    _ => panic!("Unexpected token when parsing type {:?}", self.lexer.current())
 	}
 }
 
@@ -1036,11 +1036,11 @@ fn make_tuple_type(types : Vec<Type>) -> Type {
 }
 
 fn parse_error2<Iter : Iterator<Item=char>>(lexer : &Lexer<Iter>, expected : &[TokenEnum]) -> ::std::string::String {
-    format!("Expected {} but found {}{{{}}}, at {}", expected, lexer.current().token, lexer.current().value.as_slice(), lexer.current().location)
+    format!("Expected {:?} but found {:?}{{{:?}}}, at {:?}", expected, lexer.current().token, lexer.current().value.as_slice(), lexer.current().location)
     
 }
 fn parse_error<Iter : Iterator<Item=char>>(lexer : &Lexer<Iter>, expected : TokenEnum) -> ::std::string::String {
-    format!("Expected {} but found {}{{{}}}, at {}", expected, lexer.current().token, lexer.current().value.as_slice(), lexer.current().location)
+    format!("Expected {:?} but found {:?}{{{:?}}}, at {:?}", expected, lexer.current().token, lexer.current().value.as_slice(), lexer.current().location)
 }
 
 pub fn parse_string(contents: &str) -> IoResult<Vec<Module>> {

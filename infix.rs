@@ -76,7 +76,7 @@ impl PrecedenceVisitor {
                                             reduce(&mut expr_stack, &mut op_stack);
                                         }
                                         (Assoc::Right, Assoc::Right) => {
-                                            debug!("Shift op {}", op);
+                                            debug!("Shift op {:?}", op);
                                             op_stack.push(op);
                                             break
                                         }

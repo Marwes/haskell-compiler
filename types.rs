@@ -73,7 +73,7 @@ impl Type {
     pub fn var<'a>(&'a self) -> &'a TypeVariable {
         match self {
             &Type::Variable(ref var) => var,
-            _ => panic!("Tried to unwrap {} as a TypeVariable", self)
+            _ => panic!("Tried to unwrap {:?} as a TypeVariable", self)
         }
     }
 
@@ -82,7 +82,7 @@ impl Type {
     pub fn ctor<'a>(&'a self) -> &'a TypeConstructor {
         match self {
             &Type::Constructor(ref op) => op,
-            _ => panic!("Tried to unwrap {} as a TypeConstructor", self)
+            _ => panic!("Tried to unwrap {:?} as a TypeConstructor", self)
         }
     }
 
@@ -91,7 +91,7 @@ impl Type {
     pub fn appl<'a>(&'a self) -> &'a Type {
         match self {
             &Type::Application(ref lhs, _) => { let l: &Type = *lhs; l }
-            _ => panic!("Error: Tried to unwrap {} as TypeApplication", self)
+            _ => panic!("Error: Tried to unwrap {:?} as TypeApplication", self)
         }
     }
     #[allow(dead_code)]
@@ -115,7 +115,7 @@ impl Type {
                         let kind: &Kind = *k;
                         kind
                     }
-                    _ => panic!("Type application must have a kind of Kind::Function, {}", self)
+                    _ => panic!("Type application must have a kind of Kind::Function, {:?}", self)
                 },
             &Type::Generic(ref v) => &v.kind
         }
@@ -224,7 +224,7 @@ impl fmt::Show for Kind {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             &Kind::Star => write!(f, "*"),
-            &Kind::Function(ref lhs, ref rhs) => write!(f, "({} -> {})", *lhs, *rhs)
+            &Kind::Function(ref lhs, ref rhs) => write!(f, "({:?} -> {:?})", *lhs, *rhs)
         }
     }
 }
@@ -253,18 +253,18 @@ impl Default for Type {
 }
 impl fmt::Show for TypeVariable {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.id)
+        write!(f, "{:?}", self.id)
     }
 }
 impl fmt::Show for TypeConstructor {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.name)
+        write!(f, "{:?}", self.name)
     }
 }
 
 impl <T: fmt::Show, I: fmt::Show> fmt::Show for Qualified<T, I> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{} => {}", self.constraints, self.value)
+        write!(f, "{:?} => {:?}", self.constraints, self.value)
     }
 }
 
@@ -305,30 +305,30 @@ impl <'a> fmt::Show for Prec<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let Prec(p, t) = *self;
         match *t {
-            Type::Variable(ref var) => write!(f, "{}", *var),
-            Type::Constructor(ref op) => write!(f, "{}", *op),
-            Type::Generic(ref var) => write!(f, "\\#{}", *var),
+            Type::Variable(ref var) => write!(f, "{:?}", *var),
+            Type::Constructor(ref op) => write!(f, "{:?}", *op),
+            Type::Generic(ref var) => write!(f, "\\#{:?}", *var),
             Type::Application(ref lhs, ref rhs) => {
                 match try_get_function(t) {
                     Some((arg, result)) => {
                         if p >= Prec_::Function {
-                            write!(f, "({} -> {})", *arg, result)
+                            write!(f, "({:?} -> {:?})", *arg, result)
                         }
                         else {
-                            write!(f, "{} -> {}", Prec(Prec_::Function, arg), result)
+                            write!(f, "{:?} -> {:?}", Prec(Prec_::Function, arg), result)
                         }
                     }
                     None => {
                         match **lhs {
                             Type::Constructor(ref op) if "[]" == op.name.as_slice() => {
-                                write!(f, "[{}]", rhs)
+                                write!(f, "[{:?}]", rhs)
                             }
                             _ => {
                                 if p >= Prec_::Constructor {
-                                    write!(f, "({} {})", Prec(Prec_::Function, *lhs), Prec(Prec_::Constructor, *rhs))
+                                    write!(f, "({:?} {:?})", Prec(Prec_::Function, *lhs), Prec(Prec_::Constructor, *rhs))
                                 }
                                 else {
-                                    write!(f, "{} {}", Prec(Prec_::Function, *lhs), Prec(Prec_::Constructor, *rhs))
+                                    write!(f, "{:?} {:?}", Prec(Prec_::Function, *lhs), Prec(Prec_::Constructor, *rhs))
                                 }
                             }
                         }
@@ -341,14 +341,14 @@ impl <'a> fmt::Show for Prec<'a> {
 
 impl fmt::Show for Type {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", Prec(Prec_::Top, self))
+        write!(f, "{:?}", Prec(Prec_::Top, self))
     }
 }
 impl <I: fmt::Show> fmt::Show for Constraint<I> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        try!(write!(f, "{}", self.class));
+        try!(write!(f, "{:?}", self.class));
         for var in self.variables.iter() {
-            try!(write!(f, " {}", *var));
+            try!(write!(f, " {:?}", *var));
         }
         Ok(())
     }

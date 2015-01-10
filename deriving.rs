@@ -22,7 +22,7 @@ pub fn generate_deriving(instances: &mut Vec<Instance<Id<Name>>>, data: &DataDef
             "Ord" => {
                 let mut bindings = Vec::new();
                 let b = gen.generate_ord(data);
-                debug!("Generated Ord {} ->>\n{}", data.typ, b);
+                debug!("Generated Ord {:?} ->>\n{:?}", data.typ, b);
                 bindings.push(b);
                 instances.push(Instance {
                     constraints: box [],
@@ -31,7 +31,7 @@ pub fn generate_deriving(instances: &mut Vec<Instance<Id<Name>>>, data: &DataDef
                     bindings: bindings
                 });
             }
-            x => panic!("Cannot generate instance for class {}", x)
+            x => panic!("Cannot generate instance for class {:?}", x)
         }
     }
 }

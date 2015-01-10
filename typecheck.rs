@@ -283,7 +283,7 @@ impl <'a> TypeEnvironment<'a> {
             for type_decl in class.declarations.iter_mut() {
                 var_kind = match find_kind(&class.variable, var_kind, &type_decl.typ.value) {
                     Ok(k) => k,
-                    Err(msg) => panic!("{}", msg)
+                    Err(msg) => panic!("{:?}", msg)
                 };
                 //If we found the variable, update it immediatly since the kind of th variable
                 //matters when looking for constraints, etc
@@ -309,7 +309,7 @@ impl <'a> TypeEnvironment<'a> {
             for binding in class.bindings.iter_mut() {
                 let decl = class.declarations.iter()
                     .find(|decl| binding.name.name.as_slice().ends_with(decl.name.as_slice()))
-                    .expect(format!("Could not find {} in class {}", binding.name, class.name));
+                    .expect(format!("Could not find {:?} in class {:?}", binding.name, class.name));
                 binding.typ = decl.typ.clone();
                 {
                     let mut context = vec![];
@@ -335,7 +335,7 @@ impl <'a> TypeEnvironment<'a> {
                         .filter_map(|a| a.find_class(instance.classname))
                         .next()
                 })
-                .unwrap_or_else(|| panic!("Could not find class {}", instance.classname));
+                .unwrap_or_else(|| panic!("Could not find class {:?}", instance.classname));
             //Update the kind of the type for the instance to be the same as the class kind (since we have no proper kind inference
             match instance.typ {
                 Type::Constructor(ref mut op) => {
@@ -350,7 +350,7 @@ impl <'a> TypeEnvironment<'a> {
             }
             for binding in instance.bindings.iter_mut() {
                 let decl = class_decls.iter().find(|decl| binding.name.as_slice().ends_with(decl.name.as_slice()))
-                    .expect(format!("Could not find {} in class {}", binding.name, instance.classname));
+                    .expect(format!("Could not find {:?} in class {:?}", binding.name, instance.classname));
                 binding.typ = decl.typ.clone();
                 replace_var(&mut binding.typ.value, class_var, &instance.typ);
                 self.freshen_qualified_type(&mut binding.typ, HashMap::new());
@@ -366,7 +366,7 @@ impl <'a> TypeEnvironment<'a> {
             }
             {
                 let mut missing_super_classes = self.find_class_constraints(instance.classname)
-                    .unwrap_or_else(|| panic!("Error: Missing class {}", instance.classname))
+                    .unwrap_or_else(|| panic!("Error: Missing class {:?}", instance.classname))
                     .iter()//Make sure we have an instance for all of the constraints
                     .filter(|constraint| self.has_instance(constraint.class, &instance.typ, &mut Vec::new()).is_err())
                     .peekable();
@@ -377,7 +377,7 @@ impl <'a> TypeEnvironment<'a> {
                         buffer.push_str(", ");
                         buffer.push_str(constraint.class.as_slice());
                     }
-                    panic!("The type {} does not have all necessary super class instances required for {}.\n Missing: {}",
+                    panic!("The type {:?} does not have all necessary super class instances required for {:?}.\n Missing: {:?}",
                         instance.typ, instance.classname, buffer);
                 }
             }
@@ -390,7 +390,7 @@ impl <'a> TypeEnvironment<'a> {
                 Some(bind) => {
                     bind.typ = type_decl.typ.clone();
                 }
-                None => panic!("Error: Type declaration for '{}' has no binding", type_decl.name)
+                None => panic!("Error: Type declaration for '{:?}' has no binding", type_decl.name)
             }
         }
 
@@ -634,11 +634,11 @@ impl <'a> TypeEnvironment<'a> {
             Identifier(ref name) => {
                 match self.fresh(name) {
                     Some(t) => {
-                        debug!("{} as {}", name, t);
+                        debug!("{:?} as {:?}", name, t);
                         expr.typ = t.clone();
                         t
                     }
-                    None => panic!("Undefined identifier '{}' at {}", *name, expr.location)
+                    None => panic!("Undefined identifier '{:?}' at {:?}", *name, expr.location)
                 }
             }
             Apply(ref mut func, ref mut arg) => {
@@ -648,7 +648,7 @@ impl <'a> TypeEnvironment<'a> {
             OpApply(ref mut lhs, ref op, ref mut rhs) => {
                 let op_type = match self.fresh(op) {
                     Some(typ) => typ,
-                    None => panic!("Undefined identifier '{}' at {}", *op, expr.location)
+                    None => panic!("Undefined identifier '{:?}' at {:?}", *op, expr.location)
                 };
                 let first = self.typecheck_apply(&expr.location, subs, op_type, *lhs);
                 self.typecheck_apply(&expr.location, subs, first, *rhs)
@@ -715,7 +715,7 @@ impl <'a> TypeEnvironment<'a> {
                             unify_location(self, subs, &e.location, &mut typ, &mut previous);
                             let inner_type = match typ {
                                 Type::Application(_, ref mut t) => t,
-                                _ => panic!("Not a monadic type: {}", typ)
+                                _ => panic!("Not a monadic type: {:?}", typ)
                             };
                             self.typecheck_pattern(&pattern.location, subs, &pattern.node, *inner_type);
                         }
@@ -739,7 +739,7 @@ impl <'a> TypeEnvironment<'a> {
             }
             Paren(ref mut expr) => self.typecheck(*expr, subs)
         };
-        debug!("{}\nas\n{}", expr, x);
+        debug!("{:?}\nas\n{:?}", expr, x);
         expr.typ = x.clone();
         x
     }
@@ -749,7 +749,7 @@ impl <'a> TypeEnvironment<'a> {
         unify_location(self, subs, location, &mut func_type, &mut result);
         result = match result {
             Type::Application(_, x) => *x,
-            _ => panic!("Must be a type application (should be a function type), found {}", result)
+            _ => panic!("Must be a type application (should be a function type), found {:?}", result)
         };
         result
     }
@@ -766,7 +766,7 @@ impl <'a> TypeEnvironment<'a> {
             }
             &Pattern::Constructor(ref ctorname, ref patterns) => {
                 let mut t = self.fresh(ctorname)
-	.expect(format!("Undefined constructer '{}' when matching pattern", *ctorname));
+	.expect(format!("Undefined constructer '{:?}' when matching pattern", *ctorname));
                 let mut data_type = get_returntype(&t);
                 
                 unify_location(self, subs, location, &mut data_type, match_type);
@@ -793,7 +793,7 @@ impl <'a> TypeEnvironment<'a> {
     ///map f (x:xs) = ...
     ///map f [] = ...
     fn typecheck_binding_group(&mut self, subs: &mut Substitution, bindings: &mut [Binding<Name>]) {
-        debug!("Begin typecheck {} :: {}", bindings[0].name, bindings[0].typ);
+        debug!("Begin typecheck {:?} :: {:?}", bindings[0].name, bindings[0].typ);
         let mut argument_types = iter::range(bindings[0].arguments.len())
             .map(|_| self.new_var())
             .collect();
@@ -804,7 +804,7 @@ impl <'a> TypeEnvironment<'a> {
         let mut previous_type = None;
         for bind in bindings.iter_mut() {
             if argument_types.len() != bind.arguments.len() {
-                panic!("Binding {} do not have the same number of arguments", bind.name);//TODO re add location
+                panic!("Binding {:?} do not have the same number of arguments", bind.name);//TODO re add location
             }
             for (arg, typ) in bind.arguments.iter_mut().zip(argument_types.iter_mut()) {
                 self.typecheck_pattern(&Location::eof(), subs, arg, typ);
@@ -851,7 +851,7 @@ impl <'a> TypeEnvironment<'a> {
                 }
             }
         }
-        debug!("End typecheck {} :: {}", bindings[0].name, bindings[0].typ);
+        debug!("End typecheck {:?} :: {:?}", bindings[0].name, bindings[0].typ);
     }
     
     ///Typechecks a set of bindings which may be mutually recursive
@@ -918,7 +918,7 @@ impl <'a> TypeEnvironment<'a> {
                     }
                     bind.typ.constraints = self.find_constraints(&bind.typ.value);
                 }
-                debug!("End typecheck {} :: {}", binds[0].name, binds[0].typ);
+                debug!("End typecheck {:?} :: {:?}", binds[0].name, binds[0].typ);
             }
             if is_global {
                 subs.subs.clear();
@@ -1009,11 +1009,11 @@ impl <'a> TypeEnvironment<'a> {
 
 ///Searches through a type, comparing it with the type on the identifier, returning all the specialized constraints
 pub fn find_specialized_instances(typ: &Type, actual_type: &Type, constraints: &[Constraint<Name>]) -> Vec<(Name, Type)> {
-    debug!("Finding specialization {} => {} <-> {}", constraints, typ, actual_type);
+    debug!("Finding specialization {:?} => {:?} <-> {:?}", constraints, typ, actual_type);
     let mut result = Vec::new();
     find_specialized(&mut result, actual_type, typ, constraints);
     if constraints.len() == 0 {
-        panic!("Could not find the specialized instance between {} <-> {}", typ, actual_type);
+        panic!("Could not find the specialized instance between {:?} <-> {:?}", typ, actual_type);
     }
     result
 }
@@ -1159,7 +1159,7 @@ fn occurs(type_var: &TypeVariable, inType: &Type) -> bool {
 
 ///Freshen creates new type variables at every position where Type::Generic(..) appears.
 fn freshen(env: &mut TypeEnvironment, subs: &mut Substitution, typ: &mut Qualified<Type, Name>) {
-    debug!("Freshen {}", typ);
+    debug!("Freshen {:?}", typ);
     fn freshen_(env: &mut TypeEnvironment, subs: &mut Substitution, constraints: &[Constraint<Name>], typ: &mut Type) {
         let result = match *typ {
             Type::Generic(ref id) => freshen_var(env, subs, constraints, id),
@@ -1224,7 +1224,7 @@ fn freshen_var(env: &mut TypeEnvironment, subs: &mut Substitution, constraints: 
 
 ///Takes two types and attempts to make them the same type
 fn unify_location(env: &mut TypeEnvironment, subs: &mut Substitution, location: &Location, lhs: &mut Type, rhs: &mut Type) {
-    debug!("{} Unifying {} <-> {}", location, *lhs, *rhs);
+    debug!("{:?} Unifying {:?} <-> {:?}", location, *lhs, *rhs);
     match unify(env, subs, lhs, rhs) {
         Ok(()) => (),
         Err(error) => {
@@ -1251,16 +1251,16 @@ impl ::std::fmt::Show for TypeErrorInfo {
     fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
         match self.error {
             TypeError::UnifyFail(ref l, ref r) =>
-                write!(f, "{} Error: Could not unify types\n{}\nand\n{}\nin types\n{}\nand\n{}",
+                write!(f, "{:?} Error: Could not unify types\n{:?}\nand\n{:?}\nin types\n{:?}\nand\n{:?}",
                     self.location, l, r, self.lhs, self.rhs),
             TypeError::RecursiveUnification =>
-                write!(f, "{} Error: Recursive unification between {}\nand\n{}",
+                write!(f, "{:?} Error: Recursive unification between {:?}\nand\n{:?}",
                     self.location, self.lhs, self.rhs),
             TypeError::WrongArity(ref l, ref r) =>
-                write!(f, "{} Error: Types do not have the same arity.\n{} <-> {}\n{} <-> {}\n{}\nand\n{}"
+                write!(f, "{:?} Error: Types do not have the same arity.\n{:?} <-> {:?}\n{:?} <-> {:?}\n{:?}\nand\n{:?}"
                     , self.location, l, r, l.kind(), r.kind(), self.lhs, self.rhs),
             TypeError::MissingInstance(ref class, ref typ, ref id) =>
-                write!(f, "{} Error: The instance {} {} was not found as required by {} when unifying {}\nand\n{}",
+                write!(f, "{:?} Error: The instance {:?} {:?} was not found as required by {:?} when unifying {:?}\nand\n{:?}",
                     self.location, class, typ, id, self.lhs, self.rhs)
         }
     }
@@ -1392,7 +1392,7 @@ fn unify(env: &mut TypeEnvironment, subs: &mut Substitution, lhs: &mut Type, rhs
 }
 
 fn match_or_fail(env: &mut TypeEnvironment, subs: &mut Substitution, location: &Location, lhs: &mut Type, rhs: &Type) {
-    debug!("Match {} --> {}", *lhs, *rhs);
+    debug!("Match {:?} --> {:?}", *lhs, *rhs);
     match match_(env, subs, lhs, rhs) {
         Ok(()) => (),
         Err(error) => env.errors.insert(TypeErrorInfo { location: location.clone(), lhs: lhs.clone(), rhs: rhs.clone(), error: error })

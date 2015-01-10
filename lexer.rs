@@ -80,13 +80,13 @@ impl <T: PartialEq> PartialEq for Located<T> {
     
 impl <T: fmt::Show> fmt::Show for Located<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.node)
+        write!(f, "{:?}", self.node)
     }
 }
 
 impl fmt::Show for Location {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}:{}", self.row, self.column)
+        write!(f, "{:?}:{:?}", self.row, self.column)
     }
 }
 
@@ -341,7 +341,7 @@ impl <Stream : Iterator<Item=char>> Lexer<Stream> {
                 //L (t:ts) (m:ms) 	= 	} : (L (t:ts) ms) 	if m /= 0 and parse-error(t)
                 let m = *self.indentLevels.get(self.indentLevels.len() - 1);
                 if m != 0 {//If not a explicit '}'
-                    debug!("ParseError on token {}, inserting }}", self.current().token);
+                    debug!("ParseError on token {:?}, inserting }}", self.current().token);
                     self.indentLevels.pop();
                     let loc = self.current().location;
                     self.tokens.push_back(Token::new(&self.interner, RBRACE, "}", loc));
@@ -532,13 +532,13 @@ impl <Stream : Iterator<Item=char>> Lexer<Stream> {
         else if c == '`' {
             let x = self.read_char().expect("Unexpected end of input");
             if !x.is_alphabetic() && x != '_' {
-                panic!("Parse error on '{}'", x);
+                panic!("Parse error on '{:?}'", x);
             }
             let mut token = self.scan_identifier(x, startLocation);
             let end_tick = self.read_char();
             match end_tick {
                 Some('`') => (),
-                Some(x) => panic!("Parse error on '{}'", x),
+                Some(x) => panic!("Parse error on '{:?}'", x),
                 None => panic!("Unexpected end of input")
             }
             token.token = OPERATOR;

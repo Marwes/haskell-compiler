@@ -87,13 +87,13 @@ pub enum Expr<Ident> {
 
 impl fmt::Show for LiteralData {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.value)
+        write!(f, "{:?}", self.value)
     }
 }
 
 impl <T: fmt::Show> fmt::Show for Binding<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{} = {}", self.name, self.expression)
+        write!(f, "{:?} = {:?}", self.name, self.expression)
     }
 }
 
@@ -105,18 +105,18 @@ impl <T: fmt::Show> fmt::Show for Expr<T> {
 }
 impl <T: fmt::Show> fmt::Show for Alternative<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{} -> {}", self.pattern, self.expression)
+        write!(f, "{:?} -> {:?}", self.pattern, self.expression)
     }
 }
 impl <T: fmt::Show> fmt::Show for Pattern<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            Pattern::Identifier(ref s) => write!(f, "{}", s),
-            Pattern::Number(ref i) => write!(f, "{}", i),
+            Pattern::Identifier(ref s) => write!(f, "{:?}", s),
+            Pattern::Number(ref i) => write!(f, "{:?}", i),
             Pattern::Constructor(ref name, ref patterns) => {
-                try!(write!(f, "({} ", name));
+                try!(write!(f, "({:?} ", name));
                 for p in patterns.iter() {
-                    try!(write!(f, " {}", p));
+                    try!(write!(f, " {:?}", p));
                 }
                 write!(f, ")")
             }
@@ -138,7 +138,7 @@ impl <Ident: Typed> Typed for Expr<Ident> {
             &Expr::Apply(ref func, _) => {
                 match func.get_type() {
                     &Type::Application(_, ref a) => { let a2: &Type = *a; a2 }
-                    x => panic!("The function in Apply must be a type application, found {}", x)
+                    x => panic!("The function in Apply must be a type application, found {:?}", x)
                 }
             }
             &Expr::Lambda(ref arg, _) => arg.get_type(),
@@ -173,7 +173,7 @@ pub struct Id<T = Name> {
 
 impl fmt::Show for Id {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.name)
+        write!(f, "{:?}", self.name)
     }
 }
 
@@ -503,7 +503,7 @@ pub mod translate {
         class_decls.iter()
             .filter(|decl| instance.bindings.iter().find(|bind| bind.name.as_slice().ends_with(decl.name.as_slice())).is_none())
             .map(|decl| {
-                debug!("Create default function for {} ({}) {}", instance.classname, instance.typ, decl.name);
+                debug!("Create default function for {:?} ({:?}) {:?}", instance.classname, instance.typ, decl.name);
                 //The stub functions will naturally have the same type as the function in the class but with the variable replaced
                 //with the instance's type
                 let mut typ = decl.typ.clone();
@@ -629,7 +629,7 @@ impl <'a> Translator<'a> {
     ///Translates
     ///do { expr; stmts } = expr >> do { stmts; }
     fn do_bind2_id(&mut self, m_a: Type, m_b: Type) -> Expr<Id<Name>> {
-        debug!("m_a {}", m_a);
+        debug!("m_a {:?}", m_a);
         let c = match *m_a.appl() {
             Type::Variable(ref var) => vec![Constraint { class: Name { name: intern("Monad"), uid: 0 }, variables: vec![var.clone()] }],
             _ => vec![]
@@ -647,7 +647,7 @@ impl <'a> Translator<'a> {
         let m_a = expr.get_type().clone();
         let a = m_a.appr().clone();
         let m_b = result.get_type().clone();
-                debug!("m_a {}", m_a);
+                debug!("m_a {:?}", m_a);
         let c = match *m_a.appl() {
             Type::Variable(ref var) => vec![Constraint { class: Name { name: intern("Monad"), uid: 0 }, variables: vec![var.clone()] }],
             _ => vec![]
@@ -822,7 +822,7 @@ impl <'a> Translator<'a> {
         }).collect();
         let mut expr = self.translate_equations_(equations);
         expr = make_lambda(arg_ids.into_iter(), expr);
-        debug!("Desugared {} :: {}\n {}", name.name, name.typ, expr);
+        debug!("Desugared {:?} :: {:?}\n {:?}", name.name, name.typ, expr);
         Binding {
             name: name,
             expression: expr
@@ -834,7 +834,7 @@ impl <'a> Translator<'a> {
             eqs.push(Equation(ps.as_slice(), (bs.as_slice(), e)));
         }
         for e in eqs.iter() {
-            debug!("{}", e);
+            debug!("{:?}", e);
         }
         self.translate_equations(eqs.as_slice())
     }
@@ -864,7 +864,7 @@ impl <'a> Translator<'a> {
                 _ => true
             }
         }
-        debug!("In {}", equations);
+        debug!("In {:?}", equations);
         let &Equation(ps, (where_bindings_bindings, e)) = &equations[0];
         if ps.len() == 0 {
             assert_eq!(equations.len(), 1);//Otherwise multiple matches for this group

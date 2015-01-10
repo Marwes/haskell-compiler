@@ -99,7 +99,7 @@ pub struct TypeDeclaration<Ident = InternedStr> {
 }
 impl <T : fmt::Show> fmt::Show for TypeDeclaration<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{} :: {}", self.name, self.typ)
+        write!(f, "{:?} :: {:?}", self.name, self.typ)
     }
 }
 
@@ -119,7 +119,7 @@ impl <T: PartialEq> PartialEq for TypedExpr<T> {
 
 impl <T: fmt::Show> fmt::Show for TypedExpr<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{} :: {}", self.expr, self.typ)
+        write!(f, "{:?} :: {:?}", self.expr, self.typ)
     }
 }
 
@@ -197,7 +197,7 @@ pub enum Expr<Ident = InternedStr> {
 }
 impl <T: fmt::Show> fmt::Show for Binding<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{} = {}", self.name, self.matches)
+        write!(f, "{:?} = {:?}", self.name, self.matches)
     }
 }
 
@@ -212,19 +212,19 @@ impl <T: fmt::Show> fmt::Show for Expr<T> {
                         DoBinding::DoLet(ref bindings) => {
                             try!(write!(f, "let {{\n"));
                             for bind in bindings.iter() {
-                                try!(write!(f, "; {} = {}\n", bind.name, bind.matches));
+                                try!(write!(f, "; {:?} = {:?}\n", bind.name, bind.matches));
                             }
                             try!(write!(f, "}}\n"));
                         }
-                        DoBinding::DoBind(ref p, ref e) => try!(write!(f, "; {} <- {}\n", p.node, *e)),
-                        DoBinding::DoExpr(ref e) => try!(write!(f, "; {}\n", *e))
+                        DoBinding::DoBind(ref p, ref e) => try!(write!(f, "; {:?} <- {:?}\n", p.node, *e)),
+                        DoBinding::DoExpr(ref e) => try!(write!(f, "; {:?}\n", *e))
                     }
                 }
-                write!(f, "{} }}", *expr)
+                write!(f, "{:?} }}", *expr)
             }
-            OpApply(ref lhs, ref op, ref rhs) => write!(f, "({} {} {})", lhs, op, rhs),
-            TypeSig(ref expr, ref typ) => write!(f, "{} {}", expr, typ),
-            Paren(ref expr) => write!(f, "({})", expr),
+            OpApply(ref lhs, ref op, ref rhs) => write!(f, "({:?} {:?} {:?})", lhs, op, rhs),
+            TypeSig(ref expr, ref typ) => write!(f, "{:?} {:?}", expr, typ),
+            Paren(ref expr) => write!(f, "({:?})", expr),
             _ => Ok(())
         }
     }
@@ -232,12 +232,12 @@ impl <T: fmt::Show> fmt::Show for Expr<T> {
 impl <T: fmt::Show> fmt::Show for Pattern<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            &Pattern::Identifier(ref s) => write!(f, "{}", s),
-            &Pattern::Number(ref i) => write!(f, "{}", i),
+            &Pattern::Identifier(ref s) => write!(f, "{:?}", s),
+            &Pattern::Number(ref i) => write!(f, "{:?}", i),
             &Pattern::Constructor(ref name, ref patterns) => {
-                try!(write!(f, "({} ", name));
+                try!(write!(f, "({:?} ", name));
                 for p in patterns.iter() {
-                    try!(write!(f, " {}", p));
+                    try!(write!(f, " {:?}", p));
                 }
                 write!(f, ")")
             }
@@ -248,16 +248,16 @@ impl <T: fmt::Show> fmt::Show for Pattern<T> {
 
 impl <T: fmt::Show> fmt::Show for Alternative<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{} -> {}", self.pattern.node, self.matches)
+        write!(f, "{:?} -> {:?}", self.pattern.node, self.matches)
     }
 }
 impl <T: fmt::Show> fmt::Show for Match<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            Match::Simple(ref e) => write!(f, "{}", *e),
+            Match::Simple(ref e) => write!(f, "{:?}", *e),
             Match::Guards(ref gs) => {
                 for g in gs.iter() {
-                    try!(write!(f, "| {} -> {}\n", g.predicate, g.expression));
+                    try!(write!(f, "| {:?} -> {:?}\n", g.predicate, g.expression));
                 }
                 Ok(())
             }
@@ -267,10 +267,10 @@ impl <T: fmt::Show> fmt::Show for Match<T> {
 impl fmt::Show for LiteralData {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            LiteralData::Integral(i) => write!(f, "{}", i),
-            LiteralData::Fractional(v) => write!(f, "{}", v),
-            LiteralData::String(ref s) => write!(f, "\"{}\"", *s),
-            LiteralData::Char(c) => write!(f, "'{}'", c)
+            LiteralData::Integral(i) => write!(f, "{:?}", i),
+            LiteralData::Fractional(v) => write!(f, "{:?}", v),
+            LiteralData::String(ref s) => write!(f, "\"{:?}\"", *s),
+            LiteralData::Char(c) => write!(f, "'{:?}'", c)
         }
     }
 }

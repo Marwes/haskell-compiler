@@ -454,7 +454,7 @@ impl <'a> Compiler<'a> {
     }
 
     fn compile_binding(&mut self, bind : &Binding<Id>) -> SuperCombinator {
-        debug!("Compiling binding {} :: {}", bind.name, bind.name.typ);
+        debug!("Compiling binding {:?} :: {:?}", bind.name, bind.name.typ);
         let dict_arg = if bind.name.typ.constraints.len() > 0 { 1 } else { 0 };
         self.context = bind.name.typ.constraints.clone();
         let mut instructions = Vec::new();
@@ -463,7 +463,7 @@ impl <'a> Compiler<'a> {
             if dict_arg == 1 {
                 this.new_stack_var(Name { name: intern("$dict"), uid: 0 });
             }
-            debug!("{} {}\n {}", bind.name, dict_arg, bind.expression);
+            debug!("{:?} {:?}\n {:?}", bind.name, dict_arg, bind.expression);
             arity = this.compile_lambda_binding(&bind.expression, &mut instructions) + dict_arg;
             instructions.push(Update(0));
             if arity != 0 {
@@ -471,7 +471,7 @@ impl <'a> Compiler<'a> {
             }
             instructions.push(Unwind);
         });
-        debug!("{} :: {} compiled as:\n{}", bind.name, bind.name.typ, instructions);
+        debug!("{:?} :: {:?} compiled as:\n{:?}", bind.name, bind.name.typ, instructions);
         SuperCombinator {
             assembly_id: self.assemblies.len(),
             typ: bind.name.typ.clone(),
@@ -720,7 +720,7 @@ impl <'a> Compiler<'a> {
                 //might be created which is returned here and added to the assembly
                 let mut is_primitive = false;
                 let var = self.find(name.name)
-                    .unwrap_or_else(|| panic!("Error: Undefined variable {}", *name));
+                    .unwrap_or_else(|| panic!("Error: Undefined variable {:?}", *name));
                 match var {
                     Var::Primitive(..) => is_primitive = true,
                     _ => ()
@@ -735,11 +735,11 @@ impl <'a> Compiler<'a> {
                     }
                     Var::Builtin(index) => { instructions.push(PushBuiltin(index)); }
                     Var::Class(typ, constraints, var) => {
-                        debug!("Var::Class ({}, {}, {}) {}", typ, constraints, var, expr.get_type());
+                        debug!("Var::Class ({:?}, {:?}, {:?}) {:?}", typ, constraints, var, expr.get_type());
                         self.compile_instance_variable(expr.get_type(), instructions, name.name, typ, constraints, var);
                     }
                     Var::Constraint(index, bind_type, constraints) => {
-                        debug!("Var::Constraint {} ({}, {}, {})", name, index, bind_type, constraints);
+                        debug!("Var::Constraint {:?} ({:?}, {:?}, {:?})", name, index, bind_type, constraints);
                         self.compile_with_constraints(name.name, expr.get_type(), bind_type, constraints, instructions);
                         instructions.push(PushGlobal(index));
                         instructions.push(Mkap);
@@ -749,7 +749,7 @@ impl <'a> Compiler<'a> {
                             instructions.push(instruction);
                         }
                         else {
-                            panic!("Expected {} arguments for {}, got {}", num_args, name, arg_length)
+                            panic!("Expected {:?} arguments for {:?}, got {:?}", num_args, name, arg_length)
                         }
                         is_function = false;
                     }
@@ -821,7 +821,7 @@ impl <'a> Compiler<'a> {
                         instructions.push(PushGlobal(index));
                         instructions.push(Mkap);
                     }
-                    _ => panic!("Unregistered instance function {}", instance_fn_name)
+                    _ => panic!("Unregistered instance function {:?}", instance_fn_name)
                 }
             }
             None => {
@@ -853,7 +853,7 @@ impl <'a> Compiler<'a> {
     }
     
     fn push_dictionary(&mut self, context: &[Constraint<Name>], constraints: &[(Name, Type)], instructions: &mut Vec<Instruction>) {
-        debug!("Push dictionary {} ==> {}", context, constraints);
+        debug!("Push dictionary {:?} ==> {:?}", context, constraints);
         for &(ref class, ref typ) in constraints.iter() {
             self.fold_dictionary(*class, typ, instructions);
             instructions.push(ConstructDictionary(constraints.len()));
@@ -864,13 +864,13 @@ impl <'a> Compiler<'a> {
     fn fold_dictionary(&mut self, class: Name, typ: &Type, instructions: &mut Vec<Instruction>) {
         match *typ {
             Type::Constructor(ref ctor) => {//Simple
-                debug!("Simple for {}", ctor);
+                debug!("Simple for {:?}", ctor);
                 //Push static dictionary to the top of the stack
                 let index = self.find_dictionary_index(&[(class.clone(), typ.clone())]);
                 instructions.push(PushDictionary(index));
             }
             Type::Application(ref lhs, ref rhs) => {
-                debug!("App for ({} {})", lhs, rhs);
+                debug!("App for ({:?} {:?})", lhs, rhs);
                 //For function in functions
                 // Mkap function fold_dictionary(rhs)
                 self.fold_dictionary(class, *lhs, instructions);
@@ -894,11 +894,11 @@ impl <'a> Compiler<'a> {
                     let num_class_functions = self.find_class(class)
                         .map(|(_, _, decls)| decls.len())
                         .unwrap();
-                    debug!("Use previous dict for {} at {}..{}", var, index, num_class_functions);
+                    debug!("Use previous dict for {:?} at {:?}..{:?}", var, index, num_class_functions);
                     instructions.push(PushDictionaryRange(index, num_class_functions));
                 }
                 else {
-                    debug!("No dict for {}", var);
+                    debug!("No dict for {:?}", var);
                 }
             }
             _ => panic!("Did not expect generic")
@@ -908,7 +908,7 @@ impl <'a> Compiler<'a> {
     ///Lookup which index in the instance dictionary that holds the function called 'name'
     fn push_dictionary_member(&self, constraints: &[Constraint<Name>], name: Name) -> Option<uint> {
         if constraints.len() == 0 {
-            panic!("Attempted to push dictionary member '{}' with no constraints", name)
+            panic!("Attempted to push dictionary member '{:?}' with no constraints", name)
         }
         let mut ii = 0;
         for c in constraints.iter() {
@@ -974,7 +974,7 @@ impl <'a> Compiler<'a> {
                 for decl in declarations.iter() {
                     let x = match extract_applied_type(typ) {
                         &Type::Constructor(ref x) => x,
-                        _ => panic!("{}", typ)
+                        _ => panic!("{:?}", typ)
                     };
                     let mut b = "#".to_string();
                     b.push_str(x.name.as_slice());
@@ -988,7 +988,7 @@ impl <'a> Compiler<'a> {
                         Some(Var::Constraint(index, _, _)) => {
                             function_indexes.push(index as uint);//TODO this is not really correct since this function requires a dictionary
                         }
-                        var => panic!("Did not find function {} {}", name, var)
+                        var => panic!("Did not find function {:?} {:?}", name, var)
                     }
                 }
                 None
@@ -1000,7 +1000,7 @@ impl <'a> Compiler<'a> {
     ///An index to the Jump instruction which is taken when the match fails is stored in the branches vector
     ///These instructions will need to be updated later with the correct jump location.
     fn compile_pattern(&mut self, pattern: &Pattern<Id>, branches: &mut Vec<uint>, instructions: &mut Vec<Instruction>, stack_size: uint) -> uint {
-        debug!("Pattern {} at {}", pattern, stack_size);
+        debug!("Pattern {:?} at {:?}", pattern, stack_size);
         match pattern {
             &Pattern::Constructor(ref name, ref patterns) => {
                 instructions.push(Push(stack_size));
@@ -1010,7 +1010,7 @@ impl <'a> Compiler<'a> {
                         branches.push(instructions.len());
                         instructions.push(Jump(0));
                     }
-                    _ => panic!("Undefined constructor {}", *name)
+                    _ => panic!("Undefined constructor {:?}", *name)
                 }
                 instructions.push(Split(patterns.len()));
                 self.stackSize += patterns.len();

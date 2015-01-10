@@ -34,7 +34,7 @@ impl Interner {
             self.strings.get(i).as_slice()
         }
         else {
-            panic!("Invalid InternedStr {}", i)
+            panic!("Invalid InternedStr {:?}", i)
         }
     }
 }
@@ -67,6 +67,6 @@ impl fmt::Show for InternedStr {
 }
 impl fmt::String for InternedStr {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.as_slice())
+        write!(f, "{:?}", self.as_slice())
     }
 }

@@ -70,18 +70,18 @@ impl <'a> Node<'a> {
 }
 impl <'a> fmt::Show for Node<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", *self.borrow())
+        write!(f, "{:?}", *self.borrow())
     }
 }
 impl <'a> fmt::Show for Node_<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            &Application(ref func, ref arg) => write!(f, "({} {})", *func, *arg),
-            &Int(i) => write!(f, "{}", i),
-            &Float(i) => write!(f, "{}f", i),
-            &Char(c) => write!(f, "'{}'", c),
-            &Combinator(ref sc) => write!(f, "{}", sc.name),
-            &Indirection(ref n) => write!(f, "(~> {})", *n),
+            &Application(ref func, ref arg) => write!(f, "({:?} {:?})", *func, *arg),
+            &Int(i) => write!(f, "{:?}", i),
+            &Float(i) => write!(f, "{:?}f", i),
+            &Char(c) => write!(f, "'{:?}'", c),
+            &Combinator(ref sc) => write!(f, "{:?}", sc.name),
+            &Indirection(ref n) => write!(f, "(~> {:?})", *n),
             &Constructor(ref tag, ref args) => {
                 let cons = args;
                 if cons.len() > 0 {
@@ -90,7 +90,7 @@ impl <'a> fmt::Show for Node_<'a> {
                             fn print_string<'a>(f: &mut fmt::Formatter, cons: &Vec<Node<'a>>) -> fmt::Result {
                                 if cons.len() >= 2 {
                                     match *cons.get(0).borrow() {
-                                        Char(c) =>  { try!(write!(f, "{}", c)); },
+                                        Char(c) =>  { try!(write!(f, "{:?}", c)); },
                                         _ => ()
                                     }
                                     match *cons.get(1).borrow() {
@@ -106,9 +106,9 @@ impl <'a> fmt::Show for Node_<'a> {
                         }
                         _ => {
                             //Print a normal constructor
-                            try!(write!(f, "{{{}", *tag));
+                            try!(write!(f, "{{{:?}", *tag));
                             for arg in args.iter() {
-                                try!(write!(f, " {}", *arg.borrow()));
+                                try!(write!(f, " {:?}", *arg.borrow()));
                             }
                             write!(f, "}}")
                         }
@@ -116,14 +116,14 @@ impl <'a> fmt::Show for Node_<'a> {
                 }
                 else {
                     //Print a normal constructor
-                    try!(write!(f, "{{{}", *tag));
+                    try!(write!(f, "{{{:?}", *tag));
                     for arg in args.iter() {
-                        try!(write!(f, " {}", *arg.borrow()));
+                        try!(write!(f, " {:?}", *arg.borrow()));
                     }
                     write!(f, "}}")
                 }
             }
-            &Dictionary(ref dict) => write!(f, "{}", dict),
+            &Dictionary(ref dict) => write!(f, "{:?}", dict),
             &BuiltinFunction(..) => write!(f, "<extern function>")
         }
     }
@@ -132,10 +132,10 @@ impl fmt::Show for InstanceDictionary {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         try!(write!(f, "["));
         if self.entries.len() > 0 {
-            try!(write!(f, "{}", **self.entries.get(0)));
+            try!(write!(f, "{:?}", **self.entries.get(0)));
         }
         for entry in self.entries.iter().skip(1) {
-            try!(write!(f, ", {}", **entry));
+            try!(write!(f, ", {:?}", **entry));
         }
         write!(f, "]")
     }
@@ -143,8 +143,8 @@ impl fmt::Show for InstanceDictionary {
 impl fmt::Show for DictionaryEntry {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            DictionaryEntry::Function(index) => write!(f, "{}", index),
-            DictionaryEntry::App(ref func, ref arg) => write!(f, "({} {})", *func, *arg)
+            DictionaryEntry::Function(index) => write!(f, "{:?}", index),
+            DictionaryEntry::App(ref func, ref arg) => write!(f, "({:?} {:?})", *func, *arg)
         }
     }
 }
@@ -206,12 +206,12 @@ impl <'a> VM {
         debug!("----------------------------");
         debug!("Entering frame with stack");
         for x in stack.iter() {
-            debug!("{}", *x.borrow());
+            debug!("{:?}", *x.borrow());
         }
         debug!("");
         let mut i = 0;
         while i < code.len() {
-            debug!("Executing instruction {} : {}", i, code[i]);
+            debug!("Executing instruction {:?} : {:?}", i, code[i]);
             match code[i] {
                 Add => primitive(stack, |l, r| { l + r }),
                 Sub => primitive(stack, |l, r| { l - r }),
@@ -252,9 +252,9 @@ impl <'a> VM {
                 PushChar(value) => { stack.push(Node::new(Char(value))); }
                 Push(index) => {
                     let x = stack.get(index).clone();
-                    debug!("Pushed {}", *x.borrow());
+                    debug!("Pushed {:?}", *x.borrow());
                     for j in range(0, stack.len()) {
-                        debug!(" {}  {}", j, *stack.get(j).borrow());
+                        debug!(" {:?}  {:?}", j, *stack.get(j).borrow());
                     }
                     stack.push(x);
                 }
@@ -271,7 +271,7 @@ impl <'a> VM {
                     assert!(stack.len() >= 2);
                     let func = stack.pop().unwrap();
                     let arg = stack.pop().unwrap();
-                    debug!("Mkap {} {}", *func.borrow(), *arg.borrow());
+                    debug!("Mkap {:?} {:?}", *func.borrow(), *arg.borrow());
                     stack.push(Node::new(Application(func, arg)));
                 }
                 Eval => {
@@ -280,10 +280,10 @@ impl <'a> VM {
                     let mut newStack = vec!(old.clone());
                     execute(self_, &mut newStack, unwindCode, assembly_id);
                     stack.push(newStack.pop().unwrap());
-                    debug!("{}", stack.as_slice());
+                    debug!("{:?}", stack.as_slice());
                     let new = stack.last().unwrap().borrow().clone();
                     *(*old.node).borrow_mut() = new;
-                    debug!("{}", stack.as_slice());
+                    debug!("{:?}", stack.as_slice());
                 }
                 Pop(num) => {
                     for _ in range(0, num) {
@@ -324,14 +324,14 @@ impl <'a> VM {
                         }
                     }
                     let x = (*stack.last().unwrap().borrow()).clone();
-                    debug!("Unwinding {}", x);
+                    debug!("Unwinding {:?}", x);
                     match x {
                         Application(func, _) => {
                             stack.push(func);
                             i -= 1;//Redo the unwind instruction
                         }
                         Combinator(comb) => {
-                            debug!(">>> Call {}", comb.name);
+                            debug!(">>> Call {:?}", comb.name);
                             unwind(&mut i, comb.arity, stack, |new_stack| {
                                 execute(self_, new_stack, comb.instructions, comb.assembly_id);
                                 new_stack.pop().unwrap()
@@ -390,7 +390,7 @@ impl <'a> VM {
                                 false
                             }
                         }
-                        ref x => panic!("Expected constructor when executing CaseJump, got {}", *x),
+                        ref x => panic!("Expected constructor when executing CaseJump, got {:?}", *x),
                     };
                     if !jumped {
                         stack.pop();
@@ -410,7 +410,7 @@ impl <'a> VM {
                         let x = stack.get(0).borrow();
                         let dict = match *x {
                             Dictionary(ref x) => x,
-                            ref x => panic!("Attempted to retrieve {} as dictionary", *x)
+                            ref x => panic!("Attempted to retrieve {:?} as dictionary", *x)
                         };
                         match **dict.entries.get(index) {
                             DictionaryEntry::Function(gi) => {
@@ -459,7 +459,7 @@ impl <'a> VM {
                             Dictionary(ref d) => {
                                 new_dict.entries.extend(d.entries.iter().map(|x| x.clone()));
                             }
-                            ref x => panic!("Unexpected {}", x)
+                            ref x => panic!("Unexpected {:?}", x)
                         }
                     }
                     stack.push(Node::new(Dictionary(new_dict)));
@@ -488,7 +488,7 @@ fn primitive_int<'a, F>(stack: &mut Vec<Node<'a>>, f: F) where F: FnOnce(int, in
     let r = stack.pop().unwrap();
     match (&*l.borrow(), &*r.borrow()) {
         (&Int(lhs), &Int(rhs)) => stack.push(Node::new(f(lhs, rhs))),
-        (lhs, rhs) => panic!("Expected fully evaluted numbers in primitive instruction\n LHS: {}\nRHS: {} ", lhs, rhs)
+        (lhs, rhs) => panic!("Expected fully evaluted numbers in primitive instruction\n LHS: {:?}\nRHS: {:?} ", lhs, rhs)
     }
 }
 ///Exucutes a binary primitive instruction taking two doubles
@@ -497,7 +497,7 @@ fn primitive_float<'a, F>(stack: &mut Vec<Node<'a>>, f: F) where F: FnOnce(f64, 
     let r = stack.pop().unwrap();
     match (&*l.borrow(), &*r.borrow()) {
         (&Float(lhs), &Float(rhs)) => stack.push(Node::new(f(lhs, rhs))),
-        (lhs, rhs) => panic!("Expected fully evaluted numbers in primitive instruction\n LHS: {}\nRHS: {} ", lhs, rhs)
+        (lhs, rhs) => panic!("Expected fully evaluted numbers in primitive instruction\n LHS: {:?}\nRHS: {:?} ", lhs, rhs)
     }
 }
 fn primitive<F>(stack: &mut Vec<Node>, f: F) where F: FnOnce(int, int) -> int {
@@ -546,7 +546,7 @@ fn extract_result(node: Node_) -> Option<VMResult> {
         Int(i) => Some(IntResult(i)),
         Float(i) => Some(DoubleResult(i)),
         x => {
-            println!("Can't extract result {}", x);
+            println!("Can't extract result {:?}", x);
             None
         }
     }
@@ -609,7 +609,7 @@ mod primitive {
         let mut vec = Vec::new();
         vec.push(stack[0].clone());
         let node = deepseq(vm, vec, 123);
-        panic!("error: {}", node)
+        panic!("error: {:?}", node)
     }
     fn eval<'a>(vm: &'a VM, node: Node<'a>) -> Node<'a> {
         static evalCode : &'static [Instruction] = &[Eval];
@@ -653,11 +653,11 @@ mod primitive {
         let filename = get_string(&node_filename);
         let mut file = match File::open(&Path::new(filename.as_slice())) {
             Ok(f) => f,
-            Err(err) => panic!("error: readFile -> {}", err)
+            Err(err) => panic!("error: readFile -> {:?}", err)
         };
         let (begin, _end) = match file.read_to_str() {
             Ok(s) => create_string(s.as_slice()),
-            Err(err) => panic!("error: readFile -> {}", err)
+            Err(err) => panic!("error: readFile -> {:?}", err)
         };
         //Return (String, RealWorld)
         Node::new(Constructor(0, vec!(begin, stack[1].clone())))
@@ -668,7 +668,7 @@ mod primitive {
         temp.push(stack[0].clone());
         let msg_node = deepseq(vm, temp, 123);
         let msg = get_string(&msg_node);
-        println!("{}", msg);
+        println!("{:?}", msg);
         Node::new(Constructor(0, vec!(Node::new(Constructor(0, vec!())), stack[1].clone())))
     }
     fn get_string<'a>(node: &Node_<'a>) -> String {
@@ -1050,7 +1050,7 @@ import Prelude
 
 test x y = (x == y) || (x < y)
 main = (test (0 :: Int) 2) && not (test (1 :: Int) 0)")
-        .unwrap_or_else(|err| panic!("{}", err));
+        .unwrap_or_else(|err| panic!("{:?}", err));
     assert_eq!(result, Some(ConstructorResult(0, Vec::new())));
 }
 #[test]
@@ -1068,7 +1068,7 @@ instance Eq AB where
 test x y = x == y
 
 main = A == B && test A A")
-        .unwrap_or_else(|err| panic!("{}", err));
+        .unwrap_or_else(|err| panic!("{:?}", err));
     assert_eq!(result, Some(ConstructorResult(1, Vec::new())));
 }
 
