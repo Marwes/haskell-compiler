@@ -10,3 +10,4 @@ name = "HaskellCompiler"
 path = "src/main.rs"
 
 [dependencies.log]
+[dependencies.getopts]
