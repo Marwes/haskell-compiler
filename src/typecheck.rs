@@ -224,7 +224,7 @@ impl <'a> TypeEnvironment<'a> {
         add_primitives(&mut globals, "Double");
         insert_to(&mut globals,"primIntToDouble", function_type_(int_type(), double_type()));
         insert_to(&mut globals, "primDoubleToInt", function_type_(double_type(), int_type()));
-        let var = Type::Generic(Type::new_var_kind(intern("a"), Kind::Star.clone()).var().clone());
+        let var = Type::Generic(TypeVariable::new_var_kind(intern("a"), Kind::Star.clone()));
         
         for (name, typ) in builtins().into_iter() {
             insert_to(&mut globals, name, typ);

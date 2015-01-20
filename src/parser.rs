@@ -1344,7 +1344,7 @@ r"class Eq a => Ord a where
     let module = parser.module().unwrap();
 
     let cls = &module.classes[0];
-    let a = Type::new_var(intern("a")).var().clone();
+    let a = TypeVariable::new(intern("a"));
     assert_eq!(cls.name, intern("Ord"));
     assert_eq!(cls.variable, a);
     assert_eq!(cls.constraints[0].class, intern("Eq"));

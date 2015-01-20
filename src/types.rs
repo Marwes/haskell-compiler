@@ -3,11 +3,12 @@ use std::iter::range_step;
 use std::default::Default;
 use std::fmt;
 use std::iter;
+use std::str::Str;
 use interner::{InternedStr, intern};
 
 #[derive(Clone, Default, PartialEq, Eq, Hash)]
-pub struct TypeConstructor {
-    pub name : InternedStr,
+pub struct TypeConstructor<Ident = InternedStr> {
+    pub name : Ident,
     pub kind : Kind
 }
 
@@ -19,10 +20,10 @@ pub struct TypeVariable {
     pub age: isize
 }
 #[derive(Clone, Eq, Hash)]
-pub enum Type {
+pub enum Type<Ident = InternedStr> {
     Variable(TypeVariable),
-    Constructor(TypeConstructor),
-    Application(Box<Type>, Box<Type>),
+    Constructor(TypeConstructor<Ident>),
+    Application(Box<Type<Ident>>, Box<Type<Ident>>),
     Generic(TypeVariable)
 }
 #[derive(Clone, Default, Hash)]
@@ -34,34 +35,43 @@ pub fn qualified<Ident>(constraints: Vec<Constraint<Ident>>, typ: Type) -> Quali
     Qualified { constraints: constraints, value: typ }
 }
 
-impl Type {
+impl TypeVariable {
+    pub fn new(id : VarId) -> TypeVariable {
+        TypeVariable::new_var_kind(id, Kind::Star)
+    }
+    pub fn new_var_kind(id : VarId, kind: Kind) -> TypeVariable {
+        TypeVariable { id : id, kind: kind, age: 0 }
+    }
+}
+
+impl <Id: fmt::Debug + Str> Type<Id> {
 
     ///Creates a new type variable with the specified id
-    pub fn new_var(id : VarId) -> Type {
+    pub fn new_var(id : VarId) -> Type<Id> {
         Type::new_var_kind(id, Kind::Star)
     }
     ///Creates a new type which is a type variable which takes a number of types as arguments
     ///Gives the typevariable the correct kind arity.
-    pub fn new_var_args(id: VarId, types : Vec<Type>) -> Type {
+    pub fn new_var_args(id: VarId, types : Vec<Type<Id>>) -> Type<Id> {
         Type::new_type_kind(Type::Variable(TypeVariable { id : id, kind: Kind::Star, age: 0 }), types)
     }
     ///Creates a new type variable with the specified kind
-    pub fn new_var_kind(id : VarId, kind: Kind) -> Type {
-        Type::Variable(TypeVariable { id : id, kind: kind, age: 0 })
+    pub fn new_var_kind(id : VarId, kind: Kind) -> Type<Id> {
+        Type::Variable(TypeVariable::new_var_kind(id, kind))
     }
     ///Creates a new type constructor with the specified argument and kind
-    pub fn new_op(name : InternedStr, types : Vec<Type>) -> Type {
+    pub fn new_op(name : Id, types : Vec<Type<Id>>) -> Type<Id> {
         Type::new_type_kind(Type::Constructor(TypeConstructor { name : name, kind: Kind::Star }), types)
     }
     ///Creates a new type constructor applied to the types and with a specific kind
-    pub fn new_op_kind(name : InternedStr, types : Vec<Type>, kind: Kind) -> Type {
+    pub fn new_op_kind(name : Id, types : Vec<Type<Id>>, kind: Kind) -> Type<Id> {
         let mut result = Type::Constructor(TypeConstructor { name : name, kind: kind });
         for typ in types.into_iter() {
             result = Type::Application(box result, box typ);
         }
         result
     }
-    fn new_type_kind(mut result: Type, types: Vec<Type>) -> Type {
+    fn new_type_kind(mut result: Type<Id>, types: Vec<Type<Id>>) -> Type<Id> {
         *result.mut_kind() = Kind::new(types.len() as isize + 1);
         for typ in types.into_iter() {
             result = Type::Application(box result, box typ);
@@ -79,7 +89,7 @@ impl Type {
 
     ///Returns a reference to the type constructor or fails if it is not a constructor
     #[allow(dead_code)]
-    pub fn ctor(&self) -> &TypeConstructor {
+    pub fn ctor(&self) -> &TypeConstructor<Id> {
         match self {
             &Type::Constructor(ref op) => op,
             _ => panic!("Tried to unwrap {:?} as a TypeConstructor", self)
@@ -88,7 +98,7 @@ impl Type {
 
     ///Returns a reference to the the type function or fails if it is not an application
     #[allow(dead_code)]
-    pub fn appl(&self) -> &Type {
+    pub fn appl(&self) -> &Type<Id> {
         match self {
             &Type::Application(ref lhs, _) => &**lhs,
             _ => panic!("Error: Tried to unwrap {:?} as TypeApplication", self)
@@ -96,7 +106,7 @@ impl Type {
     }
     #[allow(dead_code)]
     ///Returns a reference to the the type argument or fails if it is not an application
-    pub fn appr(&self) -> &Type {
+    pub fn appr(&self) -> &Type<Id> {
         match self {
             &Type::Application(_, ref rhs) => &**rhs,
             _ => panic!("Error: Tried to unwrap TypeApplication")
@@ -154,13 +164,14 @@ pub fn tuple_type(n: usize) -> (String, Type) {
     assert!(n < 26);
     for i in range(0, n) {
         let c = (('a' as u8) + i as u8) as char;
-        var_list.push(Type::Generic(Type::new_var_kind(intern(c.to_string().as_slice()), Kind::Star.clone()).var().clone()));
+        let var = TypeVariable::new_var_kind(intern(c.to_string().as_slice()), Kind::Star.clone());
+        var_list.push(Type::Generic(var));
     }
     let ident = tuple_name(n);
     let mut typ = Type::new_op(intern(ident.as_slice()), var_list);
     for i in range_step(n as isize - 1, -1, -1) {
         let c = (('a' as u8) + i as u8) as char;
-        typ = function_type_(Type::Generic(Type::new_var(intern(c.to_string().as_slice())).var().clone()), typ);
+        typ = function_type_(Type::Generic(TypeVariable::new(intern(c.to_string().as_slice()))), typ);
     }
     (ident, typ)
 }
@@ -250,7 +261,7 @@ impl fmt::Debug for TypeVariable {
         write!(f, "{:?}", self.id)
     }
 }
-impl fmt::Debug for TypeConstructor {
+impl <I: fmt::Debug> fmt::Debug for TypeConstructor<I> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{:?}", self.name)
     }
@@ -269,11 +280,11 @@ enum Prec_ {
     Constructor,
 }
 #[derive(Copy)]
-struct Prec<'a>(Prec_, &'a Type);
+struct Prec<'a, Id: 'a>(Prec_, &'a Type<Id>);
 
 ///If the type is a function it returns the type of the argument and the result type,
 ///otherwise it returns None
-pub fn try_get_function<'a>(typ: &'a Type) -> Option<(&'a Type, &'a Type)> {
+pub fn try_get_function<'a, Id: Str>(typ: &'a Type<Id>) -> Option<(&'a Type<Id>, &'a Type<Id>)> {
     match *typ {
         Type::Application(ref xx, ref result) => {
             match **xx {
@@ -292,7 +303,7 @@ pub fn try_get_function<'a>(typ: &'a Type) -> Option<(&'a Type, &'a Type)> {
     }
 }
 
-impl <'a> fmt::Debug for Prec<'a> {
+impl <'a, Id: fmt::Debug + Str> fmt::Debug for Prec<'a, Id> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let Prec(p, t) = *self;
         match *t {
@@ -330,7 +341,7 @@ impl <'a> fmt::Debug for Prec<'a> {
     }
 }
 
-impl fmt::Debug for Type {
+impl <I: fmt::Debug + Str> fmt::Debug for Type<I> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{:?}", Prec(Prec_::Top, self))
     }
@@ -344,7 +355,7 @@ impl <I: fmt::Debug> fmt::Debug for Constraint<I> {
         Ok(())
     }
 }
-fn type_eq<'a>(mapping: &mut HashMap<&'a TypeVariable, &'a TypeVariable>, lhs: &'a Type, rhs: &'a Type) -> bool {
+fn type_eq<'a, Id: PartialEq>(mapping: &mut HashMap<&'a TypeVariable, &'a TypeVariable>, lhs: &'a Type<Id>, rhs: &'a Type<Id>) -> bool {
     match (lhs, rhs) {
         (&Type::Constructor(ref l), &Type::Constructor(ref r)) => l.name == r.name,
         (&Type::Variable(ref r), &Type::Variable(ref l)) => var_eq(mapping, r, l),
@@ -364,8 +375,8 @@ fn var_eq<'a>(mapping: &mut HashMap<&'a TypeVariable, &'a TypeVariable>, l: &'a 
     true
 }
 
-impl <I : PartialEq> PartialEq for Qualified<Type, I> {
-    fn eq(&self, other: &Qualified<Type, I>) -> bool {
+impl <I : PartialEq, U: PartialEq> PartialEq for Qualified<Type<I>, U> {
+    fn eq(&self, other: &Qualified<Type<I>, U>) -> bool {
         let mut mapping = HashMap::new();
         self.constraints.iter()
             .zip(other.constraints.iter())
@@ -373,20 +384,19 @@ impl <I : PartialEq> PartialEq for Qualified<Type, I> {
         && type_eq(&mut mapping, &self.value, &other.value)
     }
 }
-impl <I: Eq> Eq for Qualified<Type, I> {
-}
+impl <I: Eq, U: Eq> Eq for Qualified<Type<I>, U> { }
 
-impl PartialEq for Type {
+impl <I: PartialEq> PartialEq for Type<I> {
     ///Compares two types, treating two type variables as equal as long as they always and only appear at the same place
     ///a -> b == c -> d
     ///a -> b != c -> c
-    fn eq(&self, other: &Type) -> bool {
+    fn eq(&self, other: &Type<I>) -> bool {
         let mut mapping = HashMap::new();
         type_eq(&mut mapping, self, other)
     }
 }
 
-pub fn extract_applied_type(typ: &Type) -> &Type {
+pub fn extract_applied_type<Id>(typ: &Type<Id>) -> &Type<Id> {
     match *typ {
         Type::Application(ref lhs, _) => extract_applied_type(&**lhs),
         _ => typ
