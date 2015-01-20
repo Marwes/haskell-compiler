@@ -1582,16 +1582,18 @@ pub fn paren(expr : TypedExpr) -> TypedExpr {
     TypedExpr::new(Paren(box expr))
 }
 
-pub fn typecheck_string(module: &str) -> IoResult<Vec<Module<Name>>> {
+pub fn typecheck_string(module: &str) -> Result<Vec<Module<Name>>, ::std::string::String> {
     use parser::parse_string;
     parse_string(module)
+        .map_err(|e| format!("{:?}", e))
         .map(typecheck_modules_common)
 }
 
 ///Parses a module, renames and typechecks it, as well as all of its imported modules
-pub fn typecheck_module(module: &str) -> IoResult<Vec<Module<Name>>> {
+pub fn typecheck_module(module: &str) -> Result<Vec<Module<Name>>, ::std::string::String> {
     use parser::parse_modules;
     parse_modules(module)
+        .map_err(|e| format!("{:?}", e))
         .map(typecheck_modules_common)
 }
 
@@ -1632,7 +1634,7 @@ pub fn do_typecheck(input: &str) -> Module<Name> {
 }
 pub fn do_typecheck_with(input: &str, types: &[&DataTypes]) -> Module<Name> {
     let mut parser = ::parser::Parser::new(input.chars());
-    let mut module = rename_module(parser.module());
+    let mut module = rename_module(parser.module().unwrap());
     let mut env = TypeEnvironment::new();
     for t in types.iter() {
         env.add_types(*t);
@@ -1695,7 +1697,7 @@ fn typecheck_case() {
     let type_int = int_type();
 
     let mut parser = Parser::new(r"case [] of { x:xs -> primIntAdd x 2 ; [] -> 3}".chars());
-    let mut expr = rename_expr(parser.expression_());
+    let mut expr = rename_expr(parser.expression_().unwrap());
     env.typecheck_expr(&mut expr);
 
     assert_eq!(expr.typ, type_int);
@@ -1725,7 +1727,7 @@ fn test_typecheck_string() {
     let mut env = TypeEnvironment::new();
 
     let mut parser = Parser::new("\"hello\"".chars());
-    let mut expr = rename_expr(parser.expression_());
+    let mut expr = rename_expr(parser.expression_().unwrap());
     env.typecheck_expr(&mut expr);
 
     assert_eq!(expr.typ, list_type(char_type()));
@@ -1736,7 +1738,7 @@ fn typecheck_tuple() {
     let mut env = TypeEnvironment::new();
 
     let mut parser = Parser::new("(primIntAdd 0 0, \"a\")".chars());
-    let mut expr = rename_expr(parser.expression_());
+    let mut expr = rename_expr(parser.expression_().unwrap());
     env.typecheck_expr(&mut expr);
 
     let list = list_type(char_type());
@@ -1767,7 +1769,7 @@ r"let
     test2 = 2 : test
     b = test
 in b".chars());
-    let mut expr = rename_expr(parser.expression_());
+    let mut expr = rename_expr(parser.expression_().unwrap());
     env.typecheck_expr(&mut expr);
 
     
@@ -1815,7 +1817,7 @@ instance Test Int where
 
 main x y = primIntAdd (test x) (test y)".chars());
 
-    let mut module = rename_module(parser.module());
+    let mut module = rename_module(parser.module().unwrap());
 
     let mut env = TypeEnvironment::new();
     env.typecheck_module(&mut module);
@@ -1870,7 +1872,7 @@ test x y = case x < y of
 
 ".chars());
 
-    let mut module = rename_module(parser.module());
+    let mut module = rename_module(parser.module().unwrap());
 
     let mut env = TypeEnvironment::new();
     env.typecheck_module(&mut module);
@@ -1902,7 +1904,7 @@ test y = False < y
 
 ".chars());
 
-    let mut module = rename_module(parser.module());
+    let mut module = rename_module(parser.module().unwrap());
 
     let mut env = TypeEnvironment::new();
     env.typecheck_module(&mut module);
@@ -1931,7 +1933,7 @@ instance Eq a => Eq [a] where
     False -> False
 ".chars());
 
-    let mut module = rename_module(parser.module());
+    let mut module = rename_module(parser.module().unwrap());
 
     let mut env = TypeEnvironment::new();
     env.typecheck_module(&mut module);
@@ -2283,7 +2285,7 @@ fn bench_prelude(b: &mut Bencher) {
     let path = &Path::new("Prelude.hs");
     let contents = File::open(path).read_to_string().unwrap();
     let mut parser = Parser::new(contents.as_slice().chars());
-    let module = rename_module(parser.module());
+    let module = rename_module(parser.module().unwrap());
 
     b.iter(|| {
         let mut env = TypeEnvironment::new();

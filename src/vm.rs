@@ -2,7 +2,7 @@ use std::fmt;
 use std::rc::Rc;
 use std::cell::{Ref, RefMut, RefCell};
 use std::path::Path;
-use std::io::{File, IoResult};
+use std::io::File;
 use typecheck::TypeEnvironment;
 use compiler::*;
 use parser::Parser;
@@ -512,22 +512,23 @@ enum VMResult {
     Constructor(u16, Vec<VMResult>)
 }
 
-fn compile_iter<T : Iterator<Item=char>>(iterator: T) -> Assembly {
+fn compile_iter<T : Iterator<Item=char>>(iterator: T) -> Result<Assembly, String> {
     let mut parser = Parser::new(iterator);
-    let mut module = rename_module(parser.module());
+    let module = try!(parser.module().map_err(|e| format!("{:?}", e)));
+    let mut module = rename_module(module);
     
     let mut typer = TypeEnvironment::new();
     typer.typecheck_module(&mut module);
     let core_module = do_lambda_lift(translate_module(module));
     
     let mut compiler = Compiler::new();
-    compiler.compile_module(&core_module)
+    Ok(compiler.compile_module(&core_module))
 }
 
 ///Compiles a single file
-pub fn compile_file(filename: &str) -> Assembly {
+pub fn compile_file(filename: &str) -> Result<Assembly, String> {
     let path = &Path::new(filename);
-    let contents = File::open(path).read_to_string().unwrap();
+    let contents = try!(File::open(path).read_to_string().map_err(|e| e.to_string()));
     compile_iter(contents.as_slice().chars())
 }
 
@@ -552,19 +553,19 @@ fn extract_result(node: Node_) -> Option<VMResult> {
     }
 }
 
-pub fn execute_main_string(module: &str) -> IoResult<Option<VMResult>> {
+pub fn execute_main_string(module: &str) -> Result<Option<VMResult>, String> {
     let assemblies = try!(compile_string(module));
     execute_main_module_(assemblies)
 }
 
 ///Takes a module with a main function and compiles it and all its imported modules
 ///and then executes the main function
-pub fn execute_main_module(modulename: &str) -> IoResult<Option<VMResult>> {
+pub fn execute_main_module(modulename: &str) -> Result<Option<VMResult>, String> {
     let assemblies = try!(compile_module(modulename));
     execute_main_module_(assemblies)
 }
 
-fn execute_main_module_(assemblies: Vec<Assembly>) -> IoResult<Option<VMResult>> {
+fn execute_main_module_(assemblies: Vec<Assembly>) -> Result<Option<VMResult>, String> {
     let mut vm = VM::new();
     for assembly in assemblies.into_iter() {
         vm.add_assembly(assembly);
@@ -735,7 +736,7 @@ use interner::*;
 
 fn execute_main<T : Iterator<Item=char>>(iterator: T) -> Option<VMResult> {
     let mut vm = VM::new();
-    vm.add_assembly(compile_iter(iterator));
+    vm.add_assembly(compile_iter(iterator).unwrap());
     let x = vm.assembly.iter().flat_map(|a| a.super_combinators.iter()).find(|sc| sc.name.name == intern("main"));
     match x {
         Some(sc) => {
@@ -885,13 +886,13 @@ main = testAdd True";
 
 #[test]
 fn test_run_prelude() {
-    let prelude = compile_file("Prelude.hs");
+    let prelude = compile_file("Prelude.hs").unwrap();
     let assembly = {
         let mut type_env = TypeEnvironment::new();
 
         compile_with_type_env(&mut type_env, &[&prelude],
 r"add x y = primIntAdd x y
-main = foldl add 0 [1,2,3,4]")
+main = foldl add 0 [1,2,3,4]").unwrap()
     };
 
     let mut vm = VM::new();
@@ -911,11 +912,11 @@ main = foldl add 0 [1,2,3,4]")
 
 #[test]
 fn instance_super_class() {
-    let prelude = compile_file("Prelude.hs");
+    let prelude = compile_file("Prelude.hs").unwrap();
 
     let assembly = {
         let mut type_env = TypeEnvironment::new();
-        compile_with_type_env(&mut type_env, &[&prelude], "main = [primIntAdd 0 1,2,3,4] == [1,2,3]")
+        compile_with_type_env(&mut type_env, &[&prelude], "main = [primIntAdd 0 1,2,3,4] == [1,2,3]").unwrap()
     };
 
     let mut vm = VM::new();
@@ -935,7 +936,7 @@ fn instance_super_class() {
 
 #[test]
 fn monad_do() {
-    let prelude = compile_file("Prelude.hs");
+    let prelude = compile_file("Prelude.hs").unwrap();
 
     let assembly = {
         let mut type_env = TypeEnvironment::new();
@@ -947,7 +948,7 @@ test x y = do
     y
     return (x1 + 1)
 
-main = test (Just 4) (Just 6)")
+main = test (Just 4) (Just 6)").unwrap()
     };
 
     let mut vm = VM::new();

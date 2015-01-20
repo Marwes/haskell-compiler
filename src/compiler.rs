@@ -1049,16 +1049,17 @@ fn try_find_instance_type<'a>(class_var: &TypeVariable, class_type: &Type, actua
 }
 
 #[allow(dead_code)]
-pub fn compile(contents: &str) -> Assembly {
+pub fn compile(contents: &str) -> Result<Assembly, ::std::string::String> {
     let mut type_env = TypeEnvironment::new();
     compile_with_type_env(&mut type_env, &[], contents)
 }
 #[allow(dead_code)]
-pub fn compile_with_type_env<'a>(type_env: &mut TypeEnvironment<'a>, assemblies: &[&'a Assembly], contents: &str) -> Assembly {
+pub fn compile_with_type_env<'a>(type_env: &mut TypeEnvironment<'a>, assemblies: &[&'a Assembly], contents: &str) -> Result<Assembly, ::std::string::String> {
     use parser::Parser;
 
     let mut parser = Parser::new(contents.as_slice().chars()); 
-    let mut module = rename_module(parser.module());
+    let module = try!(parser.module().map_err(|e| format!("{:?}", e)));
+    let mut module = rename_module(module);
     for assem in assemblies.iter() {
         type_env.add_types(*assem);
     }
@@ -1068,10 +1069,10 @@ pub fn compile_with_type_env<'a>(type_env: &mut TypeEnvironment<'a>, assemblies:
     for assem in assemblies.iter() {
         compiler.assemblies.push(*assem);
     }
-    compiler.compile_module(&core_module)
+    Ok(compiler.compile_module(&core_module))
 }
 
-pub fn compile_string(module: &str) -> IoResult<Vec<Assembly>> {
+pub fn compile_string(module: &str) -> Result<Vec<Assembly>, ::std::string::String> {
     use typecheck::typecheck_string;
     let modules = try!(typecheck_string(module));
     compile_module_(modules)
@@ -1079,13 +1080,13 @@ pub fn compile_string(module: &str) -> IoResult<Vec<Assembly>> {
 
 ///Takes a module name and does everything needed up to and including compiling the module
 ///and its imported modules
-pub fn compile_module(module: &str) -> IoResult<Vec<Assembly>> {
+pub fn compile_module(module: &str) -> Result<Vec<Assembly>, ::std::string::String> {
     use typecheck::typecheck_module;
     let modules = try!(typecheck_module(module));
     compile_module_(modules)
 }
 
-fn compile_module_(modules: Vec<::module::Module<Name>>) -> IoResult<Vec<Assembly>> {
+fn compile_module_(modules: Vec<::module::Module<Name>>) -> Result<Vec<Assembly>, ::std::string::String> {
     use compiler::Compiler;
     let core_modules: Vec<Module<Id<Name>>> = translate_modules(modules)
         .into_iter()
@@ -1109,11 +1110,15 @@ fn compile_module_(modules: Vec<::module::Module<Name>>) -> IoResult<Vec<Assembl
 mod tests {
 
 use interner::*;
-use compiler::*;
+use compiler::{Assembly, Compiler, compile_with_type_env};
 use compiler::Instruction::*;
 use typecheck::TypeEnvironment;
 use std::io::File;
 use test::Bencher;
+
+fn compile(contents: &str) -> Assembly {
+    super::compile(contents).unwrap()
+}
 
 #[test]
 fn add() {
@@ -1221,9 +1226,9 @@ main x = primIntAdd (test x) 6";
 #[test]
 fn compile_prelude() {
     let mut type_env = TypeEnvironment::new();
-    let prelude = compile_with_type_env(&mut type_env, &[], File::open(&Path::new("Prelude.hs")).read_to_string().unwrap().as_slice());
+    let prelude = compile_with_type_env(&mut type_env, &[], File::open(&Path::new("Prelude.hs")).read_to_string().unwrap().as_slice()).unwrap();
 
-    let assembly = compile_with_type_env(&mut type_env, &[&prelude], r"main = id (primIntAdd 2 0)");
+    let assembly = compile_with_type_env(&mut type_env, &[&prelude], r"main = id (primIntAdd 2 0)").unwrap();
 
     let sc = &assembly.super_combinators[0];
     let id_index = prelude.super_combinators.iter().position(|sc| sc.name.name == intern("id")).unwrap();
@@ -1287,7 +1292,7 @@ fn bench_prelude(b: &mut Bencher) {
     let path = &Path::new("Prelude.hs");
     let contents = File::open(path).read_to_string().unwrap();
     let mut parser = Parser::new(contents.as_slice().chars());
-    let mut module = rename_module(parser.module());
+    let mut module = rename_module(parser.module().unwrap());
     let mut type_env = TypeEnvironment::new();
     type_env.typecheck_module(&mut module);
     let core_module = do_lambda_lift(translate_module(module));

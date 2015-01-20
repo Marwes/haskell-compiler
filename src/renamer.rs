@@ -487,7 +487,7 @@ mod tests {
 r"main = 1
 test = []
 main = 2".chars());
-        let module = parser.module();
+        let module = parser.module().unwrap();
         rename_modules(vec!(module));
     }
     #[test]
@@ -507,7 +507,7 @@ main = id";
 r"
 import Prelude ()
 main = id".chars());
-        let module = parser.module();
+        let module = parser.module().unwrap();
         rename_modules(vec!(module));
     }
 }

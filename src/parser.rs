@@ -1,5 +1,6 @@
 use std::mem::{swap};
-use std::io::{IoResult, File};
+use std::io::{IoResult, IoError, File};
+use std::error::FromError;
 use std::collections::{HashSet, HashMap};
 use std::str::FromStr;
 use lexer::*;
@@ -20,10 +21,65 @@ pub struct Parser<Iter: Iterator<Item=char>> {
     lexer : Lexer<Iter>,
 }
 
+#[derive(Show, Eq, PartialEq)]
+enum ParseError {
+    UnexpectedToken(&'static [TokenEnum], TokenEnum),
+    Message(::std::string::String)
+}
+pub type ParseResult<T> = Result<T, Located<ParseError>>;
+
+impl FromError<IoError> for Located<ParseError> {
+    fn from_error(io_error: IoError) -> Located<ParseError> {
+        Located { location: Location::eof(), node: ParseError::Message(io_error.to_string()) }
+    }
+}
+
 enum BindOrTypeDecl {
     Binding(Binding),
     TypeDecl(TypeDeclaration)
 }
+
+macro_rules! expect {
+    ($e: expr, $p: ident (..)) => ({
+        match $e.next($p).token {
+            $p(..) => $e.lexer.current(),
+            actual => unexpected!($e, actual, $p)
+        }
+    });
+    ($e: expr, $p: ident) => ({
+        match $e.next($p).token {
+            $p => $e.lexer.current(),
+            actual => unexpected!($e, actual, $p)
+        }
+    })
+}
+
+macro_rules! expect1 {
+    ($e: expr, $p: ident ($x: ident)) => ({
+        match $e.next().token {
+            $p($x) => $x,
+            actual => unexpected!($e, actual, $p)
+        }
+    })
+}
+
+macro_rules! matches {
+    ($e: expr, $p: pat) => (
+        match $e {
+            $p => true,
+            _ => false
+        }
+    )
+}
+
+macro_rules! unexpected (
+    ($parser: expr, [$($expected: expr),+]) => { unexpected!($parser, $parser.lexer.current().token, $($expected),+) };
+    ($parser: expr, $token: expr, $($expected: expr),+) => { {
+        $parser.lexer.backtrack();
+        static EXPECTED: &'static [TokenEnum] = &[$($expected),+];
+        return Err($parser.unexpected_token(EXPECTED, $token))
+    } }
+);
 
 
 impl <Iter : Iterator<Item=char>> Parser<Iter> {
@@ -32,38 +88,47 @@ pub fn new(iterator : Iter) -> Parser<Iter> {
     Parser { lexer : Lexer::new(iterator) }
 }
 
-fn require_next<'a>(&'a mut self, expected : TokenEnum) -> &'a Token {
-    let tok = if expected == RBRACE {
-        self.lexer.next_end().token
+fn next<'a>(&'a mut self, expected : TokenEnum) -> &'a Token {
+    if expected == RBRACE {
+        self.lexer.next_end()
     }
 	else {
-        self.lexer.next().token
-    };
-	if tok != expected {
-		panic!(parse_error(&self.lexer, expected));
+        self.lexer.next()
     }
-	return self.lexer.current();
 }
 
-pub fn module(&mut self) -> Module {
+fn error<T>(&self, message: ::std::string::String) -> ParseResult<T> {
+    Err(Located {
+        location: self.lexer.current().location,
+        node: ParseError::Message(message)
+    })
+}
+fn unexpected_token(&self, expected: &'static [TokenEnum], actual: TokenEnum) -> Located<ParseError> {
+    Located {
+        location: self.lexer.current().location,
+        node: ParseError::UnexpectedToken(expected, actual)
+    }
+}
+
+pub fn module(&mut self) -> ParseResult<Module> {
 	let modulename = match self.lexer.module_next().token {
         MODULE => {
-            let modulename = self.require_next(NAME).value.clone();
-            self.require_next(WHERE);
-            self.require_next(LBRACE);
+            let modulename = expect!(self, NAME).value.clone();
+            expect!(self, WHERE);
+            expect!(self, LBRACE);
             modulename
 	    }
         LBRACE => {
 		    //No module declaration was found so default to Main
 		    intern("Main")
 	    }
-        _ => panic!(parse_error(&self.lexer, LBRACE))
+        _ => unexpected!(self, [LBRACE])
     };
 
     let mut imports = Vec::new();
     loop {
         if self.lexer.peek().token == IMPORT {
-            imports.push(self.import());
+            imports.push(try!(self.import()));
             if self.lexer.peek().token == SEMICOLON {
                 self.lexer.next();
             }
@@ -87,25 +152,25 @@ pub fn module(&mut self) -> Module {
 		//Do a lookahead to see what the next top level binding is
 		let token = self.lexer.peek().token;
 		if token == NAME || token == LPARENS {
-            match self.binding_or_type_declaration() {
+            match try!(self.binding_or_type_declaration()) {
                 BindOrTypeDecl::Binding(bind) => bindings.push(bind),
                 BindOrTypeDecl::TypeDecl(decl) => type_declarations.push(decl)
             }
 		}
 		else if token == CLASS {
-			classes.push(self.class());
+			classes.push(try!(self.class()));
 		}
 		else if token == INSTANCE {
-			instances.push(self.instance());
+			instances.push(try!(self.instance()));
 		}
 		else if token == DATA {
-			data_definitions.push(self.data_definition());
+			data_definitions.push(try!(self.data_definition()));
 		}
 		else if token == NEWTYPE {
-			newtypes.push(self.newtype());
+			newtypes.push(try!(self.newtype()));
 		}
 		else if token == INFIXL || token == INFIXR || token == INFIX {
-            fixity_declarations.push(self.fixity_declaration());
+            fixity_declarations.push(try!(self.fixity_declaration()));
         }
         else {
             self.lexer.next();
@@ -119,10 +184,10 @@ pub fn module(&mut self) -> Module {
     }
 
     self.lexer.backtrack();
-    self.require_next(RBRACE);
-    self.require_next(EOF);
+    expect!(self, RBRACE);
+    expect!(self, EOF);
 
-    Module {
+    Ok(Module {
         name : modulename,
         imports : imports,
         bindings : bindings,
@@ -132,12 +197,12 @@ pub fn module(&mut self) -> Module {
         data_definitions : data_definitions,
         newtypes: newtypes,
         fixity_declarations : fixity_declarations
-    }
+    })
 }
 
-fn import(&mut self) -> Import<InternedStr> {
-    self.require_next(IMPORT);
-    let module_name = self.require_next(NAME).value;
+fn import(&mut self) -> ParseResult<Import<InternedStr>> {
+    expect!(self, IMPORT);
+    let module_name = expect!(self, NAME).value;
     let imports = if self.lexer.peek().token == LPARENS {
         self.lexer.next();
         let x = if self.lexer.peek().token == RPARENS {
@@ -145,8 +210,8 @@ fn import(&mut self) -> Import<InternedStr> {
             Vec::new()
         }
         else {
-            let imports = self.sep_by_1(|this| this.require_next(NAME).value, COMMA);
-            self.require_next(RPARENS);
+            let imports = try!(self.sep_by_1(|this| Ok(expect!(this, NAME).value), COMMA));
+            expect!(self, RPARENS);
             imports
         };
         Some(x)
@@ -154,16 +219,16 @@ fn import(&mut self) -> Import<InternedStr> {
     else {
         None
     };
-    Import { module: module_name, imports: imports }
+    Ok(Import { module: module_name, imports: imports })
 }
 
-fn class(&mut self) -> Class {
-	self.require_next(CLASS);
-    let (constraints, typ) = self.constrained_type();
+fn class(&mut self) -> ParseResult<Class> {
+	expect!(self, CLASS);
+    let (constraints, typ) = try!(self.constrained_type());
 
-	self.require_next(WHERE);
-	self.require_next(LBRACE);
-	let x = self.sep_by_1(|this| this.binding_or_type_declaration(), SEMICOLON);
+	expect!(self, WHERE);
+	expect!(self, LBRACE);
+	let x = try!(self.sep_by_1(|this| this.binding_or_type_declaration(), SEMICOLON));
     let mut bindings = Vec::new();
     let mut declarations = Vec::new();
     for decl_or_binding in x.into_iter() {
@@ -175,11 +240,11 @@ fn class(&mut self) -> Class {
                     Type::Application(ref op, _) => {
                         let classname = match **op {
                             Type::Constructor(ref ctor) => ctor.name,
-                            _ => panic!("Expected type operator")
+                            _ => return self.error("Expected type operator".to_string())
                         };
                         bind.name = encode_binding_identifier(classname, bind.name);
                     }
-                    _ => panic!("The name of the class must start with an uppercase letter")
+                    _ => return self.error("The name of the class must start with an uppercase letter".to_string())
                 }
                 bindings.push(bind)
             }
@@ -187,36 +252,36 @@ fn class(&mut self) -> Class {
         }
     }
 	
-	self.require_next(RBRACE);
+	expect!(self, RBRACE);
 
     match typ {
         Type::Application(box Type::Constructor(classname), box Type::Variable(var)) => {
-            Class {
+            Ok(Class {
                 constraints: constraints,
                 name: classname.name,
                 variable: var,
                 declarations: declarations,
                 bindings: bindings
-            }
+            })
         }
-        _ => panic!("Parse error in class declaration header")
+        _ => self.error("Parse error in class declaration header".to_string())
     }
 }
 
-fn instance(&mut self) -> Instance {
-	self.require_next(INSTANCE);
+fn instance(&mut self) -> ParseResult<Instance> {
+	expect!(self, INSTANCE);
 
-    let (constraints, instance_type) = self.constrained_type();
+    let (constraints, instance_type) = try!(self.constrained_type());
     match instance_type {
         Type::Application(op, arg) => {
             let classname = match *op {
                 Type::Constructor(TypeConstructor { name: classname, ..}) => classname,
-                _ => panic!("Expected type operator")
+                _ => return self.error("Expected type operator".to_string())
             };
-            self.require_next(WHERE);
-            self.require_next(LBRACE);
+            expect!(self, WHERE);
+            expect!(self, LBRACE);
 
-            let mut bindings = self.sep_by_1(|this| this.binding(), SEMICOLON);
+            let mut bindings = try!(self.sep_by_1(|this| this.binding(), SEMICOLON));
             {
                 let inner_type = extract_applied_type(&*arg);
                 for bind in bindings.iter_mut() {
@@ -224,44 +289,49 @@ fn instance(&mut self) -> Instance {
                 }
             }
 
-            self.require_next(RBRACE);
-            Instance { typ : *arg, classname : classname, bindings : bindings, constraints: constraints }
+            expect!(self, RBRACE);
+            Ok(Instance { typ : *arg, classname : classname, bindings : bindings, constraints: constraints })
         }
-        _ => panic!("TypeVariable in instance")
+        _ => return self.error("TypeVariable in instance".to_string())
     }
 }
 
-pub fn expression_(&mut self) -> TypedExpr {
-    match self.expression() {
-        Some(expr) => expr,
-        None => panic!("Failed to parse expression at {:?}", self.lexer.current().location)
+pub fn expression_(&mut self) -> ParseResult<TypedExpr> {
+    match try!(self.expression()) {
+        Some(expr) => Ok(expr),
+        None => Err(Located {
+            location: self.lexer.current().location,
+            node: ParseError::Message(format!("Failed to parse expression at {:?}", self.lexer.current().location))
+        })
     }
 }
 
-pub fn expression(&mut self) -> Option<TypedExpr> {
-	let app = self.application();
-	self.binary_expression(app)
-        .map(|expr| {
-        //Try to parse a type signature on this expression
-        if self.lexer.next().token == TYPEDECL {
-            let (constraints, typ) = self.constrained_type();
-            let loc = expr.location;
-            TypedExpr::with_location(
-                TypeSig(box expr, Qualified { constraints: constraints, value: typ }),
-                loc)
+pub fn expression(&mut self) -> ParseResult<Option<TypedExpr>> {
+	let app = try!(self.application());
+	match try!(self.binary_expression(app)) {
+        Some(expr) => {
+            //Try to parse a type signature on this expression
+            if self.lexer.next().token == TYPEDECL {
+                let (constraints, typ) = try!(self.constrained_type());
+                let loc = expr.location;
+                Ok(Some(TypedExpr::with_location(
+                    TypeSig(box expr, Qualified { constraints: constraints, value: typ }),
+                    loc)))
+            }
+            else {
+                self.lexer.backtrack();
+                Ok(Some(expr))
+            }
         }
-        else {
-            self.lexer.backtrack();
-            expr
-        }
-    })
+        None => Ok(None)
+    }
 }
 
 
-fn list(&mut self) -> TypedExpr {
+fn list(&mut self) -> ParseResult<TypedExpr> {
 	let mut expressions = Vec::new();
 	loop {
-		match self.expression() {
+		match try!(self.expression()) {
             Some(expr) => expressions.push(expr),
             None => break
         }
@@ -271,19 +341,19 @@ fn list(&mut self) -> TypedExpr {
             break;
         }
 	}
-    self.require_next(RBRACKET);
+    expect!(self, RBRACKET);
 
 	let nil = TypedExpr::new(Identifier(intern("[]")));
-    expressions.into_iter().rev().fold(nil, |application, expr| {
+    Ok(expressions.into_iter().rev().fold(nil, |application, expr| {
 		let arguments = vec![expr, application];
 		make_application(TypedExpr::new(Identifier(intern(":"))), arguments.into_iter())
-	})
+	}))
 }
 
-fn sub_expression(&mut self) -> Option<TypedExpr> {
+fn sub_expression(&mut self) -> ParseResult<Option<TypedExpr>> {
 	let token = self.lexer.next().token;
     debug!("Begin SubExpr {:?}", self.lexer.current());
-	match token {
+	let expr = match token {
 	    LPARENS => {
             let location = self.lexer.current().location;
             if self.lexer.peek().token == RPARENS {
@@ -291,8 +361,8 @@ fn sub_expression(&mut self) -> Option<TypedExpr> {
                 Some(TypedExpr::with_location(Identifier(intern("()")), location))
             }
             else {
-                let mut expressions = self.sep_by_1(|this| this.expression_(), COMMA);
-                self.require_next(RPARENS);
+                let mut expressions = try!(self.sep_by_1(|this| this.expression_(), COMMA));
+                expect!(self, RPARENS);
                 if expressions.len() == 1 {
                     let expr = expressions.pop().unwrap();
                     let loc = expr.location;
@@ -303,14 +373,12 @@ fn sub_expression(&mut self) -> Option<TypedExpr> {
                 }
             }
 		}
-	    LBRACKET => Some(self.list()),
+	    LBRACKET => Some(try!(self.list())),
 	    LET => {
-			let binds = self.let_bindings();
+			let binds = try!(self.let_bindings());
 
-			if self.lexer.next().token != IN {
-				panic!(parse_error(&self.lexer, IN));
-            }
-			match self.expression() {
+            expect!(self, IN);
+			match try!(self.expression()) {
                 Some(e) => {
                     Some(TypedExpr::new(Let(binds, box e)))
                 }
@@ -319,13 +387,13 @@ fn sub_expression(&mut self) -> Option<TypedExpr> {
 		}
 	    CASE => {
             let location = self.lexer.current().location;
-			let expr = self.expression();
+			let expr = try!(self.expression());
 
-			self.require_next(OF);
-			self.require_next(LBRACE);
+			expect!(self, OF);
+			expect!(self, LBRACE);
 
-			let alts = self.sep_by_1(|this| this.alternative(), SEMICOLON);
-            self.require_next(RBRACE);
+			let alts = try!(self.sep_by_1(|this| this.alternative(), SEMICOLON));
+            expect!(self, RBRACE);
 			match expr {
                 Some(e) => Some(TypedExpr::with_location(Case(box e, alts), location)),
                 None => None
@@ -333,38 +401,40 @@ fn sub_expression(&mut self) -> Option<TypedExpr> {
 		}
         IF => {
             let location = self.lexer.current().location;
-            let pred = self.expression_();
+            let pred = try!(self.expression_());
             if self.lexer.peek().token == SEMICOLON {
                 self.lexer.next();
             }
-            self.require_next(THEN);
-            let if_true = self.expression_();
+            expect!(self, THEN);
+            let if_true = try!(self.expression_());
             if self.lexer.peek().token == SEMICOLON {
                 self.lexer.next();
             }
-            self.require_next(ELSE);
-            let if_false = self.expression_();
+            expect!(self, ELSE);
+            let if_false = try!(self.expression_());
             Some(TypedExpr::with_location(IfElse(box pred, box if_true, box if_false), location))
         }
         LAMBDA => {
-            let args = self.pattern_arguments();
-            self.require_next(ARROW);
-            Some(make_lambda(args.into_iter(), self.expression_()))
+            let args = try!(self.pattern_arguments());
+            expect!(self, ARROW);
+            Some(make_lambda(args.into_iter(), try!(self.expression_())))
         }
         DO => {
             let location = self.lexer.current().location;
-            self.require_next(LBRACE);
-            let bindings = self.sep_by_1(|this| this.do_binding(), SEMICOLON);
-            self.require_next(RBRACE);
+            expect!(self, LBRACE);
+            let mut bindings = try!(self.sep_by_1(|this| this.do_binding(), SEMICOLON));
+            expect!(self, RBRACE);
             if bindings.len() == 0 {
-                panic!("{:?}: Parse error: Empty do", self.lexer.current().location);
+                return Err(Located {
+                    location: self.lexer.current().location,
+                    node: ParseError::Message(format!("{:?}: Parse error: Empty do", self.lexer.current().location))
+                });
             }
-            let mut bs: Vec<DoBinding> = bindings.into_iter().collect();
-            let expr = match bs.pop().unwrap() {
+            let expr = match bindings.pop().unwrap() {
                 DoBinding::DoExpr(e) => e,
-                _ => panic!("{:?}: Parse error: Last binding in do must be an expression", self.lexer.current().location)
+                _ => return self.error("Parse error: Last binding in do must be an expression".to_string())
             };
-            Some(TypedExpr::with_location(Do(bs, box expr), location))
+            Some(TypedExpr::with_location(Do(bindings, box expr), location))
         }
         NAME => {
             let token = self.lexer.current();
@@ -390,12 +460,13 @@ fn sub_expression(&mut self) -> Option<TypedExpr> {
             self.lexer.backtrack();
             None
         }
-    }
+    };
+    Ok(expr)
 }
 
-fn do_binding(&mut self) -> DoBinding {
+fn do_binding(&mut self) -> ParseResult<DoBinding> {
     if self.lexer.next().token == LET {
-        return DoBinding::DoLet(self.let_bindings());
+        return self.let_bindings().map(DoBinding::DoLet);
     }
     debug!("Do binding {:?}", self.lexer.current());
     self.lexer.backtrack();
@@ -405,51 +476,56 @@ fn do_binding(&mut self) -> DoBinding {
         match self.lexer.next().token {
             SEMICOLON | RBRACE => {
                 for _ in range(0, lookahead) { self.lexer.backtrack(); }
-                return DoBinding::DoExpr(self.expression_());
+                return self.expression_().map(DoBinding::DoExpr);
             }
             LARROW => {
                 for _ in range(0, lookahead) { self.lexer.backtrack(); }
-                let p = self.located_pattern();
+                let p = try!(self.located_pattern());
                 self.lexer.next();//Skip <-
-                return DoBinding::DoBind(p, self.expression_());
+                return self.expression_().map(move |e| DoBinding::DoBind(p, e));
             }
-            EOF => { panic!("Unexpected EOF") }
+            EOF => {
+                return Err(Located {
+                    location: self.lexer.current().location,
+                    node: ParseError::Message("Unexpected EOF".to_string())
+                })
+            }
             _ => { debug!("Lookahead {:?}", self.lexer.current()); }
         }
     }
 }
 
-fn let_bindings(&mut self) -> Vec<Binding> {
+fn let_bindings(&mut self) -> ParseResult<Vec<Binding>> {
 
-    self.require_next(LBRACE);
+    expect!(self, LBRACE);
 
-    let binds = self.sep_by_1(|this| this.binding(), SEMICOLON);
+    let binds = try!(self.sep_by_1(|this| this.binding(), SEMICOLON));
     self.lexer.next_end();
-    binds
+    Ok(binds)
 }
 
-fn alternative(&mut self) -> Alternative {
-	let pat = self.located_pattern();
-
-    let matches = self.expr_or_guards(ARROW);
+fn alternative(&mut self) -> ParseResult<Alternative> {
+	let pat = try!(self.located_pattern());
+    static GUARD_TOKENS: &'static [TokenEnum] = &[ARROW, PIPE];
+    let matches = try!(self.expr_or_guards(GUARD_TOKENS));
     let where_bindings = if self.lexer.peek().token == WHERE {
         self.lexer.next();
-        Some(self.let_bindings())
+        Some(try!(self.let_bindings()))
     }
     else {
         None
     };
-	Alternative { pattern : pat, matches: matches, where_bindings: where_bindings }
+	Ok(Alternative { pattern : pat, matches: matches, where_bindings: where_bindings })
 }
 
-fn binary_expression(&mut self, lhs : Option<TypedExpr>) -> Option<TypedExpr> {
+fn binary_expression(&mut self, lhs : Option<TypedExpr>) -> ParseResult<Option<TypedExpr>> {
     debug!("Parse operator expression, {:?}", self.lexer.current());
     if self.lexer.next().token == OPERATOR {
 		let op = self.lexer.current().value;
         let loc = self.lexer.current().location;
-		let rhs = self.application();
-        let rhs = self.binary_expression(rhs);
-        match (lhs, rhs) {
+		let rhs = try!(self.application());
+        let rhs = try!(self.binary_expression(rhs));
+        let expr = match (lhs, rhs) {
             (Some(lhs), Some(rhs)) => {
                 Some(TypedExpr::with_location(OpApply(box lhs, op, box rhs), loc))
             }
@@ -472,22 +548,23 @@ fn binary_expression(&mut self, lhs : Option<TypedExpr>) -> Option<TypedExpr> {
                     Some(make_lambda(params.into_iter().map(|a| Pattern::Identifier(a)), apply))
                 }
             }
-            (None, None) => return None
-        }
+            (None, None) => return Ok(None)
+        };
+        Ok(expr)
 	}
     else {
         self.lexer.backtrack();
-        lhs
+        Ok(lhs)
     }
 }
 
-fn application(&mut self) -> Option<TypedExpr> {
-    let e = self.sub_expression();
+fn application(&mut self) -> ParseResult<Option<TypedExpr>> {
+    let e = try!(self.sub_expression());
 	match e {
         Some(mut lhs) => {
             let mut expressions = Vec::new();
             loop {
-                let expr = self.sub_expression();
+                let expr = try!(self.sub_expression());
                 match expr {
                     Some(e) => expressions.push(e),
                     None => break
@@ -498,21 +575,21 @@ fn application(&mut self) -> Option<TypedExpr> {
                 lhs = make_application(lhs, expressions.into_iter());//, loc);
                 lhs.location = loc;
             }
-            Some(lhs)
+            Ok(Some(lhs))
         }
-        None => None
+        None => Ok(None)
     }
 }
 
-fn constructor(&mut self, data_def : &DataDefinition) -> Constructor {
-	let name = self.require_next(NAME).value.clone();
+fn constructor(&mut self, data_def : &DataDefinition) -> ParseResult<Constructor> {
+	let name = expect!(self, NAME).value.clone();
 	let mut arity = 0;
-	let typ = self.constructor_type(&mut arity, data_def);
+	let typ = try!(self.constructor_type(&mut arity, data_def));
 	self.lexer.backtrack();
-	Constructor { name : name, typ : qualified(vec![], typ), tag : 0, arity : arity }
+	Ok(Constructor { name : name, typ : qualified(vec![], typ), tag : 0, arity : arity })
 }
 
-fn binding(&mut self) -> Binding {
+fn binding(&mut self) -> ParseResult<Binding> {
     debug!("Begin binding");
 	//name1 = expr
 	//or
@@ -523,44 +600,42 @@ fn binding(&mut self) -> Binding {
 		//Parse a name within parentheses
 		let function_name = self.lexer.next().token;
 		if function_name != NAME && function_name != OPERATOR {
-			panic!("Expected NAME or OPERATOR on left side of binding {:?}", self.lexer.current().token);
+			unexpected!(self, [NAME, OPERATOR]);
 		}
 		name = self.lexer.current().value.clone();
-
-		if self.lexer.next().token != RPARENS {
-			panic!(parse_error(&self.lexer, RPARENS));
-		}
+        expect!(self, RPARENS);
 	}
 	else if name_token != NAME {
-		panic!(parse_error(&self.lexer, NAME));
+        unexpected!(self, [NAME]);
 	}
 
 	//Parse the arguments for the binding
-	let arguments = self.pattern_arguments();
-    let matches = self.expr_or_guards(EQUALSSIGN);
+	let arguments = try!(self.pattern_arguments());
+    static GUARD_TOKENS: &'static [TokenEnum] = &[EQUALSSIGN, PIPE];
+    let matches = try!(self.expr_or_guards(GUARD_TOKENS));
     let where_bindings = if self.lexer.peek().token == WHERE {
         self.lexer.next();
-        Some(self.let_bindings())
+        Some(try!(self.let_bindings()))
     }
     else {
         None
     };
-    Binding {
+    Ok(Binding {
         name : name.clone(),
         typ: Default::default(),
         arguments: arguments,
         where_bindings : where_bindings,
         matches : matches,
-    }
+    })
 }
 
-fn binding_or_type_declaration(&mut self) -> BindOrTypeDecl {
+fn binding_or_type_declaration(&mut self) -> ParseResult<BindOrTypeDecl> {
     //Since the token indicates an identifier it will be a function declaration or a function definition
     //We can disambiguate this by looking wether the '::' token appear.
     let token = self.lexer.next().token;
     let maybe_type_decl = if token == LPARENS {
-        self.require_next(OPERATOR);
-        self.require_next(RPARENS);
+        expect!(self, OPERATOR);
+        expect!(self, RPARENS);
         let tok = self.lexer.next().token;
         self.lexer.backtrack();
         self.lexer.backtrack();
@@ -576,20 +651,20 @@ fn binding_or_type_declaration(&mut self) -> BindOrTypeDecl {
     };
 
     if maybe_type_decl == TYPEDECL {
-        BindOrTypeDecl::TypeDecl(self.type_declaration())
+        self.type_declaration().map(BindOrTypeDecl::TypeDecl)
     }
     else {
-        BindOrTypeDecl::Binding(self.binding())
+        self.binding().map(BindOrTypeDecl::Binding)
     }
 }
 
-fn fixity_declaration(&mut self) -> FixityDeclaration {
+fn fixity_declaration(&mut self) -> ParseResult<FixityDeclaration> {
     let assoc = {
         match self.lexer.next().token {
             INFIXL => Assoc::Left,
             INFIXR => Assoc::Right,
             INFIX => Assoc::No,
-            _ => panic!(parse_error2(&self.lexer, &[INFIXL, INFIXR, INFIX]))
+            _ => unexpected!(self, [INFIXL, INFIXR, INFIX])
         }
     };
     let precedence = match self.lexer.next().token {
@@ -599,88 +674,88 @@ fn fixity_declaration(&mut self) -> FixityDeclaration {
             9
         }
     };
-    let operators = self.sep_by_1(|this| this.require_next(OPERATOR).value, COMMA);
-    FixityDeclaration { assoc: assoc, precedence: precedence, operators: operators }
+    let operators = try!(self.sep_by_1(|this| Ok(expect!(this, OPERATOR).value), COMMA));
+    Ok(FixityDeclaration { assoc: assoc, precedence: precedence, operators: operators })
 }
 
-fn expr_or_guards(&mut self, end_token: TokenEnum) -> Match {
+fn expr_or_guards(&mut self, end_token_and_pipe: &'static [TokenEnum]) -> ParseResult<Match> {
+    let end_token = end_token_and_pipe[0];
     let token = self.lexer.next().token;
     if token == PIPE {
-        Match::Guards(self.sep_by_1(|this| this.guard(end_token), PIPE))
+        self.sep_by_1(|this| {
+            let p = try!(this.expression_());
+            if this.lexer.next().token != end_token {
+                this.lexer.backtrack();
+                return Err(this.unexpected_token(&end_token_and_pipe[..1], this.lexer.current().token));
+            }
+            this.expression_().map(move |e| Guard { predicate: p, expression: e })
+        }, PIPE).map(Match::Guards)
     }
     else if token == end_token {
-        Match::Simple(self.expression_())
+        self.expression_().map(|e| Match::Simple(e))
     }
     else {
-        panic!(parse_error2(&self.lexer, &[end_token, PIPE]))
+        self.lexer.backtrack();
+        Err(self.unexpected_token(end_token_and_pipe, self.lexer.current().token))
     }
 }
 
-fn guard(&mut self, end_token: TokenEnum) -> Guard {
-    let p = self.expression_();
-    self.require_next(end_token);
-    Guard { predicate: p, expression: self.expression_() }
-}
-
-fn make_pattern<F>(&mut self, name: InternedStr, args: F) -> Pattern
-    where F: FnOnce(&mut Parser<Iter>) -> Vec<Pattern> {
+fn make_pattern<F>(&mut self, name: InternedStr, args: F) -> ParseResult<Pattern>
+    where F: FnOnce(&mut Parser<Iter>) -> ParseResult<Vec<Pattern>> {
     let c = name.as_slice().char_at(0);
     if c.is_uppercase() || name == intern(":") {
-        Pattern::Constructor(name, args(self))
+        args(self).map(|ps| Pattern::Constructor(name, ps))
     }
     else if c == '_' {
-        Pattern::WildCard
+        Ok(Pattern::WildCard)
     }
     else {
-        Pattern::Identifier(name)
+        Ok(Pattern::Identifier(name))
     }
 }
 
-fn pattern_arguments(&mut self) -> Vec<Pattern> {
+fn pattern_arguments(&mut self) -> ParseResult<Vec<Pattern>> {
 	let mut parameters = Vec::new();
 	loop {
 		let token = self.lexer.next().token;
 		match token {
             NAME => {
                 let name = self.lexer.current().value;
-                let p = self.make_pattern(name, |_| vec![]);
+                let p = try!(self.make_pattern(name, |_| Ok(vec![])));
                 parameters.push(p);
             }
             NUMBER => parameters.push(Pattern::Number(FromStr::from_str(self.lexer.current().value.as_slice()).unwrap())),
 		    LPARENS => {
                 self.lexer.backtrack();
-				parameters.push(self.pattern());
+				parameters.push(try!(self.pattern()));
 			}
             LBRACKET => {
-                if self.lexer.next().token != RBRACKET {
-                    panic!(parse_error(&self.lexer, RBRACKET));
-                }
+                expect!(self, RBRACKET);
                 parameters.push(Pattern::Constructor(intern("[]"), vec![]));
             }
 		    _ => { break; }
 		}
 	}
 	self.lexer.backtrack();
-	return parameters;
+	Ok(parameters)
 }
 
-fn located_pattern(&mut self) -> Located<Pattern> {
+fn located_pattern(&mut self) -> ParseResult<Located<Pattern>> {
     let location = self.lexer.next().location;
     self.lexer.backtrack();
-    Located { location: location, node: self.pattern() }
+    self.pattern()
+        .map(|pattern| Located { location: location, node: pattern })
 }
 
-fn pattern(&mut self) -> Pattern {
+fn pattern(&mut self) -> ParseResult<Pattern> {
 	let name_token = self.lexer.next().token;
     let name = self.lexer.current().value.clone();
     let pat = match name_token {
         LBRACKET => {
-            if self.lexer.next().token != RBRACKET {
-                panic!(parse_error(&self.lexer, RBRACKET));
-            }
+            expect!(self, RBRACKET);
             Pattern::Constructor(intern("[]"), vec![])
         }
-        NAME => self.make_pattern(name, |this| this.pattern_arguments()),
+        NAME => try!(self.make_pattern(name, |this| this.pattern_arguments())),
         NUMBER => Pattern::Number(FromStr::from_str(name.as_slice()).unwrap()),
         LPARENS => {
             if self.lexer.peek().token == RPARENS {
@@ -688,8 +763,8 @@ fn pattern(&mut self) -> Pattern {
                 Pattern::Constructor(intern("()"), vec![])
             }
             else {
-                let mut tuple_args = self.sep_by_1(|this| this.pattern(), COMMA);
-                self.require_next(RPARENS);
+                let mut tuple_args = try!(self.sep_by_1(|this| this.pattern(), COMMA));
+                expect!(self, RPARENS);
                 if tuple_args.len() == 1 {
                     tuple_args.pop().unwrap()
                 }
@@ -698,19 +773,19 @@ fn pattern(&mut self) -> Pattern {
                 }
             }
         }
-        _ => { panic!("Error parsing pattern at token {:?}", self.lexer.current()) }
+        _ => unexpected!(self, [LBRACKET, NAME, NUMBER, LPARENS])
     };
     self.lexer.next();
     if self.lexer.current().token == OPERATOR && self.lexer.current().value.as_slice() == ":" {
-        Pattern::Constructor(self.lexer.current().value, vec![pat, self.pattern()])
+        Ok(Pattern::Constructor(self.lexer.current().value, vec![pat, try!(self.pattern())]))
     }
     else {
         self.lexer.backtrack();
-        pat
+        Ok(pat)
     }
 }
 
-fn type_declaration(&mut self) -> TypeDeclaration {
+fn type_declaration(&mut self) -> ParseResult<TypeDeclaration> {
     let mut name;
 	{
         let name_token = self.lexer.next().token;
@@ -719,26 +794,21 @@ fn type_declaration(&mut self) -> TypeDeclaration {
             //Parse a name within parentheses
             let function_name = self.lexer.next().token;
             if function_name != NAME && function_name != OPERATOR {
-                panic!("Expected NAME or OPERATOR on left side of binding {:?}", function_name);
+                unexpected!(self, [NAME, OPERATOR]);
             }
             name = self.lexer.current().value.clone();
-            if self.lexer.next().token != RPARENS {
-                panic!(parse_error(&self.lexer, RPARENS));
-            }
+            expect!(self, RPARENS);
         }
         else if name_token != NAME {
-            panic!(parse_error(&self.lexer, NAME));
+            unexpected!(self, [LPARENS, NAME]);
         }
     }
-	let decl = self.lexer.next().token;
-	if decl != TYPEDECL {
-		panic!(parse_error(&self.lexer, TYPEDECL));
-	}
-    let (context, typ) = self.constrained_type();
-	TypeDeclaration { name : name, typ : Qualified { constraints : context, value: typ } }
+    expect!(self, TYPEDECL);
+    let (context, typ) = try!(self.constrained_type());
+	Ok(TypeDeclaration { name : name, typ : Qualified { constraints : context, value: typ } })
 }
 
-fn constrained_type(&mut self) -> (Vec<Constraint>, Type) {
+fn constrained_type(&mut self) -> ParseResult<(Vec<Constraint>, Type)> {
     debug!("Parse constrained type");
     let mut maybe_constraints = if self.lexer.next().token == LPARENS {
         if self.lexer.peek().token == RPARENS {
@@ -746,18 +816,18 @@ fn constrained_type(&mut self) -> (Vec<Constraint>, Type) {
             vec![]
         }
         else {
-            let t = self.sep_by_1(|this| this.parse_type(), COMMA);
-            self.require_next(RPARENS);
+            let t = try!(self.sep_by_1(|this| this.parse_type(), COMMA));
+            expect!(self, RPARENS);
             t
         }
     }
     else {
         self.lexer.backtrack();
-        vec![self.parse_type()]
+        vec![try!(self.parse_type())]
     };
     debug!("{:?}", maybe_constraints);
     //If there is => arrow we proceed to parse the type
-    let typ = match self.lexer.next().token {
+    let typ = try!(match self.lexer.next().token {
         CONTEXTARROW => self.parse_type(),
         ARROW => {
             self.lexer.backtrack();
@@ -769,16 +839,16 @@ fn constrained_type(&mut self) -> (Vec<Constraint>, Type) {
             self.lexer.backtrack();
             let mut args = Vec::new();
             swap(&mut args, &mut maybe_constraints);
-            make_tuple_type(args)
+            Ok(make_tuple_type(args))
         }
-    };
-	(make_constraints(maybe_constraints), typ)
+    });
+	Ok((make_constraints(maybe_constraints), typ))
 }
 
-fn constructor_type(&mut self, arity : &mut isize, data_def: &DataDefinition) -> Type {
+fn constructor_type(&mut self, arity : &mut isize, data_def: &DataDefinition) -> ParseResult<Type> {
     debug!("Parse constructor type");
 	let token = self.lexer.next().token;
-	if token == NAME {
+	let typ = if token == NAME {
 		*arity += 1;
 		let arg = if self.lexer.current().value.as_slice().char_at(0).is_lowercase() {
             Type::new_var(self.lexer.current().value)
@@ -786,22 +856,23 @@ fn constructor_type(&mut self, arity : &mut isize, data_def: &DataDefinition) ->
 		else {
 			Type::new_op(self.lexer.current().value.clone(), Vec::new())
         };
-        function_type_(arg, self.constructor_type(arity, data_def))
+        function_type_(arg, try!(self.constructor_type(arity, data_def)))
 	}
 	else if token == LPARENS {
         *arity += 1;
-        let arg = self.parse_type();
-        self.require_next(RPARENS);
-        function_type_(arg, self.constructor_type(arity, data_def))
+        let arg = try!(self.parse_type());
+        expect!(self, RPARENS);
+        function_type_(arg, try!(self.constructor_type(arity, data_def)))
     }
     else {
 		data_def.typ.value.clone()
-	}
+	};
+    Ok(typ)
 }
 
 
-fn data_definition(&mut self) -> DataDefinition {
-	self.require_next(DATA);
+fn data_definition(&mut self) -> ParseResult<DataDefinition> {
+	expect!(self, DATA);
 
 	let mut definition = DataDefinition {
         constructors : Vec::new(),
@@ -809,57 +880,59 @@ fn data_definition(&mut self) -> DataDefinition {
         parameters : HashMap::new(),
         deriving: Vec::new()
     };
-    definition.typ.value = self.data_lhs();
-    self.require_next(EQUALSSIGN);
+    definition.typ.value = try!(self.data_lhs());
+    expect!(self, EQUALSSIGN);
 
-	definition.constructors = self.sep_by_1_func(|this| this.constructor(&definition),
-		|t : &Token| t.token == PIPE);
+	definition.constructors = try!(self.sep_by_1_func(|this| this.constructor(&definition),
+		|t : &Token| t.token == PIPE));
 	for ii in range(0, definition.constructors.len()) {
 		definition.constructors[ii].tag = ii as isize;
 	}
-    definition.deriving = self.deriving();
-	definition
+    definition.deriving = try!(self.deriving());
+	Ok(definition)
 }
 
-fn newtype(&mut self) -> Newtype {
+fn newtype(&mut self) -> ParseResult<Newtype> {
     debug!("Parsing newtype");
-    self.require_next(NEWTYPE);
-    let typ = self.data_lhs();
-    self.require_next(EQUALSSIGN);
-    let name = self.require_next(NAME).value;
+    expect!(self, NEWTYPE);
+    let typ = try!(self.data_lhs());
+    expect!(self, EQUALSSIGN);
+    let name = expect!(self, NAME).value;
     let location = self.lexer.current().location;
-    let arg_type = self.sub_type()
-        .unwrap_or_else(|| panic!("Parse error when parsing argument to new type at  {:?}", location));
+    let arg_type = match try!(self.sub_type()) {
+        Some(t) => t,
+        None => return self.error("Parse error when parsing argument to new type".to_string())
+    };
     
-    Newtype {
+    Ok(Newtype {
         typ: qualified(Vec::new(), typ.clone()),
         constructor_name: name,
         constructor_type: qualified(Vec::new(), function_type_(arg_type, typ)),
-        deriving: self.deriving()
-    }
+        deriving: try!(self.deriving())
+    })
 }
 
-fn data_lhs(&mut self) -> Type {
-	let name = self.require_next(NAME).value.clone();
+fn data_lhs(&mut self) -> ParseResult<Type> {
+	let name = expect!(self, NAME).value.clone();
     let mut typ = Type::Constructor(TypeConstructor { name: name, kind: Kind::Star.clone() });
 	while self.lexer.next().token == NAME {
 		typ = Type::Application(box typ, box Type::new_var(self.lexer.current().value));
 	}
     self.lexer.backtrack();
     Parser::<Iter>::set_kind(&mut typ, 1);
-    typ
+    Ok(typ)
 }
 
-fn deriving(&mut self) -> Vec<InternedStr> {
+fn deriving(&mut self) -> ParseResult<Vec<InternedStr>> {
     if self.lexer.next().token == DERIVING {
-        self.require_next(LPARENS);
-        let vec = self.sep_by_1(|this| this.require_next(NAME).value, COMMA);
-        self.require_next(RPARENS);
-        vec
+        expect!(self, LPARENS);
+        let vec = try!(self.sep_by_1(|this| Ok(expect!(this, NAME).value), COMMA));
+        expect!(self, RPARENS);
+        Ok(vec)
     }
     else {
 	    self.lexer.backtrack();
-        Vec::new()
+        Ok(Vec::new())
     }
 }
 
@@ -874,16 +947,16 @@ fn set_kind(typ: &mut Type, kind: isize) {
     }
 }
 
-fn sub_type(&mut self) -> Option<Type> {
+fn sub_type(&mut self) -> ParseResult<Option<Type>> {
 	let token = (*self.lexer.next()).clone();
-	match token.token {
+	let t = match token.token {
 	    LBRACKET => {
             self.lexer.backtrack();
-            Some(self.parse_type())
+            Some(try!(self.parse_type()))
 		}
 	    LPARENS => {
             self.lexer.backtrack();
-			Some(self.parse_type())
+			Some(try!(self.parse_type()))
 		}
 	    NAME => {
 			if token.value.as_slice().char_at(0).is_uppercase() {
@@ -894,10 +967,11 @@ fn sub_type(&mut self) -> Option<Type> {
 			}
 		}
         _ => { self.lexer.backtrack(); None }
-	}
+	};
+    Ok(t)
 }
 
-fn parse_type(&mut self) -> Type {
+fn parse_type(&mut self) -> ParseResult<Type> {
 	let token = (*self.lexer.next()).clone();
 	match token.token {
 	    LBRACKET => {
@@ -907,8 +981,8 @@ fn parse_type(&mut self) -> Type {
             }
             else {
                 self.lexer.backtrack();
-                let t = self.parse_type();
-                self.require_next(RBRACKET);
+                let t = try!(self.parse_type());
+                expect!(self, RBRACKET);
                 let list = list_type(t);
                 self.parse_return_type(list)
             }
@@ -919,14 +993,12 @@ fn parse_type(&mut self) -> Type {
                 self.parse_return_type(Type::new_op(intern("()"), vec![]))
             }
             else {
-                let t = self.parse_type();
+                let t = try!(self.parse_type());
                 match self.lexer.next().token {
                     COMMA => {
-                        let mut tuple_args: Vec<Type> = self.sep_by_1(|this| this.parse_type(), COMMA)
-                            .into_iter()
-                            .collect();
+                        let mut tuple_args: Vec<Type> = try!(self.sep_by_1(|this| this.parse_type(), COMMA));
                         tuple_args.insert(0, t);
-                        self.require_next(RPARENS);
+                        expect!(self, RPARENS);
 
                         self.parse_return_type(make_tuple_type(tuple_args))
                     }
@@ -934,7 +1006,7 @@ fn parse_type(&mut self) -> Type {
                         self.parse_return_type(t)
                     }
                     _ => {
-                        panic!(parse_error2(&self.lexer, &[COMMA, RPARENS]))
+                        unexpected!(self, [COMMA, RPARENS])
                     }
                 }
             }
@@ -942,7 +1014,7 @@ fn parse_type(&mut self) -> Type {
 	    NAME => {
 			let mut type_arguments = Vec::new();
             loop {
-                match self.sub_type() {
+                match try!(self.sub_type()) {
                     Some(typ) => type_arguments.push(typ),
                     None => break
                 }
@@ -956,37 +1028,37 @@ fn parse_type(&mut self) -> Type {
 			};
 			self.parse_return_type(this_type)
 		}
-	    _ => panic!("Unexpected token when parsing type {:?}", self.lexer.current())
+	    _ => unexpected!(self, [LBRACKET, LPARENS, NAME])
 	}
 }
 
-fn parse_return_type(&mut self, typ : Type) -> Type {
+fn parse_return_type(&mut self, typ : Type) -> ParseResult<Type> {
     let arrow = self.lexer.next().token;
     if arrow == ARROW {
-        return function_type_(typ, self.parse_type());
+        Ok(function_type_(typ, try!(self.parse_type())))
     }
     else {
         self.lexer.backtrack();
-        return typ
+        Ok(typ)
     }
 }
 
-fn sep_by_1<T, F>(&mut self, f : F, sep : TokenEnum) -> Vec<T>
-    where F: FnMut(&mut Parser<Iter>) -> T {
+fn sep_by_1<T, F>(&mut self, f : F, sep : TokenEnum) -> ParseResult<Vec<T>>
+    where F: FnMut(&mut Parser<Iter>) -> ParseResult<T> {
     self.sep_by_1_func(f, |tok| tok.token == sep)
 }
 
-fn sep_by_1_func<T, F, P>(&mut self, mut f : F, mut sep: P) -> Vec<T>
-    where F: FnMut(&mut Parser<Iter>) -> T, P : FnMut(&Token) -> bool {
+fn sep_by_1_func<T, F, P>(&mut self, mut f : F, mut sep: P) -> ParseResult<Vec<T>>
+    where F: FnMut(&mut Parser<Iter>) -> ParseResult<T>, P : FnMut(&Token) -> bool {
     let mut result = Vec::new();
     loop {
-        result.push(f(self));
+        result.push(try!(f(self)));
         if !sep(self.lexer.next()) {
             self.lexer.backtrack();
             break;
         }
     }
-    result
+    Ok(result)
 }
 }//end impl Parser
 
@@ -1042,7 +1114,7 @@ fn parse_error<Iter : Iterator<Item=char>>(lexer : &Lexer<Iter>, expected : Toke
     format!("Expected {:?} but found {:?}{{{:?}}}, at {:?}", expected, lexer.current().token, lexer.current().value.as_slice(), lexer.current().location)
 }
 
-pub fn parse_string(contents: &str) -> IoResult<Vec<Module>> {
+pub fn parse_string(contents: &str) -> ParseResult<Vec<Module>> {
     let mut modules = Vec::new();
     let mut visited = HashSet::new();
     try!(parse_modules_(&mut visited, &mut modules, "<input>", contents));
@@ -1051,7 +1123,7 @@ pub fn parse_string(contents: &str) -> IoResult<Vec<Module>> {
 
 ///Parses a module and all its imports
 ///If the modules contain a cyclic dependency fail is called.
-pub fn parse_modules(modulename: &str) -> IoResult<Vec<Module>> {
+pub fn parse_modules(modulename: &str) -> ParseResult<Vec<Module>> {
     let mut modules = Vec::new();
     let mut visited = HashSet::new();
     let contents = try!(get_contents(modulename));
@@ -1066,14 +1138,14 @@ fn get_contents(modulename: &str) -> IoResult<::std::string::String> {
     file.read_to_string()
 }
 
-fn parse_modules_(visited: &mut HashSet<InternedStr>, modules: &mut Vec<Module>, modulename: &str, contents: &str) -> IoResult<()> {
+fn parse_modules_(visited: &mut HashSet<InternedStr>, modules: &mut Vec<Module>, modulename: &str, contents: &str) -> ParseResult<()> {
     let mut parser = Parser::new(contents.as_slice().chars());
-    let module = parser.module();
+    let module = try!(parser.module());
     let interned_name = intern(modulename);
     visited.insert(interned_name);
     for import in module.imports.iter() {
         if visited.contains(&import.module) {
-            panic!("Cyclic dependency in modules");
+            return parser.error("Cyclic dependency in modules".to_string());
         }
         else if modules.iter().all(|m| m.name != import.module) {
             //parse the module if it is not parsed
@@ -1104,14 +1176,14 @@ use test::Bencher;
 fn simple()
 {
     let mut parser = Parser::new("2 + 3".chars());
-    let expr = parser.expression_();
+    let expr = parser.expression_().unwrap();
     assert_eq!(expr, op_apply(number(2), intern("+"), number(3)));
 }
 #[test]
 fn binding()
 {
     let mut parser = Parser::new("test x = x + 3".chars());
-    let bind = parser.binding();
+    let bind = parser.binding().unwrap();
     assert_eq!(bind.arguments, vec![Pattern::Identifier(intern("x"))]);
     assert_eq!(bind.matches, Match::Simple(op_apply(identifier("x"), intern("+"), number(3))));
     assert_eq!(bind.name, intern("test"));
@@ -1121,7 +1193,7 @@ fn binding()
 fn double()
 {
     let mut parser = Parser::new("test = 3.14".chars());
-    let bind = parser.binding();
+    let bind = parser.binding().unwrap();
     assert_eq!(bind.matches, Match::Simple(rational(3.14)));
     assert_eq!(bind.name, intern("test"));
 }
@@ -1133,7 +1205,7 @@ r"
 let
     test = add 3 2
 in test - 2".chars());
-    let expr = parser.expression_();
+    let expr = parser.expression_().unwrap();
     let bind = Binding { arguments: vec![], name: intern("test"), typ: Default::default(),
         matches: Match::Simple(apply(apply(identifier("add"), number(3)), number(2))), where_bindings: None };
     assert_eq!(expr, let_(vec![bind], op_apply(identifier("test"), intern("-"), number(2))));
@@ -1146,7 +1218,7 @@ r"case [] of
     x:xs -> x
     [] -> 2
 ".chars());
-    let expression = parser.expression_();
+    let expression = parser.expression_().unwrap();
     let alt = Alternative {
         pattern: Located {
             location: Location::eof(),
@@ -1167,7 +1239,7 @@ r"case [] of
 fn parse_type() {
     let mut parser = Parser::new(
 r"(.) :: (b -> c) -> (a -> b) -> (a -> c)".chars());
-    let type_decl = parser.type_declaration();
+    let type_decl = parser.type_declaration().unwrap();
     let a = &Type::new_var(intern("a"));
     let b = &Type::new_var(intern("b"));
     let c = &Type::new_var(intern("c"));
@@ -1180,7 +1252,8 @@ r"(.) :: (b -> c) -> (a -> b) -> (a -> c)".chars());
 fn parse_data() {
     let mut parser = Parser::new(
 r"data Bool = True | False".chars());
-    let data = parser.data_definition();
+    let data = parser.data_definition()
+        .unwrap();
 
     let b = qualified(vec![], bool_type());
     let t = Constructor { name: intern("True"), tag:0, arity:0, typ: b.clone() };
@@ -1194,7 +1267,8 @@ r"data Bool = True | False".chars());
 fn parse_data_2() {
     let mut parser = Parser::new(
 r"data List a = Cons a (List a) | Nil".chars());
-    let data = parser.data_definition();
+    let data = parser.data_definition()
+        .unwrap();
 
     let list = Type::new_op(intern("List"), vec![Type::new_var(intern("a"))]);
     let cons = Constructor { name: intern("Cons"), tag:0, arity:2, typ: qualified(vec![], function_type(&Type::new_var(intern("a")), &function_type(&list, &list))) };
@@ -1208,7 +1282,7 @@ r"data List a = Cons a (List a) | Nil".chars());
 fn parse_tuple() {
     let mut parser = Parser::new(
 r"(1, x)".chars());
-    let expr = parser.expression_();
+    let expr = parser.expression_().unwrap();
 
     assert_eq!(expr, apply(apply(identifier("(,)"), number(1)), identifier("x")));
 }
@@ -1218,7 +1292,7 @@ fn parse_unit() {
     let mut parser = Parser::new(
 r"case () :: () of
     () -> 1".chars());
-    let expr = parser.expression_();
+    let expr = parser.expression_().unwrap();
 
     assert_eq!(expr, case(TypedExpr::new(TypeSig(box identifier("()"), qualified(vec![], Type::new_op(intern("()"), vec![])))), 
         vec![Alternative {
@@ -1231,7 +1305,7 @@ r"case () :: () of
 #[test]
 fn test_operators() {
     let mut parser = Parser::new("1 : 2 : []".chars());
-    let expr = parser.expression_();
+    let expr = parser.expression_().unwrap();
     assert_eq!(expr, op_apply(number(1), intern(":"), op_apply(number(2), intern(":"), identifier("[]"))));
 }
 
@@ -1246,7 +1320,7 @@ r"class Eq a where
 
 instance Eq a => Eq [a] where
     (==) xs ys = undefined".chars());
-    let module = parser.module();
+    let module = parser.module().unwrap();
 
     assert_eq!(module.classes[0].name, intern("Eq"));
     assert_eq!(module.classes[0].bindings[0].name, intern("#Eq/="));
@@ -1264,7 +1338,7 @@ r"class Eq a => Ord a where
     (<) :: a -> a -> Bool
 
 ".chars());
-    let module = parser.module();
+    let module = parser.module().unwrap();
 
     let cls = &module.classes[0];
     let a = Type::new_var(intern("a")).var().clone();
@@ -1281,7 +1355,7 @@ r"main = do
     s <- getContents
     return s
 ".chars());
-    let module = parser.module();
+    let module = parser.module().unwrap();
 
     let b = TypedExpr::new(Do(vec![
         DoBinding::DoExpr(apply(identifier("putStrLn"), identifier("test"))),
@@ -1292,7 +1366,7 @@ r"main = do
 #[test]
 fn lambda_pattern() {
     let mut parser = Parser::new(r"\(x, _) -> x".chars());
-    let expr = parser.expression_();
+    let expr = parser.expression_().unwrap();
     let pattern = Pattern::Constructor(intern("(,)"), vec![Pattern::Identifier(intern("x")), Pattern::WildCard]);
     assert_eq!(expr, TypedExpr::new(Lambda(pattern, box identifier("x"))));
 }
@@ -1306,7 +1380,7 @@ import World ()
 import Prelude (id, sum)
 
 ".chars());
-    let module = parser.module();
+    let module = parser.module().unwrap();
 
     assert_eq!(module.imports[0].module.as_slice(), "Hello");
     assert_eq!(module.imports[0].imports, None);
@@ -1332,7 +1406,7 @@ test x
     | x = 1
     | otherwise = 0
 ".chars());
-    let binding = parser.binding();
+    let binding = parser.binding().unwrap();
     let b2 = Binding { arguments: vec![Pattern::Identifier(intern("x"))], name: intern("test"), typ: Default::default(),
         matches: Match::Guards(vec![
             Guard { predicate: identifier("x"), expression: number(1) },
@@ -1355,7 +1429,7 @@ infixr 6 `test2`, |<
 
 test2 x y = 1
 ".chars());
-    let module = parser.module();
+    let module = parser.module().unwrap();
     assert_eq!(module.fixity_declarations, [
         FixityDeclaration { assoc: Assoc::Right, precedence: 5, operators: vec![intern("test")] },
         FixityDeclaration { assoc: Assoc::Right, precedence: 6, operators: vec![intern("test2"), intern("|<")] },
@@ -1370,7 +1444,7 @@ r"data Test = A | B
 
 dummy = 1
 ".chars());
-    let module = parser.module();
+    let module = parser.module().unwrap();
     let data = &module.data_definitions[0];
     assert_eq!(data.typ, qualified(Vec::new(), Type::new_op(intern("Test"), Vec::new())));
     assert_eq!(data.deriving, [intern("Eq"), intern("Show")]);
@@ -1386,7 +1460,7 @@ if test 1
         then 2
         else 3 + 2
 ".chars());
-    let e = parser.expression_();
+    let e = parser.expression_().unwrap();
     assert_eq!(e,
         if_else(apply(identifier("test"), number(1))
             , number(1)
@@ -1409,7 +1483,7 @@ test = case a of
     where
         a = []
 ".chars());
-    let bind = parser.binding();
+    let bind = parser.binding().unwrap();
     match bind.matches {
         Match::Simple(ref e) => {
             match e.expr {
@@ -1437,7 +1511,7 @@ fn parse_newtype() {
 r"
 newtype IntPair a = IntPair (a, Int)
 ";
-    let module = Parser::new(s.chars()).module();
+    let module = Parser::new(s.chars()).module().unwrap();
     let a = Type::new_var(intern("a"));
     let typ = Type::new_op(intern("IntPair"), vec![a.clone()]);
     assert_eq!(module.newtypes[0].typ, qualified(Vec::new(), typ.clone()));
@@ -1449,7 +1523,7 @@ fn parse_prelude() {
     let path = &Path::new("Prelude.hs");
     let contents  = File::open(path).read_to_string().unwrap();
     let mut parser = Parser::new(contents.as_slice().chars());
-    let module = parser.module();
+    let module = parser.module().unwrap();
 
     assert!(module.bindings.iter().any(|bind| bind.name == intern("foldl")));
     assert!(module.bindings.iter().any(|bind| bind.name == intern("id")));
@@ -1462,7 +1536,7 @@ fn bench_prelude(b: &mut Bencher) {
     let contents  = File::open(path).read_to_string().unwrap();
     b.iter(|| {
         let mut parser = Parser::new(contents.as_slice().chars());
-        parser.module();
+        parser.module().unwrap();
     });
 }
 

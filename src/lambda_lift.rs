@@ -247,7 +247,7 @@ test2 x =
             let g y = add x (f y)
             in add x test
     in f x".chars());
-        let module = translate_module(rename_module(parser.module()));
+        let module = translate_module(rename_module(parser.module().unwrap()));
         visitor.visit_module(&module);
     }
 
@@ -319,7 +319,7 @@ test2 x =
             let g y = add x (f y)
             in add x test
     in f x".chars());
-	let mut module = rename_module(parser.module());
+	let mut module = rename_module(parser.module().unwrap());
 	TypeEnvironment::new().typecheck_module(&mut module);
         let m = translate_module(module);
         let module = abstract_module(m);
@@ -358,7 +358,7 @@ test2 x =
             let g y = add x (f y)
             in add x test
     in f x".chars());
-        let m = translate_module(rename_module(parser.module()));
+        let m = translate_module(rename_module(parser.module().unwrap()));
         let module = lift_lambdas(m);
         for bind in module.bindings.iter() {
             visitor.visit_expr(skip_lambdas(&bind.expression));

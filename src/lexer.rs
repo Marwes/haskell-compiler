@@ -7,7 +7,7 @@ use interner::*;
 
 use self::TokenEnum::*;
 
-#[derive(Clone, Copy, PartialEq, Show)]
+#[derive(Clone, Copy, Eq, PartialEq, Show)]
 pub enum TokenEnum {
 	EOF,
 	NAME,
@@ -80,7 +80,7 @@ impl <T: PartialEq> PartialEq for Located<T> {
     
 impl <T: fmt::Show> fmt::Show for Located<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?}", self.node)
+        write!(f, "{:?}: {:?}", self.location, self.node)
     }
 }
 
