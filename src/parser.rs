@@ -910,7 +910,6 @@ fn newtype(&mut self) -> ParseResult<Newtype> {
     let typ = try!(self.data_lhs());
     expect!(self, EQUALSSIGN);
     let name = expect!(self, NAME).value;
-    let location = self.lexer.current().location;
     let arg_type = match try!(self.sub_type()) {
         Some(t) => t,
         None => return self.error("Parse error when parsing argument to new type".to_string())
@@ -1116,14 +1115,6 @@ fn make_tuple_type(mut types : Vec<Type>) -> Type {
     else {
 	    Type::new_op(intern(tuple_name(types.len()).as_slice()), types)
     }
-}
-
-fn parse_error2<Iter : Iterator<Item=char>>(lexer : &Lexer<Iter>, expected : &[TokenEnum]) -> ::std::string::String {
-    format!("Expected {:?} but found {:?}{{{:?}}}, at {:?}", expected, lexer.current().token, lexer.current().value.as_slice(), lexer.current().location)
-    
-}
-fn parse_error<Iter : Iterator<Item=char>>(lexer : &Lexer<Iter>, expected : TokenEnum) -> ::std::string::String {
-    format!("Expected {:?} but found {:?}{{{:?}}}, at {:?}", expected, lexer.current().token, lexer.current().value.as_slice(), lexer.current().location)
 }
 
 pub fn parse_string(contents: &str) -> ParseResult<Vec<Module>> {

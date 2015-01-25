@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 use std::mem::swap;
-use std::io::IoResult;
 use std::iter;
 use module::*;
 use module::Expr::*;
@@ -161,12 +160,11 @@ impl Bindings for Module<Name> {
 }
 
 fn mut_bindings_at<'a, Ident: Eq>(bindings: &'a mut [Binding<Ident>], idx: usize) -> &'a mut [Binding<Ident>] {
-    let end = bindings
-        .slice_from(idx)
+    let end = bindings[idx..]
         .iter()
         .position(|bind| bind.name != bindings[idx].name)
         .unwrap_or(bindings.len() - idx);
-    bindings.slice_mut(idx, idx + end)
+    &mut bindings[idx .. idx + end]
 }
 
 //Woraround since traits around a vector seems problematic
@@ -815,7 +813,7 @@ impl <'a> TypeEnvironment<'a> {
             let mut typ = self.typecheck_match(&mut bind.matches, subs);
             fn make_function(arguments: &[Type], expr: &Type) -> Type {
                 if arguments.len() == 0 { expr.clone() }
-                else { function_type_(arguments[0].clone(), make_function(arguments.slice_from(1), expr)) }
+                else { function_type_(arguments[0].clone(), make_function(&arguments[1..], expr)) }
             }
             typ = make_function(argument_types.as_slice(), &typ);
             match previous_type {

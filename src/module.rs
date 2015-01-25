@@ -535,8 +535,8 @@ impl <'a, Ident: Eq> Iterator for Binds<'a, Ident> {
             let end = self.vec.iter()
                 .position(|bind| bind.name != self.vec[0].name)
                 .unwrap_or(self.vec.len());
-            let head = self.vec.slice_to(end);
-            self.vec = self.vec.slice_from(end);
+            let head = &self.vec[..end];
+            self.vec = &self.vec[end..];
             Some(head)
         }
     }

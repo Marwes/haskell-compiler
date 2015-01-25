@@ -897,7 +897,7 @@ impl <'a> Translator<'a> {
                             unmatched_guard()
                         }
                         else {
-                            self.translate_equations(equations.slice_from(i + 1))
+                            self.translate_equations(&equations[i + 1..])
                         };
                         alts.push(Alternative {
                             pattern: ps[0].1.clone(),
@@ -941,7 +941,7 @@ impl <'a> Translator<'a> {
                     //Gather all patterns which matches the pattern
                     for &Equation(patterns, expr) in equations.iter() {
                         if patterns.len() > 0 && matching(pattern_test, &patterns[0]) {
-                            vec.push(Equation(patterns.slice_from(1), expr));
+                            vec.push(Equation(&patterns[1..], expr));
                             //If the patter_test is a constructor we need to add the variables
                             //of the other patterns in a let binding to make sure that all names exist
                             match (&patterns[0].1, &pattern_test.1) {
@@ -974,7 +974,7 @@ impl <'a> Translator<'a> {
         }
         if alts.len() == 0 {
             for &Equation(patterns, expr) in equations.iter() {
-                vec.push(Equation(patterns.slice_from(1), expr));
+                vec.push(Equation(&patterns[1..], expr));
             }
             let &Equation(ps, _) = &equations[0];
             let arg_id = &ps[0].0;
@@ -984,7 +984,7 @@ impl <'a> Translator<'a> {
         else {
             let defaults: Vec<Equation> = equations.iter()
                 .filter(|& &Equation(ps, _)| ps.len() > 0 && (match ps[0].1 { Pattern::WildCard | Pattern::Identifier(..) => true, _ => false }))
-                .map(|&Equation(ps, e)| Equation(ps.slice_from(1), e))
+                .map(|&Equation(ps, e)| Equation(&ps[1..], e))
                 .collect();
             if defaults.len() != 0 {
                 let arg_id = &ps[0].0;

@@ -253,7 +253,7 @@ test2 x =
 
     fn check_args(expr: &Expr<Id>, args: &[InternedStr]) -> bool {
         match expr {
-            &Lambda(ref arg, ref body) => arg.name.name == args[0] && check_args(&**body, args.slice_from(1)),
+            &Lambda(ref arg, ref body) => arg.name.name == args[0] && check_args(&**body, &args[1..]),
             _ => args.len() == 0
         }
     }

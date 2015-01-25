@@ -5,7 +5,6 @@ use types::{int_type, double_type, function_type, function_type_, qualified, ext
 use typecheck::{Types, DataTypes, TypeEnvironment, find_specialized_instances};
 use scoped_map::ScopedMap;
 use std::iter::range_step;
-use std::io::IoResult;
 use std::borrow::ToOwned;
 
 use core::translate::{translate_module, translate_modules};
