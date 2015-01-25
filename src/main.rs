@@ -16,21 +16,21 @@ use getopts::{optopt, optflag, getopts, usage};
 macro_rules! write_core_expr(
     ($e:expr, $f:expr, $($p:pat),*) => ({
         match $e {
-            Identifier(ref s) => write!($f, "{:?}", *s),
-            Apply(ref func, ref arg) => write!($f, "({:?} {:?})", func, *arg),
-            Literal(ref l) => write!($f, "{:?}", *l),
-            Lambda(ref arg, ref body) => write!($f, "({:?} -> {:?})", *arg, *body),
+            Identifier(ref s) => write!($f, "{}", *s),
+            Apply(ref func, ref arg) => write!($f, "({} {})", func, *arg),
+            Literal(ref l) => write!($f, "{}", *l),
+            Lambda(ref arg, ref body) => write!($f, "({} -> {})", *arg, *body),
             Let(ref bindings, ref body) => {
                 try!(write!($f, "let {{\n"));
                 for bind in bindings.iter() {
-                    try!(write!($f, "; {:?}\n", bind));
+                    try!(write!($f, "; {}\n", bind));
                 }
-                write!($f, "}} in {:?}\n", *body)
+                write!($f, "}} in {}\n", *body)
             }
             Case(ref expr, ref alts) => {
-                try!(write!($f, "case {:?} of {{\n", *expr));
+                try!(write!($f, "case {} of {{\n", *expr));
                 for alt in alts.iter() {
-                    try!(write!($f, "; {:?}\n", alt));
+                    try!(write!($f, "; {}\n", alt));
                 }
                 write!($f, "}}\n")
             }
@@ -68,19 +68,19 @@ fn main() {
     let matches = {
         let args = std::os::args();
         getopts(args.tail(), &opts)
-            .unwrap_or_else(|err| panic!("{:?}", err))
+            .unwrap_or_else(|err| panic!("{}", err))
     };
 
     if matches.opt_present("h") {
-        println!("Usage: vm [OPTIONS|EXPRESSION] {:?}", usage("", &opts));
+        println!("Usage: vm [OPTIONS|EXPRESSION] {}", usage("", &opts));
         return;
     }
     match matches.opt_str("l") {
         Some(modulename) => {
             let result = execute_main_module(modulename.as_slice()).unwrap();
             match result {
-                Some(x) => println!("{:?}", x),
-                None => println!("Error running module {:?}", modulename)
+                Some(x) => println!("{}", x),
+                None => println!("Error running module {}", modulename)
             }
             return;
         }

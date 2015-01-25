@@ -4,11 +4,32 @@ use scoped_map::ScopedMap;
 use interner::*;
 
 ///A Name is a reference to a specific identifier in the program, guaranteed to be unique
-#[derive(PartialEq, Eq, Hash, Clone, Copy)]
+#[derive(Eq, Hash, Clone, Copy, Debug)]
 pub struct Name {
     pub name: InternedStr,
     pub uid: usize
 }
+
+pub fn name(s: &str) -> Name {
+    Name { uid: 0, name: intern(s) }
+}
+
+impl PartialEq<Name> for Name {
+    fn eq(&self, other: &Name) -> bool {
+        self.uid == other.uid && self.name == other.name
+    }
+}
+impl PartialEq<InternedStr> for Name {
+    fn eq(&self, other: &InternedStr) -> bool {
+        self.name == *other
+    }
+}
+impl PartialEq<Name> for InternedStr {
+    fn eq(&self, other: &Name) -> bool {
+        *self == other.name
+    }
+}
+
 
 impl Str for Name {
     fn as_slice<'a>(&'a self) -> &'a str {
@@ -16,9 +37,9 @@ impl Str for Name {
     }
 }
 
-impl ::std::fmt::Debug for Name {
+impl ::std::fmt::Display for Name {
     fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-        write!(f, "{:?}_{:?}", self.name, self.uid)
+        write!(f, "{}_{}", self.name, self.uid)
     }
 }
 
@@ -224,7 +245,7 @@ impl Renamer {
             Paren(expr) => Paren(box self.rename(*expr))
         };
         let mut t = TypedExpr::with_location(e, location);
-        t.typ = typ;
+        t.typ = self.rename_type(typ);
         t
     }
 
@@ -263,14 +284,14 @@ impl Renamer {
         arguments.into_iter().map(|a| self.rename_pattern(a)).collect()
     }
 
-    fn rename_qualified_type(&mut self, typ: Qualified<Type, InternedStr>) -> Qualified<Type, Name> {
+    fn rename_qualified_type(&mut self, typ: Qualified<Type<InternedStr>, InternedStr>) -> Qualified<Type<Name>, Name> {
         let Qualified { constraints, value: typ } = typ;
         let constraints2: Vec<Constraint<Name>> = constraints.into_iter()
             .map(|Constraint { class, variables }| {
                 Constraint { class: self.get_name(class), variables: variables }
             })
             .collect();
-        qualified(constraints2, typ)
+        qualified(constraints2, self.rename_type(typ))
     }
     fn rename_type_declarations(&mut self, decls: Vec<TypeDeclaration<InternedStr>>) -> Vec<TypeDeclaration<Name>> {
         let decls2: Vec<TypeDeclaration<Name>> = decls.into_iter()
@@ -297,6 +318,10 @@ impl Renamer {
         let name = self.uniques.find_mut(&s).unwrap();
         name.uid = module_id;
         *name
+    }
+
+    fn rename_type(&mut self, typ: Type<InternedStr>) -> Type<Name> {
+        typ.map(|s| self.get_name(s))
     }
 }
 
@@ -400,7 +425,7 @@ pub fn rename_module_(renamer: &mut Renamer, module_env: &[Module<Name>], module
         Instance {
             bindings : renamer.rename_bindings(bindings, true),
             constraints : constraints2,
-            typ : typ,
+            typ : renamer.rename_type(typ),
             classname : renamer.get_name(classname)
         }
     }).collect();
@@ -475,6 +500,79 @@ pub fn rename_modules(modules: Vec<Module<InternedStr>>) -> Vec<Module<Name>> {
     }
     ms
 }
+
+pub mod typ {
+    use std::iter::{repeat, range_step};
+    use types::{Kind, Type, TypeVariable};
+    use super::{name, Name};
+    use interner::intern;
+
+    ///Constructs a string which holds the name of an n-tuple
+    pub fn tuple_name(n: usize) -> String {
+        let commas = if n == 0 { 0 } else { n - 1 };
+        Some('(').into_iter()
+            .chain(repeat(',').take(commas))
+            .chain(Some(')').into_iter())
+            .collect()
+    }
+    ///Returns the type of an n-tuple constructor as well as the name of the tuple
+    pub fn tuple_type(n: usize) -> (String, Type<Name>) {
+        let mut var_list = Vec::new();
+        assert!(n < 26);
+        for i in range(0, n) {
+            let c = (('a' as u8) + i as u8) as char;
+            let var = TypeVariable::new_var_kind(intern(c.to_string().as_slice()), Kind::Star.clone());
+            var_list.push(Type::Generic(var));
+        }
+        let ident = tuple_name(n);
+        let mut typ = Type::new_op(name(ident.as_slice()), var_list);
+        for i in range_step(n as isize - 1, -1, -1) {
+            let c = (('a' as u8) + i as u8) as char;
+            typ = function_type_(Type::Generic(TypeVariable::new(intern(c.to_string().as_slice()))), typ);
+        }
+        (ident, typ)
+    }
+
+    ///Constructs a list type which holds elements of type 'typ'
+    pub fn list_type(typ: Type<Name>) -> Type<Name> {
+        Type::new_op(name("[]"), vec![typ])
+    }
+    ///Returns the Type of the Char type
+    pub fn char_type() -> Type<Name> {
+        Type::new_op(name("Char"), vec![])
+    }
+    ///Returns the type for the Int type
+    pub fn int_type() -> Type<Name> {
+        Type::new_op(name("Int"), vec![])
+    }
+    ///Returns the type for the Bool type
+    pub fn bool_type() -> Type<Name> {
+        Type::new_op(name("Bool"), vec![])
+    }
+    ///Returns the type for the Double type
+    pub fn double_type() -> Type<Name> {
+        Type::new_op(name("Double"), vec![])
+    }
+    ///Creates a function type
+    pub fn function_type(arg: &Type<Name>, result: &Type<Name>) -> Type<Name> {
+        function_type_(arg.clone(), result.clone())
+    }
+
+    ///Creates a function type
+    pub fn function_type_(func : Type<Name>, arg : Type<Name>) -> Type<Name> {
+        Type::new_op(name("->"), vec![func, arg])
+    }
+
+    ///Creates a IO type
+    pub fn io(typ: Type<Name>) -> Type<Name> {
+        Type::new_op(name("IO"), vec![typ])
+    }
+    ///Returns the unit type '()'
+    pub fn unit() -> Type<Name> {
+        Type::new_op(name("()"), vec![])
+    }
+}
+
 
 #[cfg(test)]
 mod tests {

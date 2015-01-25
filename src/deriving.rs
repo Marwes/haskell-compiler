@@ -1,7 +1,6 @@
 use module::encode_binding_identifier;
 use core::*;
 use core::Expr::*;
-use types::{bool_type, function_type_};
 use renamer::NameSupply;
 use interner::{intern, InternedStr};
 
@@ -73,7 +72,7 @@ impl DerivingGen {
     }
 
     fn ord_fields(&mut self, args_l: &[Id<Name>], args_r: &[Id<Name>]) -> Expr<Id<Name>> {
-        let ordering = Type::new_op(intern("Ordering"), Vec::new());
+        let ordering = Type::new_op(name("Ordering"), Vec::new());
         if args_l.len() >= 1 {
             let mut iter = args_l.iter().zip(args_r.iter()).rev();
             let (x, y) = iter.next().unwrap();
@@ -100,9 +99,9 @@ impl DerivingGen {
         id_l.typ.value = function_type_(data.typ.value.clone(), function_type_(data.typ.value.clone(), bool_type()));
         let lambda_expr = Lambda(id_l, box Lambda(id_r, box expr));//TODO types
         let data_name = extract_applied_type(&data.typ.value).ctor().name;
-        let name = encode_binding_identifier(data_name, intern(funcname));
+        let name = encode_binding_identifier(data_name.name, intern(funcname));
         //Create a constraint for each type parameter
-        fn make_constraints(mut result: Vec<Constraint<Name>>, class: InternedStr, typ: &Type) -> Vec<Constraint<Name>> {
+        fn make_constraints(mut result: Vec<Constraint<Name>>, class: InternedStr, typ: &Type<Name>) -> Vec<Constraint<Name>> {
             match typ {
                 &Type::Application(ref f, ref param) => {
                     result.push(Constraint { class: Name { name: class, uid: 0 }, variables: vec![param.var().clone()] });
@@ -119,10 +118,10 @@ impl DerivingGen {
     }
 
     fn eq_or_default(&mut self, cmp: Expr<Id<Name>>, def: Expr<Id<Name>>) -> Expr<Id<Name>> {
-        let match_id = Id::new(self.name_supply.anonymous(), Type::new_op(intern("Ordering"), Vec::new()), Vec::new());
+        let match_id = Id::new(self.name_supply.anonymous(), Type::new_op(name("Ordering"), Vec::new()), Vec::new());
         Case(box cmp, vec![
             Alternative {
-                pattern: Pattern::Constructor(id("EQ", Type::new_op(intern("Ordering"), Vec::new())), Vec::new()),
+                pattern: Pattern::Constructor(id("EQ", Type::new_op(name("Ordering"), Vec::new())), Vec::new()),
                 expression: def
             },
             Alternative { pattern: Pattern::Identifier(match_id.clone()), expression: Identifier(match_id) }
@@ -156,36 +155,36 @@ impl DerivingGen {
 }
 
 
-fn id(s: &str, typ: Type) -> Id<Name> {
+fn id(s: &str, typ: Type<Name>) -> Id<Name> {
     Id::new(Name {name: intern(s), uid: 0 }, typ, Vec::new())
 }
 
 fn compare_tags(lhs: Expr<Id<Name>>, rhs: Expr<Id<Name>>) -> Expr<Id<Name>> {
     let var = Type::new_var(intern("a"));
-    let typ = function_type_(var.clone(), function_type_(var.clone(), Type::new_op(intern("Ordering"), Vec::new())));
-    let id = Id::new(Name { name: intern("#compare_tags"), uid: 0 }, typ, Vec::new());
+    let typ = function_type_(var.clone(), function_type_(var.clone(), Type::new_op(name("Ordering"), Vec::new())));
+    let id = Id::new(name("#compare_tags"), typ, Vec::new());
     Apply(box Apply(box Identifier(id), box lhs), box rhs)
 }
 
 fn bool_binop(op: &str, lhs: Expr<Id<Name>>, rhs: Expr<Id<Name>>) -> Expr<Id<Name>> {
     binop(op, lhs, rhs, bool_type())
 }
-fn binop(op: &str, lhs: Expr<Id<Name>>, rhs: Expr<Id<Name>>, return_type: Type) -> Expr<Id<Name>> {
+fn binop(op: &str, lhs: Expr<Id<Name>>, rhs: Expr<Id<Name>>, return_type: Type<Name>) -> Expr<Id<Name>> {
     let typ = function_type_(lhs.get_type().clone(), function_type_(rhs.get_type().clone(), return_type));
-    let f = Identifier(Id::new(Name { name: intern(op), uid: 0 }, typ, Vec::new()));
+    let f = Identifier(Id::new(name(op), typ, Vec::new()));
     Apply(box Apply(box f, box lhs), box rhs)
 }
 
 fn true_expr() -> Expr<Id<Name>> { 
-    Identifier(Id::new(Name { uid: 0, name: intern("True") }, bool_type(), Vec::new()))
+    Identifier(Id::new(name("True"), bool_type(), Vec::new()))
 }
 
 struct ArgIterator<'a> {
-    typ: &'a Type
+    typ: &'a Type<Name>
 }
 impl <'a> Iterator for ArgIterator<'a> {
-    type Item = &'a Type;
-    fn next(&mut self) -> Option<&'a Type> {
+    type Item = &'a Type<Name>;
+    fn next(&mut self) -> Option<&'a Type<Name>> {
         use types::try_get_function;
         match try_get_function(self.typ) {
             Some((arg, rest)) => {
@@ -196,7 +195,7 @@ impl <'a> Iterator for ArgIterator<'a> {
         }
     }
 }
-fn extract_applied_type<'a>(typ: &'a Type) -> &'a Type {
+fn extract_applied_type<'a, Id>(typ: &'a Type<Id>) -> &'a Type<Id> {
     match typ {
         &Type::Application(ref lhs, _) => extract_applied_type(&**lhs),
         _ => typ

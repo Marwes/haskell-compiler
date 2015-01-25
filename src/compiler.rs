@@ -1,7 +1,7 @@
 use interner::*;
 use core::*;
 use core::Expr::*;
-use types::{int_type, double_type, function_type, function_type_, qualified, extract_applied_type};
+use types::{qualified, extract_applied_type};
 use typecheck::{Types, DataTypes, TypeEnvironment, find_specialized_instances};
 use scoped_map::ScopedMap;
 use std::iter::range_step;
@@ -66,8 +66,8 @@ enum Var<'a> {
     Stack(usize),
     Global(usize),
     Constructor(u16, u16),
-    Class(&'a Type, &'a [Constraint<Name>], &'a TypeVariable),
-    Constraint(usize, &'a Type, &'a[Constraint<Name>]),
+    Class(&'a Type<Name>, &'a [Constraint<Name>], &'a TypeVariable),
+    Constraint(usize, &'a Type<Name>, &'a[Constraint<Name>]),
     Builtin(usize),
     Primitive(usize, Instruction),
     Newtype
@@ -122,13 +122,13 @@ pub struct SuperCombinator {
     pub name: Name,
     pub assembly_id: usize,
     pub instructions : Vec<Instruction>,
-    pub typ: Qualified<Type, Name>
+    pub typ: Qualified<Type<Name>, Name>
 }
 pub struct Assembly {
     pub super_combinators: Vec<SuperCombinator>,
     pub instance_dictionaries: Vec<Vec<usize>>,
     pub classes: Vec<Class<Id>>,
-    pub instances: Vec<(Vec<Constraint<Name>>, Type)>,
+    pub instances: Vec<(Vec<Constraint<Name>>, Type<Name>)>,
     pub data_definitions: Vec<DataDefinition<Name>>,
     pub offset: usize
 }
@@ -225,7 +225,7 @@ fn find_constructor(module: &Module<Id>, name: Name) -> Option<(u16, u16)> {
 }
 
 impl Types for Module<Id> {
-    fn find_type<'a>(&'a self, name: &Name) -> Option<&'a Qualified<Type, Name>> {
+    fn find_type<'a>(&'a self, name: &Name) -> Option<&'a Qualified<Type<Name>, Name>> {
         for bind in self.bindings.iter() {
             if bind.name.name == *name {
                 return Some(&bind.name.typ);
@@ -257,7 +257,7 @@ impl Types for Module<Id> {
             .map(|class| (class.constraints.as_slice(), &class.variable, class.declarations.as_slice()))
     }
 
-    fn find_instance<'a>(&'a self, classname: Name, typ: &Type) -> Option<(&'a [Constraint<Name>], &'a Type)> {
+    fn find_instance<'a>(&'a self, classname: Name, typ: &Type<Name>) -> Option<(&'a [Constraint<Name>], &'a Type<Name>)> {
         for instance in self.instances.iter() {
             let y = match extract_applied_type(&instance.typ) {
                 &Type::Constructor(ref x) => x,
@@ -277,7 +277,7 @@ impl Types for Module<Id> {
 
 impl Types for Assembly {
     ///Lookup a type
-    fn find_type<'a>(&'a self, name: &Name) -> Option<&'a Qualified<Type, Name>> {
+    fn find_type<'a>(&'a self, name: &Name) -> Option<&'a Qualified<Type<Name>, Name>> {
         for sc in self.super_combinators.iter() {
             if sc.name == *name {
                 return Some(&sc.typ);
@@ -307,7 +307,7 @@ impl Types for Assembly {
             .find(|class| name == class.name)
             .map(|class| (class.constraints.as_slice(), &class.variable, class.declarations.as_slice()))
     }
-    fn find_instance<'a>(&'a self, classname: Name, typ: &Type) -> Option<(&'a [Constraint<Name>], &'a Type)> {
+    fn find_instance<'a>(&'a self, classname: Name, typ: &Type<Name>) -> Option<(&'a [Constraint<Name>], &'a Type<Name>)> {
         for &(ref constraints, ref op) in self.instances.iter() {
             match op {
                 &Type::Application(ref op, ref t) => {
@@ -335,7 +335,7 @@ impl Types for Assembly {
 }
 
 impl DataTypes for Assembly {
-    fn find_data_type<'a>(&'a self, name: InternedStr) -> Option<&'a DataDefinition<Name>> {
+    fn find_data_type<'a>(&'a self, name: Name) -> Option<&'a DataDefinition<Name>> {
         for data in self.data_definitions.iter() {
             if name == extract_applied_type(&data.typ.value).ctor().name {
                 return Some(data);
@@ -375,7 +375,7 @@ enum ArgList<'a> {
 
 pub struct Compiler<'a> {
     ///Hashmap containging class names mapped to the functions it contains
-    pub instance_dictionaries: Vec<(Vec<(Name, Type)>, Vec<usize>)>,
+    pub instance_dictionaries: Vec<(Vec<(Name, Type<Name>)>, Vec<usize>)>,
     pub stack_size : usize,
     ///Array of all the assemblies which can be used to lookup functions in
     pub assemblies: Vec<&'a Assembly>,
@@ -438,7 +438,7 @@ impl <'a> Compiler<'a> {
             offset: self.assemblies.iter().fold(0, |sum, assembly| sum + assembly.super_combinators.len()),
             classes: module.classes.clone(),
             instances: module.instances.iter()
-                .map(|x| (x.constraints.clone(), Type::new_op(x.classname.name, vec![x.typ.clone()])))
+                .map(|x| (x.constraints.clone(), Type::new_op(x.classname, vec![x.typ.clone()])))
                 .collect()
             ,
             data_definitions: data_definitions
@@ -797,7 +797,7 @@ impl <'a> Compiler<'a> {
     }
 
     ///Compile a function which is defined in a class
-    fn compile_instance_variable(&mut self, actual_type: &Type, instructions: &mut Vec<Instruction>, name: Name, function_type: &Type, constraints: &[Constraint<Name>], var: &TypeVariable) {
+    fn compile_instance_variable(&mut self, actual_type: &Type<Name>, instructions: &mut Vec<Instruction>, name: Name, function_type: &Type<Name>, constraints: &[Constraint<Name>], var: &TypeVariable) {
         match try_find_instance_type(var, function_type, actual_type) {
             Some(typename) => {
                 //We should be able to retrieve the instance directly
@@ -824,7 +824,7 @@ impl <'a> Compiler<'a> {
     }
 
     ///Compile the loading of a variable which has constraints and will thus need to load a dictionary with functions as well
-    fn compile_with_constraints(&mut self, name: Name, actual_type: &Type, function_type: &Type, constraints: &[Constraint<Name>], instructions: &mut Vec<Instruction>) {
+    fn compile_with_constraints(&mut self, name: Name, actual_type: &Type<Name>, function_type: &Type<Name>, constraints: &[Constraint<Name>], instructions: &mut Vec<Instruction>) {
         match self.find(Name { name: intern("$dict"), uid: 0}) {
             Some(Var::Stack(_)) => {
                 //Push dictionary or member of dictionary
@@ -845,7 +845,7 @@ impl <'a> Compiler<'a> {
         }
     }
     
-    fn push_dictionary(&mut self, context: &[Constraint<Name>], constraints: &[(Name, Type)], instructions: &mut Vec<Instruction>) {
+    fn push_dictionary(&mut self, context: &[Constraint<Name>], constraints: &[(Name, Type<Name>)], instructions: &mut Vec<Instruction>) {
         debug!("Push dictionary {:?} ==> {:?}", context, constraints);
         for &(ref class, ref typ) in constraints.iter() {
             self.fold_dictionary(*class, typ, instructions);
@@ -854,7 +854,7 @@ impl <'a> Compiler<'a> {
     }
     
     //Writes instructions which pushes a dictionary for the type to the top of the stack
-    fn fold_dictionary(&mut self, class: Name, typ: &Type, instructions: &mut Vec<Instruction>) {
+    fn fold_dictionary(&mut self, class: Name, typ: &Type<Name>, instructions: &mut Vec<Instruction>) {
         match *typ {
             Type::Constructor(ref ctor) => {//Simple
                 debug!("Simple for {:?}", ctor);
@@ -935,7 +935,7 @@ impl <'a> Compiler<'a> {
 
     ///Find the index of the instance dictionary for the constraints and types in 'constraints'
     ///Returns the index
-    fn find_dictionary_index(&mut self, constraints: &[(Name, Type)]) -> usize {
+    fn find_dictionary_index(&mut self, constraints: &[(Name, Type<Name>)]) -> usize {
         //Check if the dictionary already exist
         let dict_len = self.instance_dictionaries.len();
         for ii in range(0, dict_len) {
@@ -953,7 +953,7 @@ impl <'a> Compiler<'a> {
         dict_len
     }
 
-    fn add_class(&self, constraints: &[(Name, Type)], function_indexes: &mut Vec<usize>) {
+    fn add_class(&self, constraints: &[(Name, Type<Name>)], function_indexes: &mut Vec<usize>) {
 
         for &(ref class_name, ref typ) in constraints.iter() {
             self.walk_classes(*class_name, &mut |declarations| -> Option<()> {
@@ -1026,7 +1026,7 @@ impl <'a> Compiler<'a> {
 }
 
 ///Attempts to find the actual type of the for the variable which has a constraint
-fn try_find_instance_type<'a>(class_var: &TypeVariable, class_type: &Type, actual_type: &'a Type) -> Option<&'a str> {
+fn try_find_instance_type<'a>(class_var: &TypeVariable, class_type: &Type<Name>, actual_type: &'a Type<Name>) -> Option<&'a str> {
     match (class_type, actual_type) {
         (&Type::Variable(ref var), _) if var == class_var => {
             //Found the class variable so return the name of the type

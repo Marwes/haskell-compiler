@@ -1,9 +1,10 @@
-use types::*;
-use types::Type::Generic;
+use types::{Type, TypeVariable, Kind};
 use interner::intern;
+use renamer::{name, Name};
+use renamer::typ::*;
 
 ///Returns an array of all the compiler primitves which exist (not including numeric primitives atm)
-pub fn builtins() -> Vec<(&'static str, Type)> {
+pub fn builtins() -> Vec<(&'static str, Type<Name>)> {
     let var = Type::Generic(TypeVariable { id: intern("a"), kind: Kind::Star, age: 0 } );
     let var2 = Type::Generic(TypeVariable { id: intern("b"), kind: Kind::Star, age: 0 } );
     vec![("error", function_type_(list_type(char_type()), var.clone())),
@@ -14,7 +15,7 @@ pub fn builtins() -> Vec<(&'static str, Type)> {
                                  io(var2.clone())))),
       ("io_return", function_type_(var.clone(), io(var.clone()))),
       ("putStrLn", function_type_(list_type(char_type()), io(unit()))),
-      ("#compare_tags", function_type_(var.clone(), function_type_(var.clone(), Type::new_op(intern("Ordering"), Vec::new())))),
+      ("#compare_tags", function_type_(var.clone(), function_type_(var.clone(), Type::new_op(name("Ordering"), Vec::new())))),
     ]
 }
 

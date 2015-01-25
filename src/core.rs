@@ -1,11 +1,14 @@
 use std::fmt;
+use std::collections::HashMap;
 pub use types::{Qualified, TypeVariable, Type, Constraint};
-pub use types::Type::{Application, Constructor, Variable};
-pub use module::{TypeDeclaration, DataDefinition, Newtype};
+pub use types::Type::{Application, Variable};
+pub use module::{Constructor, DataDefinition, TypeDeclaration, Newtype};
 pub use module::LiteralData::{Integral, Fractional, String, Char};
+use typecheck::TcType;
 use module;
 use interner::*;
 pub use renamer::Name;
+
 
 pub struct Module<Ident> {
     pub classes: Vec<Class<Ident>>,
@@ -30,7 +33,7 @@ impl Module<Id> {
     }
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Class<Ident> {
     pub constraints: Vec<Constraint<Name>>,
     pub name : Name,
@@ -39,27 +42,27 @@ pub struct Class<Ident> {
     pub bindings: Vec<Binding<Ident>>
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Instance<Ident = InternedStr> {
     pub bindings : Vec<Binding<Ident>>,
     pub constraints : Vec<Constraint<Name>>,
-    pub typ : Type,
+    pub typ : TcType,
     pub classname : Name
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Binding<Ident> {
     pub name: Ident,
     pub expression: Expr<Ident>
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Alternative<Ident> {
     pub pattern : Pattern<Ident>,
     pub expression : Expr<Ident>
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Pattern<Ident> {
     Constructor(Ident, Vec<Ident>),
     Identifier(Ident),
@@ -67,15 +70,15 @@ pub enum Pattern<Ident> {
     WildCard
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct LiteralData {
-    pub typ: Type,
+    pub typ: TcType,
     pub value: Literal_
 }
 
 pub type Literal_ = module::LiteralData;
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Expr<Ident> {
     Identifier(Ident),
     Apply(Box<Expr<Ident>>, Box<Expr<Ident>>),
@@ -85,38 +88,38 @@ pub enum Expr<Ident> {
     Case(Box<Expr<Ident>>, Vec<Alternative<Ident>>)
 }
 
-impl fmt::Debug for LiteralData {
+impl fmt::Display for LiteralData {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?}", self.value)
+        write!(f, "{}", self.value)
     }
 }
 
-impl <T: fmt::Debug> fmt::Debug for Binding<T> {
+impl <T: fmt::Display> fmt::Display for Binding<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?} = {:?}", self.name, self.expression)
+        write!(f, "{} = {}", self.name, self.expression)
     }
 }
 
-impl <T: fmt::Debug> fmt::Debug for Expr<T> {
+impl <T: fmt::Display> fmt::Display for Expr<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use self::Expr::*;
         write_core_expr!(*self, f,)
     }
 }
-impl <T: fmt::Debug> fmt::Debug for Alternative<T> {
+impl <T: fmt::Display> fmt::Display for Alternative<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?} -> {:?}", self.pattern, self.expression)
+        write!(f, "{} -> {}", self.pattern, self.expression)
     }
 }
-impl <T: fmt::Debug> fmt::Debug for Pattern<T> {
+impl <T: fmt::Display> fmt::Display for Pattern<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            Pattern::Identifier(ref s) => write!(f, "{:?}", s),
-            Pattern::Number(ref i) => write!(f, "{:?}", i),
+            Pattern::Identifier(ref s) => write!(f, "{}", s),
+            Pattern::Number(ref i) => write!(f, "{}", i),
             Pattern::Constructor(ref name, ref patterns) => {
-                try!(write!(f, "({:?} ", name));
+                try!(write!(f, "({} ", name));
                 for p in patterns.iter() {
-                    try!(write!(f, " {:?}", p));
+                    try!(write!(f, " {}", p));
                 }
                 write!(f, ")")
             }
@@ -127,18 +130,20 @@ impl <T: fmt::Debug> fmt::Debug for Pattern<T> {
 
 ///Trait which provides access to the Type of any struct which implements it.
 pub trait Typed {
-    fn get_type<'a>(&'a self) -> &'a Type;
+    type Id;
+    fn get_type<'a>(&'a self) -> &'a Type<Self::Id>;
 }
 
-impl <Ident: Typed> Typed for Expr<Ident> {
-    fn get_type<'a>(&'a self) -> &'a Type {
+impl <Ident: Typed<Id=Name>> Typed for Expr<Ident> {
+    type Id = Name;
+    fn get_type<'a>(&'a self) -> &'a Type<Name> {
         match self {
             &Expr::Identifier(ref i) => i.get_type(),
             &Expr::Literal(ref lit) => &lit.typ,
             &Expr::Apply(ref func, _) => {
                 match func.get_type() {
                     &Type::Application(_, ref a) => { &**a }
-                    x => panic!("The function in Apply must be a type application, found {:?}", x)
+                    x => panic!("The function in Apply must be a type application, found {}", x)
                 }
             }
             &Expr::Lambda(ref arg, _) => arg.get_type(),
@@ -148,7 +153,8 @@ impl <Ident: Typed> Typed for Expr<Ident> {
     }
 }
 impl <Ident: Typed> Typed for Pattern<Ident> {
-    fn get_type<'a>(&'a self) -> &'a Type {
+    type Id = Ident::Id;
+    fn get_type<'a>(&'a self) -> &'a Type<Ident::Id> {
         match *self {
             Pattern::Identifier(ref name) => name.get_type(),
             Pattern::Constructor(ref name, _) => name.get_type(),
@@ -165,20 +171,20 @@ impl PartialEq<str> for Name {
 }
 
 ///Id is a Name combined with a type
-#[derive(PartialEq, Eq, Hash, Clone)]
+#[derive(PartialEq, Eq, Hash, Clone, Debug)]
 pub struct Id<T = Name> {
     pub name: T,
-    pub typ: Qualified<Type, Name>
+    pub typ: Qualified<TcType, Name>
 }
 
-impl fmt::Debug for Id {
+impl fmt::Display for Id {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?}", self.name)
+        write!(f, "{}", self.name)
     }
 }
 
 impl <T> Id<T> {
-    pub fn new(name: T, typ: Type, constraints: Vec<Constraint<Name>>) -> Id<T> {
+    pub fn new(name: T, typ: TcType, constraints: Vec<Constraint<Name>>) -> Id<T> {
         Id { name: name, typ: module::qualified(constraints, typ) }
     }
 }
@@ -190,7 +196,8 @@ impl Str for Id {
 }
 
 impl <T> Typed for Id<T> {
-    fn get_type<'a>(&'a self) -> &'a Type {
+    type Id = Name;
+    fn get_type<'a>(&'a self) -> &'a Type<Name> {
         &self.typ.value
     }
 }
@@ -388,12 +395,55 @@ pub mod result {
     }
 }
 
+pub fn name(s: &str) -> Name {
+    Name { uid: 0, name: intern(s) }
+}
+
+///Constructs a list type which holds elements of type 'typ'
+pub fn list_type(typ: Type<Name>) -> Type<Name> {
+    Type::new_op(name("[]"), vec![typ])
+}
+///Returns the Type of the Char type
+pub fn char_type() -> Type<Name> {
+    Type::new_op(name("Char"), vec![])
+}
+///Returns the type for the Int type
+pub fn int_type() -> Type<Name> {
+    Type::new_op(name("Int"), vec![])
+}
+///Returns the type for the Bool type
+pub fn bool_type() -> Type<Name> {
+    Type::new_op(name("Bool"), vec![])
+}
+///Returns the type for the Double type
+pub fn double_type() -> Type<Name> {
+    Type::new_op(name("Double"), vec![])
+}
+///Creates a function type
+pub fn function_type(arg: &Type<Name>, result: &Type<Name>) -> Type<Name> {
+    function_type_(arg.clone(), result.clone())
+}
+
+///Creates a function type
+pub fn function_type_(func : Type<Name>, arg : Type<Name>) -> Type<Name> {
+    Type::new_op(name("->"), vec![func, arg])
+}
+
+///Creates a IO type
+pub fn io(typ: Type<Name>) -> Type<Name> {
+    Type::new_op(name("IO"), vec![typ])
+}
+///Returns the unit type '()'
+pub fn unit() -> Type<Name> {
+    Type::new_op(name("()"), vec![])
+}
+
 ///The translate module takes the AST and translates it into the simpler core language.
 pub mod translate {
     use module;
     use core::*;
     use core::Expr::*;
-    use types::{function_type_, list_type, char_type, bool_type};
+    use typecheck::TcType;
     use interner::*;
     use renamer::NameSupply;
     use deriving::*;
@@ -503,7 +553,7 @@ pub mod translate {
         class_decls.iter()
             .filter(|decl| instance.bindings.iter().find(|bind| bind.name.as_slice().ends_with(decl.name.as_slice())).is_none())
             .map(|decl| {
-                debug!("Create default function for {:?} ({:?}) {:?}", instance.classname, instance.typ, decl.name);
+                debug!("Create default function for {} ({}) {}", instance.classname, instance.typ, decl.name);
                 //The stub functions will naturally have the same type as the function in the class but with the variable replaced
                 //with the instance's type
                 let mut typ = decl.typ.clone();
@@ -518,7 +568,7 @@ pub mod translate {
                 }
                 let Qualified { value: typ, constraints } = typ;
                 let default_name = module::encode_binding_identifier(instance.classname.name, decl.name.name);
-                let typ_name = module::extract_applied_type(&instance.typ).ctor().name;
+                let typ_name = module::extract_applied_type(&instance.typ).ctor().name.name;
                 let instance_fn_name = module::encode_binding_identifier(typ_name, decl.name.name);
 
                 //Example stub for undeclared (/=)
@@ -628,8 +678,8 @@ impl <'a> Translator<'a> {
     }
     ///Translates
     ///do { expr; stmts } = expr >> do { stmts; }
-    fn do_bind2_id(&mut self, m_a: Type, m_b: Type) -> Expr<Id<Name>> {
-        debug!("m_a {:?}", m_a);
+    fn do_bind2_id(&mut self, m_a: TcType, m_b: TcType) -> Expr<Id<Name>> {
+        debug!("m_a {}", m_a);
         let c = match *m_a.appl() {
             Type::Variable(ref var) => vec![Constraint { class: Name { name: intern("Monad"), uid: 0 }, variables: vec![var.clone()] }],
             _ => vec![]
@@ -647,7 +697,7 @@ impl <'a> Translator<'a> {
         let m_a = expr.get_type().clone();
         let a = m_a.appr().clone();
         let m_b = result.get_type().clone();
-                debug!("m_a {:?}", m_a);
+                debug!("m_a {}", m_a);
         let c = match *m_a.appl() {
             Type::Variable(ref var) => vec![Constraint { class: Name { name: intern("Monad"), uid: 0 }, variables: vec![var.clone()] }],
             _ => vec![]
@@ -823,7 +873,7 @@ impl <'a> Translator<'a> {
         }).collect();
         let mut expr = self.translate_equations_(equations);
         expr = make_lambda(arg_ids.into_iter(), expr);
-        debug!("Desugared {:?} :: {:?}\n {:?}", name.name, name.typ, expr);
+        debug!("Desugared {} :: {}\n {}", name.name, name.typ, expr);
         Binding {
             name: name,
             expression: expr
@@ -1024,12 +1074,12 @@ impl <'a> Translator<'a> {
         Pattern::Constructor(Id::new(Name { name: intern(s), uid: 0 }, bool_type(), vec![]), vec![])
     }
 
-    struct LambdaIterator<'a> {
-        typ: &'a Type
+    struct LambdaIterator<'a, Id: 'a> {
+        typ: &'a Type<Id>
     }
-    impl <'a> Iterator for LambdaIterator<'a> {
-        type Item = &'a Type;
-        fn next(&mut self) -> Option<&'a Type> {
+    impl <'a, Id: Str> Iterator for LambdaIterator<'a, Id> {
+        type Item = &'a Type<Id>;
+        fn next(&mut self) -> Option<&'a Type<Id>> {
             match *self.typ {
                 Type::Application(ref lhs, ref rhs) => {
                     match **lhs {
@@ -1053,7 +1103,7 @@ impl <'a> Translator<'a> {
     //Creates an iterator which walks through all the function types that are needed
     //when creating a lambda with make_lambda
     //Ex: (a -> b -> c) generates [(a -> b -> c), (b -> c)]
-    fn lambda_iterator<'a>(typ: &'a Type) -> LambdaIterator<'a> {
+    fn lambda_iterator<'a, Id: Str>(typ: &'a Type<Id>) -> LambdaIterator<'a, Id> {
         LambdaIterator { typ: typ }
     }
     ///Tests that the binding has no patterns for its arguments

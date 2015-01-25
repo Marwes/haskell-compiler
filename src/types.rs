@@ -6,32 +6,39 @@ use std::iter;
 use std::str::Str;
 use interner::{InternedStr, intern};
 
-#[derive(Clone, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, Default, Eq, Hash)]
 pub struct TypeConstructor<Ident = InternedStr> {
     pub name : Ident,
     pub kind : Kind
 }
 
+impl <Id, Id2> PartialEq<TypeConstructor<Id2>> for TypeConstructor<Id>
+    where Id: PartialEq<Id2> {
+    fn eq(&self, other: &TypeConstructor<Id2>) -> bool {
+        self.name == other.name && self.kind == other.kind
+    }
+}
+
 pub type VarId = InternedStr;
-#[derive(Clone, PartialEq, Eq, Default)]
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct TypeVariable {
     pub id : InternedStr,
     pub kind : Kind,
     pub age: isize
 }
-#[derive(Clone, Eq, Hash)]
+#[derive(Clone, Debug, Eq, Hash)]
 pub enum Type<Ident = InternedStr> {
     Variable(TypeVariable),
     Constructor(TypeConstructor<Ident>),
     Application(Box<Type<Ident>>, Box<Type<Ident>>),
     Generic(TypeVariable)
 }
-#[derive(Clone, Default, Hash)]
+#[derive(Clone, Debug, Default, Hash)]
 pub struct Qualified<T, Ident = InternedStr> {
     pub constraints: Vec<Constraint<Ident>>,
     pub value: T
 }
-pub fn qualified<Ident>(constraints: Vec<Constraint<Ident>>, typ: Type) -> Qualified<Type, Ident> {
+pub fn qualified<Ident>(constraints: Vec<Constraint<Ident>>, typ: Type<Ident>) -> Qualified<Type<Ident>, Ident> {
     Qualified { constraints: constraints, value: typ }
 }
 
@@ -44,7 +51,7 @@ impl TypeVariable {
     }
 }
 
-impl <Id: fmt::Debug + Str> Type<Id> {
+impl <Id: fmt::Display + Str> Type<Id> {
 
     ///Creates a new type variable with the specified id
     pub fn new_var(id : VarId) -> Type<Id> {
@@ -83,7 +90,7 @@ impl <Id: fmt::Debug + Str> Type<Id> {
     pub fn var(&self) -> &TypeVariable {
         match self {
             &Type::Variable(ref var) => var,
-            _ => panic!("Tried to unwrap {:?} as a TypeVariable", self)
+            _ => panic!("Tried to unwrap {} as a TypeVariable", self)
         }
     }
 
@@ -92,7 +99,7 @@ impl <Id: fmt::Debug + Str> Type<Id> {
     pub fn ctor(&self) -> &TypeConstructor<Id> {
         match self {
             &Type::Constructor(ref op) => op,
-            _ => panic!("Tried to unwrap {:?} as a TypeConstructor", self)
+            _ => panic!("Tried to unwrap {} as a TypeConstructor", self)
         }
     }
 
@@ -101,7 +108,7 @@ impl <Id: fmt::Debug + Str> Type<Id> {
     pub fn appl(&self) -> &Type<Id> {
         match self {
             &Type::Application(ref lhs, _) => &**lhs,
-            _ => panic!("Error: Tried to unwrap {:?} as TypeApplication", self)
+            _ => panic!("Error: Tried to unwrap {} as TypeApplication", self)
         }
     }
     #[allow(dead_code)]
@@ -122,7 +129,7 @@ impl <Id: fmt::Debug + Str> Type<Id> {
             &Type::Application(ref lhs, _) => 
                 match lhs.kind() {
                     &Kind::Function(_, ref kind) => &**kind,
-                    _ => panic!("Type application must have a kind of Kind::Function, {:?}", self)
+                    _ => panic!("Type application must have a kind of Kind::Function, {}", self)
                 },
             &Type::Generic(ref v) => &v.kind
         }
@@ -138,6 +145,23 @@ impl <Id: fmt::Debug + Str> Type<Id> {
                     _ => panic!("Type application must have a kind of Kind::Function")
                 },
             Type::Generic(ref mut v) => &mut v.kind
+        }
+    }
+}
+impl <Id> Type <Id> {
+    pub fn map<F, Id2>(self, mut f: F) -> Type<Id2>
+        where F: FnMut(Id) -> Id2 {
+        self.map_(&mut f)
+    }
+    fn map_<F, Id2>(self, f: &mut F) -> Type<Id2>
+        where F: FnMut(Id) -> Id2 {
+        match self {
+            Type::Variable(v) => Type::Variable(v),
+            Type::Constructor(TypeConstructor { name, kind }) => {
+                Type::Constructor(TypeConstructor { name: f(name), kind: kind })
+            }
+            Type::Application(lhs, rhs) => Type::Application(box lhs.map_(f), box rhs.map_(f)),
+            Type::Generic(v) => Type::Generic(v)
         }
     }
 }
@@ -215,22 +239,22 @@ pub fn unit() -> Type {
 }
 
 
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Constraint<Ident = InternedStr> {
     pub class : Ident,
     pub variables : Vec<TypeVariable>
 }
 
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Kind {
     Function(Box<Kind>, Box<Kind>),
     Star
 }
-impl fmt::Debug for Kind {
+impl fmt::Display for Kind {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             &Kind::Star => write!(f, "*"),
-            &Kind::Function(ref lhs, ref rhs) => write!(f, "({:?} -> {:?})", *lhs, *rhs)
+            &Kind::Function(ref lhs, ref rhs) => write!(f, "({} -> {})", *lhs, *rhs)
         }
     }
 }
@@ -251,25 +275,36 @@ impl Default for Kind {
     }
 }
 
-impl Default for Type {
-    fn default() -> Type {
-        Type::new_var(intern("a"))
+impl <T> Default for Type<T> {
+    fn default() -> Type<T> {
+        Type::Variable(TypeVariable::new(intern("a")))
     }
 }
-impl fmt::Debug for TypeVariable {
+impl fmt::Display for TypeVariable {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?}", self.id)
+        write!(f, "{}", self.id)
     }
 }
-impl <I: fmt::Debug> fmt::Debug for TypeConstructor<I> {
+impl <I: fmt::Display> fmt::Display for TypeConstructor<I> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?}", self.name)
+        write!(f, "{}", self.name)
     }
 }
 
-impl <T: fmt::Debug, I: fmt::Debug> fmt::Debug for Qualified<T, I> {
+impl <T: fmt::Display, I: fmt::Display + Str> fmt::Display for Qualified<T, I> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?} => {:?}", self.constraints, self.value)
+        if self.constraints.len() != 0 {
+            try!(write!(f, "("));
+        }
+        for constraint in &self.constraints {
+            try!(write!(f, "{}, ", constraint));
+        }
+        if self.constraints.len() != 0 {
+            write!(f, ") => {}" , self.value)
+        }
+        else {
+            write!(f, "{}" , self.value)
+        }
     }
 }
 
@@ -303,34 +338,34 @@ pub fn try_get_function<'a, Id: Str>(typ: &'a Type<Id>) -> Option<(&'a Type<Id>,
     }
 }
 
-impl <'a, Id: fmt::Debug + Str> fmt::Debug for Prec<'a, Id> {
+impl <'a, Id: fmt::Display + Str> fmt::Display for Prec<'a, Id> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let Prec(p, t) = *self;
         match *t {
-            Type::Variable(ref var) => write!(f, "{:?}", *var),
-            Type::Constructor(ref op) => write!(f, "{:?}", *op),
-            Type::Generic(ref var) => write!(f, "\\#{:?}", *var),
+            Type::Variable(ref var) => write!(f, "{}", *var),
+            Type::Constructor(ref op) => write!(f, "{}", *op),
+            Type::Generic(ref var) => write!(f, "\\#{}", *var),
             Type::Application(ref lhs, ref rhs) => {
                 match try_get_function(t) {
                     Some((arg, result)) => {
                         if p >= Prec_::Function {
-                            write!(f, "({:?} -> {:?})", *arg, result)
+                            write!(f, "({} -> {})", *arg, result)
                         }
                         else {
-                            write!(f, "{:?} -> {:?}", Prec(Prec_::Function, arg), result)
+                            write!(f, "{} -> {}", Prec(Prec_::Function, arg), result)
                         }
                     }
                     None => {
                         match **lhs {
                             Type::Constructor(ref op) if "[]" == op.name.as_slice() => {
-                                write!(f, "[{:?}]", rhs)
+                                write!(f, "[{}]", rhs)
                             }
                             _ => {
                                 if p >= Prec_::Constructor {
-                                    write!(f, "({:?} {:?})", Prec(Prec_::Function, &**lhs), Prec(Prec_::Constructor, &**rhs))
+                                    write!(f, "({} {})", Prec(Prec_::Function, &**lhs), Prec(Prec_::Constructor, &**rhs))
                                 }
                                 else {
-                                    write!(f, "{:?} {:?}", Prec(Prec_::Function, &**lhs), Prec(Prec_::Constructor, &**rhs))
+                                    write!(f, "{} {}", Prec(Prec_::Function, &**lhs), Prec(Prec_::Constructor, &**rhs))
                                 }
                             }
                         }
@@ -341,21 +376,22 @@ impl <'a, Id: fmt::Debug + Str> fmt::Debug for Prec<'a, Id> {
     }
 }
 
-impl <I: fmt::Debug + Str> fmt::Debug for Type<I> {
+impl <I: fmt::Display + Str> fmt::Display for Type<I> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?}", Prec(Prec_::Top, self))
+        write!(f, "{}", Prec(Prec_::Top, self))
     }
 }
-impl <I: fmt::Debug> fmt::Debug for Constraint<I> {
+impl <I: fmt::Display> fmt::Display for Constraint<I> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        try!(write!(f, "{:?}", self.class));
+        try!(write!(f, "{}", self.class));
         for var in self.variables.iter() {
-            try!(write!(f, " {:?}", *var));
+            try!(write!(f, " {}", *var));
         }
         Ok(())
     }
 }
-fn type_eq<'a, Id: PartialEq>(mapping: &mut HashMap<&'a TypeVariable, &'a TypeVariable>, lhs: &'a Type<Id>, rhs: &'a Type<Id>) -> bool {
+fn type_eq<'a, Id, Id2>(mapping: &mut HashMap<&'a TypeVariable, &'a TypeVariable>, lhs: &'a Type<Id>, rhs: &'a Type<Id2>) -> bool
+    where Id: PartialEq<Id2> {
     match (lhs, rhs) {
         (&Type::Constructor(ref l), &Type::Constructor(ref r)) => l.name == r.name,
         (&Type::Variable(ref r), &Type::Variable(ref l)) => var_eq(mapping, r, l),
@@ -386,11 +422,12 @@ impl <I : PartialEq, U: PartialEq> PartialEq for Qualified<Type<I>, U> {
 }
 impl <I: Eq, U: Eq> Eq for Qualified<Type<I>, U> { }
 
-impl <I: PartialEq> PartialEq for Type<I> {
+impl <Id, Id2> PartialEq<Type<Id2>> for Type<Id>
+    where Id: PartialEq<Id2> {
     ///Compares two types, treating two type variables as equal as long as they always and only appear at the same place
     ///a -> b == c -> d
     ///a -> b != c -> c
-    fn eq(&self, other: &Type<I>) -> bool {
+    fn eq(&self, other: &Type<Id2>) -> bool {
         let mut mapping = HashMap::new();
         type_eq(&mut mapping, self, other)
     }

@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 use core::*;
 use core::Expr::*;
-use types::function_type_;
 use renamer::NameSupply;
 
 pub type TypeAndStr = Id;

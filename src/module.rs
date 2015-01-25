@@ -7,7 +7,7 @@ pub use types::*;
 
 use self::Expr::*;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Module<Ident = InternedStr> {
     pub name : Ident,
     pub imports: Vec<Import<Ident>>,
@@ -20,7 +20,7 @@ pub struct Module<Ident = InternedStr> {
     pub fixity_declarations : Vec<FixityDeclaration<Ident>>
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Import<Ident> {
     pub module: InternedStr,
     //None if 'import Name'
@@ -28,7 +28,7 @@ pub struct Import<Ident> {
     pub imports: Option<Vec<Ident>>
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Class<Ident = InternedStr> {
     pub constraints: Vec<Constraint<Ident>>,
     pub name : Ident,
@@ -37,44 +37,44 @@ pub struct Class<Ident = InternedStr> {
     pub bindings: Vec<Binding<Ident>>
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Instance<Ident = InternedStr> {
     pub bindings : Vec<Binding<Ident>>,
     pub constraints : Vec<Constraint<Ident>>,
-    pub typ : Type,
+    pub typ : Type<Ident>,
     pub classname : Ident
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Binding<Ident = InternedStr> {
     pub name : Ident,
     pub arguments: Vec<Pattern<Ident>>,
     pub matches: Match<Ident>,
     pub where_bindings : Option<Vec<Binding<Ident>>>,
-    pub typ: Qualified<Type, Ident>
+    pub typ: Qualified<Type<Ident>, Ident>
 }
 
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub struct Constructor<Ident = InternedStr> {
     pub name : Ident,
-    pub typ : Qualified<Type, Ident>,
+    pub typ : Qualified<Type<Ident>, Ident>,
     pub tag : isize,
     pub arity : isize
 }
 
-#[derive(PartialEq, Clone)]
+#[derive(PartialEq, Clone, Debug)]
 pub struct DataDefinition<Ident = InternedStr> {
     pub constructors : Vec<Constructor<Ident>>,
-    pub typ : Qualified<Type, Ident>,
+    pub typ : Qualified<Type<Ident>, Ident>,
     pub parameters : HashMap<InternedStr, isize>,
     pub deriving: Vec<Ident>
 }
 
-#[derive(PartialEq, Clone)]
+#[derive(PartialEq, Clone, Debug)]
 pub struct Newtype<Ident = InternedStr> {
     pub typ: Qualified<Type>,
     pub constructor_name: Ident,
-    pub constructor_type: Qualified<Type, Ident>,
+    pub constructor_type: Qualified<Type<Ident>, Ident>,
     pub deriving: Vec<Ident>
 }
 
@@ -92,22 +92,22 @@ pub struct FixityDeclaration<Ident = InternedStr> {
     pub operators: Vec<Ident>
 }
 
-#[derive(Clone, PartialEq, Eq, Default)]
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct TypeDeclaration<Ident = InternedStr> {
-    pub typ : Qualified<Type, Ident>,
+    pub typ : Qualified<Type<Ident>, Ident>,
     pub name : Ident
 }
-impl <T : fmt::Debug> fmt::Debug for TypeDeclaration<T> {
+impl <T : fmt::Display + Str> fmt::Display for TypeDeclaration<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?} :: {:?}", self.name, self.typ)
+        write!(f, "{} :: {}", self.name, self.typ)
     }
 }
 
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct TypedExpr<Ident = InternedStr> {
     pub expr : Expr<Ident>,
-    pub typ : Type,
+    pub typ : Type<Ident>,
     pub location : Location
 }
 
@@ -117,29 +117,29 @@ impl <T: PartialEq> PartialEq for TypedExpr<T> {
     }
 }
 
-impl <T: fmt::Debug> fmt::Debug for TypedExpr<T> {
+impl <T: fmt::Display + Str> fmt::Display for TypedExpr<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?} :: {:?}", self.expr, self.typ)
+        write!(f, "{} :: {}", self.expr, self.typ)
     }
 }
 
 impl TypedExpr {
-    pub fn new<T>(expr : Expr<T>) -> TypedExpr<T> {
+    pub fn new<T: fmt::Display + Str>(expr : Expr<T>) -> TypedExpr<T> {
         TypedExpr { expr : expr, typ : Type::new_var(intern("a")), location : Location { column : -1, row : -1, absolute : -1 } }
     }
-    pub fn with_location<T>(expr : Expr<T>, loc : Location) -> TypedExpr<T> {
+    pub fn with_location<T: fmt::Display + Str>(expr : Expr<T>, loc : Location) -> TypedExpr<T> {
         TypedExpr { expr : expr, typ : Type::new_var(intern("a")), location : loc }
     }
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Alternative<Ident = InternedStr> {
     pub pattern : Located<Pattern<Ident>>,
     pub matches: Match<Ident>,
     pub where_bindings : Option<Vec<Binding<Ident>>>
 }
 
-#[derive(Clone, PartialOrd, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialOrd, PartialEq, Eq)]
 pub enum Pattern<Ident = InternedStr> {
     Number(isize),
     Identifier(Ident),
@@ -147,7 +147,7 @@ pub enum Pattern<Ident = InternedStr> {
     WildCard
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Match<Ident = InternedStr> {
     Guards(Vec<Guard<Ident>>),
     Simple(TypedExpr<Ident>)
@@ -161,27 +161,27 @@ impl <Ident> Match<Ident> {
     }
 }
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Guard<Ident = InternedStr> {
     pub predicate: TypedExpr<Ident>,
     pub expression: TypedExpr<Ident>
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum DoBinding<Ident = InternedStr> {
     DoLet(Vec<Binding<Ident>>),
     DoBind(Located<Pattern<Ident>>, TypedExpr<Ident>),
     DoExpr(TypedExpr<Ident>)
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum LiteralData {
     Integral(isize),
     Fractional(f64),
     String(InternedStr),
     Char(char)
 }
-#[derive(Clone, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Expr<Ident = InternedStr> {
     Identifier(Ident),
     Apply(Box<TypedExpr<Ident>>, Box<TypedExpr<Ident>>),
@@ -192,16 +192,16 @@ pub enum Expr<Ident = InternedStr> {
     Case(Box<TypedExpr<Ident>>, Vec<Alternative<Ident>>),
     IfElse(Box<TypedExpr<Ident>>, Box<TypedExpr<Ident>>, Box<TypedExpr<Ident>>),
     Do(Vec<DoBinding<Ident>>, Box<TypedExpr<Ident>>),
-    TypeSig(Box<TypedExpr<Ident>>, Qualified<Type, Ident>),
+    TypeSig(Box<TypedExpr<Ident>>, Qualified<Type<Ident>, Ident>),
     Paren(Box<TypedExpr<Ident>>)
 }
-impl <T: fmt::Debug> fmt::Debug for Binding<T> {
+impl <T: fmt::Display + Str> fmt::Display for Binding<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?} = {:?}", self.name, self.matches)
+        write!(f, "{} = {}", self.name, self.matches)
     }
 }
 
-impl <T: fmt::Debug> fmt::Debug for Expr<T> {
+impl <T: fmt::Display + Str> fmt::Display for Expr<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         try!(write_core_expr!(*self, f, _));
         match *self {
@@ -212,32 +212,32 @@ impl <T: fmt::Debug> fmt::Debug for Expr<T> {
                         DoBinding::DoLet(ref bindings) => {
                             try!(write!(f, "let {{\n"));
                             for bind in bindings.iter() {
-                                try!(write!(f, "; {:?} = {:?}\n", bind.name, bind.matches));
+                                try!(write!(f, "; {} = {}\n", bind.name, bind.matches));
                             }
                             try!(write!(f, "}}\n"));
                         }
-                        DoBinding::DoBind(ref p, ref e) => try!(write!(f, "; {:?} <- {:?}\n", p.node, *e)),
-                        DoBinding::DoExpr(ref e) => try!(write!(f, "; {:?}\n", *e))
+                        DoBinding::DoBind(ref p, ref e) => try!(write!(f, "; {} <- {}\n", p.node, *e)),
+                        DoBinding::DoExpr(ref e) => try!(write!(f, "; {}\n", *e))
                     }
                 }
-                write!(f, "{:?} }}", *expr)
+                write!(f, "{} }}", *expr)
             }
-            OpApply(ref lhs, ref op, ref rhs) => write!(f, "({:?} {:?} {:?})", lhs, op, rhs),
-            TypeSig(ref expr, ref typ) => write!(f, "{:?} {:?}", expr, typ),
-            Paren(ref expr) => write!(f, "({:?})", expr),
+            OpApply(ref lhs, ref op, ref rhs) => write!(f, "({} {} {})", lhs, op, rhs),
+            TypeSig(ref expr, ref typ) => write!(f, "{} {}", expr, typ),
+            Paren(ref expr) => write!(f, "({})", expr),
             _ => Ok(())
         }
     }
 }
-impl <T: fmt::Debug> fmt::Debug for Pattern<T> {
+impl <T: fmt::Display + Str> fmt::Display for Pattern<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            &Pattern::Identifier(ref s) => write!(f, "{:?}", s),
-            &Pattern::Number(ref i) => write!(f, "{:?}", i),
+            &Pattern::Identifier(ref s) => write!(f, "{}", s),
+            &Pattern::Number(ref i) => write!(f, "{}", i),
             &Pattern::Constructor(ref name, ref patterns) => {
-                try!(write!(f, "({:?} ", name));
+                try!(write!(f, "({} ", name));
                 for p in patterns.iter() {
-                    try!(write!(f, " {:?}", p));
+                    try!(write!(f, " {}", p));
                 }
                 write!(f, ")")
             }
@@ -246,31 +246,31 @@ impl <T: fmt::Debug> fmt::Debug for Pattern<T> {
     }
 }
 
-impl <T: fmt::Debug> fmt::Debug for Alternative<T> {
+impl <T: fmt::Display + Str> fmt::Display for Alternative<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?} -> {:?}", self.pattern.node, self.matches)
+        write!(f, "{} -> {}", self.pattern.node, self.matches)
     }
 }
-impl <T: fmt::Debug> fmt::Debug for Match<T> {
+impl <T: fmt::Display + Str> fmt::Display for Match<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            Match::Simple(ref e) => write!(f, "{:?}", *e),
+            Match::Simple(ref e) => write!(f, "{}", *e),
             Match::Guards(ref gs) => {
                 for g in gs.iter() {
-                    try!(write!(f, "| {:?} -> {:?}\n", g.predicate, g.expression));
+                    try!(write!(f, "| {} -> {}\n", g.predicate, g.expression));
                 }
                 Ok(())
             }
         }
     }
 }
-impl fmt::Debug for LiteralData {
+impl fmt::Display for LiteralData {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            LiteralData::Integral(i) => write!(f, "{:?}", i),
-            LiteralData::Fractional(v) => write!(f, "{:?}", v),
-            LiteralData::String(ref s) => write!(f, "\"{:?}\"", *s),
-            LiteralData::Char(c) => write!(f, "'{:?}'", c)
+            LiteralData::Integral(i) => write!(f, "{}", i),
+            LiteralData::Fractional(v) => write!(f, "{}", v),
+            LiteralData::String(ref s) => write!(f, "\"{}\"", *s),
+            LiteralData::Char(c) => write!(f, "'{}'", c)
         }
     }
 }
