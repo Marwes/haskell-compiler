@@ -7,7 +7,7 @@ use interner::*;
 
 use self::TokenEnum::*;
 
-#[derive(Clone, Copy, Eq, PartialEq, Show)]
+#[derive(Clone, Copy, Eq, PartialEq, Debug)]
 pub enum TokenEnum {
 	EOF,
 	NAME,
@@ -54,7 +54,7 @@ pub enum TokenEnum {
     ELSE
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub struct Location {
     pub column : isize,
     pub row : isize,
@@ -66,7 +66,7 @@ impl Location {
         Location { column: -1, row: -1, absolute: -1 }
     }
 }
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Located<T> {
     pub location: Location,
     pub node: T
@@ -78,19 +78,19 @@ impl <T: PartialEq> PartialEq for Located<T> {
     }
 }
     
-impl <T: fmt::Show> fmt::Show for Located<T> {
+impl <T: fmt::Display> fmt::Display for Located<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?}: {:?}", self.location, self.node)
+        write!(f, "{}: {}", self.location, self.node)
     }
 }
 
-impl fmt::Show for Location {
+impl fmt::Display for Location {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?}:{:?}", self.row, self.column)
+        write!(f, "{}:{}", self.row, self.column)
     }
 }
 
-#[derive(Clone, Show)]
+#[derive(Clone, Debug)]
 pub struct Token {
     pub token : TokenEnum,
     pub value : InternedStr,

@@ -16,7 +16,7 @@ impl Str for Name {
     }
 }
 
-impl ::std::fmt::Show for Name {
+impl ::std::fmt::Debug for Name {
     fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
         write!(f, "{:?}_{:?}", self.name, self.uid)
     }
@@ -37,7 +37,7 @@ impl <T> Errors<T> {
         self.errors.len() != 0
     }
 }
-impl <T: ::std::fmt::Show> Errors<T> {
+impl <T: ::std::fmt::Debug> Errors<T> {
     pub fn report_errors(&self, pass: &str) {
         println!("Found {:?} errors in compiler pass: {:?}", self.errors.len(), pass);
         for error in self.errors.iter() {

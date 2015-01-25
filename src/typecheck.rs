@@ -1247,7 +1247,7 @@ enum TypeError {
     MissingInstance(InternedStr, Type, TypeVariable)
 }
 
-impl ::std::fmt::Show for TypeErrorInfo {
+impl ::std::fmt::Debug for TypeErrorInfo {
     fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
         match self.error {
             TypeError::UnifyFail(ref l, ref r) =>

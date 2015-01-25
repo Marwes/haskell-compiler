@@ -3,6 +3,7 @@ use std::io::{IoResult, IoError, File};
 use std::error::FromError;
 use std::collections::{HashSet, HashMap};
 use std::str::FromStr;
+use std::fmt;
 use lexer::*;
 use lexer::TokenEnum::*;
 use module::*;
@@ -21,7 +22,7 @@ pub struct Parser<Iter: Iterator<Item=char>> {
     lexer : Lexer<Iter>,
 }
 
-#[derive(Show, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq)]
 enum ParseError {
     UnexpectedToken(&'static [TokenEnum], TokenEnum),
     Message(::std::string::String)
@@ -31,6 +32,17 @@ pub type ParseResult<T> = Result<T, Located<ParseError>>;
 impl FromError<IoError> for Located<ParseError> {
     fn from_error(io_error: IoError) -> Located<ParseError> {
         Located { location: Location::eof(), node: ParseError::Message(io_error.to_string()) }
+    }
+}
+
+impl fmt::Display for ParseError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            ParseError::UnexpectedToken(unexpected, expected) => {
+                write!(f, "Expected token {:?}, but found {:?}", unexpected, expected)
+            }
+            ParseError::Message(ref message) => write!(f, "{}", message)
+        }
     }
 }
 
@@ -1440,14 +1452,14 @@ test2 x y = 1
 fn deriving() {
     let mut parser = Parser::new(
 r"data Test = A | B
-    deriving(Eq, Show)
+    deriving(Eq, Debug)
 
 dummy = 1
 ".chars());
     let module = parser.module().unwrap();
     let data = &module.data_definitions[0];
     assert_eq!(data.typ, qualified(Vec::new(), Type::new_op(intern("Test"), Vec::new())));
-    assert_eq!(data.deriving, [intern("Eq"), intern("Show")]);
+    assert_eq!(data.deriving, [intern("Eq"), intern("Debug")]);
 }
 
 #[test]

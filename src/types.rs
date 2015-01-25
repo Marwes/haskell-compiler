@@ -215,7 +215,7 @@ pub enum Kind {
     Function(Box<Kind>, Box<Kind>),
     Star
 }
-impl fmt::Show for Kind {
+impl fmt::Debug for Kind {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             &Kind::Star => write!(f, "*"),
@@ -245,18 +245,18 @@ impl Default for Type {
         Type::new_var(intern("a"))
     }
 }
-impl fmt::Show for TypeVariable {
+impl fmt::Debug for TypeVariable {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{:?}", self.id)
     }
 }
-impl fmt::Show for TypeConstructor {
+impl fmt::Debug for TypeConstructor {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{:?}", self.name)
     }
 }
 
-impl <T: fmt::Show, I: fmt::Show> fmt::Show for Qualified<T, I> {
+impl <T: fmt::Debug, I: fmt::Debug> fmt::Debug for Qualified<T, I> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{:?} => {:?}", self.constraints, self.value)
     }
@@ -292,7 +292,7 @@ pub fn try_get_function<'a>(typ: &'a Type) -> Option<(&'a Type, &'a Type)> {
     }
 }
 
-impl <'a> fmt::Show for Prec<'a> {
+impl <'a> fmt::Debug for Prec<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let Prec(p, t) = *self;
         match *t {
@@ -330,12 +330,12 @@ impl <'a> fmt::Show for Prec<'a> {
     }
 }
 
-impl fmt::Show for Type {
+impl fmt::Debug for Type {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{:?}", Prec(Prec_::Top, self))
     }
 }
-impl <I: fmt::Show> fmt::Show for Constraint<I> {
+impl <I: fmt::Debug> fmt::Debug for Constraint<I> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         try!(write!(f, "{:?}", self.class));
         for var in self.variables.iter() {

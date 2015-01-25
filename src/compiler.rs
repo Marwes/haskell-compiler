@@ -15,7 +15,7 @@ use builtins::builtins;
 
 use self::Instruction::*;
 
-#[derive(PartialEq, Clone, Copy, Show)]
+#[derive(PartialEq, Clone, Copy, Debug)]
 pub enum Instruction {
     Add,
     Sub,
@@ -62,7 +62,7 @@ pub enum Instruction {
     ConstructDictionary(usize),
     PushDictionaryRange(usize, usize)
 }
-#[derive(Show)]
+#[derive(Debug)]
 enum Var<'a> {
     Stack(usize),
     Global(usize),

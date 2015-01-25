@@ -68,12 +68,12 @@ impl <'a> Node<'a> {
         (*self.node).borrow_mut()
     }
 }
-impl <'a> fmt::Show for Node<'a> {
+impl <'a> fmt::Debug for Node<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{:?}", *self.borrow())
     }
 }
-impl <'a> fmt::Show for Node_<'a> {
+impl <'a> fmt::Debug for Node_<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             &Application(ref func, ref arg) => write!(f, "({:?} {:?})", *func, *arg),
@@ -128,7 +128,7 @@ impl <'a> fmt::Show for Node_<'a> {
         }
     }
 }
-impl fmt::Show for InstanceDictionary {
+impl fmt::Debug for InstanceDictionary {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         try!(write!(f, "["));
         if self.entries.len() > 0 {
@@ -140,7 +140,7 @@ impl fmt::Show for InstanceDictionary {
         write!(f, "]")
     }
 }
-impl fmt::Show for DictionaryEntry {
+impl fmt::Debug for DictionaryEntry {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             DictionaryEntry::Function(index) => write!(f, "{:?}", index),
@@ -505,7 +505,7 @@ fn primitive<F>(stack: &mut Vec<Node>, f: F) where F: FnOnce(isize, isize) -> is
     primitive_int(stack, move |l, r| Int(f(l, r)))
 }
 
-#[derive(PartialEq, Show)]
+#[derive(PartialEq, Debug)]
 enum VMResult {
     Int(isize),
     Double(f64),

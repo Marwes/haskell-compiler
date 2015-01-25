@@ -54,7 +54,7 @@ pub struct Binding<Ident = InternedStr> {
     pub typ: Qualified<Type, Ident>
 }
 
-#[derive(PartialEq, Eq, Clone, Show)]
+#[derive(PartialEq, Eq, Clone, Debug)]
 pub struct Constructor<Ident = InternedStr> {
     pub name : Ident,
     pub typ : Qualified<Type, Ident>,
@@ -78,14 +78,14 @@ pub struct Newtype<Ident = InternedStr> {
     pub deriving: Vec<Ident>
 }
 
-#[derive(PartialEq, Clone, Copy, Show)]
+#[derive(PartialEq, Clone, Copy, Debug)]
 pub enum Assoc {
     Left,
     Right,
     No
 }
 
-#[derive(PartialEq, Clone, Show)]
+#[derive(PartialEq, Clone, Debug)]
 pub struct FixityDeclaration<Ident = InternedStr> {
     pub assoc: Assoc,
     pub precedence: isize,
@@ -97,7 +97,7 @@ pub struct TypeDeclaration<Ident = InternedStr> {
     pub typ : Qualified<Type, Ident>,
     pub name : Ident
 }
-impl <T : fmt::Show> fmt::Show for TypeDeclaration<T> {
+impl <T : fmt::Debug> fmt::Debug for TypeDeclaration<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{:?} :: {:?}", self.name, self.typ)
     }
@@ -117,7 +117,7 @@ impl <T: PartialEq> PartialEq for TypedExpr<T> {
     }
 }
 
-impl <T: fmt::Show> fmt::Show for TypedExpr<T> {
+impl <T: fmt::Debug> fmt::Debug for TypedExpr<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{:?} :: {:?}", self.expr, self.typ)
     }
@@ -161,7 +161,7 @@ impl <Ident> Match<Ident> {
     }
 }
 
-#[derive(Clone, PartialEq, Show)]
+#[derive(Clone, PartialEq, Debug)]
 pub struct Guard<Ident = InternedStr> {
     pub predicate: TypedExpr<Ident>,
     pub expression: TypedExpr<Ident>
@@ -195,13 +195,13 @@ pub enum Expr<Ident = InternedStr> {
     TypeSig(Box<TypedExpr<Ident>>, Qualified<Type, Ident>),
     Paren(Box<TypedExpr<Ident>>)
 }
-impl <T: fmt::Show> fmt::Show for Binding<T> {
+impl <T: fmt::Debug> fmt::Debug for Binding<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{:?} = {:?}", self.name, self.matches)
     }
 }
 
-impl <T: fmt::Show> fmt::Show for Expr<T> {
+impl <T: fmt::Debug> fmt::Debug for Expr<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         try!(write_core_expr!(*self, f, _));
         match *self {
@@ -229,7 +229,7 @@ impl <T: fmt::Show> fmt::Show for Expr<T> {
         }
     }
 }
-impl <T: fmt::Show> fmt::Show for Pattern<T> {
+impl <T: fmt::Debug> fmt::Debug for Pattern<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             &Pattern::Identifier(ref s) => write!(f, "{:?}", s),
@@ -246,12 +246,12 @@ impl <T: fmt::Show> fmt::Show for Pattern<T> {
     }
 }
 
-impl <T: fmt::Show> fmt::Show for Alternative<T> {
+impl <T: fmt::Debug> fmt::Debug for Alternative<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{:?} -> {:?}", self.pattern.node, self.matches)
     }
 }
-impl <T: fmt::Show> fmt::Show for Match<T> {
+impl <T: fmt::Debug> fmt::Debug for Match<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             Match::Simple(ref e) => write!(f, "{:?}", *e),
@@ -264,7 +264,7 @@ impl <T: fmt::Show> fmt::Show for Match<T> {
         }
     }
 }
-impl fmt::Show for LiteralData {
+impl fmt::Debug for LiteralData {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             LiteralData::Integral(i) => write!(f, "{:?}", i),

@@ -85,30 +85,30 @@ pub enum Expr<Ident> {
     Case(Box<Expr<Ident>>, Vec<Alternative<Ident>>)
 }
 
-impl fmt::Show for LiteralData {
+impl fmt::Debug for LiteralData {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{:?}", self.value)
     }
 }
 
-impl <T: fmt::Show> fmt::Show for Binding<T> {
+impl <T: fmt::Debug> fmt::Debug for Binding<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{:?} = {:?}", self.name, self.expression)
     }
 }
 
-impl <T: fmt::Show> fmt::Show for Expr<T> {
+impl <T: fmt::Debug> fmt::Debug for Expr<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use self::Expr::*;
         write_core_expr!(*self, f,)
     }
 }
-impl <T: fmt::Show> fmt::Show for Alternative<T> {
+impl <T: fmt::Debug> fmt::Debug for Alternative<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{:?} -> {:?}", self.pattern, self.expression)
     }
 }
-impl <T: fmt::Show> fmt::Show for Pattern<T> {
+impl <T: fmt::Debug> fmt::Debug for Pattern<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             Pattern::Identifier(ref s) => write!(f, "{:?}", s),
@@ -171,7 +171,7 @@ pub struct Id<T = Name> {
     pub typ: Qualified<Type, Name>
 }
 
-impl fmt::Show for Id {
+impl fmt::Debug for Id {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{:?}", self.name)
     }
@@ -404,7 +404,7 @@ pub mod translate {
         functions_in_class: &'a mut (FnMut(Name) -> (&'a TypeVariable, &'a [TypeDeclaration<Name>]) + 'a)
     }
     
-    #[derive(Show)]
+    #[derive(Debug)]
     struct Equation<'a>(&'a [(Id<Name>, Pattern<Id<Name>>)], (&'a [Binding<Id<Name>>], &'a module::Match<Name>));
 
     pub fn translate_expr(expr: module::TypedExpr<Name>) -> Expr<Id<Name>> {
