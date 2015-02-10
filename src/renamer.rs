@@ -1,3 +1,4 @@
+use std::fmt;
 use module::*;
 use lexer::Located;
 use scoped_map::ScopedMap;
@@ -58,11 +59,25 @@ impl <T> Errors<T> {
         self.errors.len() != 0
     }
 }
-impl <T: ::std::fmt::Debug> Errors<T> {
+impl <T: ::std::fmt::Display> Errors<T> {
     pub fn report_errors(&self, pass: &str) {
-        println!("Found {:?} errors in compiler pass: {:?}", self.errors.len(), pass);
+        println!("Found {} errors in compiler pass: {}", self.errors.len(), pass);
         for error in self.errors.iter() {
-            println!("{:?}", error);
+            println!("{}", error);
+        }
+    }
+}
+
+enum Error {
+    MultipleDefinitions(InternedStr),
+    UndefinedModule(InternedStr),
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            Error::MultipleDefinitions(s) => write!(f, "{} is defined multiple times", s),
+            Error::UndefinedModule(s) => write!(f, "Module {} is not defined", s)
         }
     }
 }
@@ -106,7 +121,7 @@ struct Renamer {
     uniques: ScopedMap<InternedStr, Name>,
     name_supply: NameSupply,
     ///All errors found while renaming are stored here
-    errors: Errors<String>
+    errors: Errors<Error>
 }
 
 
@@ -135,12 +150,21 @@ impl Renamer {
         }
     }
 
+    ///Puts the globals of `module_env` into the current scope of the renamer.
+    ///This includes putting all globals from the imports and the the globals of the module itself
+    ///into scope
     fn insert_globals(&mut self, module_env: &[Module<Name>], module: &Module<InternedStr>, uid: usize) {
         self.import_globals(module, &mut |name| name, uid);
         for import in module.imports.iter() {
             let imported_module = module_env.iter()
-                .find(|m| m.name.name == import.module)
-                .unwrap_or_else(|| panic!("Module {:?} is not defined", import.module));
+                .find(|m| m.name.name == import.module);
+            let imported_module = match imported_module {
+                Some(x) => x,
+                None => {
+                    self.errors.insert(Error::UndefinedModule(import.module));
+                    continue;
+                }
+            };
             let uid = imported_module.name.uid;
             match import.imports {
                 Some(ref imports) => {
@@ -166,7 +190,7 @@ impl Renamer {
             let Binding { name, arguments, matches, typ, where_bindings  } = binding;
             let n = self.uniques.find(&name)
                 .map(|u| u.clone())
-                .unwrap_or_else(|| panic!("Renaming error: Undefined variable {:?}", name));
+                .unwrap_or_else(|| unreachable!("Variable {} should already have been defined", name));
             self.uniques.enter_scope();
             let b = Binding {
                 name: n,
@@ -304,7 +328,7 @@ impl Renamer {
     ///If the name was already declared in the current scope an error is added
     fn make_unique(&mut self, name: InternedStr) -> Name {
         if self.uniques.in_current_scope(&name) {
-            self.errors.insert(format!("{:?} is defined multiple times", name));
+            self.errors.insert(Error::MultipleDefinitions(name));
             self.uniques.find(&name).map(|x| x.clone()).unwrap()
         }
         else {

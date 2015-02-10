@@ -1247,20 +1247,20 @@ enum TypeError {
     MissingInstance(InternedStr, TcType, TypeVariable)
 }
 
-impl ::std::fmt::Debug for TypeErrorInfo {
+impl ::std::fmt::Display for TypeErrorInfo {
     fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
         match self.error {
             TypeError::UnifyFail(ref l, ref r) =>
-                write!(f, "{:?} Error: Could not unify types\n{:?}\nand\n{:?}\nin types\n{:?}\nand\n{:?}",
+                write!(f, "{} Error: Could not unify types\n{}\nand\n{}\nin types\n{}\nand\n{}",
                     self.location, l, r, self.lhs, self.rhs),
             TypeError::RecursiveUnification =>
-                write!(f, "{:?} Error: Recursive unification between {:?}\nand\n{:?}",
+                write!(f, "{} Error: Recursive unification between {}\nand\n{}",
                     self.location, self.lhs, self.rhs),
             TypeError::WrongArity(ref l, ref r) =>
-                write!(f, "{:?} Error: Types do not have the same arity.\n{:?} <-> {:?}\n{:?} <-> {:?}\n{:?}\nand\n{:?}"
+                write!(f, "{} Error: Types do not have the same arity.\n{} <-> {}\n{} <-> {}\n{}\nand\n{}"
                     , self.location, l, r, l.kind(), r.kind(), self.lhs, self.rhs),
             TypeError::MissingInstance(ref class, ref typ, ref id) =>
-                write!(f, "{:?} Error: The instance {:?} {:?} was not found as required by {:?} when unifying {:?}\nand\n{:?}",
+                write!(f, "{} Error: The instance {} {} was not found as required by {} when unifying {}\nand\n{}",
                     self.location, class, typ, id, self.lhs, self.rhs)
         }
     }
