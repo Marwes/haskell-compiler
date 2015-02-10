@@ -67,7 +67,6 @@ fn main() {
 
     let matches = {
         let args: Vec<_> = std::env::args()
-            .map(|osstring| osstring.into_string().unwrap())
             .collect();
         opts.parse(args.tail())
             .unwrap_or_else(|err| panic!("{}", err))
