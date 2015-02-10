@@ -211,7 +211,7 @@ mod tests {
     use core::Expr::*;
     use core::ref_::*;
     use core::translate::translate_module;
-    use renamer::rename_module;
+    use renamer::tests::rename_module;
     use typecheck::TypeEnvironment;
 
     struct CheckUniques {

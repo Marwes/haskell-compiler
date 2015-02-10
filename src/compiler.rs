@@ -1036,7 +1036,7 @@ pub fn compile_with_type_env<'a>(type_env: &mut TypeEnvironment<'a>, assemblies:
 
     let mut parser = Parser::new(contents.as_slice().chars()); 
     let module = try!(parser.module().map_err(|e| format!("{:?}", e)));
-    let mut module = rename_module(module);
+    let mut module = try!(rename_module(module).map_err(|e| format!("{}", e)));
     for assem in assemblies.iter() {
         type_env.add_types(*assem);
     }
@@ -1264,7 +1264,7 @@ test = Test [1::Int]";
 fn bench_prelude(b: &mut Bencher) {
     use lambda_lift::do_lambda_lift;
     use core::translate::translate_module;
-    use renamer::rename_module;
+    use renamer::tests::rename_module;
     use parser::Parser;
 
     let path = &Path::new("Prelude.hs");

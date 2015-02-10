@@ -1586,7 +1586,7 @@ pub fn typecheck_string(module: &str) -> Result<Vec<Module<Name>>, ::std::string
     use parser::parse_string;
     parse_string(module)
         .map_err(|e| format!("{:?}", e))
-        .map(typecheck_modules_common)
+        .and_then(typecheck_modules_common)
 }
 
 ///Parses a module, renames and typechecks it, as well as all of its imported modules
@@ -1594,13 +1594,13 @@ pub fn typecheck_module(module: &str) -> Result<Vec<Module<Name>>, ::std::string
     use parser::parse_modules;
     parse_modules(module)
         .map_err(|e| format!("{:?}", e))
-        .map(typecheck_modules_common)
+        .and_then(typecheck_modules_common)
 }
 
-fn typecheck_modules_common(modules: Vec<Module>) -> Vec<Module<Name>> {
+fn typecheck_modules_common(modules: Vec<Module>) -> Result<Vec<Module<Name>>, ::std::string::String> {
     use renamer::rename_modules;
     use infix::PrecedenceVisitor;
-    let mut modules = rename_modules(modules);
+    let mut modules = try!(rename_modules(modules).map_err(|e| format!("{}", e)));
     let mut prec_visitor = PrecedenceVisitor::new();
     for module in modules.iter_mut() {
         prec_visitor.visit_module(module);
@@ -1612,7 +1612,7 @@ fn typecheck_modules_common(modules: Vec<Module>) -> Vec<Module<Name>> {
             env.assemblies.push(module);
         }
     }
-    modules
+    Ok(modules)
 }
 
 
@@ -1622,7 +1622,8 @@ use interner::*;
 use module::*;
 use module::Expr::*;
 use typecheck::*;
-use renamer::*;
+use renamer::Name;
+use renamer::tests::{rename_expr, rename_module};
 
 use parser::Parser;
 use std::old_io::File;

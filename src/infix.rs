@@ -117,7 +117,7 @@ mod tests {
     use interner::intern;
     use typecheck::*;
     use infix::PrecedenceVisitor;
-    use renamer::*;
+    use renamer::tests::{rename_expr, rename_modules};
 
     #[test]
     fn operator_precedence()

@@ -68,7 +68,7 @@ pub fn run_and_print_expr(expr_str: &str) {
     let (instructions, type_decl) = find_main(&assembly);
     let assembly_index = vm.add_assembly(assembly);
     let result = vm.evaluate(&*instructions, assembly_index);//TODO 0 is not necessarily correct
-    println!("{:?}  {:?}", result, type_decl);
+    println!("{}  {}", result, type_decl);
 }
 
 ///Starts the REPL
@@ -85,6 +85,6 @@ pub fn start() {
         let (instructions, typ) = find_main(&assembly);
         let assembly_index = vm.add_assembly(assembly);
         let result = vm.evaluate(&*instructions, assembly_index);//TODO 0 is not necessarily correct
-        println!("{:?}  {:?}", result, typ);
+        println!("{}  {}", result, typ);
     }
 }

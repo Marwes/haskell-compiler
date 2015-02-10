@@ -45,6 +45,7 @@ impl ::std::fmt::Display for Name {
 }
 
 ///Generic struct which can store and report errors
+#[derive(Debug)]
 pub struct Errors<T> {
     errors: Vec<T>
 }
@@ -58,8 +59,17 @@ impl <T> Errors<T> {
     pub fn has_errors(&self) -> bool {
         self.errors.len() != 0
     }
+
+    pub fn into_result<V>(self, value: V) -> Result<V, Errors<T>> {
+        if self.has_errors() {
+            Err(self)
+        }
+        else {
+            Ok(value)
+        }
+    }
 }
-impl <T: ::std::fmt::Display> Errors<T> {
+impl <T: fmt::Display> Errors<T> {
     pub fn report_errors(&self, pass: &str) {
         println!("Found {} errors in compiler pass: {}", self.errors.len(), pass);
         for error in self.errors.iter() {
@@ -68,6 +78,17 @@ impl <T: ::std::fmt::Display> Errors<T> {
     }
 }
 
+#[derive(Debug)]
+pub struct RenamerError(Errors<Error>);
+
+impl fmt::Display for RenamerError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.0.report_errors("renamer");
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
 enum Error {
     MultipleDefinitions(InternedStr),
     UndefinedModule(InternedStr),
@@ -349,14 +370,18 @@ impl Renamer {
     }
 }
 
-pub fn rename_expr(expr: TypedExpr<InternedStr>) -> TypedExpr<Name> {
+pub fn rename_expr(expr: TypedExpr<InternedStr>) -> Result<TypedExpr<Name>, RenamerError> {
     let mut renamer = Renamer::new();
-    renamer.rename(expr)
+    let expr = renamer.rename(expr);
+    renamer.errors.into_result(expr)
+        .map_err(RenamerError)
 }
 
-pub fn rename_module(module: Module<InternedStr>) -> Module<Name> {
+pub fn rename_module(module: Module<InternedStr>) -> Result<Module<Name>, RenamerError> {
     let mut renamer = Renamer::new();
-    rename_module_(&mut renamer, &[], module)
+    let m = rename_module_(&mut renamer, &[], module);
+    renamer.errors.into_result(m)
+        .map_err(RenamerError)
 }
 pub fn rename_module_(renamer: &mut Renamer, module_env: &[Module<Name>], module: Module<InternedStr>) -> Module<Name> {
     let mut name = renamer.make_unique(module.name);
@@ -511,18 +536,15 @@ pub fn prelude_name(s: &str) -> Name {
 
 ///Renames a vector of modules.
 ///If any errors are encounterd while renaming, an error message is output and fail is called
-pub fn rename_modules(modules: Vec<Module<InternedStr>>) -> Vec<Module<Name>> {
+pub fn rename_modules(modules: Vec<Module<InternedStr>>) -> Result<Vec<Module<Name>>, RenamerError> {
     let mut renamer = Renamer::new();
     let mut ms = Vec::new();
     for module in modules.into_iter() {
         let m = rename_module_(&mut renamer, ms.as_slice(), module);
         ms.push(m);
     }
-    if renamer.errors.has_errors() {
-        renamer.errors.report_errors("Renamer");
-        panic!();
-    }
-    ms
+    renamer.errors.into_result(ms)
+        .map_err(RenamerError)
 }
 
 pub mod typ {
@@ -599,9 +621,25 @@ pub mod typ {
 
 
 #[cfg(test)]
-mod tests {
-    use renamer::*;
+pub mod tests {
+    use super::Name;
+    use interner::InternedStr;
+    use module::{TypedExpr, Module};
     use parser::*;
+
+    pub fn rename_modules(modules: Vec<Module<InternedStr>>) -> Vec<Module<Name>> {
+        super::rename_modules(modules)
+            .unwrap()
+    }
+    pub fn rename_module(module: Module<InternedStr>) -> Module<Name> {
+        super::rename_module(module)
+            .unwrap()
+    }
+    pub fn rename_expr(expr: TypedExpr<InternedStr>) -> TypedExpr<Name> {
+        super::rename_expr(expr)
+            .unwrap()
+    }
+
     #[test]
     #[should_fail]
     fn duplicate_binding() {

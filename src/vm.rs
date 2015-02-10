@@ -515,7 +515,7 @@ enum VMResult {
 fn compile_iter<T : Iterator<Item=char>>(iterator: T) -> Result<Assembly, String> {
     let mut parser = Parser::new(iterator);
     let module = try!(parser.module().map_err(|e| format!("{:?}", e)));
-    let mut module = rename_module(module);
+    let mut module = try!(rename_module(module).map_err(|e| format!("{}", e)));
     
     let mut typer = TypeEnvironment::new();
     typer.typecheck_module(&mut module);
