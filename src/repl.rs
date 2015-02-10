@@ -22,9 +22,10 @@ fn is_io(typ: &Type) -> bool {
 }
 
 ///Compiles an expression into an assembly
-fn compile_expr(prelude: &Assembly, expr_str: &str) -> Assembly {
+fn compile_expr(prelude: &Assembly, expr_str: &str) -> Result<Assembly, ()> {
     let mut parser = Parser::new(expr_str.chars());
-    let mut expr = rename_expr(parser.expression_());
+    let expr = try!(parser.expression().map_err(|e| { println!("{}", e); () }));
+    let mut expr = rename_expr(expr);
 
     let mut type_env = TypeEnvironment::new();
     type_env.add_types(prelude as &DataTypes);

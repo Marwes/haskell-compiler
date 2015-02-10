@@ -518,7 +518,7 @@ fn compile_iter<T : Iterator<Item=char>>(iterator: T) -> Result<Assembly, String
     let mut module = try!(rename_module(module).map_err(|e| format!("{}", e)));
     
     let mut typer = TypeEnvironment::new();
-    typer.typecheck_module(&mut module);
+    try!(typer.typecheck_module(&mut module).map_err(|e| format!("{}", e)));
     let core_module = do_lambda_lift(translate_module(module));
     
     let mut compiler = Compiler::new();

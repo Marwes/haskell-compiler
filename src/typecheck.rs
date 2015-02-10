@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
+use std::fmt;
 use std::mem::swap;
 use std::iter;
 use module::*;
@@ -109,6 +110,16 @@ pub struct TypeEnvironment<'a> {
     variable_age : isize,
     errors: Errors<TypeErrorInfo>
 }
+
+#[derive(Debug)]
+pub struct TypeError(Errors<TypeErrorInfo>);
+
+impl fmt::Display for TypeError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.0.report_errors(f, "typecheck")
+    }
+}
+
 
 ///A Substitution is a mapping from typevariables to types.
 #[derive(Clone)]
@@ -259,7 +270,12 @@ impl <'a> TypeEnvironment<'a> {
     ///Typechecks a module
     ///If the typecheck is successful the types in the module are updated with the new types.
     ///If any errors were found while typechecking panic! is called.
-    pub fn typecheck_module(&mut self, module: &mut Module<Name>) {
+    pub fn typecheck_module(&mut self, module: &mut Module<Name>) -> Result<(), TypeError> {
+        self.typecheck_module2(module);
+        self.errors.into_result(())
+            .map_err(TypeError)
+    }
+    pub fn typecheck_module2(&mut self, module: &mut Module<Name>) {
         let start_var_age = self.variable_age + 1;
         for data_def in module.data_definitions.iter_mut() {
             for constructor in data_def.constructors.iter_mut() {
@@ -397,24 +413,25 @@ impl <'a> TypeEnvironment<'a> {
             let mut subs = Substitution { subs: HashMap::new() }; 
             self.typecheck_global_bindings(start_var_age, &mut subs, module);
         }
-        if self.errors.has_errors() {
-            self.errors.report_errors("typecheck");
-            panic!();
-        }
     }
 
     ///Typechecks an expression.
     ///The types in the expression are updated with the correct types.
     ///If the expression has a type error, fail is called.
-    pub fn typecheck_expr(&mut self, expr : &mut TypedExpr<Name>) {
+    pub fn typecheck_expr(&mut self, expr: &mut TypedExpr<Name>) -> Result<(), TypeError> {
         let mut subs = Substitution { subs: HashMap::new() }; 
         let mut typ = self.typecheck(expr, &mut subs);
         unify_location(self, &mut subs, &expr.location, &mut typ, &mut expr.typ);
         self.substitute(&mut subs, expr);
-        if self.errors.has_errors() {
-            self.errors.report_errors("typecheck");
-            panic!();
-        }
+        self.errors.into_result(())
+            .map_err(TypeError)
+    }
+
+    pub fn typecheck_module_(&mut self, module: &mut Module<Name>) {
+        self.typecheck_module(module).unwrap()
+    }
+    pub fn typecheck_expr_(&mut self, expr: &mut TypedExpr<Name>) {
+        self.typecheck_expr(expr).unwrap()
     }
 
     ///Finds all the constraints for a type
@@ -1233,33 +1250,35 @@ fn unify_location(env: &mut TypeEnvironment, subs: &mut Substitution, location: 
     }
 }
 
+#[derive(Debug)]
 struct TypeErrorInfo {
     location: Location,
     lhs: TcType,
     rhs: TcType,
-    error: TypeError
+    error: Error
 }
 
-enum TypeError {
+#[derive(Debug)]
+enum Error {
     UnifyFail(TcType, TcType),
     RecursiveUnification,
     WrongArity(TcType, TcType),
     MissingInstance(InternedStr, TcType, TypeVariable)
 }
 
-impl ::std::fmt::Display for TypeErrorInfo {
-    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+impl fmt::Display for TypeErrorInfo {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self.error {
-            TypeError::UnifyFail(ref l, ref r) =>
+            Error::UnifyFail(ref l, ref r) =>
                 write!(f, "{} Error: Could not unify types\n{}\nand\n{}\nin types\n{}\nand\n{}",
                     self.location, l, r, self.lhs, self.rhs),
-            TypeError::RecursiveUnification =>
+            Error::RecursiveUnification =>
                 write!(f, "{} Error: Recursive unification between {}\nand\n{}",
                     self.location, self.lhs, self.rhs),
-            TypeError::WrongArity(ref l, ref r) =>
+            Error::WrongArity(ref l, ref r) =>
                 write!(f, "{} Error: Types do not have the same arity.\n{} <-> {}\n{} <-> {}\n{}\nand\n{}"
                     , self.location, l, r, l.kind(), r.kind(), self.lhs, self.rhs),
-            TypeError::MissingInstance(ref class, ref typ, ref id) =>
+            Error::MissingInstance(ref class, ref typ, ref id) =>
                 write!(f, "{} Error: The instance {} {} was not found as required by {} when unifying {}\nand\n{}",
                     self.location, class, typ, id, self.lhs, self.rhs)
         }
@@ -1269,7 +1288,7 @@ impl ::std::fmt::Display for TypeErrorInfo {
 ///Tries to bind the type to the variable.
 ///Returns Ok if the binding was possible.
 ///Returns Error if the binding was not possible and the reason for the error.
-fn bind_variable(env: &mut TypeEnvironment, subs: &mut Substitution, var: &TypeVariable, typ: &TcType) -> Result<(), TypeError> {
+fn bind_variable(env: &mut TypeEnvironment, subs: &mut Substitution, var: &TypeVariable, typ: &TcType) -> Result<(), Error> {
     match *typ {
         Type::Variable(ref var2) => {
             if var != var2 {
@@ -1290,10 +1309,10 @@ fn bind_variable(env: &mut TypeEnvironment, subs: &mut Substitution, var: &TypeV
         }
         _ => {
             if occurs(var, typ) {
-                return Err(TypeError::RecursiveUnification);
+                return Err(Error::RecursiveUnification);
             }
             else if var.kind != *typ.kind() {
-                return Err(TypeError::WrongArity(Type::Variable(var.clone()), typ.clone()));
+                return Err(Error::WrongArity(Type::Variable(var.clone()), typ.clone()));
             }
             else {
                 for (_, replaced) in subs.subs.iter_mut() {
@@ -1318,7 +1337,7 @@ fn bind_variable(env: &mut TypeEnvironment, subs: &mut Substitution, var: &TypeV
                                         }
                                         _ => ()
                                     }
-                                    return Err(TypeError::MissingInstance(missing_instance, typ.clone(), var.clone()));
+                                    return Err(Error::MissingInstance(missing_instance, typ.clone(), var.clone()));
                                 }
                                 Ok(()) => ()
                             }
@@ -1337,7 +1356,7 @@ fn bind_variable(env: &mut TypeEnvironment, subs: &mut Substitution, var: &TypeV
 
 ///Tries to unify two types, updating the substition as well as the types directly with
 ///the new type values. 
-fn unify(env: &mut TypeEnvironment, subs: &mut Substitution, lhs: &mut TcType, rhs: &mut TcType) -> Result<(), TypeError> {
+fn unify(env: &mut TypeEnvironment, subs: &mut Substitution, lhs: &mut TcType, rhs: &mut TcType) -> Result<(), Error> {
     match (lhs, rhs) {
         (&mut Type::Application(ref mut l1, ref mut r1), &mut Type::Application(ref mut l2, ref mut r2)) => {
             unify(env, subs, &mut **l1, &mut**l2)
@@ -1370,7 +1389,7 @@ fn unify(env: &mut TypeEnvironment, subs: &mut Substitution, lhs: &mut TcType, r
         }
         (&mut Type::Constructor(ref lhs), &mut Type::Constructor(ref rhs)) => {
             if lhs.name == rhs.name { Ok(()) }
-            else { Err(TypeError::UnifyFail(Type::Constructor(lhs.clone()), Type::Constructor(rhs.clone()))) }
+            else { Err(Error::UnifyFail(Type::Constructor(lhs.clone()), Type::Constructor(rhs.clone()))) }
         }
         (lhs, rhs) => {
             let x = match lhs {
@@ -1378,7 +1397,7 @@ fn unify(env: &mut TypeEnvironment, subs: &mut Substitution, lhs: &mut TcType, r
                 lhs => {
                     let y = match rhs {
                         &mut Type::Variable(ref mut var) => bind_variable(env, subs, var, lhs),
-                        _ => return Err(TypeError::UnifyFail(lhs.clone(), rhs.clone()))
+                        _ => return Err(Error::UnifyFail(lhs.clone(), rhs.clone()))
                     };
                     if y.is_ok() {
                         *rhs = lhs.clone();
@@ -1403,7 +1422,7 @@ fn match_or_fail(env: &mut TypeEnvironment, subs: &mut Substitution, location: &
 }
 ///Match performs matching which is walks through the same process as unify but only allows
 ///the updates to be one way (such as between a type and the type in a type signature).
-fn match_(env: &mut TypeEnvironment, subs: &mut Substitution, lhs: &mut TcType, rhs: &TcType) -> Result<(), TypeError> {
+fn match_(env: &mut TypeEnvironment, subs: &mut Substitution, lhs: &mut TcType, rhs: &TcType) -> Result<(), Error> {
     match (lhs, rhs) {
         (&mut Type::Application(ref mut l1, ref mut r1), &Type::Application(ref l2, ref r2)) => {
             match_(env, subs, &mut **l1, &**l2).and_then(|_| {
@@ -1417,11 +1436,11 @@ fn match_(env: &mut TypeEnvironment, subs: &mut Substitution, lhs: &mut TcType, 
             x
         }
         (&mut Type::Constructor(ref lhs), &Type::Constructor(ref rhs)) =>
-            if lhs.name == rhs.name { Ok(()) } else { Err(TypeError::UnifyFail(Type::Constructor(lhs.clone()), Type::Constructor(rhs.clone()))) },
+            if lhs.name == rhs.name { Ok(()) } else { Err(Error::UnifyFail(Type::Constructor(lhs.clone()), Type::Constructor(rhs.clone()))) },
         (lhs, rhs) => {
             let x = match lhs {
                 &mut Type::Variable(ref mut var) => bind_variable(env, subs, var, rhs),
-                _ => return Err(TypeError::UnifyFail(lhs.clone(), rhs.clone()))
+                _ => return Err(Error::UnifyFail(lhs.clone(), rhs.clone()))
             };
             *lhs = rhs.clone();
             x
@@ -1605,14 +1624,16 @@ fn typecheck_modules_common(modules: Vec<Module>) -> Result<Vec<Module<Name>>, :
     for module in modules.iter_mut() {
         prec_visitor.visit_module(module);
     }
-    {
+    let result = {
         let mut env = TypeEnvironment::new();
         for module in modules.iter_mut() {
-            env.typecheck_module(module);
+            env.typecheck_module2(module);
             env.assemblies.push(module);
         }
-    }
-    Ok(modules)
+        env.errors.into_result(())
+    };
+    result.map(|()| modules)
+        .map_err(|e| format!("{}", TypeError(e)))
 }
 
 
@@ -1640,7 +1661,7 @@ pub fn do_typecheck_with(input: &str, types: &[&DataTypes]) -> Module<Name> {
     for t in types.iter() {
         env.add_types(*t);
     }
-    env.typecheck_module(&mut module);
+    env.typecheck_module_(&mut module);
     module
 }
 
@@ -1665,7 +1686,7 @@ fn application() {
     let e = apply(n, num);
     let mut expr = rename_expr(e);
     let unary_func = function_type_(int_type(), int_type());
-    env.typecheck_expr(&mut expr);
+    env.typecheck_expr_(&mut expr);
 
     assert!(expr.typ == unary_func);
 }
@@ -1677,7 +1698,7 @@ fn typecheck_lambda() {
 
     let e = lambda("x", apply(apply(identifier("primIntAdd"), identifier("x")), number(1)));
     let mut expr = rename_expr(e);
-    env.typecheck_expr(&mut expr);
+    env.typecheck_expr_(&mut expr);
 
     assert_eq!(expr.typ, unary_func);
 }
@@ -1691,7 +1712,7 @@ fn typecheck_let() {
     let unary_bind = lambda("x", apply(apply(identifier("primIntAdd"), identifier("x")), number(1)));
     let e = let_(vec![Binding { arguments: vec![], name: intern("test"), matches: Match::Simple(unary_bind), typ: Default::default() , where_bindings: None }], identifier("test"));
     let mut expr = rename_expr(e);
-    env.typecheck_expr(&mut expr);
+    env.typecheck_expr_(&mut expr);
 
     assert_eq!(expr.typ, unary_func);
 }
@@ -1703,7 +1724,7 @@ fn typecheck_case() {
 
     let mut parser = Parser::new(r"case [] of { x:xs -> primIntAdd x 2 ; [] -> 3}".chars());
     let mut expr = rename_expr(parser.expression_().unwrap());
-    env.typecheck_expr(&mut expr);
+    env.typecheck_expr_(&mut expr);
 
     assert_eq!(expr.typ, type_int);
     match &expr.expr {
@@ -1733,7 +1754,7 @@ fn test_typecheck_string() {
 
     let mut parser = Parser::new("\"hello\"".chars());
     let mut expr = rename_expr(parser.expression_().unwrap());
-    env.typecheck_expr(&mut expr);
+    env.typecheck_expr_(&mut expr);
 
     assert_eq!(expr.typ, list_type(char_type()));
 }
@@ -1744,7 +1765,7 @@ fn typecheck_tuple() {
 
     let mut parser = Parser::new("(primIntAdd 0 0, \"a\")".chars());
     let mut expr = rename_expr(parser.expression_().unwrap());
-    env.typecheck_expr(&mut expr);
+    env.typecheck_expr_(&mut expr);
 
     let list = list_type(char_type());
     assert_eq!(expr.typ, Type::new_op(intern("(,)"), vec![int_type(), list]));
@@ -1775,7 +1796,7 @@ r"let
     b = test
 in b".chars());
     let mut expr = rename_expr(parser.expression_().unwrap());
-    env.typecheck_expr(&mut expr);
+    env.typecheck_expr_(&mut expr);
 
     
     let int_type = int_type();
@@ -1825,7 +1846,7 @@ main x y = primIntAdd (test x) (test y)".chars());
     let mut module = rename_module(parser.module().unwrap());
 
     let mut env = TypeEnvironment::new();
-    env.typecheck_module(&mut module);
+    env.typecheck_module_(&mut module);
 
     let typ = &module.bindings[0].typ;
     let a = Type::new_var(intern("a"));
@@ -1880,7 +1901,7 @@ test x y = case x < y of
     let mut module = rename_module(parser.module().unwrap());
 
     let mut env = TypeEnvironment::new();
-    env.typecheck_module(&mut module);
+    env.typecheck_module_(&mut module);
 
     let typ = &module.bindings[0].typ;
     let a = Type::new_var(intern("a"));
@@ -1912,7 +1933,7 @@ test y = False < y
     let mut module = rename_module(parser.module().unwrap());
 
     let mut env = TypeEnvironment::new();
-    env.typecheck_module(&mut module);
+    env.typecheck_module_(&mut module);
 }
 
 #[test]
@@ -1941,7 +1962,7 @@ instance Eq a => Eq [a] where
     let mut module = rename_module(parser.module().unwrap());
 
     let mut env = TypeEnvironment::new();
-    env.typecheck_module(&mut module);
+    env.typecheck_module_(&mut module);
 
     let typ = &module.instances[0].bindings[0].typ;
     let var = un_name_type(typ.value.appl().appr().appr().clone());
@@ -2295,7 +2316,7 @@ fn bench_prelude(b: &mut Bencher) {
     b.iter(|| {
         let mut env = TypeEnvironment::new();
         let mut m = module.clone();
-        env.typecheck_module(&mut m);
+        env.typecheck_module_(&mut m);
     });
 }
 

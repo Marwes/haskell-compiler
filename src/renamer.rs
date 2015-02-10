@@ -60,9 +60,9 @@ impl <T> Errors<T> {
         self.errors.len() != 0
     }
 
-    pub fn into_result<V>(self, value: V) -> Result<V, Errors<T>> {
+    pub fn into_result<V>(&mut self, value: V) -> Result<V, Errors<T>> {
         if self.has_errors() {
-            Err(self)
+            Err(::std::mem::replace(self, Errors::new()))
         }
         else {
             Ok(value)
@@ -70,11 +70,12 @@ impl <T> Errors<T> {
     }
 }
 impl <T: fmt::Display> Errors<T> {
-    pub fn report_errors(&self, pass: &str) {
-        println!("Found {} errors in compiler pass: {}", self.errors.len(), pass);
+    pub fn report_errors(&self, f: &mut fmt::Formatter, pass: &str) -> fmt::Result {
+        try!(write!(f, "Found {} errors in compiler pass: {}", self.errors.len(), pass));
         for error in self.errors.iter() {
-            println!("{}", error);
+            try!(write!(f, "{}", error));
         }
+        Ok(())
     }
 }
 
@@ -83,8 +84,7 @@ pub struct RenamerError(Errors<Error>);
 
 impl fmt::Display for RenamerError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        self.0.report_errors("renamer");
-        Ok(())
+        self.0.report_errors(f, "renamer")
     }
 }
 

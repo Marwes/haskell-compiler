@@ -319,8 +319,10 @@ test2 x =
             let g y = add x (f y)
             in add x test
     in f x".chars());
-	let mut module = rename_module(parser.module().unwrap());
-	TypeEnvironment::new().typecheck_module(&mut module);
+        let mut module = rename_module(parser.module().unwrap());
+        TypeEnvironment::new()
+            .typecheck_module(&mut module)
+            .unwrap();
         let m = translate_module(module);
         let module = abstract_module(m);
         visitor.visit_module(&module);

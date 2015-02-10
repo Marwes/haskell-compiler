@@ -1040,7 +1040,7 @@ pub fn compile_with_type_env<'a>(type_env: &mut TypeEnvironment<'a>, assemblies:
     for assem in assemblies.iter() {
         type_env.add_types(*assem);
     }
-    type_env.typecheck_module(&mut module);
+    try!(type_env.typecheck_module(&mut module).map_err(|e| format!("{}", e)));
     let core_module = do_lambda_lift(translate_module(module));
     let mut compiler = Compiler::new();
     for assem in assemblies.iter() {
@@ -1272,7 +1272,7 @@ fn bench_prelude(b: &mut Bencher) {
     let mut parser = Parser::new(contents.as_slice().chars());
     let mut module = rename_module(parser.module().unwrap());
     let mut type_env = TypeEnvironment::new();
-    type_env.typecheck_module(&mut module);
+    type_env.typecheck_module_(&mut module);
     let core_module = do_lambda_lift(translate_module(module));
     b.iter(|| {
         let mut compiler = Compiler::new();
