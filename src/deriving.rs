@@ -1,7 +1,8 @@
 use module::encode_binding_identifier;
 use core::*;
 use core::Expr::*;
-use renamer::NameSupply;
+use renamer::{name, NameSupply};
+use renamer::typ::*;
 use interner::{intern, InternedStr};
 
 pub fn generate_deriving(instances: &mut Vec<Instance<Id<Name>>>, data: &DataDefinition<Name>) {

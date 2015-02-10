@@ -1,5 +1,4 @@
 use std::fmt;
-use std::collections::HashMap;
 pub use types::{Qualified, TypeVariable, Type, Constraint};
 pub use types::Type::{Application, Variable};
 pub use module::{Constructor, DataDefinition, TypeDeclaration, Newtype};
@@ -395,49 +394,6 @@ pub mod result {
     }
 }
 
-pub fn name(s: &str) -> Name {
-    Name { uid: 0, name: intern(s) }
-}
-
-///Constructs a list type which holds elements of type 'typ'
-pub fn list_type(typ: Type<Name>) -> Type<Name> {
-    Type::new_op(name("[]"), vec![typ])
-}
-///Returns the Type of the Char type
-pub fn char_type() -> Type<Name> {
-    Type::new_op(name("Char"), vec![])
-}
-///Returns the type for the Int type
-pub fn int_type() -> Type<Name> {
-    Type::new_op(name("Int"), vec![])
-}
-///Returns the type for the Bool type
-pub fn bool_type() -> Type<Name> {
-    Type::new_op(name("Bool"), vec![])
-}
-///Returns the type for the Double type
-pub fn double_type() -> Type<Name> {
-    Type::new_op(name("Double"), vec![])
-}
-///Creates a function type
-pub fn function_type(arg: &Type<Name>, result: &Type<Name>) -> Type<Name> {
-    function_type_(arg.clone(), result.clone())
-}
-
-///Creates a function type
-pub fn function_type_(func : Type<Name>, arg : Type<Name>) -> Type<Name> {
-    Type::new_op(name("->"), vec![func, arg])
-}
-
-///Creates a IO type
-pub fn io(typ: Type<Name>) -> Type<Name> {
-    Type::new_op(name("IO"), vec![typ])
-}
-///Returns the unit type '()'
-pub fn unit() -> Type<Name> {
-    Type::new_op(name("()"), vec![])
-}
-
 ///The translate module takes the AST and translates it into the simpler core language.
 pub mod translate {
     use module;
@@ -446,6 +402,7 @@ pub mod translate {
     use typecheck::TcType;
     use interner::*;
     use renamer::NameSupply;
+    use renamer::typ::*;
     use deriving::*;
     use std::collections::HashMap;
 

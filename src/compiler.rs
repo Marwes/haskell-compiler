@@ -10,6 +10,7 @@ use std::borrow::ToOwned;
 use core::translate::{translate_module, translate_modules};
 use lambda_lift::do_lambda_lift;
 use renamer::rename_module;
+use renamer::typ::*;
 use builtins::builtins;
 
 use self::Instruction::*;
@@ -342,29 +343,6 @@ impl DataTypes for Assembly {
             }
         }
         None
-    }
-}
-
-impl Instruction {
-    fn stack_change(&self) -> isize {
-        match *self {
-            Add | Sub | Multiply | Divide | Remainder | IntEQ | IntLT | IntLE | IntGT | IntGE | 
-            DoubleAdd |  DoubleSub |  DoubleMultiply |  DoubleDivide |  DoubleRemainder |  DoubleEQ |
-            DoubleLT |  DoubleLE |  DoubleGT |  DoubleGE => -1,
-            IntToDouble |  DoubleToInt => 0,
-            Push(..) | PushGlobal(..) | PushInt(..) | PushFloat(..) | PushChar(..) => 1,
-            Mkap => -1,
-            Eval | Unwind | Update(..) => 0,
-            Pop(s) => -(s as isize),
-            Slide(s) => -(s as isize),
-            Split(s) => (s as isize) - 1, 
-            Pack(_, s) => 1 - (s as isize),
-            CaseJump(..) | Jump(..) | JumpFalse(..) => 0,
-            PushDictionary(..) | PushDictionaryMember(..) | PushBuiltin(..) => 1,
-            MkapDictionary => -1,
-            ConstructDictionary(size) => (size as isize) - 1,
-            PushDictionaryRange(..) => 1
-        }
     }
 }
 
