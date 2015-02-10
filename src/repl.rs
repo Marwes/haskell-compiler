@@ -10,7 +10,7 @@ use parser::Parser;
 use renamer::{Name, rename_expr};
 
 ///Returns whether the type in question is an IO action
-fn is_io(typ: &Type) -> bool {
+fn is_io(typ: &Type<Name>) -> bool {
     match *typ {
         Type::Application(ref lhs, _) => 
             match **lhs {
@@ -24,22 +24,23 @@ fn is_io(typ: &Type) -> bool {
 ///Compiles an expression into an assembly
 fn compile_expr(prelude: &Assembly, expr_str: &str) -> Result<Assembly, ()> {
     let mut parser = Parser::new(expr_str.chars());
-    let expr = try!(parser.expression().map_err(|e| { println!("{}", e); () }));
-    let mut expr = rename_expr(expr);
+    let expr = try!(parser.expression_().map_err(|e| println!("{}", e)));
+    let mut expr = try!(rename_expr(expr).map_err(|e| println!("{}", e)));
 
     let mut type_env = TypeEnvironment::new();
     type_env.add_types(prelude as &DataTypes);
-    type_env.typecheck_expr(&mut expr);
+    try!(type_env.typecheck_expr(&mut expr)
+        .map_err(|e| println!("{}", e)));
     let temp_module = Module::from_expr(translate_expr(expr));
     let m = do_lambda_lift(temp_module);
     
     let mut compiler = Compiler::new();
     compiler.assemblies.push(prelude);
-    compiler.compile_module(&m)
+    Ok(compiler.compile_module(&m))
 }
 
 ///Finds the main function and if it is an IO function, adds instructions to push the "RealWorld" argument
-fn find_main(assembly: &Assembly) -> (Vec<Instruction>, Qualified<Type, Name>) {
+fn find_main(assembly: &Assembly) -> (Vec<Instruction>, Qualified<Type<Name>, Name>) {
     assembly.super_combinators.iter()
         .find(|sc| sc.name == Name { name: intern("main"), uid: 0 })
         .map(|sc| {
@@ -62,30 +63,37 @@ fn find_main(assembly: &Assembly) -> (Vec<Instruction>, Qualified<Type, Name>) {
 }
 
 pub fn run_and_print_expr(expr_str: &str) {
-    let prelude = compile_file("Prelude.hs");
+    let prelude = compile_file("Prelude.hs")
+        .unwrap();
     let mut vm = VM::new();
     vm.add_assembly(prelude);
-    let assembly = compile_expr(vm.get_assembly(0), expr_str.as_slice());
+    let assembly = compile_expr(vm.get_assembly(0), expr_str.as_slice())
+        .unwrap();
     let (instructions, type_decl) = find_main(&assembly);
     let assembly_index = vm.add_assembly(assembly);
     let result = vm.evaluate(&*instructions, assembly_index);//TODO 0 is not necessarily correct
-    println!("{}  {}", result, type_decl);
+    println!("{:?}  {}", result, type_decl);
 }
 
 ///Starts the REPL
 pub fn start() {
-    let prelude = compile_file("Prelude.hs");
     let mut vm = VM::new();
-    vm.add_assembly(prelude);
+    match compile_file("Prelude.hs") {
+        Ok(prelude) => { vm.add_assembly(prelude); }
+        Err(err) => println!("Failed to compile the prelude\nReason: {}", err)
+    }
     for line in ::std::old_io::stdin().lock().lines() {
         let expr_str = match line {
             Ok(l) => l,
             Err(e) => panic!("Reading line failed with '{:?}'", e)
         };
-        let assembly = compile_expr(vm.get_assembly(0), expr_str.as_slice());
+        let assembly = match compile_expr(vm.get_assembly(0), expr_str.as_slice()) {
+            Ok(assembly) => assembly,
+            Err(()) => continue
+        };
         let (instructions, typ) = find_main(&assembly);
         let assembly_index = vm.add_assembly(assembly);
         let result = vm.evaluate(&*instructions, assembly_index);//TODO 0 is not necessarily correct
-        println!("{}  {}", result, typ);
+        println!("{:?}  {}", result, typ);
     }
 }

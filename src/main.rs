@@ -1,5 +1,5 @@
 #![crate_type = "bin"]
-#![feature(box_syntax, collections, core, hash, io, path, std_misc, test, unicode)]
+#![feature(box_syntax, collections, core, env, hash, io, os, path, std_misc, test, unicode)]
 #[macro_use]
 extern crate log;
 extern crate collections;
@@ -10,7 +10,7 @@ extern crate test;
 #[cfg(not(test))]
 use vm::execute_main_module;
 #[cfg(not(test))]
-use getopts::{optopt, optflag, getopts, usage};
+use getopts::Options;
 
 #[macro_escape]
 macro_rules! write_core_expr(
@@ -60,26 +60,28 @@ mod repl;
 
 #[cfg(not(test))]
 fn main() {
-    let opts = [
-        optopt("l", "", "Input file", "Module name"),
-        optflag("i", "interactive", "Starts the REPL"),
-        optflag("h", "help", "Print help")
-    ];
+    let mut opts = Options::new();
+    opts.optopt("l", "", "Input file", "Module name");
+    opts.optflag("i", "interactive", "Starts the REPL");
+    opts.optflag("h", "help", "Print help");
+
     let matches = {
-        let args = std::os::args();
-        getopts(args.tail(), &opts)
+        let args: Vec<_> = std::env::args()
+            .map(|osstring| osstring.into_string().unwrap())
+            .collect();
+        opts.parse(args.tail())
             .unwrap_or_else(|err| panic!("{}", err))
     };
 
     if matches.opt_present("h") {
-        println!("Usage: vm [OPTIONS|EXPRESSION] {}", usage("", &opts));
+        println!("Usage: vm [OPTIONS|EXPRESSION] {}", opts.usage(""));
         return;
     }
     match matches.opt_str("l") {
         Some(modulename) => {
             let result = execute_main_module(modulename.as_slice()).unwrap();
             match result {
-                Some(x) => println!("{}", x),
+                Some(x) => println!("{:?}", x),
                 None => println!("Error running module {}", modulename)
             }
             return;
