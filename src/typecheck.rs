@@ -1209,7 +1209,7 @@ fn freshen_var(env: &mut TypeEnvironment, subs: &mut Substitution, constraints: 
         }
         subs.subs.insert(id.clone(), new.clone());
         {
-            let mut constraints_for_id = constraints.iter()
+            let constraints_for_id = constraints.iter()
                 .filter(|c| c.variables[0] == *id);
             //Add all the constraints to he environment for the 'new' variable
             for c in constraints_for_id {
@@ -1623,7 +1623,7 @@ use typecheck::*;
 use renamer::*;
 
 use parser::Parser;
-use std::io::File;
+use std::old_io::File;
 
 use test::Bencher;
 

@@ -76,7 +76,7 @@ pub fn start() {
     let prelude = compile_file("Prelude.hs");
     let mut vm = VM::new();
     vm.add_assembly(prelude);
-    for line in ::std::io::stdin().lock().lines() {
+    for line in ::std::old_io::stdin().lock().lines() {
         let expr_str = match line {
             Ok(l) => l,
             Err(e) => panic!("Reading line failed with '{:?}'", e)

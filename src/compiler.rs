@@ -418,7 +418,7 @@ impl <'a> Compiler<'a> {
             }
             data_definitions.push(def.clone());
         }
-        let mut bindings = module.bindings.iter()
+        let bindings = module.bindings.iter()
             .chain(module.instances.iter().flat_map(|i| i.bindings.iter()))
             .chain(module.classes.iter().flat_map(|class| class.bindings.iter()));
 
@@ -1112,7 +1112,7 @@ use interner::*;
 use compiler::{Assembly, Compiler, compile_with_type_env};
 use compiler::Instruction::*;
 use typecheck::TypeEnvironment;
-use std::io::File;
+use std::old_io::File;
 use test::Bencher;
 
 fn compile(contents: &str) -> Assembly {
@@ -1224,8 +1224,9 @@ main x = primIntAdd (test x) 6";
 
 #[test]
 fn compile_prelude() {
+    let prelude;
     let mut type_env = TypeEnvironment::new();
-    let prelude = compile_with_type_env(&mut type_env, &[], File::open(&Path::new("Prelude.hs")).read_to_string().unwrap().as_slice()).unwrap();
+    prelude = compile_with_type_env(&mut type_env, &[], File::open(&Path::new("Prelude.hs")).read_to_string().unwrap().as_slice()).unwrap();
 
     let assembly = compile_with_type_env(&mut type_env, &[&prelude], r"main = id (primIntAdd 2 0)").unwrap();
 

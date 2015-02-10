@@ -1,5 +1,5 @@
 use std::mem::{swap};
-use std::io::{IoResult, IoError, File};
+use std::old_io::{IoResult, IoError, File};
 use std::error::FromError;
 use std::collections::{HashSet, HashMap};
 use std::str::FromStr;
@@ -1084,7 +1084,7 @@ fn make_constraints(types: Vec<Type>) -> Vec<Constraint> {
     }).collect()
 }
 
-fn make_application<I: Iterator<Item=TypedExpr>>(f : TypedExpr, mut args : I) -> TypedExpr {
+fn make_application<I: Iterator<Item=TypedExpr>>(f : TypedExpr, args : I) -> TypedExpr {
     let mut func = f;
 	for a in args {
         let loc = func.location.clone();
@@ -1171,7 +1171,7 @@ use parser::*;
 use module::*;
 use module::Expr::*;
 use typecheck::{identifier, apply, op_apply, number, rational, let_, case, if_else};
-use std::io::File;
+use std::old_io::File;
 use test::Bencher;
 
 

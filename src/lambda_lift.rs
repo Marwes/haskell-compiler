@@ -367,7 +367,7 @@ test2 x =
 
     #[bench]
     fn bench(b: &mut Bencher) {
-        use std::io::File;
+        use std::old_io::File;
         use typecheck::test::do_typecheck;
 
         let path = &Path::new("Prelude.hs");

@@ -1,8 +1,8 @@
 use std::fmt;
 use std::rc::Rc;
 use std::cell::{Ref, RefMut, RefCell};
-use std::path::Path;
-use std::io::File;
+use std::old_path::Path;
+use std::old_io::File;
 use typecheck::TypeEnvironment;
 use compiler::*;
 use parser::Parser;
@@ -585,7 +585,7 @@ fn execute_main_module_(assemblies: Vec<Assembly>) -> Result<Option<VMResult>, S
 #[allow(non_snake_case)]
 mod primitive {
 
-    use std::io::fs::File;
+    use std::old_io::fs::File;
     use vm::{VM, Node, Node_};
     use vm::Node_::{Application, Constructor, BuiltinFunction, Char};
     use compiler::Instruction;

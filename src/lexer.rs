@@ -154,7 +154,7 @@ fn is_operator(first_char : char) -> bool {
 
 pub struct Lexer<Stream: Iterator<Item=char>> {
     ///The input which the lexer processes
-    input : Peekable<char, Stream>,
+    input : Peekable<Stream>,
     ///The current location of the lexer
     location : Location,
     ///All the current unprocessed tokens stored on a stack

@@ -95,7 +95,7 @@ impl Renamer {
     }
 
     fn import_globals<T: Eq + Copy>(&mut self, module: &Module<T>, str_fn: &mut FnMut(T) -> InternedStr, uid: usize) {
-        let mut names = module.data_definitions.iter()
+        let names = module.data_definitions.iter()
             .flat_map(|data| data.constructors.iter().map(|ctor| ctor.name))
             .chain(module.newtypes.iter().map(|newtype| newtype.constructor_name))
             .chain(module.classes.iter().flat_map(|class|

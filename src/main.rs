@@ -1,6 +1,5 @@
 #![crate_type = "bin"]
-#![feature(box_syntax)]
-#![allow(unstable)]
+#![feature(box_syntax, collections, core, hash, io, path, std_misc, test, unicode)]
 #[macro_use]
 extern crate log;
 extern crate collections;

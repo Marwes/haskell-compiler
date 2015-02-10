@@ -1074,7 +1074,7 @@ impl <'a> Translator<'a> {
         }
     }
     ///Creates a function application from a function and its arguments
-    fn apply<T, I: Iterator<Item=Expr<T>>>(mut func: Expr<T>, mut iter: I) -> Expr<T> {
+    fn apply<T, I: Iterator<Item=Expr<T>>>(mut func: Expr<T>, iter: I) -> Expr<T> {
         for arg in iter {
             func = Apply(box func, box arg);
         }
