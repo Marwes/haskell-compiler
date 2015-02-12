@@ -4,6 +4,7 @@ use std::error::FromError;
 use std::collections::{HashSet, HashMap};
 use std::str::FromStr;
 use std::fmt;
+use std::error;
 use lexer::*;
 use lexer::TokenEnum::*;
 use module::*;
@@ -23,27 +24,35 @@ pub struct Parser<Iter: Iterator<Item=char>> {
 }
 
 #[derive(Debug, Eq, PartialEq)]
-enum ParseError {
+enum Error {
     UnexpectedToken(&'static [TokenEnum], TokenEnum),
     Message(::std::string::String)
 }
-pub type ParseResult<T> = Result<T, Located<ParseError>>;
 
-impl FromError<IoError> for Located<ParseError> {
-    fn from_error(io_error: IoError) -> Located<ParseError> {
-        Located { location: Location::eof(), node: ParseError::Message(io_error.to_string()) }
+#[derive(Debug, PartialEq)]
+pub struct ParseError(Located<Error>);
+
+pub type ParseResult<T> = Result<T, ParseError>;
+
+impl FromError<IoError> for ParseError {
+    fn from_error(io_error: IoError) -> ParseError {
+        ParseError(Located { location: Location::eof(), node: Error::Message(io_error.to_string()) })
     }
 }
 
 impl fmt::Display for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            ParseError::UnexpectedToken(unexpected, expected) => {
+        match self.0.node {
+            Error::UnexpectedToken(unexpected, expected) => {
                 write!(f, "Expected token {:?}, but found {:?}", unexpected, expected)
             }
-            ParseError::Message(ref message) => write!(f, "{}", message)
+            Error::Message(ref message) => write!(f, "{}", message)
         }
     }
+}
+
+impl error::Error for ParseError {
+    fn description(&self) -> &str { "parse error" }
 }
 
 enum BindOrTypeDecl {
@@ -110,16 +119,16 @@ fn next<'a>(&'a mut self, expected : TokenEnum) -> &'a Token {
 }
 
 fn error<T>(&self, message: ::std::string::String) -> ParseResult<T> {
-    Err(Located {
+    Err(ParseError(Located {
         location: self.lexer.current().location,
-        node: ParseError::Message(message)
-    })
+        node: Error::Message(message)
+    }))
 }
-fn unexpected_token(&self, expected: &'static [TokenEnum], actual: TokenEnum) -> Located<ParseError> {
-    Located {
+fn unexpected_token(&self, expected: &'static [TokenEnum], actual: TokenEnum) -> ParseError {
+    ParseError(Located {
         location: self.lexer.current().location,
-        node: ParseError::UnexpectedToken(expected, actual)
-    }
+        node: Error::UnexpectedToken(expected, actual)
+    })
 }
 
 pub fn module(&mut self) -> ParseResult<Module> {
@@ -311,10 +320,10 @@ fn instance(&mut self) -> ParseResult<Instance> {
 pub fn expression_(&mut self) -> ParseResult<TypedExpr> {
     match try!(self.expression()) {
         Some(expr) => Ok(expr),
-        None => Err(Located {
+        None => Err(ParseError(Located {
             location: self.lexer.current().location,
-            node: ParseError::Message(format!("Failed to parse expression at {:?}", self.lexer.current().location))
-        })
+            node: Error::Message(format!("Failed to parse expression at {:?}", self.lexer.current().location))
+        }))
     }
 }
 
@@ -437,10 +446,10 @@ fn sub_expression(&mut self) -> ParseResult<Option<TypedExpr>> {
             let mut bindings = try!(self.sep_by_1(|this| this.do_binding(), SEMICOLON));
             expect!(self, RBRACE);
             if bindings.len() == 0 {
-                return Err(Located {
+                return Err(ParseError(Located {
                     location: self.lexer.current().location,
-                    node: ParseError::Message(format!("{:?}: Parse error: Empty do", self.lexer.current().location))
-                });
+                    node: Error::Message(format!("{:?}: Parse error: Empty do", self.lexer.current().location))
+                }));
             }
             let expr = match bindings.pop().unwrap() {
                 DoBinding::DoExpr(e) => e,
@@ -497,10 +506,10 @@ fn do_binding(&mut self) -> ParseResult<DoBinding> {
                 return self.expression_().map(move |e| DoBinding::DoBind(p, e));
             }
             EOF => {
-                return Err(Located {
+                return Err(ParseError(Located {
                     location: self.lexer.current().location,
-                    node: ParseError::Message("Unexpected EOF".to_string())
-                })
+                    node: Error::Message("Unexpected EOF".to_string())
+                }))
             }
             _ => { debug!("Lookahead {:?}", self.lexer.current()); }
         }

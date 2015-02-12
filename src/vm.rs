@@ -2,7 +2,8 @@ use std::fmt;
 use std::rc::Rc;
 use std::cell::{Ref, RefMut, RefCell};
 use std::old_path::Path;
-use std::old_io::File;
+use std::old_io::{IoError, File};
+use std::error::{Error, FromError};
 use typecheck::TypeEnvironment;
 use compiler::*;
 use parser::Parser;
@@ -512,13 +513,51 @@ enum VMResult {
     Constructor(u16, Vec<VMResult>)
 }
 
-fn compile_iter<T : Iterator<Item=char>>(iterator: T) -> Result<Assembly, String> {
+macro_rules! vm_error {
+    ($($pre: ident :: $post: ident),+) => {
+
+    #[derive(Debug)]
+    pub enum VMError {
+        Io(IoError),
+        $($post(::$pre::$post)),+
+    }
+
+    impl fmt::Display for VMError {
+        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            match *self {
+                VMError::Io(ref e) => write!(f, "{}", e),
+                $(VMError::$post(ref e) => write!(f, "{}", e)),+
+            }
+        }
+    }
+
+    impl Error for VMError {
+        fn description(&self) -> &str {
+            match *self {
+                VMError::Io(ref e) => e.description(),
+                $(VMError::$post(ref e) => e.description()),+
+            }
+        }
+    }
+
+    impl FromError<IoError> for VMError {
+        fn from_error(e: IoError) -> Self { VMError::Io(e) }
+    }
+
+    $(impl FromError<::$pre::$post> for VMError {
+        fn from_error(e: ::$pre::$post) -> Self { VMError::$post(e) }
+    })+
+    }
+}
+vm_error! { parser::ParseError, renamer::RenamerError, typecheck::TypeError }
+
+fn compile_iter<T : Iterator<Item=char>>(iterator: T) -> Result<Assembly, VMError> {
     let mut parser = Parser::new(iterator);
-    let module = try!(parser.module().map_err(|e| format!("{:?}", e)));
-    let mut module = try!(rename_module(module).map_err(|e| format!("{}", e)));
+    let module = try!(parser.module());
+    let mut module = try!(rename_module(module));
     
     let mut typer = TypeEnvironment::new();
-    try!(typer.typecheck_module(&mut module).map_err(|e| format!("{}", e)));
+    try!(typer.typecheck_module(&mut module));
     let core_module = do_lambda_lift(translate_module(module));
     
     let mut compiler = Compiler::new();
@@ -526,9 +565,9 @@ fn compile_iter<T : Iterator<Item=char>>(iterator: T) -> Result<Assembly, String
 }
 
 ///Compiles a single file
-pub fn compile_file(filename: &str) -> Result<Assembly, String> {
+pub fn compile_file(filename: &str) -> Result<Assembly, VMError> {
     let path = &Path::new(filename);
-    let contents = try!(File::open(path).read_to_string().map_err(|e| e.to_string()));
+    let contents = try!(File::open(path).read_to_string());
     compile_iter(contents.as_slice().chars())
 }
 

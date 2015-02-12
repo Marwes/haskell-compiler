@@ -1,4 +1,5 @@
 use std::fmt;
+use std::error;
 use module::*;
 use lexer::Located;
 use scoped_map::ScopedMap;
@@ -86,6 +87,10 @@ impl fmt::Display for RenamerError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         self.0.report_errors(f, "renamer")
     }
+}
+
+impl error::Error for RenamerError {
+    fn description(&self) -> &str { "renaming error" }
 }
 
 #[derive(Debug)]

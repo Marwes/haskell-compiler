@@ -3,6 +3,7 @@ use std::collections::hash_map::Entry;
 use std::fmt;
 use std::mem::swap;
 use std::iter;
+use std::error;
 use module::*;
 use module::Expr::*;
 use module::LiteralData::*;
@@ -118,6 +119,10 @@ impl fmt::Display for TypeError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         self.0.report_errors(f, "typecheck")
     }
+}
+
+impl error::Error for TypeError {
+    fn description(&self) -> &str { "type error" }
 }
 
 

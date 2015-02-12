@@ -22,15 +22,14 @@ fn is_io(typ: &Type<Name>) -> bool {
 }
 
 ///Compiles an expression into an assembly
-fn compile_expr(prelude: &Assembly, expr_str: &str) -> Result<Assembly, ()> {
+fn compile_expr(prelude: &Assembly, expr_str: &str) -> Result<Assembly, VMError> {
     let mut parser = Parser::new(expr_str.chars());
-    let expr = try!(parser.expression_().map_err(|e| println!("{}", e)));
-    let mut expr = try!(rename_expr(expr).map_err(|e| println!("{}", e)));
+    let expr = try!(parser.expression_());
+    let mut expr = try!(rename_expr(expr));
 
     let mut type_env = TypeEnvironment::new();
     type_env.add_types(prelude as &DataTypes);
-    try!(type_env.typecheck_expr(&mut expr)
-        .map_err(|e| println!("{}", e)));
+    try!(type_env.typecheck_expr(&mut expr));
     let temp_module = Module::from_expr(translate_expr(expr));
     let m = do_lambda_lift(temp_module);
     
@@ -89,7 +88,10 @@ pub fn start() {
         };
         let assembly = match compile_expr(vm.get_assembly(0), expr_str.as_slice()) {
             Ok(assembly) => assembly,
-            Err(()) => continue
+            Err(err) => {
+                println!("{}", err);
+                continue
+            }
         };
         let (instructions, typ) = find_main(&assembly);
         let assembly_index = vm.add_assembly(assembly);
