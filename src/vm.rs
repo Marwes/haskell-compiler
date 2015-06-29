@@ -1,9 +1,12 @@
 use std::fmt;
 use std::rc::Rc;
 use std::cell::{Ref, RefMut, RefCell};
-use std::old_path::Path;
-use std::old_io::{IoError, File};
-use std::error::{Error, FromError};
+use std::path::Path;
+use std::io;
+use std::io::Read;
+use std::fs::File;
+use std::error::Error;
+use std::num::Wrapping;
 use typecheck::TypeEnvironment;
 use compiler::*;
 use parser::Parser;
@@ -166,7 +169,7 @@ impl <'a> VM {
     pub fn add_assembly(&mut self, assembly: Assembly) -> usize {
         self.assembly.push(assembly);
         let assembly_index = self.assembly.len() - 1;
-        for index in range(0, self.assembly.last().unwrap().super_combinators.len()) {
+        for index in 0..self.assembly.last().unwrap().super_combinators.len() {
             self.globals.push((assembly_index, index));
         }
         assembly_index
@@ -210,10 +213,10 @@ impl <'a> VM {
             debug!("{:?}", *x.borrow());
         }
         debug!("");
-        let mut i = 0;
-        while i < code.len() {
-            debug!("Executing instruction {:?} : {:?}", i, code[i]);
-            match code[i] {
+        let mut i = Wrapping(0);
+        while i.0 < code.len() {
+            debug!("Executing instruction {:?} : {:?}", i.0, code[i.0]);
+            match code[i.0] {
                 Add => primitive(stack, |l, r| { l + r }),
                 Sub => primitive(stack, |l, r| { l - r }),
                 Multiply => primitive(stack, |l, r| { l * r }),
@@ -254,7 +257,7 @@ impl <'a> VM {
                 Push(index) => {
                     let x = stack[index].clone();
                     debug!("Pushed {:?}", *x.borrow());
-                    for j in range(0, stack.len()) {
+                    for j in 0..stack.len() {
                         debug!(" {:?}  {:?}", j, *stack[j].borrow());
                     }
                     stack.push(x);
@@ -281,13 +284,13 @@ impl <'a> VM {
                     let mut new_stack = vec!(old.clone());
                     self.execute(&mut new_stack, UNWINDCODE, assembly_id);
                     stack.push(new_stack.pop().unwrap());
-                    debug!("{:?}", stack.as_slice());
+                    debug!("{:?}", stack);
                     let new = stack.last().unwrap().borrow().clone();
                     *(*old.node).borrow_mut() = new;
-                    debug!("{:?}", stack.as_slice());
+                    debug!("{:?}", stack);
                 }
                 Pop(num) => {
-                    for _ in range(0, num) {
+                    for _ in 0..num {
                         stack.pop();
                     }
                 }
@@ -295,7 +298,7 @@ impl <'a> VM {
                     stack[index] = Node::new(Indirection(stack.last().unwrap().clone()));
                 }
                 Unwind => {
-                    fn unwind<'a, F>(i_ptr: &mut usize, arity: usize, stack: &mut Vec<Node<'a>>, f: F)
+                    fn unwind<'a, F>(i_ptr: &mut Wrapping<usize>, arity: usize, stack: &mut Vec<Node<'a>>, f: F)
                         where F: FnOnce(&mut Vec<Node<'a>>) -> Node<'a> {
                         if stack.len() - 1 < arity {
                             while stack.len() > 1 {
@@ -303,25 +306,26 @@ impl <'a> VM {
                             }
                         }
                         else {
-                            for j in range(stack.len() - arity - 1, stack.len() - 1) {
-                                stack[j] = match *stack[j].borrow() {
+                            for j in (stack.len() - arity - 1)..(stack.len() - 1) {
+                                let temp = match *stack[j].borrow() {
                                     Application(_, ref arg) => arg.clone(),
                                     _ => panic!("Expected Application")
                                 };
+                                stack[j] = temp;
                             }
                             let value = {
                                 let mut new_stack = Vec::new();
-                                for i in range(0, arity) {
+                                for i in 0..arity {
                                     let index = stack.len() - i - 2;
                                     new_stack.push(stack[index].clone());
                                 }
                                 f(&mut new_stack)
                             };
-                            for _ in range(0, arity + 1) {
+                            for _ in 0..(arity + 1) {
                                 stack.pop();
                             }
                             stack.push(value);
-                            *i_ptr -= 1;
+                            *i_ptr = *i_ptr - Wrapping(1);
                         }
                     }
                     let x = (*stack.last().unwrap().borrow()).clone();
@@ -329,7 +333,7 @@ impl <'a> VM {
                     match x {
                         Application(func, _) => {
                             stack.push(func);
-                            i -= 1;//Redo the unwind instruction
+                            i = i - Wrapping(1);//Redo the unwind instruction
                         }
                         Combinator(comb) => {
                             debug!(">>> Call {:?}", comb.name);
@@ -339,24 +343,26 @@ impl <'a> VM {
                             });
                         }
                         BuiltinFunction(arity, func) => {
-                            unwind(&mut i, arity, stack, |new_stack| func(self, new_stack.as_slice()));
+                            unwind(&mut i, arity, stack, |new_stack| func(self, new_stack.as_ref()));
                         }
                         Indirection(node) => {
                             *stack.last_mut().unwrap() = node;
-                            i -= 1;
+                            i = i - Wrapping(1);//Redo the unwind instruction
                         }
                         _ => ()
                     }
                 }
                 Slide(size) => {
                     let top = stack.pop().unwrap();
-                    for _ in range(0, size) {
+                    for _ in 0..size {
                         stack.pop();
                     }
                     stack.push(top);
                 }
                 Split(_) => {
-                    match *stack.pop().unwrap().borrow() {
+                    let temp = stack.pop().unwrap();
+                    let temp = temp.borrow();
+                    match *temp {
                         Constructor(_, ref fields) => {
                             for field in fields.iter() {
                                 stack.push(field.clone());
@@ -367,7 +373,7 @@ impl <'a> VM {
                 }
                 Pack(tag, arity) => {
                     let mut args = Vec::new();
-                    for _ in range(0, arity) {
+                    for _ in 0..arity {
                         args.push(stack.pop().unwrap());
                     }
                     stack.push(Node::new(Constructor(tag, args)));
@@ -375,7 +381,7 @@ impl <'a> VM {
                 JumpFalse(address) => {
                     match *stack.last().unwrap().borrow() {
                         Constructor(0, _) => (),
-                        Constructor(1, _) => i = address - 1,
+                        Constructor(1, _) => i = Wrapping(address - 1),
                         _ => ()
                     }
                     stack.pop();
@@ -384,7 +390,7 @@ impl <'a> VM {
                     let jumped = match *stack.last().unwrap().borrow() {
                         Constructor(tag, _) => {
                             if jump_tag == tag as usize {
-                                i += 1;//Skip the jump instruction ie continue to the next test
+                                i = i + Wrapping(1);//Skip the jump instruction ie continue to the next test
                                 true
                             }
                             else {
@@ -398,7 +404,7 @@ impl <'a> VM {
                     }
                 }
                 Jump(to) => {
-                    i = to - 1;
+                    i = Wrapping(to - 1);
                 }
                 PushDictionary(index) => {
                     let assembly = &self.assembly[assembly_id];
@@ -455,8 +461,10 @@ impl <'a> VM {
                 }
                 ConstructDictionary(size) => {
                     let mut new_dict = InstanceDictionary { entries: Vec::new() };
-                    for _ in range(0, size) {
-                        match *stack.pop().unwrap().borrow() {
+                    for _ in 0..size {
+                        let temp = stack.pop().unwrap();
+                        let temp = temp.borrow();
+                        match *temp {
                             Dictionary(ref d) => {
                                 new_dict.entries.extend(d.entries.iter().map(|x| x.clone()));
                             }
@@ -476,7 +484,7 @@ impl <'a> VM {
                     stack.push(Node::new(Dictionary(new_dict)));
                 }
             }
-            i += 1;
+            i = i + Wrapping(1);
         }
         debug!("End frame");
         debug!("--------------------------");
@@ -488,7 +496,9 @@ impl <'a> VM {
 fn primitive_int<'a, F>(stack: &mut Vec<Node<'a>>, f: F) where F: FnOnce(isize, isize) -> Node_<'a> {
     let l = stack.pop().unwrap();
     let r = stack.pop().unwrap();
-    match (&*l.borrow(), &*r.borrow()) {
+    let l = l.borrow();
+    let r = r.borrow();
+    match (&*l, &*r) {
         (&Int(lhs), &Int(rhs)) => stack.push(Node::new(f(lhs, rhs))),
         (lhs, rhs) => panic!("Expected fully evaluted numbers in primitive instruction\n LHS: {:?}\nRHS: {:?} ", lhs, rhs)
     }
@@ -497,7 +507,9 @@ fn primitive_int<'a, F>(stack: &mut Vec<Node<'a>>, f: F) where F: FnOnce(isize, 
 fn primitive_float<'a, F>(stack: &mut Vec<Node<'a>>, f: F) where F: FnOnce(f64, f64) -> Node_<'a> {
     let l = stack.pop().unwrap();
     let r = stack.pop().unwrap();
-    match (&*l.borrow(), &*r.borrow()) {
+    let l = l.borrow();
+    let r = r.borrow();
+    match (&*l, &*r) {
         (&Float(lhs), &Float(rhs)) => stack.push(Node::new(f(lhs, rhs))),
         (lhs, rhs) => panic!("Expected fully evaluted numbers in primitive instruction\n LHS: {:?}\nRHS: {:?} ", lhs, rhs)
     }
@@ -507,7 +519,7 @@ fn primitive<F>(stack: &mut Vec<Node>, f: F) where F: FnOnce(isize, isize) -> is
 }
 
 #[derive(PartialEq, Debug)]
-enum VMResult {
+pub enum VMResult {
     Int(isize),
     Double(f64),
     Constructor(u16, Vec<VMResult>)
@@ -518,7 +530,7 @@ macro_rules! vm_error {
 
     #[derive(Debug)]
     pub enum VMError {
-        Io(IoError),
+        Io(io::Error),
         $($post(::$pre::$post)),+
     }
 
@@ -540,12 +552,12 @@ macro_rules! vm_error {
         }
     }
 
-    impl FromError<IoError> for VMError {
-        fn from_error(e: IoError) -> Self { VMError::Io(e) }
+    impl From<io::Error> for VMError {
+        fn from(e: io::Error) -> Self { VMError::Io(e) }
     }
 
-    $(impl FromError<::$pre::$post> for VMError {
-        fn from_error(e: ::$pre::$post) -> Self { VMError::$post(e) }
+    $(impl From<::$pre::$post> for VMError {
+        fn from(e: ::$pre::$post) -> Self { VMError::$post(e) }
     })+
     }
 }
@@ -567,8 +579,10 @@ fn compile_iter<T : Iterator<Item=char>>(iterator: T) -> Result<Assembly, VMErro
 ///Compiles a single file
 pub fn compile_file(filename: &str) -> Result<Assembly, VMError> {
     let path = &Path::new(filename);
-    let contents = try!(File::open(path).read_to_string());
-    compile_iter(contents.as_slice().chars())
+    let mut file = try!(File::open(path));
+    let mut contents = ::std::string::String::new();
+    try!(file.read_to_string(&mut contents));
+    compile_iter(contents.chars())
 }
 
 fn extract_result(node: Node_) -> Option<VMResult> {
@@ -624,7 +638,8 @@ fn execute_main_module_(assemblies: Vec<Assembly>) -> Result<Option<VMResult>, S
 #[allow(non_snake_case)]
 mod primitive {
 
-    use std::old_io::fs::File;
+    use std::io::Read;
+    use std::fs::File;
     use vm::{VM, Node, Node_};
     use vm::Node_::{Application, Constructor, BuiltinFunction, Char};
     use compiler::Instruction;
@@ -691,12 +706,13 @@ mod primitive {
         temp.push(stack[0].clone());
         let node_filename = vm.deepseq(temp, 123);
         let filename = get_string(&node_filename);
-        let mut file = match File::open(&Path::new(filename.as_slice())) {
+        let mut file = match File::open(&filename) {
             Ok(f) => f,
             Err(err) => panic!("error: readFile -> {:?}", err)
         };
-        let (begin, _end) = match file.read_to_string() {
-            Ok(s) => create_string(s.as_slice()),
+        let mut s = ::std::string::String::new();
+        let (begin, _end) = match file.read_to_string(&mut s) {
+            Ok(_) => create_string(&s),
             Err(err) => panic!("error: readFile -> {:?}", err)
         };
         //Return (String, RealWorld)
@@ -734,8 +750,8 @@ mod primitive {
         let mut node = Node::new(Constructor(0, vec!()));
         let first = node.clone();
         for c in s.chars() {
-            node = match &mut *node.borrow_mut() {
-                &mut Constructor(ref mut tag, ref mut args) => {
+            let temp = match *node.borrow_mut() {
+                Constructor(ref mut tag, ref mut args) => {
                     *tag = 1;
                     args.push(Node::new(Char(c)));
                     args.push(Node::new(Constructor(0, Vec::new())));
@@ -743,6 +759,7 @@ mod primitive {
                 }
                 _ => panic!()
             };
+            node = temp;
         }
         (first, node)
     }

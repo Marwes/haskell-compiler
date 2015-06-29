@@ -1,9 +1,7 @@
 use std::collections::HashMap;
-use std::iter::range_step;
 use std::default::Default;
 use std::fmt;
 use std::iter;
-use std::str::Str;
 use interner::{InternedStr, intern};
 
 #[derive(Clone, Debug, Default, Eq, Hash)]
@@ -51,7 +49,7 @@ impl TypeVariable {
     }
 }
 
-impl <Id: fmt::Display + Str> Type<Id> {
+impl <Id: fmt::Display + AsRef<str>> Type<Id> {
 
     ///Creates a new type variable with the specified id
     pub fn new_var(id : VarId) -> Type<Id> {
@@ -166,9 +164,9 @@ impl <Id> Type <Id> {
     }
 }
 
-impl <S: ::std::hash::Hasher + ::std::hash::Writer> ::std::hash::Hash<S> for TypeVariable {
+impl ::std::hash::Hash for TypeVariable {
     #[inline]
-    fn hash(&self, state: &mut S) {
+    fn hash<H: ::std::hash::Hasher>(&self, state: &mut H) {
         //Only has the id since the kind should always be the same for two variables
         self.id.hash(state);
     }
@@ -186,16 +184,16 @@ pub fn tuple_name(n: usize) -> String {
 pub fn tuple_type(n: usize) -> (String, Type) {
     let mut var_list = Vec::new();
     assert!(n < 26);
-    for i in range(0, n) {
+    for i in 0..n {
         let c = (('a' as u8) + i as u8) as char;
-        let var = TypeVariable::new_var_kind(intern(c.to_string().as_slice()), Kind::Star.clone());
+        let var = TypeVariable::new_var_kind(intern(&c.to_string()), Kind::Star.clone());
         var_list.push(Type::Generic(var));
     }
     let ident = tuple_name(n);
-    let mut typ = Type::new_op(intern(ident.as_slice()), var_list);
-    for i in range_step(n as isize - 1, -1, -1) {
+    let mut typ = Type::new_op(intern(&ident), var_list);
+    for i in (0..n).rev() {
         let c = (('a' as u8) + i as u8) as char;
-        typ = function_type_(Type::Generic(TypeVariable::new(intern(c.to_string().as_slice()))), typ);
+        typ = function_type_(Type::Generic(TypeVariable::new(intern(&c.to_string()))), typ);
     }
     (ident, typ)
 }
@@ -262,7 +260,7 @@ impl fmt::Display for Kind {
 impl Kind {
     pub fn new(v: isize) -> Kind {
         let mut kind = Kind::Star.clone();
-        for _ in range(1, v) {
+        for _ in 1..v {
             kind = Kind::Function(box Kind::Star, box kind);
         }
         kind
@@ -291,7 +289,7 @@ impl <I: fmt::Display> fmt::Display for TypeConstructor<I> {
     }
 }
 
-impl <T: fmt::Display, I: fmt::Display + Str> fmt::Display for Qualified<T, I> {
+impl <T: fmt::Display, I: fmt::Display + AsRef<str>> fmt::Display for Qualified<T, I> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         if self.constraints.len() != 0 {
             try!(write!(f, "("));
@@ -308,24 +306,24 @@ impl <T: fmt::Display, I: fmt::Display + Str> fmt::Display for Qualified<T, I> {
     }
 }
 
-#[derive(PartialEq, Copy, PartialOrd)]
+#[derive(PartialEq, Copy, Clone, PartialOrd)]
 enum Prec_ {
     Top,
     Function,
     Constructor,
 }
-#[derive(Copy)]
+#[derive(Copy, Clone)]
 struct Prec<'a, Id: 'a>(Prec_, &'a Type<Id>);
 
 ///If the type is a function it returns the type of the argument and the result type,
 ///otherwise it returns None
-pub fn try_get_function<'a, Id: Str>(typ: &'a Type<Id>) -> Option<(&'a Type<Id>, &'a Type<Id>)> {
+pub fn try_get_function<'a, Id: AsRef<str>>(typ: &'a Type<Id>) -> Option<(&'a Type<Id>, &'a Type<Id>)> {
     match *typ {
         Type::Application(ref xx, ref result) => {
             match **xx {
                 Type::Application(ref xx, ref arg) => {
                     match **xx {
-                        Type::Constructor(ref op) if "->" == op.name.as_slice() => {
+                        Type::Constructor(ref op) if "->" == op.name.as_ref() => {
                             Some((&**arg, &**result))
                         }
                         _ => None
@@ -338,7 +336,7 @@ pub fn try_get_function<'a, Id: Str>(typ: &'a Type<Id>) -> Option<(&'a Type<Id>,
     }
 }
 
-impl <'a, Id: fmt::Display + Str> fmt::Display for Prec<'a, Id> {
+impl <'a, Id: fmt::Display + AsRef<str>> fmt::Display for Prec<'a, Id> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let Prec(p, t) = *self;
         match *t {
@@ -357,7 +355,7 @@ impl <'a, Id: fmt::Display + Str> fmt::Display for Prec<'a, Id> {
                     }
                     None => {
                         match **lhs {
-                            Type::Constructor(ref op) if "[]" == op.name.as_slice() => {
+                            Type::Constructor(ref op) if "[]" == op.name.as_ref() => {
                                 write!(f, "[{}]", rhs)
                             }
                             _ => {
@@ -376,7 +374,7 @@ impl <'a, Id: fmt::Display + Str> fmt::Display for Prec<'a, Id> {
     }
 }
 
-impl <I: fmt::Display + Str> fmt::Display for Type<I> {
+impl <I: fmt::Display + AsRef<str>> fmt::Display for Type<I> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", Prec(Prec_::Top, self))
     }

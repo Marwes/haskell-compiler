@@ -10,7 +10,7 @@ impl MutVisitor<Name> for PrecedenceVisitor {
         walk_expr_mut(self, expr);
         match expr.expr {
             Expr::OpApply(..) => {
-                let mut temp = TypedExpr::new(Expr::Identifier(Name { uid: -1, name: intern("") }));
+                let mut temp = TypedExpr::new(Expr::Identifier(Name { uid: usize::max_value(), name: intern("") }));
                 ::std::mem::swap(&mut temp, expr);
                 temp = self.rewrite(box temp);
                 ::std::mem::swap(&mut temp, expr);

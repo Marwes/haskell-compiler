@@ -97,7 +97,7 @@ pub struct TypeDeclaration<Ident = InternedStr> {
     pub typ : Qualified<Type<Ident>, Ident>,
     pub name : Ident
 }
-impl <T : fmt::Display + Str> fmt::Display for TypeDeclaration<T> {
+impl <T : fmt::Display + AsRef<str>> fmt::Display for TypeDeclaration<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{} :: {}", self.name, self.typ)
     }
@@ -117,17 +117,17 @@ impl <T: PartialEq> PartialEq for TypedExpr<T> {
     }
 }
 
-impl <T: fmt::Display + Str> fmt::Display for TypedExpr<T> {
+impl <T: fmt::Display + AsRef<str>> fmt::Display for TypedExpr<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{} :: {}", self.expr, self.typ)
     }
 }
 
 impl TypedExpr {
-    pub fn new<T: fmt::Display + Str>(expr : Expr<T>) -> TypedExpr<T> {
+    pub fn new<T: fmt::Display + AsRef<str>>(expr : Expr<T>) -> TypedExpr<T> {
         TypedExpr { expr : expr, typ : Type::new_var(intern("a")), location : Location { column : -1, row : -1, absolute : -1 } }
     }
-    pub fn with_location<T: fmt::Display + Str>(expr : Expr<T>, loc : Location) -> TypedExpr<T> {
+    pub fn with_location<T: fmt::Display + AsRef<str>>(expr : Expr<T>, loc : Location) -> TypedExpr<T> {
         TypedExpr { expr : expr, typ : Type::new_var(intern("a")), location : loc }
     }
 }
@@ -195,13 +195,13 @@ pub enum Expr<Ident = InternedStr> {
     TypeSig(Box<TypedExpr<Ident>>, Qualified<Type<Ident>, Ident>),
     Paren(Box<TypedExpr<Ident>>)
 }
-impl <T: fmt::Display + Str> fmt::Display for Binding<T> {
+impl <T: fmt::Display + AsRef<str>> fmt::Display for Binding<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{} = {}", self.name, self.matches)
     }
 }
 
-impl <T: fmt::Display + Str> fmt::Display for Expr<T> {
+impl <T: fmt::Display + AsRef<str>> fmt::Display for Expr<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         try!(write_core_expr!(*self, f, _));
         match *self {
@@ -229,7 +229,7 @@ impl <T: fmt::Display + Str> fmt::Display for Expr<T> {
         }
     }
 }
-impl <T: fmt::Display + Str> fmt::Display for Pattern<T> {
+impl <T: fmt::Display + AsRef<str>> fmt::Display for Pattern<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             &Pattern::Identifier(ref s) => write!(f, "{}", s),
@@ -246,12 +246,12 @@ impl <T: fmt::Display + Str> fmt::Display for Pattern<T> {
     }
 }
 
-impl <T: fmt::Display + Str> fmt::Display for Alternative<T> {
+impl <T: fmt::Display + AsRef<str>> fmt::Display for Alternative<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{} -> {}", self.pattern.node, self.matches)
     }
 }
-impl <T: fmt::Display + Str> fmt::Display for Match<T> {
+impl <T: fmt::Display + AsRef<str>> fmt::Display for Match<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             Match::Simple(ref e) => write!(f, "{}", *e),
@@ -520,7 +520,7 @@ pub fn walk_pattern_mut<Ident, V: MutVisitor<Ident>>(visitor: &mut V, pattern: &
     }
 }
 
-struct Binds<'a, Ident: 'a> {
+pub struct Binds<'a, Ident: 'a> {
     vec: &'a [Binding<Ident>]
 }
 
@@ -558,8 +558,8 @@ pub fn binding_groups<'a, Ident: Eq>(bindings: &'a [Binding<Ident>]) -> Binds<'a
 pub fn encode_binding_identifier(instancename : InternedStr, bindingname : InternedStr) -> InternedStr {
     let mut buffer = String::new();
     buffer.push_str("#");
-    buffer.push_str(instancename.clone().as_slice());
-    buffer.push_str(bindingname.clone().as_slice());
-    intern(buffer.as_slice())
+    buffer.push_str(&instancename);
+    buffer.push_str(&bindingname);
+    intern(buffer.as_ref())
 }
 

@@ -182,7 +182,7 @@ fn remove_empty_let<T>(expr: &mut Expr<T>) {
         temp => temp
     };
     ::std::mem::swap(&mut temp, expr);
-    unsafe { ::std::mem::forget(temp) }
+    ::std::mem::forget(temp);
 }
 
 ///Takes a module and adds all variables which are captured into a lambda to its arguments
@@ -283,7 +283,7 @@ test2 x =
                     &Let(ref binds, ref body) => {
                         //Push the argument of the function itself
                         args.push(intern("x"));
-                        assert!(check_args(&binds[0].expression, args.as_slice()));
+                        assert!(check_args(&binds[0].expression, args.as_ref()));
                         assert_eq!(Identifier(binds[0].name.clone()), **body);
                     }
                     _ => assert!(false, "Expected Let, found {:?}", bind.expression)
@@ -295,7 +295,7 @@ test2 x =
                 match get_let(&bind.expression, &mut args) {
                     &Let(ref binds, ref body) => {
                         args.push(intern("y"));
-                        assert!(check_args(&binds[0].expression, args.as_slice()));
+                        assert!(check_args(&binds[0].expression, args.as_ref()));
                         assert_eq!(Identifier(binds[0].name.clone()), **body);
                     }
                     _ => assert!(false, "Expected Let")
@@ -369,12 +369,15 @@ test2 x =
 
     #[bench]
     fn bench(b: &mut Bencher) {
-        use std::old_io::File;
+        use std::fs::File;
+        use std::io::Read;
+        use std::path::Path;
         use typecheck::test::do_typecheck;
 
         let path = &Path::new("Prelude.hs");
-        let contents = File::open(path).read_to_string().unwrap();
-        let module = do_typecheck(contents.as_slice());
+        let mut contents = ::std::string::String::new();
+        File::open(path).and_then(|mut f| f.read_to_string(&mut contents)).unwrap();
+        let module = do_typecheck(&contents);
         b.iter(|| {
             do_lambda_lift(translate_module(module.clone()))
         });

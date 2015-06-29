@@ -14,7 +14,7 @@ fn is_io(typ: &Type<Name>) -> bool {
     match *typ {
         Type::Application(ref lhs, _) => 
             match **lhs {
-                Type::Constructor(ref op) => op.name.as_slice() == "IO",
+                Type::Constructor(ref op) => op.name.as_ref() == "IO",
                 _ => false
             },
         _ => false
@@ -66,7 +66,7 @@ pub fn run_and_print_expr(expr_str: &str) {
         .unwrap();
     let mut vm = VM::new();
     vm.add_assembly(prelude);
-    let assembly = compile_expr(vm.get_assembly(0), expr_str.as_slice())
+    let assembly = compile_expr(vm.get_assembly(0), expr_str.as_ref())
         .unwrap();
     let (instructions, type_decl) = find_main(&assembly);
     let assembly_index = vm.add_assembly(assembly);
@@ -81,12 +81,12 @@ pub fn start() {
         Ok(prelude) => { vm.add_assembly(prelude); }
         Err(err) => println!("Failed to compile the prelude\nReason: {}", err)
     }
-    for line in ::std::old_io::stdin().lock().lines() {
+    for line in ::std::io::stdin().lock().lines() {
         let expr_str = match line {
             Ok(l) => l,
             Err(e) => panic!("Reading line failed with '{:?}'", e)
         };
-        let assembly = match compile_expr(vm.get_assembly(0), expr_str.as_slice()) {
+        let assembly = match compile_expr(vm.get_assembly(0), expr_str.as_ref()) {
             Ok(assembly) => assembly,
             Err(err) => {
                 println!("{}", err);

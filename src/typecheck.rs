@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 use std::fmt;
 use std::mem::swap;
-use std::iter;
 use std::error;
 use module::*;
 use module::Expr::*;
@@ -63,13 +62,13 @@ impl Types for Module<Name> {
     fn find_class<'a>(&'a self, name: Name) -> Option<(&'a [Constraint<Name>], &'a TypeVariable, &'a [TypeDeclaration<Name>])> {
         self.classes.iter()
             .find(|class| name == class.name)
-            .map(|class| (class.constraints.as_slice(), &class.variable, class.declarations.as_slice()))
+            .map(|class| (class.constraints.as_ref(), &class.variable, class.declarations.as_ref()))
     }
 
     fn find_instance<'a>(&'a self, classname: Name, typ: &TcType) -> Option<(&'a [Constraint<Name>], &'a TcType)> {
         for instance in self.instances.iter() {
             if classname == instance.classname && extract_applied_type(&instance.typ) == extract_applied_type(typ) {//test name
-                return Some((instance.constraints.as_slice(), &instance.typ));
+                return Some((instance.constraints.as_ref(), &instance.typ));
             }
         }
         None
@@ -156,20 +155,20 @@ impl Bindings for Module<Name> {
 
     fn each_binding(&self, func: &mut FnMut(&[Binding<Name>], (usize, usize))) {
         let mut index = 0;
-        for binds in binding_groups(self.bindings.as_slice()) {
+        for binds in binding_groups(self.bindings.as_ref()) {
             func(binds, (0, index));
             index += binds.len();
         }
         for (instance_index, instance) in self.instances.iter().enumerate() {
             index = 0;
-            for binds in binding_groups(instance.bindings.as_slice()) {
+            for binds in binding_groups(instance.bindings.as_ref()) {
                 func(binds, (instance_index + 1, index));
                 index += binds.len();
             }
         }
         for (class_index, class) in self.classes.iter().enumerate() {
             index = 0;
-            for binds in binding_groups(class.bindings.as_slice()) {
+            for binds in binding_groups(class.bindings.as_ref()) {
                 func(binds, (class_index + 1 + self.instances.len(), index));
                 index += binds.len();
             }
@@ -197,7 +196,7 @@ impl <'a> Bindings for BindingsWrapper<'a> {
 
     fn each_binding(&self, func: &mut FnMut(&[Binding<Name>], (usize, usize))) {
         let mut index = 0;
-        for binds in binding_groups(self.value.as_slice()) {
+        for binds in binding_groups(self.value.as_ref()) {
             func(binds, (0, index));
             index += binds.len();
         }
@@ -217,19 +216,19 @@ fn add_primitives(globals: &mut HashMap<Name, Qualified<TcType, Name>>, typename
     let typ = Type::new_op(name(typename), vec![]);
     {
         let binop = typ::function_type(&typ, &typ::function_type(&typ, &typ));
-        insert_to(globals, prim(typename, "Add").as_slice(), binop.clone());
-        insert_to(globals, prim(typename, "Subtract").as_slice(), binop.clone());
-        insert_to(globals, prim(typename, "Multiply").as_slice(), binop.clone());
-        insert_to(globals, prim(typename, "Divide").as_slice(), binop.clone());
-        insert_to(globals, prim(typename, "Remainder").as_slice(), binop.clone());
+        insert_to(globals, prim(typename, "Add").as_ref(), binop.clone());
+        insert_to(globals, prim(typename, "Subtract").as_ref(), binop.clone());
+        insert_to(globals, prim(typename, "Multiply").as_ref(), binop.clone());
+        insert_to(globals, prim(typename, "Divide").as_ref(), binop.clone());
+        insert_to(globals, prim(typename, "Remainder").as_ref(), binop.clone());
     }
     {
         let binop = typ::function_type_(typ.clone(), typ::function_type_(typ, typ::bool_type()));
-        insert_to(globals, prim(typename, "EQ").as_slice(), binop.clone());
-        insert_to(globals, prim(typename, "LT").as_slice(), binop.clone());
-        insert_to(globals, prim(typename, "LE").as_slice(), binop.clone());
-        insert_to(globals, prim(typename, "GT").as_slice(), binop.clone());
-        insert_to(globals, prim(typename, "GE").as_slice(), binop.clone());
+        insert_to(globals, prim(typename, "EQ").as_ref(), binop.clone());
+        insert_to(globals, prim(typename, "LT").as_ref(), binop.clone());
+        insert_to(globals, prim(typename, "LE").as_ref(), binop.clone());
+        insert_to(globals, prim(typename, "GT").as_ref(), binop.clone());
+        insert_to(globals, prim(typename, "GE").as_ref(), binop.clone());
     }
 }
 
@@ -251,9 +250,9 @@ impl <'a> TypeEnvironment<'a> {
         insert_to(&mut globals, "[]", list.clone());
         insert_to(&mut globals, ":", typ::function_type(&var, &typ::function_type(&list, &list)));
         insert_to(&mut globals, "()", typ::unit());
-        for i in range(2 as usize, 10) {
+        for i in (2 as usize)..10 {
             let (name, typ) = typ::tuple_type(i);
-            insert_to(&mut globals, name.as_slice(), typ);
+            insert_to(&mut globals, name.as_ref(), typ);
         }
         TypeEnvironment {
             assemblies: Vec::new(),
@@ -327,7 +326,7 @@ impl <'a> TypeEnvironment<'a> {
             for binding in class.bindings.iter_mut() {
                 let classname = &class.name;
                 let decl = class.declarations.iter()
-                    .find(|decl| binding.name.name.as_slice().ends_with(decl.name.as_slice()))
+                    .find(|decl| binding.name.name.as_ref().ends_with(decl.name.as_ref()))
                     .unwrap_or_else(|| panic!("Could not find {:?} in class {:?}", binding.name, classname));
                 binding.typ = decl.typ.clone();
                 {
@@ -348,7 +347,7 @@ impl <'a> TypeEnvironment<'a> {
         for instance in module.instances.iter_mut() {
             let (_class_constraints, class_var, class_decls) = module.classes.iter()
                 .find(|class| class.name == instance.classname)
-                .map(|class| (class.constraints.as_slice(), &class.variable, class.declarations.as_slice()))
+                .map(|class| (class.constraints.as_ref(), &class.variable, class.declarations.as_ref()))
                 .or_else(|| {
                     self.assemblies.iter()
                         .filter_map(|a| a.find_class(instance.classname))
@@ -369,7 +368,7 @@ impl <'a> TypeEnvironment<'a> {
             }
             for binding in instance.bindings.iter_mut() {
                 let classname = &instance.classname;
-                let decl = class_decls.iter().find(|decl| binding.name.as_slice().ends_with(decl.name.as_slice()))
+                let decl = class_decls.iter().find(|decl| binding.name.as_ref().ends_with(decl.name.as_ref()))
                     .unwrap_or_else(|| panic!("Could not find {:?} in class {:?}", binding.name, classname));
                 binding.typ = decl.typ.clone();
                 replace_var(&mut binding.typ.value, class_var, &instance.typ);
@@ -392,10 +391,10 @@ impl <'a> TypeEnvironment<'a> {
                     .peekable();
                 if !missing_super_classes.is_empty() {
                     let mut buffer = ::std::string::String::new();
-                    buffer.push_str(missing_super_classes.next().unwrap().class.as_slice());
+                    buffer.push_str(missing_super_classes.next().unwrap().class.as_ref());
                     for constraint in missing_super_classes {
                         buffer.push_str(", ");
-                        buffer.push_str(constraint.class.as_slice());
+                        buffer.push_str(constraint.class.as_ref());
                     }
                     panic!("The type {:?} does not have all necessary super class instances required for {:?}.\n Missing: {:?}",
                         instance.typ, instance.classname, buffer);
@@ -536,7 +535,7 @@ impl <'a> TypeEnvironment<'a> {
     fn find_class_constraints(&self, class: Name) -> Option<&[Constraint<Name>]> {
         self.classes.iter()
             .find(|& &(_, ref name)| *name == class)
-            .map(|x| x.0.as_slice())
+            .map(|x| x.0.as_ref())
             .or_else(|| self.assemblies.iter()
                 .filter_map(|types| types.find_class(class))//Find the class
                 .next()//next will get us the first class (but should only be one)
@@ -580,7 +579,7 @@ impl <'a> TypeEnvironment<'a> {
     ///Creates a new type variable with a kind
     fn new_var_kind(&mut self, kind: Kind) -> TcType {
         self.variable_age += 1;
-        let mut var = Type::new_var_kind(intern(self.variable_age.to_string().as_slice()), kind);
+        let mut var = Type::new_var_kind(intern(self.variable_age.to_string().as_ref()), kind);
         match var {
             Type::Variable(ref mut var) => var.age = self.variable_age,
             _ => ()
@@ -815,7 +814,7 @@ impl <'a> TypeEnvironment<'a> {
     ///map f [] = ...
     fn typecheck_binding_group(&mut self, subs: &mut Substitution, bindings: &mut [Binding<Name>]) {
         debug!("Begin typecheck {:?} :: {:?}", bindings[0].name, bindings[0].typ);
-        let mut argument_types: Vec<_> = iter::range(0, bindings[0].arguments.len())
+        let mut argument_types: Vec<_> = (0..bindings[0].arguments.len())
             .map(|_| self.new_var())
             .collect();
         let type_var = match bindings[0].typ.value {
@@ -839,7 +838,7 @@ impl <'a> TypeEnvironment<'a> {
                 if arguments.len() == 0 { expr.clone() }
                 else { typ::function_type_(arguments[0].clone(), make_function(&arguments[1..], expr)) }
             }
-            typ = make_function(argument_types.as_slice(), &typ);
+            typ = make_function(argument_types.as_ref(), &typ);
             match previous_type {
                 Some(mut prev) => unify_location(self, subs, bind.matches.location(), &mut typ, &mut prev),
                 None => ()
@@ -913,7 +912,7 @@ impl <'a> TypeEnvironment<'a> {
                 if is_global {
                     for index in group.iter() {
                         for bind in bindings.get_mut(graph.get_vertex(*index).value).iter() {
-                            replace(&mut self.constraints, &mut self.named_types[bind.name].value, subs);
+                            replace(&mut self.constraints, &mut self.named_types.get_mut(&bind.name).unwrap().value, subs);
                         }
                     }
                     self.local_types.clear();
@@ -931,10 +930,10 @@ impl <'a> TypeEnvironment<'a> {
                 for bind in binds.iter_mut() {
                     {
                         let typ = if is_global {
-                            &mut self.named_types[bind.name]
+                            self.named_types.get_mut(&bind.name).unwrap()
                         }
                         else {
-                            &mut self.local_types[bind.name]
+                            self.local_types.get_mut(&bind.name).unwrap()
                         };
                         bind.typ.value = typ.value.clone();
                         quantify(start_var_age, typ);
@@ -1466,11 +1465,11 @@ fn build_graph(bindings: &Bindings) -> Graph<(usize, usize)> {
     bindings.each_binding(&mut |binds, _| {
         for bind in binds.iter() {
             match bind.matches {
-                Match::Simple(ref e) => add_edges(&mut graph, &map, map[bind.name], e),
+                Match::Simple(ref e) => add_edges(&mut graph, &map, map[&bind.name], e),
                 Match::Guards(ref gs) => {
                     for g in gs.iter() {
-                        add_edges(&mut graph, &map, map[bind.name], &g.predicate);
-                        add_edges(&mut graph, &map, map[bind.name], &g.expression);
+                        add_edges(&mut graph, &map, map[&bind.name], &g.predicate);
+                        add_edges(&mut graph, &map, map[&bind.name], &g.expression);
                     }
                 }
             }
@@ -1652,7 +1651,9 @@ use renamer::Name;
 use renamer::tests::{rename_expr, rename_module};
 
 use parser::Parser;
-use std::old_io::File;
+use std::io::Read;
+use std::path::Path;
+use std::fs::File;
 
 use test::Bencher;
 
@@ -1809,9 +1810,9 @@ in b".chars());
     match &expr.expr {
         &Let(ref binds, _) => {
             assert_eq!(binds.len(), 4);
-            assert_eq!(binds[0].name.as_slice(), "a");
+            assert_eq!(binds[0].name.as_ref(), "a");
             assert_eq!(binds[0].typ.value, int_type);
-            assert_eq!(binds[1].name.as_slice(), "test");
+            assert_eq!(binds[1].name.as_ref(), "test");
             assert_eq!(binds[1].typ.value, list_type);
         }
         _ => panic!("Error")
@@ -1858,12 +1859,12 @@ main x y = primIntAdd (test x) (test y)".chars());
     let b = Type::new_var(intern("b"));
     let test = function_type_(a.clone(), function_type_(b.clone(), int_type()));
     assert_eq!(&typ.value, &test);
-    assert_eq!(typ.constraints[0].class.as_slice(), "Test");
-    assert_eq!(typ.constraints[1].class.as_slice(), "Test");
+    assert_eq!(typ.constraints[0].class.as_ref(), "Test");
+    assert_eq!(typ.constraints[1].class.as_ref(), "Test");
 }
 
 #[test]
-#[should_fail]
+#[should_panic]
 fn typecheck_constraints_no_instance() {
     let file =
 r"class Test a where
@@ -1912,11 +1913,11 @@ test x y = case x < y of
     let a = Type::new_var(intern("a"));
     assert_eq!(typ.value, function_type_(a.clone(), function_type_(a.clone(), bool_type())));
     assert_eq!(typ.constraints.len(), 1);
-    assert_eq!(typ.constraints[0].class.as_slice(), "Ord");
+    assert_eq!(typ.constraints[0].class.as_ref(), "Ord");
 }
 
 #[test]
-#[should_fail]
+#[should_panic]
 fn typecheck_missing_super_class() {
     let mut parser = Parser::new(
 r"data Bool = True | False
@@ -2007,7 +2008,7 @@ main = fmap add2 (Just 3)";
     let main = &module.bindings[1];
     assert_eq!(main.typ.value, Type::new_op(intern("Maybe"), vec![int_type()]));
 }
-#[should_fail]
+#[should_panic]
 #[test]
 fn typecheck_functor_error() {
 
@@ -2029,10 +2030,11 @@ main = fmap add2 3");
 #[test]
 fn typecheck_prelude() {
     let path = &Path::new("Prelude.hs");
-    let contents = File::open(path).read_to_string().unwrap();
-    let module = do_typecheck(contents.as_slice());
+    let mut contents = ::std::string::String::new();
+    File::open(path).and_then(|mut f| f.read_to_string(&mut contents)).unwrap();
+    let module = do_typecheck(contents.as_ref());
 
-    let id = module.bindings.iter().find(|bind| bind.name.as_slice() == "id");
+    let id = module.bindings.iter().find(|bind| bind.name.as_ref() == "id");
     assert!(id != None);
     let id_bind = id.unwrap();
     assert_eq!(id_bind.typ.value, function_type_(Type::new_var(intern("a")), Type::new_var(intern("a"))));
@@ -2043,8 +2045,9 @@ fn typecheck_import() {
    
     let prelude = {
         let path = &Path::new("Prelude.hs");
-        let contents = File::open(path).read_to_string().unwrap();
-        do_typecheck(contents.as_slice())
+        let mut contents = ::std::string::String::new();
+        File::open(path).and_then(|mut f| f.read_to_string(&mut contents)).unwrap();
+        do_typecheck(contents.as_ref())
     };
 
     let file = 
@@ -2053,9 +2056,9 @@ test1 = map not [True, False]
 test2 = id (primIntAdd 2 0)";
     let module = do_typecheck_with(file, &[&prelude as &DataTypes]);
 
-    assert_eq!(module.bindings[0].name.as_slice(), "test1");
+    assert_eq!(module.bindings[0].name.as_ref(), "test1");
     assert_eq!(module.bindings[0].typ.value, list_type(bool_type()));
-    assert_eq!(module.bindings[1].name.as_slice(), "test2");
+    assert_eq!(module.bindings[1].name.as_ref(), "test2");
     assert_eq!(module.bindings[1].typ.value, int_type());
 }
 
@@ -2082,8 +2085,9 @@ fn do_expr_simple() {
     
     let prelude = {
         let path = &Path::new("Prelude.hs");
-        let contents = File::open(path).read_to_string().unwrap();
-        do_typecheck(contents.as_slice())
+        let mut contents = ::std::string::String::new();
+        File::open(path).and_then(|mut f| f.read_to_string(&mut contents)).unwrap();
+        do_typecheck(contents.as_ref())
     };
 
     let file = 
@@ -2104,8 +2108,9 @@ fn do_expr_pattern() {
     
     let prelude = {
         let path = &Path::new("Prelude.hs");
-        let contents = File::open(path).read_to_string().unwrap();
-        do_typecheck(contents.as_slice())
+        let mut contents = ::std::string::String::new();
+        File::open(path).and_then(|mut f| f.read_to_string(&mut contents)).unwrap();
+        do_typecheck(&contents)
     };
 
     let file = 
@@ -2119,7 +2124,7 @@ test x = do
     let var = Type::new_var(intern("a"));
     let t = function_type_(Type::new_var_args(intern("c"), vec![list_type(var.clone())]), Type::new_var_args(intern("c"), vec![var.clone()]));
     assert_eq!(module.bindings[0].typ.value, t);
-    assert_eq!(module.bindings[0].typ.constraints[0].class.as_slice(), "Monad");
+    assert_eq!(module.bindings[0].typ.constraints[0].class.as_ref(), "Monad");
 }
 
 #[test]
@@ -2209,7 +2214,7 @@ makeEven i
 
 
 #[test]
-#[should_fail]
+#[should_panic]
 fn typedeclaration_to_general() {
     do_typecheck(r"
 test x = primIntAdd 2 x :: Num a => a
@@ -2217,13 +2222,14 @@ test x = primIntAdd 2 x :: Num a => a
 }
 
 #[test]
-#[should_fail]
+#[should_panic]
 fn do_expr_wrong_monad() {
     
     let prelude = {
         let path = &Path::new("Prelude.hs");
-        let contents = File::open(path).read_to_string().unwrap();
-        do_typecheck(contents.as_slice())
+        let mut contents = ::std::string::String::new();
+        File::open(path).and_then(|mut f| f.read_to_string(&mut contents)).unwrap();
+        do_typecheck(contents.as_ref())
     };
 
     let file = 
@@ -2235,18 +2241,18 @@ test x = do
 }
 
 #[test]
-#[should_fail]
+#[should_panic]
 fn wrong_type() {
     do_typecheck(r"test = primIntAdd 2 []");
 }
 
 #[test]
-#[should_fail]
+#[should_panic]
 fn argument_count_error() {
     do_typecheck("test = primIntAdd 2 2 3");
 }
 #[test]
-#[should_fail]
+#[should_panic]
 fn case_alternative_error() {
     do_typecheck(
 r"
@@ -2256,7 +2262,7 @@ test = case [primIntAdd 1 2] of
 }
 
 #[test]
-#[should_fail]
+#[should_panic]
 fn type_declaration_error() {
     do_typecheck(
 r"
@@ -2265,7 +2271,7 @@ test x y = primIntAdd x y");
 }
 
 #[test]
-#[should_fail]
+#[should_panic]
 fn all_constraints_match() {
     typecheck_string(
 r"
@@ -2284,7 +2290,7 @@ test2 = test (Just True)")
 }
 
 #[test]
-#[should_fail]
+#[should_panic]
 fn where_binding() {
     typecheck_string(
 r"
@@ -2298,7 +2304,7 @@ test = case 1 :: Int of
 }
 
 #[test]
-#[should_fail]
+#[should_panic]
 fn newtype_wrong_arg() {
     typecheck_string(
 r"
@@ -2314,8 +2320,9 @@ test = IntPair (True, False)
 #[bench]
 fn bench_prelude(b: &mut Bencher) {
     let path = &Path::new("Prelude.hs");
-    let contents = File::open(path).read_to_string().unwrap();
-    let mut parser = Parser::new(contents.as_slice().chars());
+    let mut contents = ::std::string::String::new();
+    File::open(path).and_then(|mut f| f.read_to_string(&mut contents)).unwrap();
+    let mut parser = Parser::new(contents.chars());
     let module = rename_module(parser.module().unwrap());
 
     b.iter(|| {

@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::cell::RefCell;
+use std::ops::Deref;
 use std::fmt;
 
 #[derive(Eq, PartialEq, Clone, Copy, Default, Hash, Debug)]
@@ -47,11 +48,19 @@ pub fn get_local_interner() -> Rc<RefCell<Interner>> {
 
 pub fn intern(s: &str) -> InternedStr {
     let i = get_local_interner();
-    (*i).borrow_mut().intern(s)
+    let mut i = i.borrow_mut();
+    i.intern(s)
 }
 
-impl Str for InternedStr {
-    fn as_slice<'a>(&'a self) -> &'a str {
+impl Deref for InternedStr {
+    type Target = str;
+    fn deref(&self) -> &str {
+        self.as_ref()
+    }
+}
+
+impl AsRef<str> for InternedStr {
+    fn as_ref(&self) -> &str {
         let interner = get_local_interner();
         let x = (*interner).borrow_mut();
         let r: &str = x.get_str(*self);
@@ -62,6 +71,6 @@ impl Str for InternedStr {
 
 impl fmt::Display for InternedStr {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?}", self.as_slice())
+        write!(f, "{:?}", self.as_ref())
     }
 }

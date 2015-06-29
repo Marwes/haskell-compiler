@@ -188,15 +188,15 @@ impl <T> Id<T> {
     }
 }
 
-impl Str for Id {
-    fn as_slice<'a>(&'a self) -> &'a str {
-        self.name.name.as_slice()
+impl AsRef<str> for Id {
+    fn as_ref(&self) -> &str {
+        self.name.name.as_ref()
     }
 }
 
 impl <T> Typed for Id<T> {
     type Id = Name;
-    fn get_type<'a>(&'a self) -> &'a Type<Name> {
+    fn get_type(&self) -> &Type<Name> {
         &self.typ.value
     }
 }
@@ -428,7 +428,7 @@ pub mod translate {
             name_supply: NameSupply::new(),
             functions_in_class: &mut |name| {
                 let &(ref var, ref decls) = map.get(&name).unwrap();
-                (var, decls.as_slice())
+                (var, decls.as_ref())
             }
         };
         modules.into_iter()
@@ -508,7 +508,7 @@ pub mod translate {
     ///Creates stub functions for each undeclared function in the instance
     fn create_default_stubs(class_var: &TypeVariable, class_decls: &[TypeDeclaration<Name>], instance: &Instance<Id<Name>>) -> Vec<Binding<Id<Name>>> {
         class_decls.iter()
-            .filter(|decl| instance.bindings.iter().find(|bind| bind.name.as_slice().ends_with(decl.name.as_slice())).is_none())
+            .filter(|decl| instance.bindings.iter().find(|bind| bind.name.as_ref().ends_with(decl.name.as_ref())).is_none())
             .map(|decl| {
                 debug!("Create default function for {} ({}) {}", instance.classname, instance.typ, decl.name);
                 //The stub functions will naturally have the same type as the function in the class but with the variable replaced
@@ -559,7 +559,7 @@ impl <'a> Translator<'a> {
                     //TODO need to make unique names for the lambdas created here
                     let argname = match arg {
                         module::Pattern::Identifier(arg) => arg,
-                        module::Pattern::WildCard => Name { name: intern("_"), uid: -1 },
+                        module::Pattern::WildCard => Name { name: intern("_"), uid: usize::max_value() },
                         _ => panic!("Core translation of pattern matches in lambdas are not implemented")
                     };
                     let l = Lambda(Id::new(argname, typ.clone(), vec![]), box self.translate_expr_rest(*body));
@@ -592,7 +592,7 @@ impl <'a> Translator<'a> {
             module::Expr::Lambda(arg, body) => {
                 match arg {
                     module::Pattern::Identifier(arg) => Lambda(Id::new(arg, typ, vec![]), box self.translate_expr_rest(*body)),
-                    module::Pattern::WildCard => Lambda(Id::new(Name { name: intern("_"), uid: -1 }, typ, vec![]), box self.translate_expr_rest(*body)),
+                    module::Pattern::WildCard => Lambda(Id::new(Name { name: intern("_"), uid: usize::max_value() }, typ, vec![]), box self.translate_expr_rest(*body)),
                     _ => panic!("Core translation of pattern matches in lambdas are not implemented")
                 }
             }
@@ -712,7 +712,7 @@ impl <'a> Translator<'a> {
                             name.push('_');
                             name.push_str(&*i.to_string());
 
-                            let n = Name { name: intern(name.as_slice()), uid: uid };
+                            let n = Name { name: intern(name.as_ref()), uid: uid };
                             Some(module::Pattern::Identifier(n))
                         }
                         _ => None
@@ -781,7 +781,7 @@ impl <'a> Translator<'a> {
             let arg_iterator = arguments.into_iter().map(|p| {
                 match p {
                     module::Pattern::Identifier(n) => n,
-                    module::Pattern::WildCard => Name { name: intern("_"), uid: -1 },
+                    module::Pattern::WildCard => Name { name: intern("_"), uid: usize::max_value() },
                     _ => panic!("simple_binding fail")
                 }
             });
@@ -806,7 +806,7 @@ impl <'a> Translator<'a> {
             let binding0 = &bindings[0];
             name = Id::new(binding0.name.clone(), binding0.typ.value.clone(), binding0.typ.constraints.clone());
             let mut typ = &binding0.typ.value;
-            for _ in range(0, binding0.arguments.len()) {
+            for _ in 0..binding0.arguments.len() {
                 arg_ids.push(Id::new(self.name_supply.from_str("arg"), typ.clone(), vec![]));
                 typ = match *typ {
                     Type::Application(_, ref next) => &**next,
@@ -826,7 +826,7 @@ impl <'a> Translator<'a> {
                 ..
             } = bind;
             let where_bindings_binds = where_bindings.map_or(Vec::new(), |bs| self.translate_bindings(bs));
-            (self.unwrap_patterns(uid, arg_ids.as_slice(), &*arguments), where_bindings_binds, matches)
+            (self.unwrap_patterns(uid, arg_ids.as_ref(), &*arguments), where_bindings_binds, matches)
         }).collect();
         let mut expr = self.translate_equations_(equations);
         expr = make_lambda(arg_ids.into_iter(), expr);
@@ -839,12 +839,12 @@ impl <'a> Translator<'a> {
     fn translate_equations_(&mut self, equations: Vec<(Vec<(Id<Name>, Pattern<Id<Name>>)>, Vec<Binding<Id<Name>>>, module::Match<Name>)>) -> Expr<Id<Name>> {
         let mut eqs: Vec<Equation> = Vec::new();
         for &(ref ps, ref bs, ref e) in equations.iter() {
-            eqs.push(Equation(ps.as_slice(), (bs.as_slice(), e)));
+            eqs.push(Equation(ps.as_ref(), (bs.as_ref(), e)));
         }
         for e in eqs.iter() {
             debug!("{:?}", e);
         }
-        self.translate_equations(eqs.as_slice())
+        self.translate_equations(eqs.as_ref())
     }
 
     ///Translates a list of guards, if no guards matches then the result argument will be the result
@@ -967,7 +967,7 @@ impl <'a> Translator<'a> {
                         }
                     }
                     //For all the pattern that match the pattern we need to generate new case expressions
-                    let e = make_let(variable_bindings, self.translate_equations(vec.as_slice()));
+                    let e = make_let(variable_bindings, self.translate_equations(vec.as_ref()));
 
                     let arg_id = &ps[0].0;
                     let bs = needed_variables(arg_id, equations);
@@ -986,7 +986,7 @@ impl <'a> Translator<'a> {
             let &Equation(ps, _) = &equations[0];
             let arg_id = &ps[0].0;
             let bs = needed_variables(arg_id, equations);
-            make_let(bs, self.translate_equations(vec.as_slice()))
+            make_let(bs, self.translate_equations(vec.as_ref()))
         }
         else {
             let defaults: Vec<Equation> = equations.iter()
@@ -996,7 +996,7 @@ impl <'a> Translator<'a> {
             if defaults.len() != 0 {
                 let arg_id = &ps[0].0;
                 let bs = needed_variables(arg_id, equations);
-                let e = make_let(bs, self.translate_equations(defaults.as_slice()));
+                let e = make_let(bs, self.translate_equations(defaults.as_ref()));
                 alts.push(Alternative {
                     pattern: Pattern::WildCard,
                     expression: e
@@ -1016,7 +1016,7 @@ impl <'a> Translator<'a> {
                 let ps = patterns.into_iter().map(|pat| {
                     match pat {
                         module::Pattern::Identifier(name) => Id::new(name, Type::new_var(intern("a")), vec![]),
-                        module::Pattern::WildCard => Id::new(Name { name: intern("_"), uid: -1 }, Type::new_var(intern("a")), vec![]),
+                        module::Pattern::WildCard => Id::new(Name { name: intern("_"), uid: usize::max_value() }, Type::new_var(intern("a")), vec![]),
                         _ => panic!("Nested pattern")
                     }
                 }).collect();
@@ -1034,7 +1034,7 @@ impl <'a> Translator<'a> {
     struct LambdaIterator<'a, Id: 'a> {
         typ: &'a Type<Id>
     }
-    impl <'a, Id: Str> Iterator for LambdaIterator<'a, Id> {
+    impl <'a, Id: AsRef<str>> Iterator for LambdaIterator<'a, Id> {
         type Item = &'a Type<Id>;
         fn next(&mut self) -> Option<&'a Type<Id>> {
             match *self.typ {
@@ -1042,7 +1042,7 @@ impl <'a> Translator<'a> {
                     match **lhs {
                         Type::Application(ref func, _) => {
                             match **func {
-                                Type::Constructor(ref op) if op.name.as_slice() == "->" => {
+                                Type::Constructor(ref op) if op.name.as_ref() == "->" => {
                                     let func = self.typ;
                                     self.typ = &**rhs;
                                     Some(func)
@@ -1060,7 +1060,7 @@ impl <'a> Translator<'a> {
     //Creates an iterator which walks through all the function types that are needed
     //when creating a lambda with make_lambda
     //Ex: (a -> b -> c) generates [(a -> b -> c), (b -> c)]
-    fn lambda_iterator<'a, Id: Str>(typ: &'a Type<Id>) -> LambdaIterator<'a, Id> {
+    fn lambda_iterator<'a, Id: AsRef<str>>(typ: &'a Type<Id>) -> LambdaIterator<'a, Id> {
         LambdaIterator { typ: typ }
     }
     ///Tests that the binding has no patterns for its arguments
@@ -1106,7 +1106,7 @@ impl <'a> Translator<'a> {
             let &Equation(ps, _) = eq;
             let other_id = match ps[0].1 {
                 Pattern::Identifier(ref name) => name.clone(),
-                Pattern::WildCard => Id::new(Name { name: intern("_"), uid: -1 }, Type::new_var(intern("a")), vec![]),
+                Pattern::WildCard => Id::new(Name { name: intern("_"), uid: usize::max_value() }, Type::new_var(intern("a")), vec![]),
                 _ => panic!()
             };
             Binding { name: other_id, expression: Identifier(arg_id.clone()) }

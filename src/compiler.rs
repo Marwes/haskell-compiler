@@ -4,7 +4,6 @@ use core::Expr::*;
 use types::{qualified, extract_applied_type};
 use typecheck::{Types, DataTypes, TypeEnvironment, find_specialized_instances};
 use scoped_map::ScopedMap;
-use std::iter::range_step;
 use std::borrow::ToOwned;
 
 use core::translate::{translate_module, translate_modules};
@@ -255,7 +254,7 @@ impl Types for Module<Id> {
     fn find_class<'a>(&'a self, name: Name) -> Option<(&'a [Constraint<Name>], &'a TypeVariable, &'a [TypeDeclaration<Name>])> {
         self.classes.iter()
             .find(|class| name == class.name)
-            .map(|class| (class.constraints.as_slice(), &class.variable, class.declarations.as_slice()))
+            .map(|class| (class.constraints.as_ref(), &class.variable, class.declarations.as_ref()))
     }
 
     fn find_instance<'a>(&'a self, classname: Name, typ: &Type<Name>) -> Option<(&'a [Constraint<Name>], &'a Type<Name>)> {
@@ -269,7 +268,7 @@ impl Types for Module<Id> {
                 _ => panic!()
             };
             if classname == instance.classname && y.name == z.name {
-                return Some((instance.constraints.as_slice(), &instance.typ));
+                return Some((instance.constraints.as_ref(), &instance.typ));
             }
         }
         None
@@ -306,7 +305,7 @@ impl Types for Assembly {
     fn find_class<'a>(&'a self, name: Name) -> Option<(&'a [Constraint<Name>], &'a TypeVariable, &'a [TypeDeclaration<Name>])> {
         self.classes.iter()
             .find(|class| name == class.name)
-            .map(|class| (class.constraints.as_slice(), &class.variable, class.declarations.as_slice()))
+            .map(|class| (class.constraints.as_ref(), &class.variable, class.declarations.as_ref()))
     }
     fn find_instance<'a>(&'a self, classname: Name, typ: &Type<Name>) -> Option<(&'a [Constraint<Name>], &'a Type<Name>)> {
         for &(ref constraints, ref op) in self.instances.iter() {
@@ -325,7 +324,7 @@ impl Types for Assembly {
                         _ => panic!()
                     };
                     if classname.name == x.name && y.name == z.name {
-                        return Some((constraints.as_slice(), &**t));
+                        return Some((constraints.as_ref(), &**t));
                     }
                 }
                 _ => ()
@@ -513,9 +512,9 @@ impl <'a> Compiler<'a> {
     }
 
     fn find_builtin_constructor(identifier: InternedStr) -> Option<(u16, u16)> {
-        let identifier = identifier.as_slice();
-        if identifier.len() >= 2 && identifier.char_at(0) == '('
-        && identifier.char_at(identifier.len() - 1) == ')'
+        let identifier = identifier.as_ref();
+        if identifier.len() >= 2 && identifier.starts_with('(')
+        && identifier.ends_with(')')
         && identifier.chars().skip(1).take(identifier.len() - 2).all(|c| c == ',') {
             let num_args =
                 if identifier.len() == 2 { 0 }//unit
@@ -602,7 +601,7 @@ impl <'a> Compiler<'a> {
                     }
                     &String(ref s) => {
                         instructions.push(Pack(0, 0));
-                        for c in s.as_slice().chars().rev() {
+                        for c in s.as_ref().chars().rev() {
                             instructions.push(PushChar(c));
                             instructions.push(Pack(1, 2));
                         }
@@ -633,7 +632,7 @@ impl <'a> Compiler<'a> {
                 //Dummy variable for the case expression
                 //Storage for all the jumps that should go to the end of the case expression
                 let mut end_branches = Vec::new();
-                for i in range(0, alternatives.len()) {
+                for i in 0..alternatives.len() {
                     let alt = &alternatives[i];
 
                     self.scope(&mut |this| {
@@ -650,7 +649,7 @@ impl <'a> Compiler<'a> {
                         //Here the current branch ends and the next one starts
                         //We need to set all the jump instructions to their actual location
                         //and append Slide instructions to bring the stack back to normal if the match fails
-                        for j in range_step(pattern_end, pattern_start, -1) {
+                        for j in ((pattern_start+1)..(pattern_end+1)).rev() {
                             match instructions[j as usize] {
                                 Jump(_) => {
                                     instructions[j as usize] = Jump(instructions.len());
@@ -752,7 +751,7 @@ impl <'a> Compiler<'a> {
         }
         self.stack_size -= arg_length;
         if is_function {
-            for _ in range(0, arg_length) {
+            for _ in 0..arg_length {
                 instructions.push(Mkap);
             }
             if strict {
@@ -781,8 +780,8 @@ impl <'a> Compiler<'a> {
                 //We should be able to retrieve the instance directly
                 let mut b = "#".to_string();
                 b.push_str(typename);
-                b.push_str(name.as_slice());
-                let instance_fn_name = Name { name: intern(b.as_slice()), uid: name.uid };
+                b.push_str(name.as_ref());
+                let instance_fn_name = Name { name: intern(b.as_ref()), uid: name.uid };
                 match self.find(instance_fn_name) {
                     Some(Var::Global(index)) => {
                         instructions.push(PushGlobal(index));
@@ -916,7 +915,7 @@ impl <'a> Compiler<'a> {
     fn find_dictionary_index(&mut self, constraints: &[(Name, Type<Name>)]) -> usize {
         //Check if the dictionary already exist
         let dict_len = self.instance_dictionaries.len();
-        for ii in range(0, dict_len) {
+        for ii in 0..dict_len {
             if self.instance_dictionaries[ii].0 == constraints {
                 return ii;
             }
@@ -941,9 +940,9 @@ impl <'a> Compiler<'a> {
                         _ => panic!("{:?}", typ)
                     };
                     let mut b = "#".to_string();
-                    b.push_str(x.name.as_slice());
-                    b.push_str(decl.name.as_slice());
-                    let f = intern(b.as_slice());
+                    b.push_str(x.name.as_ref());
+                    b.push_str(decl.name.as_ref());
+                    let f = intern(b.as_ref());
                     let name = Name { name: f, uid: decl.name.uid };
                     match self.find(name) {
                         Some(Var::Global(index)) => {
@@ -1009,7 +1008,7 @@ fn try_find_instance_type<'a>(class_var: &TypeVariable, class_type: &Type<Name>,
         (&Type::Variable(ref var), _) if var == class_var => {
             //Found the class variable so return the name of the type
             match extract_applied_type(actual_type) {
-                &Type::Constructor(ref op) => { Some(op.name.as_slice()) }
+                &Type::Constructor(ref op) => { Some(op.name.as_ref()) }
                 _ => None
             }
         }
@@ -1034,7 +1033,7 @@ pub fn compile(contents: &str) -> Result<Assembly, ::std::string::String> {
 pub fn compile_with_type_env<'a>(type_env: &mut TypeEnvironment<'a>, assemblies: &[&'a Assembly], contents: &str) -> Result<Assembly, ::std::string::String> {
     use parser::Parser;
 
-    let mut parser = Parser::new(contents.as_slice().chars()); 
+    let mut parser = Parser::new(contents.chars()); 
     let module = try!(parser.module().map_err(|e| format!("{:?}", e)));
     let mut module = try!(rename_module(module).map_err(|e| format!("{}", e)));
     for assem in assemblies.iter() {
@@ -1090,7 +1089,9 @@ use interner::*;
 use compiler::{Assembly, Compiler, compile_with_type_env};
 use compiler::Instruction::*;
 use typecheck::TypeEnvironment;
-use std::old_io::File;
+use std::path::Path;
+use std::io::Read;
+use std::fs::File;
 use test::Bencher;
 
 fn compile(contents: &str) -> Assembly {
@@ -1204,7 +1205,9 @@ main x = primIntAdd (test x) 6";
 fn compile_prelude() {
     let prelude;
     let mut type_env = TypeEnvironment::new();
-    prelude = compile_with_type_env(&mut type_env, &[], File::open(&Path::new("Prelude.hs")).read_to_string().unwrap().as_slice()).unwrap();
+    let mut contents = ::std::string::String::new();
+    File::open("Prelude.hs").and_then(|mut f| f.read_to_string(&mut contents)).unwrap();
+    prelude = compile_with_type_env(&mut type_env, &[], &contents).unwrap();
 
     let assembly = compile_with_type_env(&mut type_env, &[&prelude], r"main = id (primIntAdd 2 0)").unwrap();
 
@@ -1268,8 +1271,9 @@ fn bench_prelude(b: &mut Bencher) {
     use parser::Parser;
 
     let path = &Path::new("Prelude.hs");
-    let contents = File::open(path).read_to_string().unwrap();
-    let mut parser = Parser::new(contents.as_slice().chars());
+    let mut contents = ::std::string::String::new();
+    File::open(path).and_then(|mut f| f.read_to_string(&mut contents)).unwrap();
+    let mut parser = Parser::new(contents.chars());
     let mut module = rename_module(parser.module().unwrap());
     let mut type_env = TypeEnvironment::new();
     type_env.typecheck_module_(&mut module);

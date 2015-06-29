@@ -1,6 +1,7 @@
 use std::mem::{swap};
-use std::old_io::{IoResult, IoError, File};
-use std::error::FromError;
+use std::io;
+use std::io::Read;
+use std::fs::File;
 use std::collections::{HashSet, HashMap};
 use std::str::FromStr;
 use std::fmt;
@@ -34,8 +35,8 @@ pub struct ParseError(Located<Error>);
 
 pub type ParseResult<T> = Result<T, ParseError>;
 
-impl FromError<IoError> for ParseError {
-    fn from_error(io_error: IoError) -> ParseError {
+impl From<io::Error> for ParseError {
+    fn from(io_error: io::Error) -> ParseError {
         ParseError(Located { location: Location::eof(), node: Error::Message(io_error.to_string()) })
     }
 }
@@ -463,11 +464,11 @@ fn sub_expression(&mut self) -> ParseResult<Option<TypedExpr>> {
         }
         NUMBER => {
             let token = self.lexer.current();
-            Some(TypedExpr::with_location(Literal(Integral(FromStr::from_str(token.value.as_slice()).unwrap())), token.location))
+            Some(TypedExpr::with_location(Literal(Integral(FromStr::from_str(token.value.as_ref()).unwrap())), token.location))
         }
 	    FLOAT => {
             let token = self.lexer.current();
-            Some(TypedExpr::with_location(Literal(Fractional(FromStr::from_str(token.value.as_slice()).unwrap())), token.location))
+            Some(TypedExpr::with_location(Literal(Fractional(FromStr::from_str(token.value.as_ref()).unwrap())), token.location))
         }
         STRING => {
             let token = self.lexer.current();
@@ -475,7 +476,7 @@ fn sub_expression(&mut self) -> ParseResult<Option<TypedExpr>> {
         }
         CHAR => {
             let token = self.lexer.current();
-            Some(TypedExpr::with_location(Literal(Char(token.value.as_slice().char_at(0))), token.location))
+            Some(TypedExpr::with_location(Literal(Char(token.value.chars().next().expect("char at 0"))), token.location))
         }
 	    _ => {
             self.lexer.backtrack();
@@ -496,11 +497,11 @@ fn do_binding(&mut self) -> ParseResult<DoBinding> {
         lookahead += 1;
         match self.lexer.next().token {
             SEMICOLON | RBRACE => {
-                for _ in range(0, lookahead) { self.lexer.backtrack(); }
+                for _ in 0..lookahead { self.lexer.backtrack(); }
                 return self.expression_().map(DoBinding::DoExpr);
             }
             LARROW => {
-                for _ in range(0, lookahead) { self.lexer.backtrack(); }
+                for _ in 0..lookahead { self.lexer.backtrack(); }
                 let p = try!(self.located_pattern());
                 self.lexer.next();//Skip <-
                 return self.expression_().map(move |e| DoBinding::DoBind(p, e));
@@ -689,7 +690,7 @@ fn fixity_declaration(&mut self) -> ParseResult<FixityDeclaration> {
         }
     };
     let precedence = match self.lexer.next().token {
-        NUMBER => FromStr::from_str(self.lexer.current().value.as_slice()).unwrap(),
+        NUMBER => FromStr::from_str(self.lexer.current().value.as_ref()).unwrap(),
         _ => {
             self.lexer.backtrack();
             9
@@ -723,7 +724,7 @@ fn expr_or_guards(&mut self, end_token_and_pipe: &'static [TokenEnum]) -> ParseR
 
 fn make_pattern<F>(&mut self, name: InternedStr, args: F) -> ParseResult<Pattern>
     where F: FnOnce(&mut Parser<Iter>) -> ParseResult<Vec<Pattern>> {
-    let c = name.as_slice().char_at(0);
+    let c = name.chars().next().expect("char at 0");
     if c.is_uppercase() || name == intern(":") {
         args(self).map(|ps| Pattern::Constructor(name, ps))
     }
@@ -745,7 +746,7 @@ fn pattern_arguments(&mut self) -> ParseResult<Vec<Pattern>> {
                 let p = try!(self.make_pattern(name, |_| Ok(vec![])));
                 parameters.push(p);
             }
-            NUMBER => parameters.push(Pattern::Number(FromStr::from_str(self.lexer.current().value.as_slice()).unwrap())),
+            NUMBER => parameters.push(Pattern::Number(FromStr::from_str(self.lexer.current().value.as_ref()).unwrap())),
 		    LPARENS => {
                 self.lexer.backtrack();
 				parameters.push(try!(self.pattern()));
@@ -777,7 +778,7 @@ fn pattern(&mut self) -> ParseResult<Pattern> {
             Pattern::Constructor(intern("[]"), vec![])
         }
         NAME => try!(self.make_pattern(name, |this| this.pattern_arguments())),
-        NUMBER => Pattern::Number(FromStr::from_str(name.as_slice()).unwrap()),
+        NUMBER => Pattern::Number(FromStr::from_str(name.as_ref()).unwrap()),
         LPARENS => {
             if self.lexer.peek().token == RPARENS {
                 self.lexer.next();
@@ -790,14 +791,14 @@ fn pattern(&mut self) -> ParseResult<Pattern> {
                     tuple_args.pop().unwrap()
                 }
                 else {
-                    Pattern::Constructor(intern(tuple_name(tuple_args.len()).as_slice()), tuple_args)
+                    Pattern::Constructor(intern(tuple_name(tuple_args.len()).as_ref()), tuple_args)
                 }
             }
         }
         _ => unexpected!(self, [LBRACKET, NAME, NUMBER, LPARENS])
     };
     self.lexer.next();
-    if self.lexer.current().token == OPERATOR && self.lexer.current().value.as_slice() == ":" {
+    if self.lexer.current().token == OPERATOR && self.lexer.current().value.as_ref() == ":" {
         Ok(Pattern::Constructor(self.lexer.current().value, vec![pat, try!(self.pattern())]))
     }
     else {
@@ -871,7 +872,7 @@ fn constructor_type(&mut self, arity : &mut isize, data_def: &DataDefinition) ->
 	let token = self.lexer.next().token;
 	let typ = if token == NAME {
 		*arity += 1;
-		let arg = if self.lexer.current().value.as_slice().char_at(0).is_lowercase() {
+		let arg = if self.lexer.current().value.chars().next().expect("char at 0").is_lowercase() {
             Type::new_var(self.lexer.current().value)
 		}
 		else {
@@ -906,7 +907,7 @@ fn data_definition(&mut self) -> ParseResult<DataDefinition> {
 
 	definition.constructors = try!(self.sep_by_1_func(|this| this.constructor(&definition),
 		|t : &Token| t.token == PIPE));
-	for ii in range(0, definition.constructors.len()) {
+	for ii in 0..definition.constructors.len() {
 		definition.constructors[ii].tag = ii as isize;
 	}
     definition.deriving = try!(self.deriving());
@@ -979,7 +980,7 @@ fn sub_type(&mut self) -> ParseResult<Option<Type>> {
 			Some(try!(self.parse_type()))
 		}
 	    NAME => {
-			if token.value.as_slice().char_at(0).is_uppercase() {
+			if token.value.chars().next().expect("char at 0").is_uppercase() {
 				Some(Type::new_op(token.value, Vec::new()))
 			}
 			else {
@@ -1040,7 +1041,7 @@ fn parse_type(&mut self) -> ParseResult<Type> {
                 }
             }
 
-			let this_type = if token.value.as_slice().char_at(0).is_uppercase() {
+			let this_type = if token.value.chars().next().expect("char at 0").is_uppercase() {
 				Type::new_op(token.value, type_arguments)
 			}
 			else {
@@ -1113,7 +1114,7 @@ fn make_lambda<Iter: DoubleEndedIterator<Item=Pattern<InternedStr>>>(args : Iter
 
 //Create a tuple with the constructor name inferred from the number of arguments passed in
 fn new_tuple(arguments : Vec<TypedExpr>) -> TypedExpr {
-	let name = TypedExpr::new(Identifier(intern(tuple_name(arguments.len()).as_slice())));
+	let name = TypedExpr::new(Identifier(intern(tuple_name(arguments.len()).as_ref())));
 	make_application(name, arguments.into_iter())
 }
 
@@ -1122,7 +1123,7 @@ fn make_tuple_type(mut types : Vec<Type>) -> Type {
         types.pop().unwrap()
     }
     else {
-	    Type::new_op(intern(tuple_name(types.len()).as_slice()), types)
+	    Type::new_op(intern(tuple_name(types.len()).as_ref()), types)
     }
 }
 
@@ -1139,19 +1140,21 @@ pub fn parse_modules(modulename: &str) -> ParseResult<Vec<Module>> {
     let mut modules = Vec::new();
     let mut visited = HashSet::new();
     let contents = try!(get_contents(modulename));
-    try!(parse_modules_(&mut visited, &mut modules, modulename, contents.as_slice()));
+    try!(parse_modules_(&mut visited, &mut modules, modulename, contents.as_ref()));
     Ok(modules)
 }
 
-fn get_contents(modulename: &str) -> IoResult<::std::string::String> {
-    let mut filename = ::std::string::String::from_str(modulename);
+fn get_contents(modulename: &str) -> io::Result<::std::string::String> {
+    let mut filename = ::std::string::String::from(modulename);
     filename.push_str(".hs");
-    let mut file = File::open(&Path::new(filename.as_slice()));
-    file.read_to_string()
+    let mut file = try!(File::open(&filename));
+    let mut contents = ::std::string::String::new();
+    try!(file.read_to_string(&mut contents));
+    Ok(contents)
 }
 
 fn parse_modules_(visited: &mut HashSet<InternedStr>, modules: &mut Vec<Module>, modulename: &str, contents: &str) -> ParseResult<()> {
-    let mut parser = Parser::new(contents.as_slice().chars());
+    let mut parser = Parser::new(contents.chars());
     let module = try!(parser.module());
     let interned_name = intern(modulename);
     visited.insert(interned_name);
@@ -1161,9 +1164,9 @@ fn parse_modules_(visited: &mut HashSet<InternedStr>, modules: &mut Vec<Module>,
         }
         else if modules.iter().all(|m| m.name != import.module) {
             //parse the module if it is not parsed
-            let import_module = import.module.as_slice();
+            let import_module = import.module.as_ref();
             let contents_next = try!(get_contents(import_module));
-            try!(parse_modules_(visited, modules, import_module, contents_next.as_slice()));
+            try!(parse_modules_(visited, modules, import_module, contents_next.as_ref()));
         }
     }
     visited.remove(&interned_name);
@@ -1180,7 +1183,9 @@ use parser::*;
 use module::*;
 use module::Expr::*;
 use typecheck::{identifier, apply, op_apply, number, rational, let_, case, if_else};
-use std::old_io::File;
+use std::path::Path;
+use std::io::Read;
+use std::fs::File;
 use test::Bencher;
 
 
@@ -1394,20 +1399,20 @@ import Prelude (id, sum)
 ".chars());
     let module = parser.module().unwrap();
 
-    assert_eq!(module.imports[0].module.as_slice(), "Hello");
+    assert_eq!(module.imports[0].module.as_ref(), "Hello");
     assert_eq!(module.imports[0].imports, None);
-    assert_eq!(module.imports[1].module.as_slice(), "World");
+    assert_eq!(module.imports[1].module.as_ref(), "World");
     assert_eq!(module.imports[1].imports, Some(Vec::new()));
-    assert_eq!(module.imports[2].module.as_slice(), "Prelude");
+    assert_eq!(module.imports[2].module.as_ref(), "Prelude");
     assert_eq!(module.imports[2].imports, Some(vec![intern("id"), intern("sum")]));
 }
 #[test]
 fn parse_module_imports() {
     let modules = parse_modules("Test").unwrap();
 
-    assert_eq!(modules[0].name.as_slice(), "Prelude");
-    assert_eq!(modules[1].name.as_slice(), "Test");
-    assert_eq!(modules[1].imports[0].module.as_slice(), "Prelude");
+    assert_eq!(modules[0].name.as_ref(), "Prelude");
+    assert_eq!(modules[1].name.as_ref(), "Test");
+    assert_eq!(modules[1].imports[0].module.as_ref(), "Prelude");
 }
 
 #[test]
@@ -1533,8 +1538,9 @@ newtype IntPair a = IntPair (a, Int)
 #[test]
 fn parse_prelude() {
     let path = &Path::new("Prelude.hs");
-    let contents  = File::open(path).read_to_string().unwrap();
-    let mut parser = Parser::new(contents.as_slice().chars());
+    let mut contents = ::std::string::String::new();
+    File::open(path).and_then(|mut f| f.read_to_string(&mut contents)).unwrap();
+    let mut parser = Parser::new(contents.chars());
     let module = parser.module().unwrap();
 
     assert!(module.bindings.iter().any(|bind| bind.name == intern("foldl")));
@@ -1545,9 +1551,10 @@ fn parse_prelude() {
 #[bench]
 fn bench_prelude(b: &mut Bencher) {
     let path = &Path::new("Prelude.hs");
-    let contents  = File::open(path).read_to_string().unwrap();
+    let mut contents = ::std::string::String::new();
+    File::open(path).and_then(|mut f| f.read_to_string(&mut contents)).unwrap();
     b.iter(|| {
-        let mut parser = Parser::new(contents.as_slice().chars());
+        let mut parser = Parser::new(contents.chars());
         parser.module().unwrap();
     });
 }

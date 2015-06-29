@@ -1,5 +1,5 @@
 use std::fmt;
-use std::collections::RingBuf;
+use std::collections::VecDeque;
 use std::iter::Peekable;
 use std::rc::Rc;
 use std::cell::RefCell;
@@ -160,7 +160,7 @@ pub struct Lexer<Stream: Iterator<Item=char>> {
     ///All the current unprocessed tokens stored on a stack
     unprocessed_tokens : Vec<Token>,
     ///The token buffer which contains the last n produced tokens.
-    tokens : RingBuf<Token>,
+    tokens : VecDeque<Token>,
     ///A stack which contains the indentation levels of automatically inserted '{'
     indent_levels : Vec<isize>,
     ///The offset into the token buffer at which the current token is at
@@ -179,7 +179,7 @@ impl <Stream : Iterator<Item=char>> Lexer<Stream> {
             input : input.peekable(),
             location : start,
             unprocessed_tokens : Vec::new(),
-            tokens : RingBuf::with_capacity(20),
+            tokens : VecDeque::with_capacity(20),
             indent_levels : Vec::new(),
             offset : 0,
             interner: get_local_interner()
@@ -298,18 +298,18 @@ impl <Stream : Iterator<Item=char>> Lexer<Stream> {
     ///Scans a number, float or isizeeger and returns the appropriate token
     fn scan_number(&mut self, c : char, location : Location) -> Token {
         let mut number = c.to_string();
-        number.push_str(self.scan_digits().as_slice());
+        number.push_str(self.scan_digits().as_ref());
         let mut token = NUMBER;
         match self.peek_char() {
             Some('.') => {
                 self.input.next();
                 token = FLOAT;
                 number.push('.');
-                number.push_str(self.scan_digits().as_slice());
+                number.push_str(self.scan_digits().as_ref());
             }
             _ => ()
         }
-        Token::new(&self.interner, token, number.as_slice(), location)
+        Token::new(&self.interner, token, number.as_ref(), location)
     }
     ///Scans an identifier or a keyword
     fn scan_identifier(&mut self, c: char, start_location: Location) -> Token {
@@ -326,7 +326,7 @@ impl <Stream : Iterator<Item=char>> Lexer<Stream> {
                 None => break
             }
         }
-        return Token::new(&self.interner, name_or_keyword(result.as_slice()), result.as_slice(), start_location);
+        return Token::new(&self.interner, name_or_keyword(result.as_ref()), result.as_ref(), start_location);
     }
 
     ///Returns the next token but if it is not an '}' it will attempt to insert a '}' automatically
@@ -510,7 +510,7 @@ impl <Stream : Iterator<Item=char>> Lexer<Stream> {
                     None => { break; }
                 }
             }
-            let tok = match result.as_slice() {
+            let tok = match result.as_ref() {
                 "="  => EQUALSSIGN,
                 "->" => ARROW,
                 "<-" => LARROW,
@@ -519,7 +519,7 @@ impl <Stream : Iterator<Item=char>> Lexer<Stream> {
                 "|"  => PIPE,
                 _    => OPERATOR
             };
-            return Token::new(&self.interner, tok, result.as_slice(), start_location);
+            return Token::new(&self.interner, tok, result.as_ref(), start_location);
         }
         else if c.is_digit(10) {
             return self.scan_number(c, start_location);
@@ -546,7 +546,7 @@ impl <Stream : Iterator<Item=char>> Lexer<Stream> {
             let mut string = String::new();
             loop {
                 match self.read_char() {
-                    Some('"') => return Token::new(&self.interner, STRING, string.as_slice(), start_location),
+                    Some('"') => return Token::new(&self.interner, STRING, string.as_ref(), start_location),
                     Some(x) => string.push(x),
                     None => panic!("Unexpected EOF")
                 }
@@ -579,7 +579,7 @@ impl <Stream : Iterator<Item=char>> Lexer<Stream> {
             _   => EOF
         };
         //FIXME: Slow
-        Token::new(&self.interner, tok, c.to_string().as_slice(), start_location)
+        Token::new(&self.interner, tok, c.to_string().as_ref(), start_location)
     }
 }
 

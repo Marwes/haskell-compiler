@@ -8,7 +8,7 @@ use interner::{intern, InternedStr};
 pub fn generate_deriving(instances: &mut Vec<Instance<Id<Name>>>, data: &DataDefinition<Name>) {
     let mut gen = DerivingGen { name_supply: NameSupply::new() };
     for deriving in data.deriving.iter() {
-        match deriving.as_slice() {
+        match deriving.as_ref() {
             "Eq" => {
                 let mut bindings = Vec::new();
                 bindings.push(gen.generate_eq(data));

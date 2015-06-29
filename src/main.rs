@@ -1,5 +1,5 @@
 #![crate_type = "bin"]
-#![feature(box_syntax, collections, core, env, hash, io, os, path, std_misc, test, unicode)]
+#![feature(box_patterns, box_syntax, collections, core, test)]
 #[macro_use]
 extern crate log;
 extern crate collections;
@@ -78,7 +78,7 @@ fn main() {
     }
     match matches.opt_str("l") {
         Some(modulename) => {
-            let result = execute_main_module(modulename.as_slice()).unwrap();
+            let result = execute_main_module(modulename.as_ref()).unwrap();
             match result {
                 Some(x) => println!("{:?}", x),
                 None => println!("Error running module {}", modulename)

@@ -1,6 +1,6 @@
 extern crate collections;
 use std::collections::HashMap;
-use std::collections::hash_map::{Hasher, Entry, IterMut};
+use std::collections::hash_map::{Entry, IterMut};
 use std::hash::Hash;
 
 ///A map struct which allows for the isizeroduction of different scopes
@@ -18,7 +18,7 @@ pub struct ScopedMap<K, V> {
 
 #[allow(dead_code)]
 impl <K, V> ScopedMap<K, V>
-    where K: Eq + Hash<Hasher> + Clone {
+    where K: Eq + Hash + Clone {
 
     pub fn new() -> ScopedMap<K, V> {
         ScopedMap { map: HashMap::new(), scopes: Vec::new() }

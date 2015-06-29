@@ -33,9 +33,9 @@ impl PartialEq<Name> for InternedStr {
 }
 
 
-impl Str for Name {
-    fn as_slice<'a>(&'a self) -> &'a str {
-        self.name.as_slice()
+impl AsRef<str> for Name {
+    fn as_ref(&self) -> &str {
+        self.name.as_ref()
     }
 }
 
@@ -164,13 +164,13 @@ impl Renamer {
                 Some(class.name).into_iter()
                 .chain(class.declarations.iter().map(|decl| decl.name))
                 .chain(binding_groups(&*class.bindings).map(|binds| binds[0].name))))
-            .chain(binding_groups(module.bindings.as_slice()).map(|binds| binds[0].name));
+            .chain(binding_groups(module.bindings.as_ref()).map(|binds| binds[0].name));
         for name in names {
             self.declare_global(str_fn(name), uid);
         }
         for instance in module.instances.iter() {
             let class_uid = self.get_name(str_fn(instance.classname)).uid;
-            for binds in binding_groups(instance.bindings.as_slice()) {
+            for binds in binding_groups(instance.bindings.as_ref()) {
                 self.declare_global(str_fn(binds[0].name), class_uid);
             }
         }
@@ -208,7 +208,7 @@ impl Renamer {
     fn rename_bindings(&mut self, bindings: Vec<Binding<InternedStr>>, is_global: bool) -> Vec<Binding<Name>> {
         //Add all bindings in the scope
         if !is_global {
-            for bind in binding_groups(bindings.as_slice()) {
+            for bind in binding_groups(bindings.as_ref()) {
                 self.make_unique(bind[0].name.clone());
             }
         }
@@ -388,9 +388,9 @@ pub fn rename_module(module: Module<InternedStr>) -> Result<Module<Name>, Rename
     renamer.errors.into_result(m)
         .map_err(RenamerError)
 }
-pub fn rename_module_(renamer: &mut Renamer, module_env: &[Module<Name>], module: Module<InternedStr>) -> Module<Name> {
+fn rename_module_(renamer: &mut Renamer, module_env: &[Module<Name>], module: Module<InternedStr>) -> Module<Name> {
     let mut name = renamer.make_unique(module.name);
-    if name.as_slice() == "Prelude" {
+    if name.as_ref() == "Prelude" {
         renamer.uniques.find_mut(&name.name).unwrap().uid = 0;
         name.uid = 0;
     }
@@ -545,7 +545,7 @@ pub fn rename_modules(modules: Vec<Module<InternedStr>>) -> Result<Vec<Module<Na
     let mut renamer = Renamer::new();
     let mut ms = Vec::new();
     for module in modules.into_iter() {
-        let m = rename_module_(&mut renamer, ms.as_slice(), module);
+        let m = rename_module_(&mut renamer, ms.as_ref(), module);
         ms.push(m);
     }
     renamer.errors.into_result(ms)
@@ -553,7 +553,7 @@ pub fn rename_modules(modules: Vec<Module<InternedStr>>) -> Result<Vec<Module<Na
 }
 
 pub mod typ {
-    use std::iter::{repeat, range_step};
+    use std::iter::repeat;
     use types::{Kind, Type, TypeVariable};
     use super::{name, Name};
     use interner::intern;
@@ -570,16 +570,16 @@ pub mod typ {
     pub fn tuple_type(n: usize) -> (String, Type<Name>) {
         let mut var_list = Vec::new();
         assert!(n < 26);
-        for i in range(0, n) {
+        for i in 0..n {
             let c = (('a' as u8) + i as u8) as char;
-            let var = TypeVariable::new_var_kind(intern(c.to_string().as_slice()), Kind::Star.clone());
+            let var = TypeVariable::new_var_kind(intern(c.to_string().as_ref()), Kind::Star.clone());
             var_list.push(Type::Generic(var));
         }
         let ident = tuple_name(n);
-        let mut typ = Type::new_op(name(ident.as_slice()), var_list);
-        for i in range_step(n as isize - 1, -1, -1) {
+        let mut typ = Type::new_op(name(ident.as_ref()), var_list);
+        for i in (0..n).rev() {
             let c = (('a' as u8) + i as u8) as char;
-            typ = function_type_(Type::Generic(TypeVariable::new(intern(c.to_string().as_slice()))), typ);
+            typ = function_type_(Type::Generic(TypeVariable::new(intern(c.to_string().as_ref()))), typ);
         }
         (ident, typ)
     }
@@ -646,7 +646,7 @@ pub mod tests {
     }
 
     #[test]
-    #[should_fail]
+    #[should_panic]
     fn duplicate_binding() {
         let mut parser = Parser::new(
 r"main = 1
@@ -666,7 +666,7 @@ main = id";
         rename_modules(modules);
     }
     #[test]
-    #[should_fail]
+    #[should_panic]
     fn missing_import() {
         let mut parser = Parser::new(
 r"

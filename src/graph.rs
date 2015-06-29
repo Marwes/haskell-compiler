@@ -4,9 +4,9 @@
 use std::iter::repeat;
 use std::cmp::min;
 
-#[derive(PartialEq, Copy, Debug)]
+#[derive(PartialEq, Copy, Clone, Debug)]
 pub struct VertexIndex(usize);
-#[derive(PartialEq, Copy, Debug)]
+#[derive(PartialEq, Copy, Clone, Debug)]
 pub struct EdgeIndex(usize);
 
 impl VertexIndex {
@@ -20,13 +20,13 @@ struct Vertex<T> {
     pub value: T,
     edges: Vec<EdgeIndex>
 }
-struct Edge<T> {
+struct Edge {
     from: VertexIndex,
     to: VertexIndex
 }
 
 pub struct Graph<T> {
-    edges: Vec<Edge<T>>,
+    edges: Vec<Edge>,
     vertices: Vec<Vertex<T>>
 }
 
@@ -52,7 +52,7 @@ impl <T> Graph<T> {
     }
 
     ///Returns the edge at the index
-    pub fn get_edge<'a>(&'a self, edge: EdgeIndex) -> &'a Edge<T> {
+    pub fn get_edge<'a>(&'a self, edge: EdgeIndex) -> &'a Edge {
         &self.edges[edge.get()]
     }
 
@@ -72,7 +72,7 @@ pub fn strongly_connected_components<T>(graph: &Graph<T>) -> Vec<Vec<VertexIndex
     };
     
 
-    for vert in range(0, graph.len()) {
+    for vert in 0..graph.len() {
         if tarjan.valid[vert] == 0 {
             tarjan.strong_connect(VertexIndex(vert));
         }
