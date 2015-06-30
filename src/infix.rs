@@ -56,8 +56,8 @@ impl PrecedenceVisitor {
         let mut expr_stack = Vec::new();
         let mut op_stack = Vec::new();
         loop {
-            let box temp = input;
-            let TypedExpr { typ, location, expr } = temp;
+            //FIXME should destructure instead of clone
+            let TypedExpr { typ, location, expr } = (*input).clone();
             match expr {
                 Expr::OpApply(l, op, r) => {
                     expr_stack.push(l);

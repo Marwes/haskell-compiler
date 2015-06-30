@@ -1,12 +1,12 @@
 [package]
 
-name = "HaskellCompiler"
+name = "haskell-compiler"
 version = "0.0.1"
 authors = ["Markus Westerlind <marwes91@gmail.com>"]
 
 [[bin]]
 
-name = "HaskellCompiler"
+name = "haskell-compiler"
 path = "src/main.rs"
 
 [dependencies.log]

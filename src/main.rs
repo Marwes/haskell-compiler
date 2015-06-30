@@ -1,8 +1,8 @@
 #![crate_type = "bin"]
-#![feature(box_patterns, box_syntax, collections, core, test)]
+#![feature(box_syntax)]
+#![cfg_attr(test, feature(test))]
 #[macro_use]
 extern crate log;
-extern crate collections;
 extern crate getopts;
 #[cfg(test)]
 extern crate test;

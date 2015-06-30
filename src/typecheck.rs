@@ -389,7 +389,7 @@ impl <'a> TypeEnvironment<'a> {
                     .iter()//Make sure we have an instance for all of the constraints
                     .filter(|constraint| self.has_instance(constraint.class, &instance.typ, &mut Vec::new()).is_err())
                     .peekable();
-                if !missing_super_classes.is_empty() {
+                if missing_super_classes.peek().is_some() {
                     let mut buffer = ::std::string::String::new();
                     buffer.push_str(missing_super_classes.next().unwrap().class.as_ref());
                     for constraint in missing_super_classes {
@@ -550,26 +550,31 @@ impl <'a> TypeEnvironment<'a> {
                                   new_constraints: &mut Vec<Constraint<Name>>) -> Result<(), InternedStr>
     {
         match (instance_type, actual_type) {
-            (&Type::Application(ref lvar, box Type::Variable(ref rvar)), &Type::Application(ref ltype, ref rtype)) => {
-                constraints.iter()
-                    .filter(|c| c.variables[0] == *rvar)
-                    .map(|constraint| {
-                        let result = self.has_instance(constraint.class, &**rtype, new_constraints);
-                        if result.is_ok() {
-                            match **rtype {
-                                Type::Variable(ref var) => {
-                                    new_constraints.push(Constraint {
-                                        class: constraint.class,
-                                        variables: vec![var.clone()]
-                                    });
+            (&Type::Application(ref lvar, ref r), &Type::Application(ref ltype, ref rtype)) => {
+                if let Type::Variable(ref rvar) = **r {
+                    constraints.iter()
+                        .filter(|c| c.variables[0] == *rvar)
+                        .map(|constraint| {
+                            let result = self.has_instance(constraint.class, &**rtype, new_constraints);
+                            if result.is_ok() {
+                                match **rtype {
+                                    Type::Variable(ref var) => {
+                                        new_constraints.push(Constraint {
+                                            class: constraint.class,
+                                            variables: vec![var.clone()]
+                                        });
+                                    }
+                                    _ => ()
                                 }
-                                _ => ()
                             }
-                        }
-                        result
-                    })
-                    .find(|result| result.is_err())
-                    .unwrap_or_else(|| self.check_instance_constraints(constraints, &**lvar, &**ltype, new_constraints))
+                            result
+                        })
+                        .find(|result| result.is_err())
+                        .unwrap_or_else(|| self.check_instance_constraints(constraints, &**lvar, &**ltype, new_constraints))
+                }
+                else {
+                    Err(intern("Unknown error"))
+                }
             }
             (&Type::Constructor(ref l), &Type::Constructor(ref r)) if l.name == r.name => Ok(()),
             (_, &Type::Variable(_)) => Ok(()),

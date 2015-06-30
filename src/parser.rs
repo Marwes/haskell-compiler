@@ -277,17 +277,23 @@ fn class(&mut self) -> ParseResult<Class> {
 	expect!(self, RBRACE);
 
     match typ {
-        Type::Application(box Type::Constructor(classname), box Type::Variable(var)) => {
-            Ok(Class {
-                constraints: constraints,
-                name: classname.name,
-                variable: var,
-                declarations: declarations,
-                bindings: bindings
-            })
+        Type::Application(l, r) => {
+            match (*l, *r) {
+                (Type::Constructor(classname), Type::Variable(var)) => {
+                    return Ok(Class {
+                        constraints: constraints,
+                        name: classname.name,
+                        variable: var,
+                        declarations: declarations,
+                        bindings: bindings
+                    });
+                }
+                _ => ()
+            }
         }
-        _ => self.error("Parse error in class declaration header".to_string())
+        _ => ()
     }
+    self.error("Parse error in class declaration header".to_string())
 }
 
 fn instance(&mut self) -> ParseResult<Instance> {
