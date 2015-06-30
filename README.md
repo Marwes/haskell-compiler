@@ -4,6 +4,16 @@ This is a compiler for Haskell written in the [Rust programming language](www.ru
 
 As the project is right now it can handle quite large parts of Haskell though bugs have to be expected.
 
+## "Implemented" features
+* Typechecking
+* Higher kinded types
+* Algebraic data types
+* newtypes
+* Type classes
+* Large parts of the Prelude
+* `do` expressions
+* Simple REPL
+
 ## Known unimplemented features
 
 * Kind inference
@@ -11,5 +21,6 @@ As the project is right now it can handle quite large parts of Haskell though bu
 * List comprehensions
 * Foreign Function Interface
 * Most of the standard library
-* deriving other than for Eq and Ord
+* deriving other than for `Eq` and `Ord`
+* Type definitions
 * and more!
