@@ -158,7 +158,7 @@ impl <Ident: Typed> Typed for Pattern<Ident> {
             Pattern::Identifier(ref name) => name.get_type(),
             Pattern::Constructor(ref name, _) => name.get_type(),
             Pattern::Number(_) => panic!(),
-            Pattern::WildCard(..) => panic!()
+            Pattern::WildCard => panic!()
         }
     }
 }
