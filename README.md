@@ -1,6 +1,6 @@
 # Haskell compiler
 
-This is a compiler for Haskell written in the [Rust programming language](www.rust-lang.org). This is no longer actively being worked on since I am currently working on other projects, I do try to keep it updated to work on newer versions of Rust however.
+This is a compiler for Haskell written in the [Rust programming language](https://www.rust-lang.org). This is no longer actively being worked on since I am currently working on other projects, I do try to keep it updated to work on newer versions of Rust however.
 
 As the project is right now it can handle quite large parts of Haskell though bugs have to be expected.
 
