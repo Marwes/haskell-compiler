@@ -67,8 +67,9 @@ fn main() {
 
     let matches = {
         let args: Vec<_> = std::env::args()
+            .skip(1)
             .collect();
-        opts.parse(args.tail())
+        opts.parse(args)
             .unwrap_or_else(|err| panic!("{}", err))
     };
 

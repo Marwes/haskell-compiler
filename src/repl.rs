@@ -1,3 +1,5 @@
+use std::io::BufRead;
+
 use compiler::*;
 use typecheck::*;
 use vm::*;
@@ -81,7 +83,9 @@ pub fn start() {
         Ok(prelude) => { vm.add_assembly(prelude); }
         Err(err) => println!("Failed to compile the prelude\nReason: {}", err)
     }
-    for line in ::std::io::stdin().lock().lines() {
+
+    let stdin = ::std::io::stdin();
+    for line in stdin.lock().lines() {
         let expr_str = match line {
             Ok(l) => l,
             Err(e) => panic!("Reading line failed with '{:?}'", e)

@@ -28,7 +28,7 @@ enum DictionaryEntry {
     App(usize, InstanceDictionary)
 }
 
-enum Node_<'a> {
+pub enum Node_<'a> {
     Application(Node<'a>, Node<'a>),
     Int(isize),
     Float(f64),
@@ -56,7 +56,7 @@ impl <'a> Clone for Node_<'a> {
 }
 
 #[derive(Clone)]
-struct Node<'a> {
+pub struct Node<'a> {
     node: Rc<RefCell<Node_<'a>>>
 }
 
