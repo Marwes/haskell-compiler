@@ -16,7 +16,7 @@ impl EdgeIndex {
     fn get(&self) -> usize { let EdgeIndex(v) = *self; v }
 }
 
-struct Vertex<T> {
+pub struct Vertex<T> {
     pub value: T,
     edges: Vec<EdgeIndex>
 }
