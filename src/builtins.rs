@@ -1,7 +1,7 @@
-use types::{Type, TypeVariable, Kind};
-use interner::intern;
-use renamer::{name, Name};
-use renamer::typ::*;
+use crate::types::{Type, TypeVariable, Kind};
+use crate::interner::intern;
+use crate::renamer::{name, Name};
+use crate::renamer::typ::*;
 
 ///Returns an array of all the compiler primitves which exist (not including numeric primitives atm)
 pub fn builtins() -> Vec<(&'static str, Type<Name>)> {

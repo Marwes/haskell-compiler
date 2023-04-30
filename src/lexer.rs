@@ -3,7 +3,7 @@ use std::collections::VecDeque;
 use std::iter::Peekable;
 use std::rc::Rc;
 use std::cell::RefCell;
-use interner::*;
+use crate::interner::*;
 
 use self::TokenEnum::*;
 
@@ -586,8 +586,7 @@ impl <Stream : Iterator<Item=char>> Lexer<Stream> {
 #[cfg(test)]
 mod tests {
 
-use lexer::*;
-use lexer::TokenEnum::*;
+use crate::lexer::*;
 
 #[test]
 fn simple() {

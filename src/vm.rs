@@ -7,21 +7,22 @@ use std::io::Read;
 use std::fs::File;
 use std::error::Error;
 use std::num::Wrapping;
-use typecheck::TypeEnvironment;
-use compiler::*;
-use parser::Parser;
-use core::translate::translate_module;
-use lambda_lift::do_lambda_lift;
-use renamer::rename_module;
-use vm::primitive::{BuiltinFun, get_builtin};
-use interner::*;
+use crate::typecheck::TypeEnvironment;
+use crate::compiler::*;
+use crate::parser::Parser;
+use crate::core::translate::translate_module;
+use crate::lambda_lift::do_lambda_lift;
+use crate::renamer::rename_module;
+use crate::vm::primitive::{BuiltinFun, get_builtin};
+use crate::interner::*;
 
 use self::Node_::*;
 
 #[derive(Clone)]
-struct InstanceDictionary {
+pub struct InstanceDictionary {
     entries: Vec<Rc<DictionaryEntry>>
 }
+
 #[derive(Clone)]
 enum DictionaryEntry {
     Function(usize),
@@ -94,7 +95,7 @@ impl <'a> fmt::Debug for Node_<'a> {
                             fn print_string<'a>(f: &mut fmt::Formatter, cons: &Vec<Node<'a>>) -> fmt::Result {
                                 if cons.len() >= 2 {
                                     match *cons[0].borrow() {
-                                        Char(c) =>  { try!(write!(f, "{:?}", c)); },
+                                        Char(c) =>  { write!(f, "{:?}", c)?; },
                                         _ => ()
                                     }
                                     match *cons[1].borrow() {
@@ -104,15 +105,15 @@ impl <'a> fmt::Debug for Node_<'a> {
                                 }
                                 Ok(())
                             }
-                            try!(write!(f, "\""));
-                            try!(print_string(f, cons));
+                            write!(f, "\"")?;
+                            print_string(f, cons)?;
                             write!(f, "\"")
                         }
                         _ => {
                             //Print a normal constructor
-                            try!(write!(f, "{{{:?}", *tag));
+                            write!(f, "{{{:?}", *tag)?;
                             for arg in args.iter() {
-                                try!(write!(f, " {:?}", *arg.borrow()));
+                                write!(f, " {:?}", *arg.borrow())?;
                             }
                             write!(f, "}}")
                         }
@@ -120,9 +121,9 @@ impl <'a> fmt::Debug for Node_<'a> {
                 }
                 else {
                     //Print a normal constructor
-                    try!(write!(f, "{{{:?}", *tag));
+                    write!(f, "{{{:?}", *tag)?;
                     for arg in args.iter() {
-                        try!(write!(f, " {:?}", *arg.borrow()));
+                        write!(f, " {:?}", *arg.borrow())?;
                     }
                     write!(f, "}}")
                 }
@@ -134,12 +135,12 @@ impl <'a> fmt::Debug for Node_<'a> {
 }
 impl fmt::Debug for InstanceDictionary {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        try!(write!(f, "["));
+        write!(f, "[")?;
         if self.entries.len() > 0 {
-            try!(write!(f, "{:?}", *self.entries[0]));
+            write!(f, "{:?}", *self.entries[0])?;
         }
         for entry in self.entries.iter().skip(1) {
-            try!(write!(f, ", {:?}", **entry));
+            write!(f, ", {:?}", **entry)?;
         }
         write!(f, "]")
     }
@@ -206,7 +207,7 @@ impl <'a> VM {
 
     ///Executes a sequence of instructions, leaving the result on the top of the stack
     pub fn execute(&'a self, stack: &mut Vec<Node<'a>>, code: &[Instruction], assembly_id: usize) {
-        use compiler::Instruction::*;
+        use crate::compiler::Instruction::*;
         debug!("----------------------------");
         debug!("Entering frame with stack");
         for x in stack.iter() {
@@ -520,10 +521,17 @@ fn primitive<F>(stack: &mut Vec<Node>, f: F) where F: FnOnce(isize, isize) -> is
 
 #[derive(PartialEq, Debug)]
 pub enum VMResult {
+    Char(char),
     Int(isize),
     Double(f64),
     Constructor(u16, Vec<VMResult>)
 }
+
+
+// TODO: throw this garbage into the macro below
+use crate::parser::ParseError;
+use crate::renamer::RenamerError;
+use crate::typecheck::TypeError;
 
 macro_rules! vm_error {
     ($($pre: ident :: $post: ident),+) => {
@@ -531,7 +539,7 @@ macro_rules! vm_error {
     #[derive(Debug)]
     pub enum VMError {
         Io(io::Error),
-        $($post(::$pre::$post)),+
+        $($post(crate::$pre::$post)),+
     }
 
     impl fmt::Display for VMError {
@@ -545,10 +553,12 @@ macro_rules! vm_error {
 
     impl Error for VMError {
         fn description(&self) -> &str {
-            match *self {
+            "stuff"
+
+            /*match *self {
                 VMError::Io(ref e) => e.description(),
                 $(VMError::$post(ref e) => e.description()),+
-            }
+            }*/
         }
     }
 
@@ -556,8 +566,8 @@ macro_rules! vm_error {
         fn from(e: io::Error) -> Self { VMError::Io(e) }
     }
 
-    $(impl From<::$pre::$post> for VMError {
-        fn from(e: ::$pre::$post) -> Self { VMError::$post(e) }
+    $(impl From<$post> for VMError {
+        fn from(e: $post) -> Self { VMError::$post(e) }
     })+
     }
 }
@@ -565,11 +575,11 @@ vm_error! { parser::ParseError, renamer::RenamerError, typecheck::TypeError }
 
 fn compile_iter<T : Iterator<Item=char>>(iterator: T) -> Result<Assembly, VMError> {
     let mut parser = Parser::new(iterator);
-    let module = try!(parser.module());
-    let mut module = try!(rename_module(module));
+    let module = parser.module().unwrap();
+    let mut module = rename_module(module).unwrap();
     
     let mut typer = TypeEnvironment::new();
-    try!(typer.typecheck_module(&mut module));
+    typer.typecheck_module(&mut module).unwrap();
     let core_module = do_lambda_lift(translate_module(module));
     
     let mut compiler = Compiler::new();
@@ -579,14 +589,16 @@ fn compile_iter<T : Iterator<Item=char>>(iterator: T) -> Result<Assembly, VMErro
 ///Compiles a single file
 pub fn compile_file(filename: &str) -> Result<Assembly, VMError> {
     let path = &Path::new(filename);
-    let mut file = try!(File::open(path));
+    let mut file = File::open(path)?;
     let mut contents = ::std::string::String::new();
-    try!(file.read_to_string(&mut contents));
+    file.read_to_string(&mut contents)?;
     compile_iter(contents.chars())
 }
 
 fn extract_result(node: Node_) -> Option<VMResult> {
     match node {
+        // TODO: Application result
+
         Constructor(tag, fields) => {
             let mut result = Vec::new();
             for field in fields.iter() {
@@ -595,10 +607,14 @@ fn extract_result(node: Node_) -> Option<VMResult> {
                     None => return None
                 }
             }
+
             Some(VMResult::Constructor(tag, result))
         }
+
+        Char(i) => Some(VMResult::Char(i)),
         Int(i) => Some(VMResult::Int(i)),
         Float(i) => Some(VMResult::Double(i)),
+        
         x => {
             println!("Can't extract result {:?}", x);
             None
@@ -607,14 +623,14 @@ fn extract_result(node: Node_) -> Option<VMResult> {
 }
 
 pub fn execute_main_string(module: &str) -> Result<Option<VMResult>, String> {
-    let assemblies = try!(compile_string(module));
+    let assemblies = compile_string(module)?;
     execute_main_module_(assemblies)
 }
 
 ///Takes a module with a main function and compiles it and all its imported modules
 ///and then executes the main function
 pub fn execute_main_module(modulename: &str) -> Result<Option<VMResult>, String> {
-    let assemblies = try!(compile_module(modulename));
+    let assemblies = compile_module(modulename)?;
     execute_main_module_(assemblies)
 }
 
@@ -640,10 +656,10 @@ mod primitive {
 
     use std::io::Read;
     use std::fs::File;
-    use vm::{VM, Node, Node_};
-    use vm::Node_::{Application, Constructor, BuiltinFunction, Char};
-    use compiler::Instruction;
-    use compiler::Instruction::Eval;
+    use crate::vm::{VM, Node, Node_};
+    use crate::vm::Node_::{Application, Constructor, BuiltinFunction, Char};
+    use crate::compiler::Instruction;
+    use crate::compiler::Instruction::Eval;
 
     pub fn get_builtin(i: usize) -> (usize, BuiltinFun) {
         match i {
@@ -784,11 +800,10 @@ mod primitive {
 #[cfg(test)]
 mod tests {
 
-use typecheck::TypeEnvironment;
-use compiler::{compile_with_type_env};
-use vm::{VM, compile_file, compile_iter, execute_main_module, execute_main_string, extract_result, VMResult};
-use vm::VMResult::{Int, Double, Constructor};
-use interner::*;
+use crate::typecheck::TypeEnvironment;
+use crate::compiler::{compile_with_type_env};
+use crate::vm::{VM, compile_file, compile_iter, execute_main_module, execute_main_string, extract_result, VMResult};
+use crate::interner::*;
 
 fn execute_main<T : Iterator<Item=char>>(iterator: T) -> Option<VMResult> {
     let mut vm = VM::new();
@@ -1041,7 +1056,7 @@ test [] = False
 
 main = test [True, True]
 ")
-    .unwrap_or_else(|err| panic!(err));
+    .unwrap();
     assert_eq!(result, Some(VMResult::Constructor(0, Vec::new())));
 }
 #[test]
@@ -1060,7 +1075,7 @@ test x _ = x
 main = (test 2 [], test 100 [], test 100 ['c'])
 
 ")
-    .unwrap_or_else(|err| panic!(err));
+    .unwrap();
     assert_eq!(result, Some(VMResult::Constructor(0, vec!(VMResult::Int(2), VMResult::Int(1), VMResult::Int(100)))));
 }
 
@@ -1080,7 +1095,7 @@ test x _ = x
 main = (test 2 [], test 100 [0], test 100 [0, 123])
 
 ")
-    .unwrap_or_else(|err| panic!(err));
+    .unwrap();
     assert_eq!(result, Some(VMResult::Constructor(0, vec!(VMResult::Int(2), VMResult::Int(1), VMResult::Int(100)))));
 }
 #[test]
@@ -1144,7 +1159,7 @@ data Test = A Int | B
     deriving(Eq)
 
 main = A 0 == A 2 || A 0 == B
-").unwrap_or_else(|err| panic!(err));
+").unwrap();
     assert_eq!(result, Some(VMResult::Constructor(1, Vec::new())));
 }
 #[test]
@@ -1156,7 +1171,7 @@ data Test = A Int | B
     deriving(Eq, Ord)
 
 main = compare (A 0) (A 2) == LT && compare B (A 123) == GT
-").unwrap_or_else(|err| panic!(err));
+").unwrap();
     assert_eq!(result, Some(VMResult::Constructor(0, Vec::new())));
 }
 
@@ -1167,7 +1182,7 @@ r"
 import Prelude
 test x y = x == y
 main = test [1 :: Int] [3]
-").unwrap_or_else(|err| panic!(err));
+").unwrap();
     assert_eq!(result, Some(VMResult::Constructor(1, Vec::new())));
 }
 #[test]
@@ -1179,7 +1194,7 @@ import Prelude
 test :: Eq a => a -> a -> Bool
 test x y = [x] == [y]
 main = test [1 :: Int] [3]
-").unwrap_or_else(|err| panic!(err));
+").unwrap();
     assert_eq!(result, Some(VMResult::Constructor(1, Vec::new())));
 }
 
@@ -1194,7 +1209,7 @@ main = let
     in if x < 0
         then x
         else 1
-").unwrap_or_else(|err| panic!(err));
+").unwrap();
     assert_eq!(result, Some(VMResult::Int(1)));
 }
 
@@ -1211,7 +1226,7 @@ makeEven i
     | otherwise = Nothing
 
 main = makeEven (100 * 3)
-").unwrap_or_else(|err| panic!(err));
+").unwrap();
 
     assert_eq!(result, Some(VMResult::Constructor(0, vec![VMResult::Int(300)])));
 }
@@ -1231,7 +1246,7 @@ main = case list of
             y = x + 10
     where
         list = [1::Int]
-").unwrap_or_else(|err| panic!(err));
+").unwrap();
     assert_eq!(result, Some(VMResult::Int(11)));
 }
 

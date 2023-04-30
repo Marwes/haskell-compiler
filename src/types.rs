@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::default::Default;
 use std::fmt;
 use std::iter;
-use interner::{InternedStr, intern};
+use crate::interner::{InternedStr, intern};
 
 #[derive(Clone, Debug, Default, Eq, Hash)]
 pub struct TypeConstructor<Ident = InternedStr> {
@@ -72,14 +72,14 @@ impl <Id: fmt::Display + AsRef<str>> Type<Id> {
     pub fn new_op_kind(name : Id, types : Vec<Type<Id>>, kind: Kind) -> Type<Id> {
         let mut result = Type::Constructor(TypeConstructor { name : name, kind: kind });
         for typ in types.into_iter() {
-            result = Type::Application(box result, box typ);
+            result = Type::Application(Box::new(result), Box::new(typ));
         }
         result
     }
     fn new_type_kind(mut result: Type<Id>, types: Vec<Type<Id>>) -> Type<Id> {
         *result.mut_kind() = Kind::new(types.len() as isize + 1);
         for typ in types.into_iter() {
-            result = Type::Application(box result, box typ);
+            result = Type::Application(Box::new(result), Box::new(typ));
         }
         result
     }
@@ -158,7 +158,7 @@ impl <Id> Type <Id> {
             Type::Constructor(TypeConstructor { name, kind }) => {
                 Type::Constructor(TypeConstructor { name: f(name), kind: kind })
             }
-            Type::Application(lhs, rhs) => Type::Application(box lhs.map_(f), box rhs.map_(f)),
+            Type::Application(lhs, rhs) => Type::Application(Box::new(lhs.map_(f)), Box::new(rhs.map_(f))),
             Type::Generic(v) => Type::Generic(v)
         }
     }
@@ -180,6 +180,7 @@ pub fn tuple_name(n: usize) -> String {
         .chain(Some(')').into_iter())
         .collect()
 }
+
 ///Returns the type of an n-tuple constructor as well as the name of the tuple
 pub fn tuple_type(n: usize) -> (String, Type) {
     let mut var_list = Vec::new();
@@ -197,26 +198,32 @@ pub fn tuple_type(n: usize) -> (String, Type) {
     }
     (ident, typ)
 }
+
 ///Constructs a list type which holds elements of type 'typ'
 pub fn list_type(typ: Type) -> Type {
     Type::new_op(intern("[]"), vec![typ])
 }
+
 ///Returns the Type of the Char type
 pub fn char_type() -> Type {
     Type::new_op(intern("Char"), vec![])
 }
+
 ///Returns the type for the Int type
 pub fn int_type() -> Type {
     Type::new_op(intern("Int"), vec![])
 }
+
 ///Returns the type for the Bool type
 pub fn bool_type() -> Type {
     Type::new_op(intern("Bool"), vec![])
 }
+
 ///Returns the type for the Double type
 pub fn double_type() -> Type {
     Type::new_op(intern("Double"), vec![])
 }
+
 ///Creates a function type
 pub fn function_type(arg: &Type, result: &Type) -> Type {
     function_type_(arg.clone(), result.clone())
@@ -231,11 +238,11 @@ pub fn function_type_(func : Type, arg : Type) -> Type {
 pub fn io(typ: Type) -> Type {
     Type::new_op(intern("IO"), vec![typ])
 }
+
 ///Returns the unit type '()'
 pub fn unit() -> Type {
     Type::new_op(intern("()"), vec![])
 }
-
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Constraint<Ident = InternedStr> {
@@ -261,7 +268,7 @@ impl Kind {
     pub fn new(v: isize) -> Kind {
         let mut kind = Kind::Star.clone();
         for _ in 1..v {
-            kind = Kind::Function(box Kind::Star, box kind);
+            kind = Kind::Function(Box::new(Kind::Star), Box::new(kind));
         }
         kind
     }
@@ -292,10 +299,10 @@ impl <I: fmt::Display> fmt::Display for TypeConstructor<I> {
 impl <T: fmt::Display, I: fmt::Display + AsRef<str>> fmt::Display for Qualified<T, I> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         if self.constraints.len() != 0 {
-            try!(write!(f, "("));
+            write!(f, "(")?;
         }
         for constraint in &self.constraints {
-            try!(write!(f, "{}, ", constraint));
+            write!(f, "{}, ", constraint)?;
         }
         if self.constraints.len() != 0 {
             write!(f, ") => {}" , self.value)
@@ -381,9 +388,9 @@ impl <I: fmt::Display + AsRef<str>> fmt::Display for Type<I> {
 }
 impl <I: fmt::Display> fmt::Display for Constraint<I> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        try!(write!(f, "{}", self.class));
+        write!(f, "{}", self.class)?;
         for var in self.variables.iter() {
-            try!(write!(f, " {}", *var));
+            write!(f, " {}", *var)?;
         }
         Ok(())
     }

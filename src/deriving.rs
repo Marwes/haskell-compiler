@@ -1,9 +1,9 @@
-use module::encode_binding_identifier;
-use core::*;
-use core::Expr::*;
-use renamer::{name, NameSupply};
-use renamer::typ::*;
-use interner::{intern, InternedStr};
+use crate::module::encode_binding_identifier;
+use crate::core::*;
+use crate::core::Expr::*;
+use crate::renamer::{name, NameSupply};
+use crate::renamer::typ::*;
+use crate::interner::{intern, InternedStr};
 
 pub fn generate_deriving(instances: &mut Vec<Instance<Id<Name>>>, data: &DataDefinition<Name>) {
     let mut gen = DerivingGen { name_supply: NameSupply::new() };
@@ -43,7 +43,7 @@ impl DerivingGen {
     fn generate_eq(&mut self, data: &DataDefinition<Name>) -> Binding<Id<Name>> {
         self.make_binop("Eq", "==", data, &mut |this, id_l, id_r| {
             let alts = this.match_same_constructors(data, &id_r, &mut |this, l, r| this.eq_fields(l, r));
-            Case(box Identifier(id_l.clone()), alts)
+            Case(Box::new(Identifier(id_l.clone())), alts)
         })
     }
 
@@ -65,7 +65,7 @@ impl DerivingGen {
             //We first compare the tags of the arguments since this would otherwise the last of the alternatives
             let when_eq = {
                 let alts = this.match_same_constructors(data, &id_r, &mut |this, l, r| this.ord_fields(l, r));
-                Case(box Identifier(id_l.clone()), alts)
+                Case(Box::new(Identifier(id_l.clone())), alts)
             };
             let cmp = compare_tags(Identifier(id_l), Identifier(id_r));
             this.eq_or_default(cmp, when_eq)
@@ -90,7 +90,7 @@ impl DerivingGen {
 
     ///Creates a binary function binding with the name 'funcname' which is a function in an instance for 'data'
     ///This function takes two parameters of the type of 'data'
-    fn make_binop(&mut self, class: &str, funcname: &str, data: &DataDefinition<Name>, func: &mut FnMut(&mut DerivingGen, Id<Name>, Id<Name>) -> Expr<Id<Name>>) -> Binding<Id<Name>> {
+    fn make_binop(&mut self, class: &str, funcname: &str, data: &DataDefinition<Name>, func: &mut dyn FnMut(&mut DerivingGen, Id<Name>, Id<Name>) -> Expr<Id<Name>>) -> Binding<Id<Name>> {
         let arg_l = self.name_supply.anonymous();
         let arg_r = self.name_supply.anonymous();
         let mut id_r = Id::new(arg_r, data.typ.value.clone(), data.typ.constraints.clone());
@@ -98,7 +98,7 @@ impl DerivingGen {
         let expr = func(self, id_l.clone(), id_r.clone());
         id_r.typ.value = function_type_(data.typ.value.clone(), bool_type());
         id_l.typ.value = function_type_(data.typ.value.clone(), function_type_(data.typ.value.clone(), bool_type()));
-        let lambda_expr = Lambda(id_l, box Lambda(id_r, box expr));//TODO types
+        let lambda_expr = Lambda(id_l, Box::new(Lambda(id_r, Box::new(expr))));//TODO types
         let data_name = extract_applied_type(&data.typ.value).ctor().name;
         let name = encode_binding_identifier(data_name.name, intern(funcname));
         //Create a constraint for each type parameter
@@ -120,7 +120,7 @@ impl DerivingGen {
 
     fn eq_or_default(&mut self, cmp: Expr<Id<Name>>, def: Expr<Id<Name>>) -> Expr<Id<Name>> {
         let match_id = Id::new(self.name_supply.anonymous(), Type::new_op(name("Ordering"), Vec::new()), Vec::new());
-        Case(box cmp, vec![
+        Case(Box::new(cmp), vec![
             Alternative {
                 pattern: Pattern::Constructor(id("EQ", Type::new_op(name("Ordering"), Vec::new())), Vec::new()),
                 expression: def
@@ -129,7 +129,7 @@ impl DerivingGen {
         ])
     }
 
-    fn match_same_constructors(&mut self, data: &DataDefinition<Name>, id_r: &Id<Name>, f: &mut FnMut(&mut DerivingGen, &[Id<Name>], &[Id<Name>]) -> Expr<Id<Name>>) -> Vec<Alternative<Id<Name>>> {
+    fn match_same_constructors(&mut self, data: &DataDefinition<Name>, id_r: &Id<Name>, f: &mut dyn FnMut(&mut DerivingGen, &[Id<Name>], &[Id<Name>]) -> Expr<Id<Name>>) -> Vec<Alternative<Id<Name>>> {
         let alts: Vec<Alternative<Id<Name>>> = data.constructors.iter().map(|constructor| {
             let args_l: Vec<Id<Name>> = 
                 ArgIterator { typ: &constructor.typ.value }
@@ -142,7 +142,7 @@ impl DerivingGen {
             let ctor_id = Id::new(constructor.name, iter.typ.clone(), constructor.typ.constraints.clone());
             let expr = f(self, &*args_l, &*args_r);
             let pattern_r = Pattern::Constructor(ctor_id.clone(), args_r);
-            let inner = Case(box Identifier(id_r.clone()), vec![
+            let inner = Case(Box::new(Identifier(id_r.clone())), vec![
                 Alternative { pattern: pattern_r, expression: expr },
                 Alternative { 
                     pattern: Pattern::WildCard,
@@ -164,7 +164,7 @@ fn compare_tags(lhs: Expr<Id<Name>>, rhs: Expr<Id<Name>>) -> Expr<Id<Name>> {
     let var = Type::new_var(intern("a"));
     let typ = function_type_(var.clone(), function_type_(var.clone(), Type::new_op(name("Ordering"), Vec::new())));
     let id = Id::new(name("#compare_tags"), typ, Vec::new());
-    Apply(box Apply(box Identifier(id), box lhs), box rhs)
+    Apply(Box::new(Apply(Box::new(Identifier(id)), Box::new(lhs))), Box::new(rhs))
 }
 
 fn bool_binop(op: &str, lhs: Expr<Id<Name>>, rhs: Expr<Id<Name>>) -> Expr<Id<Name>> {
@@ -173,7 +173,7 @@ fn bool_binop(op: &str, lhs: Expr<Id<Name>>, rhs: Expr<Id<Name>>) -> Expr<Id<Nam
 fn binop(op: &str, lhs: Expr<Id<Name>>, rhs: Expr<Id<Name>>, return_type: Type<Name>) -> Expr<Id<Name>> {
     let typ = function_type_(lhs.get_type().clone(), function_type_(rhs.get_type().clone(), return_type));
     let f = Identifier(Id::new(name(op), typ, Vec::new()));
-    Apply(box Apply(box f, box lhs), box rhs)
+    Apply(Box::new(Apply(Box::new(f), Box::new(lhs))), Box::new(rhs))
 }
 
 fn true_expr() -> Expr<Id<Name>> { 
@@ -186,7 +186,7 @@ struct ArgIterator<'a> {
 impl <'a> Iterator for ArgIterator<'a> {
     type Item = &'a Type<Name>;
     fn next(&mut self) -> Option<&'a Type<Name>> {
-        use types::try_get_function;
+        use crate::types::try_get_function;
         match try_get_function(self.typ) {
             Some((arg, rest)) => {
                 self.typ = rest;

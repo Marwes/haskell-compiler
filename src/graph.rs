@@ -20,7 +20,7 @@ pub struct Vertex<T> {
     pub value: T,
     edges: Vec<EdgeIndex>
 }
-struct Edge {
+pub struct Edge {
     from: VertexIndex,
     to: VertexIndex
 }

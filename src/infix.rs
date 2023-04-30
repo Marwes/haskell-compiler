@@ -1,6 +1,6 @@
-use module::*;
-use renamer::Name;
-use interner::intern;
+use crate::module::*;
+use crate::renamer::Name;
+use crate::interner::intern;
 use std::collections::HashMap;
 
 pub struct PrecedenceVisitor { precedence: HashMap<Name, (isize, Assoc)>  }
@@ -12,7 +12,7 @@ impl MutVisitor<Name> for PrecedenceVisitor {
             Expr::OpApply(..) => {
                 let mut temp = TypedExpr::new(Expr::Identifier(Name { uid: usize::max_value(), name: intern("") }));
                 ::std::mem::swap(&mut temp, expr);
-                temp = self.rewrite(box temp);
+                temp = self.rewrite(Box::new(temp));
                 ::std::mem::swap(&mut temp, expr);
             }
             _ => ()
@@ -51,7 +51,7 @@ impl PrecedenceVisitor {
             let rhs = expr_stack.pop().unwrap();
             let lhs = expr_stack.pop().unwrap();
             let loc = lhs.location;
-            expr_stack.push(box TypedExpr::with_location(Expr::OpApply(lhs, op, rhs), loc));
+            expr_stack.push(Box::new(TypedExpr::with_location(Expr::OpApply(lhs, op, rhs), loc)));
         }
         let mut expr_stack = Vec::new();
         let mut op_stack = Vec::new();
@@ -101,7 +101,7 @@ impl PrecedenceVisitor {
                         assert!(expr_stack.len() >= 1);
                         let lhs = expr_stack.pop().unwrap();
                         let op = op_stack.pop().unwrap();
-                        result = TypedExpr::with_location(Expr::OpApply(lhs, op, box result), location);
+                        result = TypedExpr::with_location(Expr::OpApply(lhs, op, Box::new(result)), location);
                     }
                     return result;
                 }
@@ -112,12 +112,12 @@ impl PrecedenceVisitor {
 
 #[cfg(test)]
 mod tests {
-    use parser::*;
-    use module::*;
-    use interner::intern;
-    use typecheck::*;
-    use infix::PrecedenceVisitor;
-    use renamer::tests::{rename_expr, rename_modules};
+    use crate::parser::*;
+    use crate::module::*;
+    use crate::interner::intern;
+    use crate::typecheck::*;
+    use crate::infix::PrecedenceVisitor;
+    use crate::renamer::tests::{rename_expr, rename_modules};
 
     #[test]
     fn operator_precedence()

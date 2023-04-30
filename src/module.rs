@@ -1,9 +1,9 @@
 use std::fmt;
 use std::collections::HashMap;
-use interner::{intern, InternedStr};
-use lexer::{Location, Located};
+use crate::interner::{intern, InternedStr};
+use crate::lexer::{Location, Located};
 pub use std::default::Default;
-pub use types::*;
+pub use crate::types::*;
 
 use self::Expr::*;
 
@@ -203,21 +203,21 @@ impl <T: fmt::Display + AsRef<str>> fmt::Display for Binding<T> {
 
 impl <T: fmt::Display + AsRef<str>> fmt::Display for Expr<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        try!(write_core_expr!(*self, f, _));
+        write_core_expr!(*self, f, _)?;
         match *self {
             Do(ref bindings, ref expr) => {
-                try!(write!(f, "do {{\n"));
+                write!(f, "do {{\n")?;
                 for bind in bindings.iter() {
                     match *bind {
                         DoBinding::DoLet(ref bindings) => {
-                            try!(write!(f, "let {{\n"));
+                            write!(f, "let {{\n")?;
                             for bind in bindings.iter() {
-                                try!(write!(f, "; {} = {}\n", bind.name, bind.matches));
+                                write!(f, "; {} = {}\n", bind.name, bind.matches)?;
                             }
-                            try!(write!(f, "}}\n"));
+                            write!(f, "}}\n")?;
                         }
-                        DoBinding::DoBind(ref p, ref e) => try!(write!(f, "; {} <- {}\n", p.node, *e)),
-                        DoBinding::DoExpr(ref e) => try!(write!(f, "; {}\n", *e))
+                        DoBinding::DoBind(ref p, ref e) => write!(f, "; {} <- {}\n", p.node, *e)?,
+                        DoBinding::DoExpr(ref e) => write!(f, "; {}\n", *e)?
                     }
                 }
                 write!(f, "{} }}", *expr)
@@ -235,9 +235,9 @@ impl <T: fmt::Display + AsRef<str>> fmt::Display for Pattern<T> {
             &Pattern::Identifier(ref s) => write!(f, "{}", s),
             &Pattern::Number(ref i) => write!(f, "{}", i),
             &Pattern::Constructor(ref name, ref patterns) => {
-                try!(write!(f, "({} ", name));
+                write!(f, "({} ", name)?;
                 for p in patterns.iter() {
-                    try!(write!(f, " {}", p));
+                    write!(f, " {}", p)?;
                 }
                 write!(f, ")")
             }
@@ -257,7 +257,7 @@ impl <T: fmt::Display + AsRef<str>> fmt::Display for Match<T> {
             Match::Simple(ref e) => write!(f, "{}", *e),
             Match::Guards(ref gs) => {
                 for g in gs.iter() {
-                    try!(write!(f, "| {} -> {}\n", g.predicate, g.expression));
+                    write!(f, "| {} -> {}\n", g.predicate, g.expression)?;
                 }
                 Ok(())
             }
