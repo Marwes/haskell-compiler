@@ -1,15 +1,14 @@
 use std::io::BufRead;
 
-use compiler::*;
-use typecheck::*;
-use vm::*;
-use interner::*;
-use core::{Module, Type, Qualified};
-use core::Type::{Application, Constructor};
-use core::translate::*;
-use lambda_lift::*;
-use parser::Parser;
-use renamer::{Name, rename_expr};
+use crate::compiler::*;
+use crate::typecheck::*;
+use crate::vm::*;
+use crate::interner::*;
+use crate::core::{Module, Type, Qualified};
+use crate::core::translate::*;
+use crate::lambda_lift::*;
+use crate::parser::Parser;
+use crate::renamer::{Name, rename_expr};
 
 ///Returns whether the type in question is an IO action
 fn is_io(typ: &Type<Name>) -> bool {
@@ -26,12 +25,12 @@ fn is_io(typ: &Type<Name>) -> bool {
 ///Compiles an expression into an assembly
 fn compile_expr(prelude: &Assembly, expr_str: &str) -> Result<Assembly, VMError> {
     let mut parser = Parser::new(expr_str.chars());
-    let expr = try!(parser.expression_());
-    let mut expr = try!(rename_expr(expr));
+    let expr = parser.expression_().unwrap();
+    let mut expr = rename_expr(expr).unwrap();
 
     let mut type_env = TypeEnvironment::new();
-    type_env.add_types(prelude as &DataTypes);
-    try!(type_env.typecheck_expr(&mut expr));
+    type_env.add_types(prelude as &dyn DataTypes);
+    type_env.typecheck_expr(&mut expr).unwrap();
     let temp_module = Module::from_expr(translate_expr(expr));
     let m = do_lambda_lift(temp_module);
     

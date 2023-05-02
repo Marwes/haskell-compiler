@@ -1,16 +1,16 @@
-use interner::*;
-use core::*;
-use core::Expr::*;
-use types::{qualified, extract_applied_type};
-use typecheck::{Types, DataTypes, TypeEnvironment, find_specialized_instances};
-use scoped_map::ScopedMap;
+use crate::interner::*;
+use crate::core::*;
+use crate::core::Expr::*;
+use crate::types::{qualified, extract_applied_type};
+use crate::typecheck::{Types, DataTypes, TypeEnvironment, find_specialized_instances};
+use crate::scoped_map::ScopedMap;
 use std::borrow::ToOwned;
 
-use core::translate::{translate_module, translate_modules};
-use lambda_lift::do_lambda_lift;
-use renamer::rename_module;
-use renamer::typ::*;
-use builtins::builtins;
+use crate::core::translate::{translate_module, translate_modules};
+use crate::lambda_lift::do_lambda_lift;
+use crate::renamer::rename_module;
+use crate::renamer::typ::*;
+use crate::builtins::builtins;
 
 use self::Instruction::*;
 
@@ -549,7 +549,7 @@ impl <'a> Compiler<'a> {
         self.variables.insert(identifier, Var::Stack(index));
     }
 
-    fn scope(&mut self, f: &mut FnMut(&mut Compiler)) {
+    fn scope(&mut self, f: &mut dyn FnMut(&mut Compiler)) {
         self.variables.enter_scope();
         let stack_size = self.stack_size;
         f(self);
@@ -578,7 +578,7 @@ impl <'a> Compiler<'a> {
                                 typ: qualified(vec![], function_type_(int_type(), literal.typ.clone())),
                             });
                             let number = Literal(LiteralData { typ: int_type(), value: Integral(i) });
-                            let apply = Apply(box from_integer, box number);
+                            let apply = Apply(Box::new(from_integer), Box::new(number));
                             self.compile(&apply, instructions, strict);
                         }
                     }
@@ -595,7 +595,7 @@ impl <'a> Compiler<'a> {
                                 typ: double_type(),
                                 value: Fractional(f)
                             });
-                            let apply = Apply(box from_rational, box number);
+                            let apply = Apply(Box::new(from_rational), Box::new(number));
                             self.compile(&apply, instructions, strict);
                         }
                     }
@@ -900,7 +900,7 @@ impl <'a> Compiler<'a> {
 
     ///Walks through the class and all of its super classes, calling 'f' on each of them
     ///Returning Some(..) from the function quits and returns that value
-    fn walk_classes<T>(&self, class: Name, f: &mut FnMut(&[TypeDeclaration<Name>]) -> Option<T>) -> Option<T> {
+    fn walk_classes<T>(&self, class: Name, f: &mut dyn FnMut(&[TypeDeclaration<Name>]) -> Option<T>) -> Option<T> {
         let (constraints, _, declarations) = self.find_class(class)
             .expect("Compiler error: Expected class");
         //Look through the functions in any super classes first
@@ -1031,15 +1031,15 @@ pub fn compile(contents: &str) -> Result<Assembly, ::std::string::String> {
 }
 #[allow(dead_code)]
 pub fn compile_with_type_env<'a>(type_env: &mut TypeEnvironment<'a>, assemblies: &[&'a Assembly], contents: &str) -> Result<Assembly, ::std::string::String> {
-    use parser::Parser;
+    use crate::parser::Parser;
 
     let mut parser = Parser::new(contents.chars()); 
-    let module = try!(parser.module().map_err(|e| format!("{:?}", e)));
-    let mut module = try!(rename_module(module).map_err(|e| format!("{}", e)));
+    let module = parser.module().map_err(|e| format!("{:?}", e))?;
+    let mut module = rename_module(module).map_err(|e| format!("{}", e))?;
     for assem in assemblies.iter() {
         type_env.add_types(*assem);
     }
-    try!(type_env.typecheck_module(&mut module).map_err(|e| format!("{}", e)));
+    type_env.typecheck_module(&mut module).map_err(|e| format!("{}", e))?;
     let core_module = do_lambda_lift(translate_module(module));
     let mut compiler = Compiler::new();
     for assem in assemblies.iter() {
@@ -1049,21 +1049,20 @@ pub fn compile_with_type_env<'a>(type_env: &mut TypeEnvironment<'a>, assemblies:
 }
 
 pub fn compile_string(module: &str) -> Result<Vec<Assembly>, ::std::string::String> {
-    use typecheck::typecheck_string;
-    let modules = try!(typecheck_string(module));
+    use crate::typecheck::typecheck_string;
+    let modules = typecheck_string(module)?;
     compile_module_(modules)
 }
 
 ///Takes a module name and does everything needed up to and including compiling the module
 ///and its imported modules
 pub fn compile_module(module: &str) -> Result<Vec<Assembly>, ::std::string::String> {
-    use typecheck::typecheck_module;
-    let modules = try!(typecheck_module(module));
+    use crate::typecheck::typecheck_module;
+    let modules = typecheck_module(module)?;
     compile_module_(modules)
 }
 
-fn compile_module_(modules: Vec<::module::Module<Name>>) -> Result<Vec<Assembly>, ::std::string::String> {
-    use compiler::Compiler;
+fn compile_module_(modules: Vec<crate::module::Module<Name>>) -> Result<Vec<Assembly>, ::std::string::String> {
     let core_modules: Vec<Module<Id<Name>>> = translate_modules(modules)
         .into_iter()
         .map(|module| do_lambda_lift(module))
@@ -1085,10 +1084,10 @@ fn compile_module_(modules: Vec<::module::Module<Name>>) -> Result<Vec<Assembly>
 #[cfg(test)]
 mod tests {
 
-use interner::*;
-use compiler::{Assembly, Compiler, compile_with_type_env};
-use compiler::Instruction::*;
-use typecheck::TypeEnvironment;
+use crate::interner::*;
+use crate::compiler::{Assembly, Compiler, compile_with_type_env};
+use crate::compiler::Instruction::*;
+use crate::typecheck::TypeEnvironment;
 use std::path::Path;
 use std::io::Read;
 use std::fs::File;
@@ -1265,10 +1264,10 @@ test = Test [1::Int]";
 
 #[bench]
 fn bench_prelude(b: &mut Bencher) {
-    use lambda_lift::do_lambda_lift;
-    use core::translate::translate_module;
-    use renamer::tests::rename_module;
-    use parser::Parser;
+    use crate::lambda_lift::do_lambda_lift;
+    use crate::core::translate::translate_module;
+    use crate::renamer::tests::rename_module;
+    use crate::parser::Parser;
 
     let path = &Path::new("Prelude.hs");
     let mut contents = ::std::string::String::new();

@@ -1,9 +1,9 @@
 use std::fmt;
 use std::error;
-use module::*;
-use lexer::Located;
-use scoped_map::ScopedMap;
-use interner::*;
+use crate::module::*;
+use crate::lexer::Located;
+use crate::scoped_map::ScopedMap;
+use crate::interner::*;
 
 ///A Name is a reference to a specific identifier in the program, guaranteed to be unique
 #[derive(Eq, Hash, Clone, Copy, Debug)]
@@ -72,9 +72,9 @@ impl <T> Errors<T> {
 }
 impl <T: fmt::Display> Errors<T> {
     pub fn report_errors(&self, f: &mut fmt::Formatter, pass: &str) -> fmt::Result {
-        try!(write!(f, "Found {} errors in compiler pass: {}", self.errors.len(), pass));
+        write!(f, "Found {} errors in compiler pass: {}", self.errors.len(), pass)?;
         for error in self.errors.iter() {
-            try!(write!(f, "{}", error));
+            write!(f, "{}", error)?;
         }
         Ok(())
     }
@@ -156,7 +156,7 @@ impl Renamer {
         Renamer { uniques: ScopedMap::new(), name_supply: NameSupply::new(), errors: Errors::new() }
     }
 
-    fn import_globals<T: Eq + Copy>(&mut self, module: &Module<T>, str_fn: &mut FnMut(T) -> InternedStr, uid: usize) {
+    fn import_globals<T: Eq + Copy>(&mut self, module: &Module<T>, str_fn: &mut dyn FnMut(T) -> InternedStr, uid: usize) {
         let names = module.data_definitions.iter()
             .flat_map(|data| data.constructors.iter().map(|ctor| ctor.name))
             .chain(module.newtypes.iter().map(|newtype| newtype.constructor_name))
@@ -231,24 +231,24 @@ impl Renamer {
     }
     
     fn rename(&mut self, input_expr: TypedExpr<InternedStr>) -> TypedExpr<Name> {
-        use module::Expr::*;
-        use module::DoBinding::*;
+        use crate::module::Expr::*;
+        use crate::module::DoBinding::*;
         let TypedExpr { expr, typ, location } = input_expr;
         let e = match expr {
             Literal(l) => Literal(l),
             Identifier(i) => Identifier(self.get_name(i)),
-            Apply(func, arg) => Apply(box self.rename(*func), box self.rename(*arg)),
-            OpApply(lhs, op, rhs) => OpApply(box self.rename(*lhs), self.get_name(op), box self.rename(*rhs)),
+            Apply(func, arg) => Apply(Box::new(self.rename(*func)), Box::new(self.rename(*arg))),
+            OpApply(lhs, op, rhs) => OpApply(Box::new(self.rename(*lhs)), self.get_name(op), Box::new(self.rename(*rhs))),
             Lambda(arg, body) => {
                 self.uniques.enter_scope();
-                let l = Lambda(self.rename_pattern(arg), box self.rename(*body));
+                let l = Lambda(self.rename_pattern(arg), Box::new(self.rename(*body)));
                 self.uniques.exit_scope();
                 l
             }
             Let(bindings, expr) => {
                 self.uniques.enter_scope();
                 let bs = self.rename_bindings(bindings, false);
-                let l = Let(bs, box self.rename(*expr));
+                let l = Let(bs, Box::new(self.rename(*expr)));
                 self.uniques.exit_scope();
                 l
             }
@@ -268,12 +268,12 @@ impl Renamer {
                     self.uniques.exit_scope();
                     a
                 }).collect();
-                Case(box self.rename(*expr), a)
+                Case(Box::new(self.rename(*expr)), a)
             }
             IfElse(pred, if_true, if_false) => {
-                IfElse(box self.rename(*pred),
-                       box self.rename(*if_true),
-                       box self.rename(*if_false))
+                IfElse(Box::new(self.rename(*pred)),
+                       Box::new(self.rename(*if_true)),
+                       Box::new(self.rename(*if_false)))
             }
             Do(bindings, expr) => {
                 let bs: Vec<DoBinding<Name>> = bindings.into_iter().map(|bind| {
@@ -287,12 +287,12 @@ impl Renamer {
                         }
                     }
                 }).collect();
-                Do(bs, box self.rename(*expr))
+                Do(bs, Box::new(self.rename(*expr)))
             }
             TypeSig(expr, sig) => {
-                TypeSig(box self.rename(*expr), self.rename_qualified_type(sig))
+                TypeSig(Box::new(self.rename(*expr)), self.rename_qualified_type(sig))
             }
-            Paren(expr) => Paren(box self.rename(*expr))
+            Paren(expr) => Paren(Box::new(self.rename(*expr)))
         };
         let mut t = TypedExpr::with_location(e, location);
         t.typ = self.rename_type(typ);
@@ -554,9 +554,9 @@ pub fn rename_modules(modules: Vec<Module<InternedStr>>) -> Result<Vec<Module<Na
 
 pub mod typ {
     use std::iter::repeat;
-    use types::{Kind, Type, TypeVariable};
+    use crate::types::{Kind, Type, TypeVariable};
     use super::{name, Name};
-    use interner::intern;
+    use crate::interner::intern;
 
     ///Constructs a string which holds the name of an n-tuple
     pub fn tuple_name(n: usize) -> String {
@@ -628,9 +628,9 @@ pub mod typ {
 #[cfg(test)]
 pub mod tests {
     use super::Name;
-    use interner::InternedStr;
-    use module::{TypedExpr, Module};
-    use parser::*;
+    use crate::interner::InternedStr;
+    use crate::module::{TypedExpr, Module};
+    use crate::parser::*;
 
     pub fn rename_modules(modules: Vec<Module<InternedStr>>) -> Vec<Module<Name>> {
         super::rename_modules(modules)
@@ -661,8 +661,7 @@ main = 2".chars());
 r"
 import Prelude (id)
 main = id";
-        let modules = parse_string(file)
-            .unwrap_or_else(|err| panic!(err));
+        let modules = parse_string(file).unwrap();
         rename_modules(modules);
     }
     #[test]

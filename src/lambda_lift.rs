@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
-use core::*;
-use core::Expr::*;
-use renamer::{name, NameSupply};
-use renamer::typ::*;
+use crate::core::*;
+use crate::core::Expr::*;
+use crate::renamer::NameSupply;
+use crate::renamer::typ::*;
 
 pub type TypeAndStr = Id;
 
@@ -15,7 +15,7 @@ struct FreeVariables {
     name_supply: NameSupply
 }
 
-fn each_pattern_variables(pattern: &Pattern<Id>, f: &mut FnMut(&Name)) {
+fn each_pattern_variables(pattern: &Pattern<Id>, f: &mut dyn FnMut(&Name)) {
     match *pattern {
         Pattern::Identifier(ref ident) => (*f)(&ident.name),
         Pattern::Constructor(_, ref patterns) => {
@@ -106,7 +106,7 @@ fn abstract_(&mut self, free_vars: &HashMap<Name, TypeAndStr>, input_expr: &mut 
             let mut rhs = temp;
             let mut typ = rhs.get_type().clone();
             for (_, var) in free_vars.iter() {
-                rhs = Lambda(var.clone(), box rhs);
+                rhs = Lambda(var.clone(), Box::new(rhs));
                 typ = function_type_(var.get_type().clone(), typ);
             }
             let id = Id::new(self.name_supply.from_str("#sc"), typ.clone(), Vec::new());
@@ -114,10 +114,10 @@ fn abstract_(&mut self, free_vars: &HashMap<Name, TypeAndStr>, input_expr: &mut 
                 name: id.clone(),
                 expression: rhs
             };
-            Let(vec![bind], box Identifier(id))
+            Let(vec![bind], Box::new(Identifier(id)))
         };
         for (_, var) in free_vars.iter() {
-            e = Apply(box e, box Identifier(var.clone()));
+            e = Apply(Box::new(e), Box::new(Identifier(var.clone())));
         }
         *input_expr = e
     }
@@ -126,7 +126,7 @@ fn abstract_(&mut self, free_vars: &HashMap<Name, TypeAndStr>, input_expr: &mut 
 
 ///Lifts all lambdas in the module to the top level of the program
 pub fn lift_lambdas<T>(mut module: Module<T>) -> Module<T> {
-    use core::mutable::*;
+    use crate::core::mutable::*;
     struct LambdaLifter<T> { out_lambdas: Vec<Binding<T>> }
     impl <T> Visitor<T> for LambdaLifter<T> {
         fn visit_expr(&mut self, expr: &mut Expr<T>) {
@@ -168,7 +168,7 @@ pub fn lift_lambdas<T>(mut module: Module<T>) -> Module<T> {
 }
 //Replaces let expressions with no binding with the expression itself
 fn remove_empty_let<T>(expr: &mut Expr<T>) {
-    let mut temp = unsafe { ::std::mem::uninitialized() };
+    let mut temp = unsafe { ::std::mem::MaybeUninit::zeroed().assume_init() };
     ::std::mem::swap(&mut temp, expr);
     temp = match temp {
         Let(bindings, e) => {
@@ -187,7 +187,7 @@ fn remove_empty_let<T>(expr: &mut Expr<T>) {
 
 ///Takes a module and adds all variables which are captured into a lambda to its arguments
 pub fn abstract_module(mut module: Module<TypeAndStr>) -> Module<TypeAndStr> {
-    use core::mutable::*;
+    use crate::core::mutable::*;
     impl Visitor<TypeAndStr> for FreeVariables {
         fn visit_binding(&mut self, bind: &mut Binding<TypeAndStr>) {
             let mut variables = HashMap::new();
@@ -203,16 +203,14 @@ pub fn abstract_module(mut module: Module<TypeAndStr>) -> Module<TypeAndStr> {
 #[cfg(test)]
 mod tests {
     use test::Bencher;
-    use interner::*;
-    use lambda_lift::*;
+    use crate::interner::*;
+    use crate::lambda_lift::*;
     use std::collections::HashSet;
-    use parser::Parser;
-    use core::*;
-    use core::Expr::*;
-    use core::ref_::*;
-    use core::translate::translate_module;
-    use renamer::tests::rename_module;
-    use typecheck::TypeEnvironment;
+    use crate::parser::Parser;
+    use crate::core::ref_::*;
+    use crate::core::translate::translate_module;
+    use crate::renamer::tests::rename_module;
+    use crate::typecheck::TypeEnvironment;
 
     struct CheckUniques {
         found: HashSet<Id>
@@ -372,7 +370,7 @@ test2 x =
         use std::fs::File;
         use std::io::Read;
         use std::path::Path;
-        use typecheck::test::do_typecheck;
+        use crate::typecheck::test::do_typecheck;
 
         let path = &Path::new("Prelude.hs");
         let mut contents = ::std::string::String::new();

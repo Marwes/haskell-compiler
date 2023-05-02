@@ -132,7 +132,7 @@ impl <K, V> ScopedMap<K, V>
 
 #[cfg(test)]
 mod tests {
-    use scoped_map::ScopedMap;
+    use crate::scoped_map::ScopedMap;
     #[test]
     fn test() {
         let mut map = ScopedMap::new();

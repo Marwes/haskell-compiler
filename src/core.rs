@@ -1,13 +1,12 @@
 use std::fmt;
-pub use types::{Qualified, TypeVariable, Type, Constraint};
-pub use types::Type::{Application, Variable};
-pub use module::{Constructor, DataDefinition, TypeDeclaration, Newtype};
-pub use module::LiteralData::{Integral, Fractional, String, Char};
-use typecheck::TcType;
-use module;
-use interner::*;
-pub use renamer::Name;
-
+pub use crate::types::{Qualified, TypeVariable, Type, Constraint};
+pub use crate::types::Type::{Application, Variable};
+pub use crate::module::{Constructor, DataDefinition, TypeDeclaration, Newtype};
+pub use crate::module::LiteralData::{Integral, Fractional, String, Char};
+use crate::typecheck::TcType;
+use crate::module;
+use crate::interner::*;
+pub use crate::renamer::Name;
 
 pub struct Module<Ident> {
     pub classes: Vec<Class<Ident>>,
@@ -116,9 +115,9 @@ impl <T: fmt::Display> fmt::Display for Pattern<T> {
             Pattern::Identifier(ref s) => write!(f, "{}", s),
             Pattern::Number(ref i) => write!(f, "{}", i),
             Pattern::Constructor(ref name, ref patterns) => {
-                try!(write!(f, "({} ", name));
+                write!(f, "({} ", name)?;
                 for p in patterns.iter() {
-                    try!(write!(f, " {}", p));
+                    write!(f, " {}", p)?;
                 }
                 write!(f, ")")
             }
@@ -368,21 +367,21 @@ pub mod result {
             Apply(func, arg) => {
                 let f = visitor.visit_expr(*func);
                 let a = visitor.visit_expr(*arg);
-                Apply(box f, box a)
+                Apply(Box::new(f), Box::new(a))
             }
-            Lambda(x, body) => Lambda(x, box visitor.visit_expr(*body)),
+            Lambda(x, body) => Lambda(x, Box::new(visitor.visit_expr(*body))),
             Let(binds, e) => {
                 let bs: Vec<Binding<Ident>> = binds.into_iter().map(|b| {
                     visitor.visit_binding(b)
                 }).collect();
-                Let(bs, box visitor.visit_expr(*e))
+                Let(bs, Box::new(visitor.visit_expr(*e)))
             }
             Case(e, alts) => {
                 let e2 = visitor.visit_expr(*e);
                 let alts2: Vec<Alternative<Ident>> = alts.into_iter()
                     .map(|alt| visitor.visit_alternative(alt))
                     .collect();
-                Case(box e2, alts2)
+                Case(Box::new(e2), alts2)
             }
             expr => expr
         }
@@ -396,19 +395,18 @@ pub mod result {
 
 ///The translate module takes the AST and translates it into the simpler core language.
 pub mod translate {
-    use module;
-    use core::*;
-    use core::Expr::*;
-    use typecheck::TcType;
-    use interner::*;
-    use renamer::NameSupply;
-    use renamer::typ::*;
-    use deriving::*;
+    use crate::module;
+    use crate::core::*;
+    use crate::core::Expr::*;
+    use crate::typecheck::TcType;
+    use crate::renamer::NameSupply;
+    use crate::renamer::typ::*;
+    use crate::deriving::*;
     use std::collections::HashMap;
 
     struct Translator<'a> {
         name_supply: NameSupply,
-        functions_in_class: &'a mut (FnMut(Name) -> (&'a TypeVariable, &'a [TypeDeclaration<Name>]) + 'a)
+        functions_in_class: &'a mut (dyn FnMut(Name) -> (&'a TypeVariable, &'a [TypeDeclaration<Name>]) + 'a)
     }
     
     #[derive(Debug)]
@@ -514,7 +512,7 @@ pub mod translate {
                 //The stub functions will naturally have the same type as the function in the class but with the variable replaced
                 //with the instance's type
                 let mut typ = decl.typ.clone();
-                ::typecheck::replace_var(&mut typ.value, class_var, &instance.typ);
+                crate::typecheck::replace_var(&mut typ.value, class_var, &instance.typ);
                 {
                     let context = ::std::mem::replace(&mut typ.constraints, Vec::new());
                     //Remove all constraints which refer to the class's variable
@@ -562,10 +560,10 @@ impl <'a> Translator<'a> {
                         module::Pattern::WildCard => Name { name: intern("_"), uid: usize::max_value() },
                         _ => panic!("Core translation of pattern matches in lambdas are not implemented")
                     };
-                    let l = Lambda(Id::new(argname, typ.clone(), vec![]), box self.translate_expr_rest(*body));
+                    let l = Lambda(Id::new(argname, typ.clone(), vec![]), Box::new(self.translate_expr_rest(*body)));
                     let id = Id::new(self.name_supply.from_str("#lambda"), typ.clone(), vec![]);
                     let bind = Binding { name: id.clone(), expression: l };
-                    Let(vec![bind], box Identifier(id))
+                    Let(vec![bind], Box::new(Identifier(id)))
                 }
                 _ => panic!()
             }
@@ -579,32 +577,32 @@ impl <'a> Translator<'a> {
         let module::TypedExpr { typ, expr, ..} = input_expr;
         match expr {
             module::Expr::Identifier(s) => Identifier(Id::new(s, typ, vec![])),
-            module::Expr::Apply(func, arg) => Apply(box self.translate_expr(*func), box self.translate_expr(*arg)),
+            module::Expr::Apply(func, arg) => Apply(Box::new(self.translate_expr(*func)), Box::new(self.translate_expr(*arg))),
             module::Expr::OpApply(lhs, op, rhs) => {
-                let l = box self.translate_expr(*lhs);
-                let r = box self.translate_expr(*rhs);
+                let l = Box::new(self.translate_expr(*lhs));
+                let r = Box::new(self.translate_expr(*rhs));
                 let func_type = function_type_(l.get_type().clone(),
                                 function_type_(r.get_type().clone(),
                                                typ));
-                Apply(box Apply(box Identifier(Id::new(op, func_type, vec![])), l), r)
+                Apply(Box::new(Apply(Box::new(Identifier(Id::new(op, func_type, vec![]))), l)), r)
             }
             module::Expr::Literal(l) => Literal(LiteralData { typ: typ, value: l }),
             module::Expr::Lambda(arg, body) => {
                 match arg {
-                    module::Pattern::Identifier(arg) => Lambda(Id::new(arg, typ, vec![]), box self.translate_expr_rest(*body)),
-                    module::Pattern::WildCard => Lambda(Id::new(Name { name: intern("_"), uid: usize::max_value() }, typ, vec![]), box self.translate_expr_rest(*body)),
+                    module::Pattern::Identifier(arg) => Lambda(Id::new(arg, typ, vec![]), Box::new(self.translate_expr_rest(*body))),
+                    module::Pattern::WildCard => Lambda(Id::new(Name { name: intern("_"), uid: usize::max_value() }, typ, vec![]), Box::new(self.translate_expr_rest(*body))),
                     _ => panic!("Core translation of pattern matches in lambdas are not implemented")
                 }
             }
             module::Expr::Let(bindings, body) => {
                 let bs = self.translate_bindings(bindings);
-                Let(bs, box self.translate_expr(*body))
+                Let(bs, Box::new(self.translate_expr(*body)))
             }
             module::Expr::Case(expr, alts) => {
                 self.translate_case(*expr, alts)
             }
             module::Expr::IfElse(pred, if_true, if_false) => {
-                Case(box self.translate_expr(*pred), vec![
+                Case(Box::new(self.translate_expr(*pred)), vec![
                     Alternative { pattern: bool_pattern("True"), expression: self.translate_expr(*if_true) },
                     Alternative { pattern: bool_pattern("False"), expression: self.translate_expr(*if_false) }
                     ])
@@ -616,14 +614,14 @@ impl <'a> Translator<'a> {
                         module::DoBinding::DoExpr(e) => {
                             let core = self.translate_expr(e);
                             let x = self.do_bind2_id(core.get_type().clone(), result.get_type().clone());
-                            Apply(box Apply(box x, box core), box result)
+                            Apply(Box::new(Apply(Box::new(x), Box::new(core))), Box::new(result))
                         }
                         module::DoBinding::DoBind(pattern, e) => {
                             let e2 = self.translate_expr(e);
                             self.do_bind_translate(pattern.node, e2, result)
                         }
                         module::DoBinding::DoLet(bs) => {
-                            Let(self.translate_bindings(bs), box result)
+                            Let(self.translate_bindings(bs), Box::new(result))
                         }
                     };
                 }
@@ -671,12 +669,12 @@ impl <'a> Translator<'a> {
         );//TODO unique id
         let var = Id::new(self.name_supply.from_str("p"), function_type_(a, m_b.clone()), c.clone());//Constraints for a
         let fail_ident = Identifier(Id::new(Name { name: intern("fail"), uid: 0 }, function_type_(list_type(char_type()), m_b), c));
-        let func = Lambda(var.clone(), box Case(box Identifier(var), 
+        let func = Lambda(var.clone(), Box::new(Case(Box::new(Identifier(var)), 
             vec![Alternative { pattern: self.translate_pattern(pattern), expression: result }
-            , Alternative { pattern: Pattern::WildCard, expression: Apply(box fail_ident, box string("Unmatched pattern in let")) } ]));
+            , Alternative { pattern: Pattern::WildCard, expression: Apply(Box::new(fail_ident), Box::new(string("Unmatched pattern in let"))) } ])));
         let bind = Binding { name: func_ident.clone(), expression: func };
         
-        Let(vec![bind], box apply(bind_ident, (vec![expr, Identifier(func_ident)]).into_iter()))
+        Let(vec![bind], Box::new(apply(bind_ident, (vec![expr, Identifier(func_ident)]).into_iter())))
     }
 
     fn translate_bindings(&mut self, bindings: Vec<module::Binding<Name>>) -> Vec<Binding<Id<Name>>> {
@@ -850,7 +848,7 @@ impl <'a> Translator<'a> {
     ///Translates a list of guards, if no guards matches then the result argument will be the result
     fn translate_guards(&mut self, mut result: Expr<Id<Name>>, guards: &[module::Guard<Name>]) -> Expr<Id<Name>> {
         for guard in guards.iter().rev() {
-            let predicate = box self.translate_expr(guard.predicate.clone());
+            let predicate = Box::new(self.translate_expr(guard.predicate.clone()));
             result = Case(predicate, vec![
                 Alternative { pattern: bool_pattern("True"), expression: self.translate_expr(guard.expression.clone()) },
                 Alternative { pattern: bool_pattern("False"), expression: result },
@@ -913,7 +911,7 @@ impl <'a> Translator<'a> {
                     }
                 }
             }
-            let body = box Identifier(ps[0].0.clone());
+            let body = Box::new(Identifier(ps[0].0.clone()));
             return Case(body, alts);
         }
         
@@ -1003,7 +1001,7 @@ impl <'a> Translator<'a> {
                 });
             }
             let &Equation(ps, _) = &equations[0];
-            let body = box Identifier(ps[0].0.clone());
+            let body = Box::new(Identifier(ps[0].0.clone()));
             Case(body, alts)
         }
     }
@@ -1076,14 +1074,14 @@ impl <'a> Translator<'a> {
     ///Creates a lambda from an iterator of its arguments and body
     fn make_lambda<T, I: Iterator<Item=T>>(mut iter: I, body: Expr<T>) -> Expr<T> {
         match iter.next() {
-            Some(arg) => Lambda(arg, box make_lambda(iter, body)),
+            Some(arg) => Lambda(arg, Box::new(make_lambda(iter, body))),
             None => body
         }
     }
     ///Creates a function application from a function and its arguments
     fn apply<T, I: Iterator<Item=Expr<T>>>(mut func: Expr<T>, iter: I) -> Expr<T> {
         for arg in iter {
-            func = Apply(box func, box arg);
+            func = Apply(Box::new(func), Box::new(arg));
         }
         func
     }
@@ -1093,7 +1091,7 @@ impl <'a> Translator<'a> {
             expr
         }
         else {
-            Let(bindings, box expr)
+            Let(bindings, Box::new(expr))
         }
     }
 
@@ -1119,7 +1117,7 @@ impl <'a> Translator<'a> {
     ///Creates an expression which reports an unmatched guard error when executed
     fn unmatched_guard() -> Expr<Id<Name>> {
         let error_ident = Identifier(Id::new(Name { name: intern("error"), uid: 0 }, function_type_(list_type(char_type()), Type::new_var(intern("a"))), vec![]));
-        Apply(box error_ident, box string("Unmatched guard"))
+        Apply(Box::new(error_ident), Box::new(string("Unmatched guard")))
     }
 
 }

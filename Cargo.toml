@@ -1,14 +1,13 @@
 [package]
-
-name = "haskell-compiler"
-version = "0.0.1"
-authors = ["Markus Westerlind <marwes91@gmail.com>"]
+name    = "haskell-compiler"
+version = "0.0.2"
+authors = [ "Markus Westerlind <marwes91@gmail.com>" ]
+edition = "2021"
 
 [[bin]]
-
 name = "haskell-compiler"
 path = "src/main.rs"
 
 [dependencies]
-log = "0.3.6"
-getopts = "0.2.14"
+log     = "0.3.6"
+getopts = "0.2"

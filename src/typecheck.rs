@@ -3,14 +3,14 @@ use std::collections::hash_map::Entry;
 use std::fmt;
 use std::mem::swap;
 use std::error;
-use module::*;
-use module::Expr::*;
-use module::LiteralData::*;
-use lexer::Location;
-use graph::{Graph, VertexIndex, strongly_connected_components};
-use builtins::builtins;
-use renamer::*;
-use interner::*;
+use crate::module::*;
+use crate::module::Expr::*;
+use crate::module::LiteralData::*;
+use crate::lexer::Location;
+use crate::graph::{Graph, VertexIndex, strongly_connected_components};
+use crate::builtins::builtins;
+use crate::renamer::*;
+use crate::interner::*;
 
 pub type TcType = Type<Name>;
 
@@ -89,7 +89,7 @@ impl DataTypes for Module<Name> {
 ///The TypeEnvironment stores most data which is needed as typechecking is performed.
 pub struct TypeEnvironment<'a> {
     ///Stores references to imported modules or assemblies
-    assemblies: Vec<&'a (DataTypes + 'a)>,
+    assemblies: Vec<&'a (dyn DataTypes + 'a)>,
     ///A mapping of names to the type which those names are bound to.
     named_types : HashMap<Name, Qualified<TcType, Name>>,
     ///A mapping used for any variables declared inside any global binding.
@@ -127,16 +127,16 @@ impl error::Error for TypeError {
 
 ///A Substitution is a mapping from typevariables to types.
 #[derive(Clone)]
-struct Substitution {
+pub struct Substitution {
     ///A hashmap which contains what a typevariable is unified to.
     subs: HashMap<TypeVariable, TcType>
 }
 
 ///Trait which provides access to the bindings in a struct.
-trait Bindings {
+pub trait Bindings {
     fn get_mut(&mut self, idx: (usize, usize)) -> &mut [Binding<Name>];
 
-    fn each_binding(&self, func: &mut FnMut(&[Binding<Name>], (usize, usize)));
+    fn each_binding(&self, func: &mut dyn FnMut(&[Binding<Name>], (usize, usize)));
 }
 
 impl Bindings for Module<Name> {
@@ -153,7 +153,7 @@ impl Bindings for Module<Name> {
         mut_bindings_at(bindings, idx)
     }
 
-    fn each_binding(&self, func: &mut FnMut(&[Binding<Name>], (usize, usize))) {
+    fn each_binding(&self, func: &mut dyn FnMut(&[Binding<Name>], (usize, usize))) {
         let mut index = 0;
         for binds in binding_groups(self.bindings.as_ref()) {
             func(binds, (0, index));
@@ -194,7 +194,7 @@ impl <'a> Bindings for BindingsWrapper<'a> {
         mut_bindings_at(self.value, idx)
     }
 
-    fn each_binding(&self, func: &mut FnMut(&[Binding<Name>], (usize, usize))) {
+    fn each_binding(&self, func: &mut dyn FnMut(&[Binding<Name>], (usize, usize))) {
         let mut index = 0;
         for binds in binding_groups(self.value.as_ref()) {
             func(binds, (0, index));
@@ -267,7 +267,7 @@ impl <'a> TypeEnvironment<'a> {
         }
     }
 
-    pub fn add_types(&mut self, types: &'a DataTypes) {
+    pub fn add_types(&mut self, types: &'a dyn DataTypes) {
         self.assemblies.push(types);
     }
 
@@ -362,7 +362,7 @@ impl <'a> TypeEnvironment<'a> {
                     op.kind = maybe_data
                         .or_else(|| data_definitions.iter().find(|data| op.name == extract_applied_type(&data.typ.value).ctor().name))
                         .map(|data| extract_applied_type(&data.typ.value).kind().clone())
-                        .unwrap_or_else(|| if intern("[]") == op.name { Kind::Function(box Kind::Star, box Kind::Star) } else { Kind::Star });
+                        .unwrap_or_else(|| if intern("[]") == op.name { Kind::Function(Box::new(Kind::Star), Box::new(Kind::Star)) } else { Kind::Star });
                 }
                 _ => ()
             }
@@ -722,9 +722,9 @@ impl <'a> TypeEnvironment<'a> {
                 t
             }
             Do(ref mut bindings, ref mut last_expr) => {
-                let mut previous = self.new_var_kind(Kind::Function(box Kind::Star, box Kind::Star));
+                let mut previous = self.new_var_kind(Kind::Function(Box::new(Kind::Star), Box::new(Kind::Star)));
                 self.constraints.insert(previous.var().clone(), vec!(Name { name: intern("Monad"), uid: 0 }));
-                previous = Type::Application(box previous, box self.new_var());
+                previous = Type::Application(Box::new(previous), Box::new(self.new_var()));
                 for bind in bindings.iter_mut() {
                     match *bind {
                         DoBinding::DoExpr(ref mut e) => {
@@ -886,7 +886,7 @@ impl <'a> TypeEnvironment<'a> {
             (&mut self
             , start_var_age: isize
             , subs: &mut Substitution
-            , bindings: &mut Bindings
+            , bindings: &mut dyn Bindings
             , is_global: bool) {
         
         let graph = build_graph(bindings);
@@ -954,12 +954,12 @@ impl <'a> TypeEnvironment<'a> {
         }
     }
     ///Typechecks a group of local bindings (such as a let expression)
-    fn typecheck_local_bindings(&mut self, subs: &mut Substitution, bindings: &mut Bindings) {
+    fn typecheck_local_bindings(&mut self, subs: &mut Substitution, bindings: &mut dyn Bindings) {
         let var = self.variable_age + 1;
         self.typecheck_mutually_recursive_bindings(var, subs, bindings, false);
     }
     ///Typechecks a group of global bindings.
-    fn typecheck_global_bindings(&mut self, start_var_age: isize, subs: &mut Substitution, bindings: &mut Bindings) {
+    fn typecheck_global_bindings(&mut self, start_var_age: isize, subs: &mut Substitution, bindings: &mut dyn Bindings) {
         self.typecheck_mutually_recursive_bindings(start_var_age, subs, bindings, true);
     }
     
@@ -1460,7 +1460,7 @@ fn match_(env: &mut TypeEnvironment, subs: &mut Substitution, lhs: &mut TcType, 
 
 ///Creates a graph containing a vertex for each binding and edges from every binding to every other
 ///binding that it references
-fn build_graph(bindings: &Bindings) -> Graph<(usize, usize)> {
+fn build_graph(bindings: &dyn Bindings) -> Graph<(usize, usize)> {
     let mut graph = Graph::new();
     let mut map = HashMap::new();
     bindings.each_binding(&mut |binds, i| {
@@ -1511,7 +1511,7 @@ fn each_type<F, G, Id>(typ: &Type<Id>, mut var_fn: F, mut op_fn: G)
     where F: FnMut(&TypeVariable), G: FnMut(&TypeConstructor<Id>) {
     each_type_(typ, &mut var_fn, &mut op_fn);
 }
-fn each_type_<Id>(typ: &Type<Id>, var_fn: &mut FnMut(&TypeVariable), op_fn: &mut FnMut(&TypeConstructor<Id>)) {
+fn each_type_<Id>(typ: &Type<Id>, var_fn: &mut dyn FnMut(&TypeVariable), op_fn: &mut dyn FnMut(&TypeConstructor<Id>)) {
     match typ {
         &Type::Variable(ref var) => (*var_fn)(var),
         &Type::Constructor(ref op) => (*op_fn)(op),
@@ -1575,7 +1575,7 @@ pub fn identifier(i : &str) -> TypedExpr {
 }
 #[cfg(test)]
 pub fn lambda(arg : &str, body : TypedExpr) -> TypedExpr {
-    TypedExpr::new(Lambda(Pattern::Identifier(intern(arg)), box body))
+    TypedExpr::new(Lambda(Pattern::Identifier(intern(arg)), Box::new(body)))
 }
 #[cfg(test)]
 pub fn number(i : isize) -> TypedExpr {
@@ -1587,31 +1587,31 @@ pub fn rational(i : f64) -> TypedExpr {
 }
 #[cfg(test)]
 pub fn apply(func : TypedExpr, arg : TypedExpr) -> TypedExpr {
-    TypedExpr::new(Apply(box func, box arg))
+    TypedExpr::new(Apply(Box::new(func), Box::new(arg)))
 }
 #[cfg(test)]
 pub fn op_apply(lhs: TypedExpr, op: InternedStr, rhs: TypedExpr) -> TypedExpr {
-    TypedExpr::new(OpApply(box lhs, op, box rhs))
+    TypedExpr::new(OpApply(Box::new(lhs), op, Box::new(rhs)))
 }
 #[cfg(test)]
 pub fn let_(bindings : Vec<Binding>, expr : TypedExpr) -> TypedExpr {
-    TypedExpr::new(Let(bindings, box expr))
+    TypedExpr::new(Let(bindings, Box::new(expr)))
 }
 #[cfg(test)]
 pub fn case(expr : TypedExpr, alts: Vec<Alternative>) -> TypedExpr {
-    TypedExpr::new(Case(box expr, alts))
+    TypedExpr::new(Case(Box::new(expr), alts))
 }
 #[cfg(test)]
 pub fn if_else(expr: TypedExpr, t: TypedExpr, f: TypedExpr) -> TypedExpr {
-    TypedExpr::new(IfElse(box expr, box t, box f))
+    TypedExpr::new(IfElse(Box::new(expr), Box::new(t), Box::new(f)))
 }
 #[cfg(test)]
 pub fn paren(expr : TypedExpr) -> TypedExpr {
-    TypedExpr::new(Paren(box expr))
+    TypedExpr::new(Paren(Box::new(expr)))
 }
 
 pub fn typecheck_string(module: &str) -> Result<Vec<Module<Name>>, ::std::string::String> {
-    use parser::parse_string;
+    use crate::parser::parse_string;
     parse_string(module)
         .map_err(|e| format!("{:?}", e))
         .and_then(typecheck_modules_common)
@@ -1619,16 +1619,13 @@ pub fn typecheck_string(module: &str) -> Result<Vec<Module<Name>>, ::std::string
 
 ///Parses a module, renames and typechecks it, as well as all of its imported modules
 pub fn typecheck_module(module: &str) -> Result<Vec<Module<Name>>, ::std::string::String> {
-    use parser::parse_modules;
-    parse_modules(module)
-        .map_err(|e| format!("{:?}", e))
-        .and_then(typecheck_modules_common)
+    use crate::parser::parse_modules;
+    parse_modules(module).map_err(|e| format!("{:?}", e)).and_then(typecheck_modules_common)
 }
 
 fn typecheck_modules_common(modules: Vec<Module>) -> Result<Vec<Module<Name>>, ::std::string::String> {
-    use renamer::rename_modules;
-    use infix::PrecedenceVisitor;
-    let mut modules = try!(rename_modules(modules).map_err(|e| format!("{}", e)));
+    use crate::infix::PrecedenceVisitor;
+    let mut modules = rename_modules(modules).map_err(|e| format!("{}", e))?;
     let mut prec_visitor = PrecedenceVisitor::new();
     for module in modules.iter_mut() {
         prec_visitor.visit_module(module);
@@ -1648,25 +1645,24 @@ fn typecheck_modules_common(modules: Vec<Module>) -> Result<Vec<Module<Name>>, :
 
 #[cfg(test)]
 pub mod test {
-use interner::*;
-use module::*;
-use module::Expr::*;
-use typecheck::*;
-use renamer::Name;
-use renamer::tests::{rename_expr, rename_module};
+use crate::interner::*;
+use crate::module::*;
+use crate::typecheck::*;
+use crate::renamer::Name;
+use crate::renamer::tests::{rename_expr, rename_module};
 
-use parser::Parser;
+use crate::parser::Parser;
 use std::io::Read;
 use std::path::Path;
 use std::fs::File;
 
-use test::Bencher;
+use ::test::Bencher;
 
 pub fn do_typecheck(input: &str) -> Module<Name> {
     do_typecheck_with(input, &[])
 }
-pub fn do_typecheck_with(input: &str, types: &[&DataTypes]) -> Module<Name> {
-    let mut parser = ::parser::Parser::new(input.chars());
+pub fn do_typecheck_with(input: &str, types: &[&dyn DataTypes]) -> Module<Name> {
+    let mut parser = Parser::new(input.chars());
     let mut module = rename_module(parser.module().unwrap());
     let mut env = TypeEnvironment::new();
     for t in types.iter() {
@@ -2059,7 +2055,7 @@ fn typecheck_import() {
 r"
 test1 = map not [True, False]
 test2 = id (primIntAdd 2 0)";
-    let module = do_typecheck_with(file, &[&prelude as &DataTypes]);
+    let module = do_typecheck_with(file, &[&prelude as &dyn DataTypes]);
 
     assert_eq!(module.bindings[0].name.as_ref(), "test1");
     assert_eq!(module.bindings[0].typ.value, list_type(bool_type()));
@@ -2103,7 +2099,7 @@ test x = do
         t = [2::Int]
     putStrLn y
 ";
-    let module = do_typecheck_with(file, &[&prelude as &DataTypes]);
+    let module = do_typecheck_with(file, &[&prelude as &dyn DataTypes]);
 
     assert_eq!(module.bindings[0].typ.value, function_type_(list_type(char_type()), io(unit())));
 }
@@ -2124,7 +2120,7 @@ test x = do
     y:ys <- x
     return y
 ";
-    let module = do_typecheck_with(file, &[&prelude as &DataTypes]);
+    let module = do_typecheck_with(file, &[&prelude as &dyn DataTypes]);
 
     let var = Type::new_var(intern("a"));
     let t = function_type_(Type::new_var_args(intern("c"), vec![list_type(var.clone())]), Type::new_var_args(intern("c"), vec![var.clone()]));
@@ -2192,7 +2188,7 @@ import Prelude
 
 test x y = [x] == [y]
 ")
-    .unwrap_or_else(|err| panic!(err));
+    .unwrap();
     let module = modules.last().unwrap();
     let a = Type::new_var(intern("a"));
     let cs = vec![Constraint { class: intern("Eq"), variables: vec![a.var().clone()] } ];
@@ -2212,7 +2208,7 @@ makeEven i
     | otherwise = undefined
 
 "
-).unwrap_or_else(|err| panic!(err));
+).unwrap();
     let module = modules.last().unwrap();
     assert_eq!(un_name(module.bindings[0].typ.clone()), qualified(Vec::new(), function_type_(int_type(), Type::new_op(intern("Even"), Vec::new()))));
 }
@@ -2242,7 +2238,7 @@ r"
 test x = do
     putStrLn x
     reverse [primIntAdd 0 0, 1, 2]";
-    do_typecheck_with(file, &[&prelude as &DataTypes]);
+    do_typecheck_with(file, &[&prelude as &dyn DataTypes]);
 }
 
 #[test]
@@ -2291,7 +2287,7 @@ test :: Test a => a -> a
 test x = test x
 
 test2 = test (Just True)")
-    .unwrap_or_else(|err| panic!(err));
+    .unwrap();
 }
 
 #[test]
@@ -2305,7 +2301,7 @@ test = case 1 :: Int of
     where
         y = x 1
 ")
-        .unwrap_or_else(|err| panic!(err));
+        .unwrap();
 }
 
 #[test]
@@ -2319,7 +2315,7 @@ newtype IntPair a = IntPair (a, Int)
 test = IntPair (True, False)
 
 "
-).unwrap_or_else(|err| panic!(err));
+).unwrap();
 }
 
 #[bench]
