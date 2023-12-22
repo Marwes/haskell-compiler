@@ -1,5 +1,6 @@
 use crate::compiler::*;
 use crate::core::translate::translate_module;
+use crate::core::Constructor;
 use crate::interner::*;
 use crate::lambda_lift::do_lambda_lift;
 use crate::parser::Parser;
@@ -222,6 +223,10 @@ impl<'a> VM {
         for x in stack.iter() {
             debug!("{:?}", *x.borrow());
         }
+
+        fn constr<'a>(cond: bool) -> Node_<'a> {
+            Constructor((!cond).into(), vec![])
+        }
         debug!("");
         let mut i = Wrapping(0);
         while i.0 < code.len() {
@@ -232,81 +237,21 @@ impl<'a> VM {
                 Multiply => primitive(stack, |l, r| l * r),
                 Divide => primitive(stack, |l, r| l / r),
                 Remainder => primitive(stack, |l, r| l % r),
-                IntEQ => primitive_int(stack, |l, r| {
-                    if l == r {
-                        Constructor(0, vec![])
-                    } else {
-                        Constructor(1, vec![])
-                    }
-                }),
-                IntLT => primitive_int(stack, |l, r| {
-                    if l < r {
-                        Constructor(0, vec![])
-                    } else {
-                        Constructor(1, vec![])
-                    }
-                }),
-                IntLE => primitive_int(stack, |l, r| {
-                    if l <= r {
-                        Constructor(0, vec![])
-                    } else {
-                        Constructor(1, vec![])
-                    }
-                }),
-                IntGT => primitive_int(stack, |l, r| {
-                    if l > r {
-                        Constructor(0, vec![])
-                    } else {
-                        Constructor(1, vec![])
-                    }
-                }),
-                IntGE => primitive_int(stack, |l, r| {
-                    if l >= r {
-                        Constructor(0, vec![])
-                    } else {
-                        Constructor(1, vec![])
-                    }
-                }),
+                IntEQ => primitive_int(stack, |l, r| constr(l == r)),
+                IntLT => primitive_int(stack, |l, r| constr(l < r)),
+                IntLE => primitive_int(stack, |l, r| constr(l <= r)),
+                IntGT => primitive_int(stack, |l, r| constr(l > r)),
+                IntGE => primitive_int(stack, |l, r| constr(l >= r)),
                 DoubleAdd => primitive_float(stack, |l, r| Float(l + r)),
                 DoubleSub => primitive_float(stack, |l, r| Float(l - r)),
                 DoubleMultiply => primitive_float(stack, |l, r| Float(l * r)),
                 DoubleDivide => primitive_float(stack, |l, r| Float(l / r)),
                 DoubleRemainder => primitive_float(stack, |l, r| Float(l % r)),
-                DoubleEQ => primitive_float(stack, |l, r| {
-                    if l == r {
-                        Constructor(0, vec![])
-                    } else {
-                        Constructor(1, vec![])
-                    }
-                }),
-                DoubleLT => primitive_float(stack, |l, r| {
-                    if l < r {
-                        Constructor(0, vec![])
-                    } else {
-                        Constructor(1, vec![])
-                    }
-                }),
-                DoubleLE => primitive_float(stack, |l, r| {
-                    if l <= r {
-                        Constructor(0, vec![])
-                    } else {
-                        Constructor(1, vec![])
-                    }
-                }),
-                DoubleGT => primitive_float(stack, |l, r| {
-                    if l > r {
-                        Constructor(0, vec![])
-                    } else {
-                        Constructor(1, vec![])
-                    }
-                }),
-                DoubleGE => primitive_float(stack, |l, r| {
-                    if l >= r {
-                        Constructor(0, vec![])
-                    } else {
-                        Constructor(1, vec![])
-                    }
-                }),
+                DoubleEQ => primitive_float(stack, |l, r| constr(l == r)),
+                DoubleLT => primitive_float(stack, |l, r| constr(l < r)),
+                DoubleLE => primitive_float(stack, |l, r| constr(l <= r)),
+                DoubleGT => primitive_float(stack, |l, r| constr(l > r)),
+                DoubleGE => primitive_float(stack, |l, r| constr(l >= r)),
                 IntToDouble => {
                     let top = stack.pop().unwrap();
                     stack.push(match *top.borrow() {
