@@ -806,14 +806,11 @@ impl<'a> Compiler<'a> {
             Identifier(ref name) => {
                 //When compiling a variable which has constraints a new instance dictionary
                 //might be created which is returned here and added to the assembly
-                let mut is_primitive = false;
                 let var = self
                     .find(name.name)
                     .unwrap_or_else(|| panic!("Error: Undefined variable {:?}", *name));
-                match var {
-                    Var::Primitive(..) => is_primitive = true,
-                    _ => (),
-                }
+
+                let is_primitive = matches!(var, Var::Primitive(..));
                 arg_length = self.compile_args(&args, instructions, is_primitive);
                 match var {
                     Var::Stack(index) => {
