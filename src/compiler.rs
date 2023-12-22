@@ -433,22 +433,13 @@ impl<'a> Compiler<'a> {
     pub fn new() -> Self {
         let mut variables = ScopedMap::new();
         for (i, &(name, _)) in builtins().iter().enumerate() {
-            variables.insert(
-                name.into(),
-                Var::Builtin(i),
-            );
+            variables.insert(name.into(), Var::Builtin(i));
         }
         for &(name, instruction) in BINARY_PRIMITIVES.iter() {
-            variables.insert(
-                name.into(),
-                Var::Primitive(2, instruction),
-            );
+            variables.insert(name.into(), Var::Primitive(2, instruction));
         }
         for &(name, instruction) in UNARY_PRIMITIVES.iter() {
-            variables.insert(
-                name.into(),
-                Var::Primitive(1, instruction),
-            );
+            variables.insert(name.into(), Var::Primitive(1, instruction));
         }
         Self {
             instance_dictionaries: vec![],

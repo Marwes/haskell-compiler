@@ -232,24 +232,19 @@ impl DerivingGen {
                 );
                 let expr = f(self, &*args_l, &*args_r);
                 let pattern_r = Pattern::Constructor(ctor_id.clone(), args_r);
-                let inner =
-                    Case(
-                        Box::new(Identifier(id_r.clone())),
-                        vec![
-                            Alternative {
-                                pattern: pattern_r,
-                                expression: expr,
-                            },
-                            Alternative {
-                                pattern: Pattern::WildCard,
-                                expression: Identifier(Id::new(
-                                    "False".into(),
-                                    bool_type(),
-                                    vec![],
-                                )),
-                            },
-                        ],
-                    );
+                let inner = Case(
+                    Box::new(Identifier(id_r.clone())),
+                    vec![
+                        Alternative {
+                            pattern: pattern_r,
+                            expression: expr,
+                        },
+                        Alternative {
+                            pattern: Pattern::WildCard,
+                            expression: Identifier(Id::new("False".into(), bool_type(), vec![])),
+                        },
+                    ],
+                );
                 Alternative {
                     pattern: Pattern::Constructor(ctor_id, args_l),
                     expression: inner,
@@ -261,11 +256,7 @@ impl DerivingGen {
 }
 
 fn id(s: &str, typ: Type<Name>) -> Id<Name> {
-    Id::new(
-        s.into(),
-        typ,
-        vec![],
-    )
+    Id::new(s.into(), typ, vec![])
 }
 
 fn compare_tags(lhs: Expr<Id<Name>>, rhs: Expr<Id<Name>>) -> Expr<Id<Name>> {

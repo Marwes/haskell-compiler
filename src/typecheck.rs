@@ -253,10 +253,7 @@ impl<'a> Bindings for BindingsWrapper<'a> {
 }
 
 fn insert_to(map: &mut HashMap<Name, Qualified<TcType, Name>>, name: &str, typ: TcType) {
-    map.insert(
-        name.into(),
-        qualified(vec![], typ),
-    );
+    map.insert(name.into(), qualified(vec![], typ));
 }
 fn prim(typename: &str, op: &str) -> ::std::string::String {
     let mut b = "prim".to_string();
@@ -938,10 +935,8 @@ impl<'a> TypeEnvironment<'a> {
             Do(ref mut bindings, ref mut last_expr) => {
                 let mut previous =
                     self.new_var_kind(Kind::Function(Box::new(Kind::Star), Box::new(Kind::Star)));
-                self.constraints.insert(
-                    previous.var().clone(),
-                    vec!["Monad".into()],
-                );
+                self.constraints
+                    .insert(previous.var().clone(), vec!["Monad".into()]);
                 previous = Type::Application(Box::new(previous), Box::new(self.new_var()));
                 for bind in bindings.iter_mut() {
                     match *bind {

@@ -48,10 +48,7 @@ impl Module<Id> {
             newtypes: vec![],
             instances: vec![],
             bindings: vec![Binding {
-                name: Id::new("main".into(),
-                    expr.get_type().clone(),
-                    vec![],
-                ),
+                name: Id::new("main".into(), expr.get_type().clone(), vec![]),
                 expression: expr,
             }],
         }
@@ -798,19 +795,16 @@ pub mod translate {
         ///do { expr; stmts } = expr >> do { stmts; }
         fn do_bind2_id(&mut self, m_a: TcType, m_b: TcType) -> Expr<Id<Name>> {
             debug!("m_a {}", m_a);
-            let c = match *m_a.appl() {
-                Type::Variable(ref var) => vec![Constraint {
-                    class: "Monad".into(),
-                    variables: vec![var.clone()],
-                }],
-                _ => vec![],
-            };
+            let c =
+                match *m_a.appl() {
+                    Type::Variable(ref var) => vec![Constraint {
+                        class: "Monad".into(),
+                        variables: vec![var.clone()],
+                    }],
+                    _ => vec![],
+                };
             let typ = function_type_(m_a, function_type_(m_b.clone(), m_b));
-            Identifier(Id::new(
-                ">>".into(),
-                typ,
-                c,
-            ))
+            Identifier(Id::new(">>".into(), typ, c))
         }
         ///Translates
         ///do {p <- e; stmts} 	=
@@ -827,20 +821,17 @@ pub mod translate {
             let a = m_a.appr().clone();
             let m_b = result.get_type().clone();
             debug!("m_a {}", m_a);
-            let c = match *m_a.appl() {
-                Type::Variable(ref var) => vec![Constraint {
-                    class: "Monad".into(),
-                    variables: vec![var.clone()],
-                }],
-                _ => vec![],
-            };
+            let c =
+                match *m_a.appl() {
+                    Type::Variable(ref var) => vec![Constraint {
+                        class: "Monad".into(),
+                        variables: vec![var.clone()],
+                    }],
+                    _ => vec![],
+                };
             let arg2_type = function_type_(a.clone(), m_b.clone());
             let bind_typ = function_type_(m_a, function_type_(arg2_type.clone(), m_b.clone()));
-            let bind_ident = Identifier(Id::new(
-                ">>=".into(),
-                bind_typ,
-                c.clone(),
-            ));
+            let bind_ident = Identifier(Id::new(">>=".into(), bind_typ, c.clone()));
 
             //Create ok binding
             let func_ident = Id::new(
@@ -1348,14 +1339,7 @@ pub mod translate {
     }
 
     fn bool_pattern(s: &str) -> Pattern<Id<Name>> {
-        Pattern::Constructor(
-            Id::new(
-                s.into(),
-                bool_type(),
-                vec![],
-            ),
-            vec![],
-        )
+        Pattern::Constructor(Id::new(s.into(), bool_type(), vec![]), vec![])
     }
 
     struct LambdaIterator<'a, Id: 'a> {
