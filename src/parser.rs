@@ -194,25 +194,23 @@ impl<Iter: Iterator<Item = char>> Parser<Iter> {
         loop {
             //Do a lookahead to see what the next top level binding is
             let token = self.lexer.peek().token;
-            if token == NAME || token == LPARENS {
-                match self.binding_or_type_declaration()? {
+
+            match token {
+                NAME | LPARENS => match self.binding_or_type_declaration()? {
                     BindOrTypeDecl::Binding(bind) => bindings.push(bind),
                     BindOrTypeDecl::TypeDecl(decl) => type_declarations.push(decl),
+                },
+                CLASS => classes.push(self.class()?),
+                INSTANCE => instances.push(self.instance()?),
+                DATA => data_definitions.push(self.data_definition()?),
+                NEWTYPE => newtypes.push(self.newtype()?),
+                INFIXL | INFIXR | INFIX => fixity_declarations.push(self.fixity_declaration()?),
+                _ => {
+                    self.lexer.next();
+                    break;
                 }
-            } else if token == CLASS {
-                classes.push(self.class()?);
-            } else if token == INSTANCE {
-                instances.push(self.instance()?);
-            } else if token == DATA {
-                data_definitions.push(self.data_definition()?);
-            } else if token == NEWTYPE {
-                newtypes.push(self.newtype()?);
-            } else if token == INFIXL || token == INFIXR || token == INFIX {
-                fixity_declarations.push(self.fixity_declaration()?);
-            } else {
-                self.lexer.next();
-                break;
             }
+
             let semicolon = self.lexer.next();
             debug!("More bindings? {:?}", semicolon.token);
             if semicolon.token != SEMICOLON {
