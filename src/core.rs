@@ -188,6 +188,18 @@ impl PartialEq<str> for Name {
     }
 }
 
+impl From<&str> for TcType {
+    fn from(value: &str) -> Self {
+        Self::new_var(value.into())
+    }
+}
+
+// impl<Id: fmt::Display + AsRef<str>> From<&str> for Type<Id> {
+//     fn from(value: &str) -> Self {
+//         Self::new_var(value.into())
+//     }
+// }
+
 ///Id is a Name combined with a type
 #[derive(PartialEq, Eq, Hash, Clone, Debug)]
 pub struct Id<T = Name> {
@@ -1285,28 +1297,26 @@ pub mod translate {
         fn translate_pattern(&mut self, pattern: module::Pattern<Name>) -> Pattern<Id<Name>> {
             match pattern {
                 module::Pattern::Identifier(i) => {
-                    Pattern::Identifier(Id::new(i, Type::new_var("a".into()), vec![]))
+                    Pattern::Identifier(Id::new(i, "a".into(), vec![]))
                 }
                 module::Pattern::Number(n) => Pattern::Number(n),
                 module::Pattern::Constructor(name, patterns) => {
                     let ps = patterns
                         .into_iter()
                         .map(|pat| match pat {
-                            module::Pattern::Identifier(name) => {
-                                Id::new(name, Type::new_var("a".into()), vec![])
-                            }
+                            module::Pattern::Identifier(name) => Id::new(name, "a".into(), vec![]),
                             module::Pattern::WildCard => Id::new(
                                 Name {
-                                    name: intern("_"),
+                                    name: "_".into(),
                                     uid: usize::max_value(),
                                 },
-                                Type::new_var("a".into()),
+                                "a".into(),
                                 vec![],
                             ),
                             _ => panic!("Nested pattern"),
                         })
                         .collect();
-                    Pattern::Constructor(Id::new(name, Type::new_var("a".into()), vec![]), ps)
+                    Pattern::Constructor(Id::new(name, "a".into(), vec![]), ps)
                 }
                 module::Pattern::WildCard => Pattern::WildCard,
             }
