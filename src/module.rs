@@ -411,13 +411,10 @@ pub fn walk_alternative<Ident, V: Visitor<Ident>>(visitor: &mut V, alt: &Alterna
 }
 
 pub fn walk_pattern<Ident, V: Visitor<Ident>>(visitor: &mut V, pattern: &Pattern<Ident>) {
-    match pattern {
-        &Pattern::Constructor(_, ref ps) => {
-            for p in ps.iter() {
-                visitor.visit_pattern(p);
-            }
+    if let &Pattern::Constructor(_, ref ps) = pattern {
+        for p in ps.iter() {
+            visitor.visit_pattern(p);
         }
-        _ => (),
     }
 }
 
@@ -532,13 +529,10 @@ pub fn walk_alternative_mut<Ident, V: MutVisitor<Ident>>(
             }
         }
     }
-    match alt.where_bindings {
-        Some(ref mut bindings) => {
-            for bind in bindings.iter_mut() {
-                visitor.visit_binding(bind);
-            }
+    if let Some(ref mut bindings) = alt.where_bindings {
+        for bind in bindings.iter_mut() {
+            visitor.visit_binding(bind);
         }
-        None => (),
     }
 }
 
@@ -546,13 +540,10 @@ pub fn walk_pattern_mut<Ident, V: MutVisitor<Ident>>(
     visitor: &mut V,
     pattern: &mut Pattern<Ident>,
 ) {
-    match *pattern {
-        Pattern::Constructor(_, ref mut ps) => {
-            for p in ps.iter_mut() {
-                visitor.visit_pattern(p);
-            }
+    if let Pattern::Constructor(_, ref mut ps) = pattern {
+        for p in ps.iter_mut() {
+            visitor.visit_pattern(p);
         }
-        _ => (),
     }
 }
 
@@ -564,17 +555,16 @@ impl<'a, Ident: Eq> Iterator for Binds<'a, Ident> {
     type Item = &'a [Binding<Ident>];
     fn next(&mut self) -> Option<&'a [Binding<Ident>]> {
         if self.vec.is_empty() {
-            None
-        } else {
-            let end = self
-                .vec
-                .iter()
-                .position(|bind| bind.name != self.vec[0].name)
-                .unwrap_or(self.vec.len());
-            let head = &self.vec[..end];
-            self.vec = &self.vec[end..];
-            Some(head)
+            return None;
         }
+        let end = self
+            .vec
+            .iter()
+            .position(|bind| bind.name != self.vec[0].name)
+            .unwrap_or(self.vec.len());
+        let head = &self.vec[..end];
+        self.vec = &self.vec[end..];
+        Some(head)
     }
 }
 
@@ -595,9 +585,6 @@ pub fn encode_binding_identifier(
     instancename: InternedStr,
     bindingname: InternedStr,
 ) -> InternedStr {
-    let mut buffer = String::new();
-    buffer.push_str("#");
-    buffer.push_str(&instancename);
-    buffer.push_str(&bindingname);
+    let buffer = ["#", &instancename, &bindingname].join("");
     intern(buffer.as_ref())
 }
