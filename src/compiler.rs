@@ -414,7 +414,7 @@ impl DataTypes for Assembly {
 }
 
 enum ArgList<'a> {
-    Cons(&'a Expr<Id>, &'a ArgList<'a>),
+    Cons(&'a Expr<Id>, &'a Self),
     Nil,
 }
 

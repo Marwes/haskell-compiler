@@ -44,6 +44,7 @@ enum DictionaryEntry {
     App(usize, InstanceDictionary),
 }
 
+#[derive(Clone)]
 pub enum Node_<'a> {
     Application(Node<'a>, Node<'a>),
     Int(isize),
@@ -54,21 +55,6 @@ pub enum Node_<'a> {
     Constructor(u16, Vec<Node<'a>>),
     Dictionary(InstanceDictionary),
     BuiltinFunction(usize, BuiltinFun),
-}
-impl<'a> Clone for Node_<'a> {
-    fn clone(&self) -> Node_<'a> {
-        match self {
-            &Application(ref func, ref arg) => Application(func.clone(), arg.clone()),
-            &Int(i) => Int(i),
-            &Float(i) => Float(i),
-            &Char(c) => Char(c),
-            &Combinator(sc) => Combinator(sc),
-            &Indirection(ref n) => Indirection(n.clone()),
-            &Constructor(ref tag, ref args) => Constructor(tag.clone(), args.clone()),
-            &Dictionary(ref dict) => Dictionary(dict.clone()),
-            &BuiltinFunction(arity, f) => BuiltinFunction(arity, f),
-        }
-    }
 }
 
 #[derive(Clone)]
@@ -590,7 +576,7 @@ pub enum VMResult {
     Char(char),
     Int(isize),
     Double(f64),
-    Constructor(u16, Vec<VMResult>),
+    Constructor(u16, Vec<Self>),
 }
 
 // TODO: throw this garbage into the macro below

@@ -295,7 +295,7 @@ pub struct Constraint<Ident = InternedStr> {
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Default)]
 pub enum Kind {
-    Function(Box<Kind>, Box<Kind>),
+    Function(Box<Self>, Box<Self>),
     #[default]
     Star,
 }

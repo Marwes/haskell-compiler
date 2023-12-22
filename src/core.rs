@@ -100,11 +100,11 @@ pub type Literal_ = module::LiteralData;
 #[derive(Clone, Debug, PartialEq)]
 pub enum Expr<Ident> {
     Identifier(Ident),
-    Apply(Box<Expr<Ident>>, Box<Expr<Ident>>),
+    Apply(Box<Self>, Box<Self>),
     Literal(LiteralData),
-    Lambda(Ident, Box<Expr<Ident>>),
-    Let(Vec<Binding<Ident>>, Box<Expr<Ident>>),
-    Case(Box<Expr<Ident>>, Vec<Alternative<Ident>>),
+    Lambda(Ident, Box<Self>),
+    Let(Vec<Binding<Ident>>, Box<Self>),
+    Case(Box<Self>, Vec<Alternative<Ident>>),
 }
 
 impl fmt::Display for LiteralData {
