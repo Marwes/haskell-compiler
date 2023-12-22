@@ -1080,16 +1080,13 @@ impl<'a> TypeEnvironment<'a> {
             for (arg, typ) in bind.arguments.iter_mut().zip(argument_types.iter_mut()) {
                 self.typecheck_pattern(&Location::eof(), subs, arg, typ);
             }
-            match bind.where_bindings {
-                Some(ref mut bindings) => {
-                    self.typecheck_local_bindings(
-                        subs,
-                        &mut BindingsWrapper {
-                            value: &mut **bindings,
-                        },
-                    )
-                }
-                None => (),
+            if let Some(ref mut bindings) = bind.where_bindings {
+                self.typecheck_local_bindings(
+                    subs,
+                    &mut BindingsWrapper {
+                        value: bindings,
+                    },
+                )
             }
             let mut typ = self.typecheck_match(&mut bind.matches, subs);
             fn make_function(arguments: &[TcType], expr: &TcType) -> TcType {
@@ -1100,11 +1097,8 @@ impl<'a> TypeEnvironment<'a> {
                 }
             }
             typ = make_function(argument_types.as_ref(), &typ);
-            match previous_type {
-                Some(mut prev) => {
-                    unify_location(self, subs, bind.matches.location(), &mut typ, &mut prev)
-                }
-                None => (),
+            if let Some(mut prev) = previous_type {
+                unify_location(self, subs, bind.matches.location(), &mut typ, &mut prev)
             }
             replace(&mut self.constraints, &mut typ, subs);
             previous_type = Some(typ);
