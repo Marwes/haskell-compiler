@@ -1402,15 +1402,13 @@ fn is_function(typ: &TcType) -> bool {
 }
 ///Extracts the final return type of a type
 fn get_returntype(typ: &TcType) -> TcType {
-    match typ {
-        &Type::Application(_, ref rhs) => {
-            if is_function(typ) {
-                get_returntype(rhs)
-            } else {
-                typ.clone()
-            }
-        }
-        _ => typ.clone(),
+    let Type::Application(_, ref rhs) = typ else {
+        return typ.clone();
+    };
+    if is_function(typ) {
+        get_returntype(rhs)
+    } else {
+        typ.clone()
     }
 }
 
