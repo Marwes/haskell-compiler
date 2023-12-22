@@ -1,9 +1,13 @@
-use crate::interner::*;
-use std::cell::RefCell;
-use std::collections::VecDeque;
-use std::fmt;
-use std::iter::Peekable;
-use std::rc::Rc;
+use {
+    crate::interner::*,
+    std::{
+        cell::RefCell,
+        collections::VecDeque,
+        fmt,
+        iter::Peekable,
+        rc::Rc,
+    },
+};
 
 use self::TokenEnum::*;
 

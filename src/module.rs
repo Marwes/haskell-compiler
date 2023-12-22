@@ -1,9 +1,23 @@
-use crate::interner::{intern, InternedStr};
-use crate::lexer::{Located, Location};
-pub use crate::types::*;
-use std::collections::HashMap;
-pub use std::default::Default;
-use std::fmt;
+pub use {
+    crate::types::*,
+    std::default::Default,
+};
+use {
+    crate::{
+        interner::{
+            intern,
+            InternedStr,
+        },
+        lexer::{
+            Located,
+            Location,
+        },
+    },
+    std::{
+        collections::HashMap,
+        fmt,
+    },
+};
 
 use self::Expr::*;
 

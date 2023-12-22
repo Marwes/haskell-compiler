@@ -1,9 +1,19 @@
-use crate::core::Expr::*;
-use crate::core::*;
-use crate::renamer::typ::*;
-use crate::renamer::NameSupply;
-use std::collections::hash_map::Entry;
-use std::collections::HashMap;
+use {
+    crate::{
+        core::{
+            Expr::*,
+            *,
+        },
+        renamer::{
+            typ::*,
+            NameSupply,
+        },
+    },
+    std::collections::{
+        hash_map::Entry,
+        HashMap,
+    },
+};
 
 pub type TypeAndStr = Id;
 
@@ -224,15 +234,21 @@ pub fn abstract_module(mut module: Module<TypeAndStr>) -> Module<TypeAndStr> {
 
 #[cfg(test)]
 mod tests {
-    use crate::core::ref_::*;
-    use crate::core::translate::translate_module;
-    use crate::interner::*;
-    use crate::lambda_lift::*;
-    use crate::parser::Parser;
-    use crate::renamer::tests::rename_module;
-    use crate::typecheck::TypeEnvironment;
-    use std::collections::HashSet;
-    use test::Bencher;
+    use {
+        crate::{
+            core::{
+                ref_::*,
+                translate::translate_module,
+            },
+            interner::*,
+            lambda_lift::*,
+            parser::Parser,
+            renamer::tests::rename_module,
+            typecheck::TypeEnvironment,
+        },
+        std::collections::HashSet,
+        test::Bencher,
+    };
 
     struct CheckUniques {
         found: HashSet<Id>,
@@ -399,10 +415,14 @@ test2 x =
 
     #[bench]
     fn bench(b: &mut Bencher) {
-        use crate::typecheck::test::do_typecheck;
-        use std::fs::File;
-        use std::io::Read;
-        use std::path::Path;
+        use {
+            crate::typecheck::test::do_typecheck,
+            std::{
+                fs::File,
+                io::Read,
+                path::Path,
+            },
+        };
 
         let path = &Path::new("Prelude.hs");
         let mut contents = ::std::string::String::new();

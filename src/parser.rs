@@ -1,17 +1,32 @@
-use crate::interner::*;
-use crate::lexer::TokenEnum::*;
-use crate::lexer::*;
-use crate::module::Expr::*;
-use crate::module::LiteralData::*;
-use crate::module::*;
-use std::collections::{HashMap, HashSet};
-use std::error;
-use std::fmt;
-use std::fs::File;
-use std::io;
-use std::io::Read;
-use std::mem::swap;
-use std::str::FromStr;
+use {
+    crate::{
+        interner::*,
+        lexer::{
+            TokenEnum::*,
+            *,
+        },
+        module::{
+            Expr::*,
+            LiteralData::*,
+            *,
+        },
+    },
+    std::{
+        collections::{
+            HashMap,
+            HashSet,
+        },
+        error,
+        fmt,
+        fs::File,
+        io::{
+            self,
+            Read,
+        },
+        mem::swap,
+        str::FromStr,
+    },
+};
 
 ///The Parser is a recursive descent parser which has a method for each production
 ///in the AST. By calling such a production method it is expected that the parser is
@@ -1309,14 +1324,32 @@ fn parse_modules_(
 #[cfg(test)]
 mod tests {
 
-    use crate::interner::*;
-    use crate::lexer::{Located, Location};
-    use crate::parser::*;
-    use crate::typecheck::{apply, case, identifier, if_else, let_, number, op_apply, rational};
-    use std::fs::File;
-    use std::io::Read;
-    use std::path::Path;
-    use test::Bencher;
+    use {
+        crate::{
+            interner::*,
+            lexer::{
+                Located,
+                Location,
+            },
+            parser::*,
+            typecheck::{
+                apply,
+                case,
+                identifier,
+                if_else,
+                let_,
+                number,
+                op_apply,
+                rational,
+            },
+        },
+        std::{
+            fs::File,
+            io::Read,
+            path::Path,
+        },
+        test::Bencher,
+    };
 
     #[test]
     fn simple() {

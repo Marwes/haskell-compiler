@@ -1,16 +1,30 @@
-use crate::builtins::builtins;
-use crate::graph::{strongly_connected_components, Graph, VertexIndex};
-use crate::interner::*;
-use crate::lexer::Location;
-use crate::module::Expr::*;
-use crate::module::LiteralData::*;
-use crate::module::*;
-use crate::renamer::*;
-use std::collections::hash_map::Entry;
-use std::collections::HashMap;
-use std::error;
-use std::fmt;
-use std::mem::swap;
+use {
+    crate::{
+        builtins::builtins,
+        graph::{
+            strongly_connected_components,
+            Graph,
+            VertexIndex,
+        },
+        interner::*,
+        lexer::Location,
+        module::{
+            Expr::*,
+            LiteralData::*,
+            *,
+        },
+        renamer::*,
+    },
+    std::{
+        collections::{
+            hash_map::Entry,
+            HashMap,
+        },
+        error,
+        fmt,
+        mem::swap,
+    },
+};
 
 pub type TcType = Type<Name>;
 
@@ -2035,16 +2049,27 @@ fn typecheck_modules_common(
 
 #[cfg(test)]
 pub mod test {
-    use crate::interner::*;
-    use crate::module::*;
-    use crate::renamer::tests::{rename_expr, rename_module};
-    use crate::renamer::Name;
-    use crate::typecheck::*;
+    use crate::{
+        interner::*,
+        module::*,
+        renamer::{
+            tests::{
+                rename_expr,
+                rename_module,
+            },
+            Name,
+        },
+        typecheck::*,
+    };
 
-    use crate::parser::Parser;
-    use std::fs::File;
-    use std::io::Read;
-    use std::path::Path;
+    use {
+        crate::parser::Parser,
+        std::{
+            fs::File,
+            io::Read,
+            path::Path,
+        },
+    };
 
     use ::test::Bencher;
 

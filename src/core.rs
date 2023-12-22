@@ -1,12 +1,36 @@
-use crate::interner::*;
-use crate::module;
-pub use crate::module::LiteralData::{Char, Fractional, Integral, String};
-pub use crate::module::{Constructor, DataDefinition, Newtype, TypeDeclaration};
-pub use crate::renamer::Name;
-use crate::typecheck::TcType;
-pub use crate::types::Type::{Application, Variable};
-pub use crate::types::{Constraint, Qualified, Type, TypeVariable};
-use std::fmt;
+pub use crate::{
+    module::{
+        Constructor,
+        DataDefinition,
+        LiteralData::{
+            Char,
+            Fractional,
+            Integral,
+            String,
+        },
+        Newtype,
+        TypeDeclaration,
+    },
+    renamer::Name,
+    types::{
+        Constraint,
+        Qualified,
+        Type::{
+            self,
+            Application,
+            Variable,
+        },
+        TypeVariable,
+    },
+};
+use {
+    crate::{
+        interner::*,
+        module,
+        typecheck::TcType,
+    },
+    std::fmt,
+};
 
 pub struct Module<Ident> {
     pub classes: Vec<Class<Ident>>,
@@ -213,8 +237,10 @@ impl<T> Typed for Id<T> {
 }
 
 pub mod ref_ {
-    use super::Expr::*;
-    use super::*;
+    use super::{
+        Expr::*,
+        *,
+    };
     ///Visitor for the types in the core language.
     ///visit_ is called at the every value in the tree, if it is overriden
     ///the appropriate walk_ methods need to be called to continue walking
@@ -273,8 +299,10 @@ pub mod ref_ {
 }
 
 pub mod mutable {
-    use super::Expr::*;
-    use super::*;
+    use super::{
+        Expr::*,
+        *,
+    };
 
     pub trait Visitor<Ident>: Sized {
         fn visit_expr(&mut self, expr: &mut Expr<Ident>) {
@@ -334,8 +362,10 @@ pub mod mutable {
 }
 
 pub mod result {
-    use super::Expr::*;
-    use super::*;
+    use super::{
+        Expr::*,
+        *,
+    };
 
     ///A visitor which takes the structs as values and in turn expects a value in return
     ///so that it can rebuild the tree
@@ -425,14 +455,22 @@ pub mod result {
 
 ///The translate module takes the AST and translates it into the simpler core language.
 pub mod translate {
-    use crate::core::Expr::*;
-    use crate::core::*;
-    use crate::deriving::*;
-    use crate::module;
-    use crate::renamer::typ::*;
-    use crate::renamer::NameSupply;
-    use crate::typecheck::TcType;
-    use std::collections::HashMap;
+    use {
+        crate::{
+            core::{
+                Expr::*,
+                *,
+            },
+            deriving::*,
+            module,
+            renamer::{
+                typ::*,
+                NameSupply,
+            },
+            typecheck::TcType,
+        },
+        std::collections::HashMap,
+    };
 
     struct Translator<'a> {
         name_supply: NameSupply,

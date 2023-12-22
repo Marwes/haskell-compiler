@@ -1,21 +1,38 @@
-use crate::compiler::*;
-use crate::core::translate::translate_module;
-use crate::core::Constructor;
-use crate::interner::*;
-use crate::lambda_lift::do_lambda_lift;
-use crate::parser::Parser;
-use crate::renamer::rename_module;
-use crate::typecheck::TypeEnvironment;
-use crate::vm::primitive::{get_builtin, BuiltinFun};
-use std::cell::{Ref, RefCell, RefMut};
-use std::error::Error;
-use std::fmt;
-use std::fs::File;
-use std::io;
-use std::io::Read;
-use std::num::Wrapping;
-use std::path::Path;
-use std::rc::Rc;
+use {
+    crate::{
+        compiler::*,
+        core::{
+            translate::translate_module,
+            Constructor,
+        },
+        interner::*,
+        lambda_lift::do_lambda_lift,
+        parser::Parser,
+        renamer::rename_module,
+        typecheck::TypeEnvironment,
+        vm::primitive::{
+            get_builtin,
+            BuiltinFun,
+        },
+    },
+    std::{
+        cell::{
+            Ref,
+            RefCell,
+            RefMut,
+        },
+        error::Error,
+        fmt,
+        fs::File,
+        io::{
+            self,
+            Read,
+        },
+        num::Wrapping,
+        path::Path,
+        rc::Rc,
+    },
+};
 
 use self::Node_::*;
 
@@ -580,9 +597,11 @@ pub enum VMResult {
 }
 
 // TODO: throw this garbage into the macro below
-use crate::parser::ParseError;
-use crate::renamer::RenamerError;
-use crate::typecheck::TypeError;
+use crate::{
+    parser::ParseError,
+    renamer::RenamerError,
+    typecheck::TypeError,
+};
 
 macro_rules! vm_error {
     ($($pre: ident :: $post: ident),+) => {
@@ -708,12 +727,29 @@ fn execute_main_module_(assemblies: Vec<Assembly>) -> Result<Option<VMResult>, S
 #[allow(non_snake_case)]
 mod primitive {
 
-    use crate::compiler::Instruction;
-    use crate::compiler::Instruction::Eval;
-    use crate::vm::Node_::{Application, BuiltinFunction, Char, Constructor};
-    use crate::vm::{Node, Node_, VM};
-    use std::fs::File;
-    use std::io::Read;
+    use {
+        crate::{
+            compiler::{
+                Instruction,
+                Instruction::Eval,
+            },
+            vm::{
+                Node,
+                Node_::{
+                    self,
+                    Application,
+                    BuiltinFunction,
+                    Char,
+                    Constructor,
+                },
+                VM,
+            },
+        },
+        std::{
+            fs::File,
+            io::Read,
+        },
+    };
 
     pub fn get_builtin(i: usize) -> (usize, BuiltinFun) {
         match i {
@@ -857,12 +893,19 @@ mod primitive {
 #[cfg(test)]
 mod tests {
 
-    use crate::compiler::compile_with_type_env;
-    use crate::interner::*;
-    use crate::typecheck::TypeEnvironment;
-    use crate::vm::{
-        compile_file, compile_iter, execute_main_module, execute_main_string, extract_result,
-        VMResult, VM,
+    use crate::{
+        compiler::compile_with_type_env,
+        interner::*,
+        typecheck::TypeEnvironment,
+        vm::{
+            compile_file,
+            compile_iter,
+            execute_main_module,
+            execute_main_string,
+            extract_result,
+            VMResult,
+            VM,
+        },
     };
 
     fn execute_main<T: Iterator<Item = char>>(iterator: T) -> Option<VMResult> {

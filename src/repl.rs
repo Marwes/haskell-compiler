@@ -1,14 +1,23 @@
 use std::io::BufRead;
 
-use crate::compiler::*;
-use crate::core::translate::*;
-use crate::core::{Module, Qualified, Type};
-use crate::interner::*;
-use crate::lambda_lift::*;
-use crate::parser::Parser;
-use crate::renamer::{rename_expr, Name};
-use crate::typecheck::*;
-use crate::vm::*;
+use crate::{
+    compiler::*,
+    core::{
+        translate::*,
+        Module,
+        Qualified,
+        Type,
+    },
+    interner::*,
+    lambda_lift::*,
+    parser::Parser,
+    renamer::{
+        rename_expr,
+        Name,
+    },
+    typecheck::*,
+    vm::*,
+};
 
 ///Returns whether the type in question is an IO action
 fn is_io(typ: &Type<Name>) -> bool {

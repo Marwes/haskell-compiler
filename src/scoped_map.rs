@@ -1,6 +1,13 @@
-use std::collections::hash_map::{Entry, IterMut};
-use std::collections::HashMap;
-use std::hash::Hash;
+use std::{
+    collections::{
+        hash_map::{
+            Entry,
+            IterMut,
+        },
+        HashMap,
+    },
+    hash::Hash,
+};
 
 ///A map struct which allows for the isizeroduction of different scopes
 ///Introducing a new scope will make it possible to isizeroduce additional

@@ -1,16 +1,37 @@
-use crate::core::Expr::*;
-use crate::core::*;
-use crate::interner::*;
-use crate::scoped_map::ScopedMap;
-use crate::typecheck::{find_specialized_instances, DataTypes, TypeEnvironment, Types};
-use crate::types::{extract_applied_type, qualified};
-use std::borrow::ToOwned;
+use {
+    crate::{
+        core::{
+            Expr::*,
+            *,
+        },
+        interner::*,
+        scoped_map::ScopedMap,
+        typecheck::{
+            find_specialized_instances,
+            DataTypes,
+            TypeEnvironment,
+            Types,
+        },
+        types::{
+            extract_applied_type,
+            qualified,
+        },
+    },
+    std::borrow::ToOwned,
+};
 
-use crate::builtins::builtins;
-use crate::core::translate::{translate_module, translate_modules};
-use crate::lambda_lift::do_lambda_lift;
-use crate::renamer::rename_module;
-use crate::renamer::typ::*;
+use crate::{
+    builtins::builtins,
+    core::translate::{
+        translate_module,
+        translate_modules,
+    },
+    lambda_lift::do_lambda_lift,
+    renamer::{
+        rename_module,
+        typ::*,
+    },
+};
 
 use self::Instruction::*;
 
@@ -1331,14 +1352,24 @@ fn compile_module_(
 #[cfg(test)]
 mod tests {
 
-    use crate::compiler::Instruction::*;
-    use crate::compiler::{compile_with_type_env, Assembly, Compiler};
-    use crate::interner::*;
-    use crate::typecheck::TypeEnvironment;
-    use std::fs::File;
-    use std::io::Read;
-    use std::path::Path;
-    use test::Bencher;
+    use {
+        crate::{
+            compiler::{
+                compile_with_type_env,
+                Assembly,
+                Compiler,
+                Instruction::*,
+            },
+            interner::*,
+            typecheck::TypeEnvironment,
+        },
+        std::{
+            fs::File,
+            io::Read,
+            path::Path,
+        },
+        test::Bencher,
+    };
 
     fn compile(contents: &str) -> Assembly {
         super::compile(contents).unwrap()
@@ -1646,10 +1677,12 @@ test = Test [1::Int]";
 
     #[bench]
     fn bench_prelude(b: &mut Bencher) {
-        use crate::core::translate::translate_module;
-        use crate::lambda_lift::do_lambda_lift;
-        use crate::parser::Parser;
-        use crate::renamer::tests::rename_module;
+        use crate::{
+            core::translate::translate_module,
+            lambda_lift::do_lambda_lift,
+            parser::Parser,
+            renamer::tests::rename_module,
+        };
 
         let path = &Path::new("Prelude.hs");
         let mut contents = ::std::string::String::new();

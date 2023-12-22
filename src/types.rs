@@ -1,8 +1,15 @@
-use crate::interner::{intern, InternedStr};
-use std::collections::HashMap;
-use std::default::Default;
-use std::fmt;
-use std::iter;
+use {
+    crate::interner::{
+        intern,
+        InternedStr,
+    },
+    std::{
+        collections::HashMap,
+        default::Default,
+        fmt,
+        iter,
+    },
+};
 
 #[derive(Clone, Debug, Default, Eq, Hash)]
 pub struct TypeConstructor<Ident = InternedStr> {

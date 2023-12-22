@@ -1,9 +1,19 @@
-use crate::core::Expr::*;
-use crate::core::*;
-use crate::interner::{intern, InternedStr};
-use crate::module::encode_binding_identifier;
-use crate::renamer::typ::*;
-use crate::renamer::{name, NameSupply};
+use crate::{
+    core::{
+        Expr::*,
+        *,
+    },
+    interner::{
+        intern,
+        InternedStr,
+    },
+    module::encode_binding_identifier,
+    renamer::{
+        name,
+        typ::*,
+        NameSupply,
+    },
+};
 
 pub fn generate_deriving(instances: &mut Vec<Instance<Id<Name>>>, data: &DataDefinition<Name>) {
     let mut gen =

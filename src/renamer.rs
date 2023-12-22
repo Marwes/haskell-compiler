@@ -1,9 +1,15 @@
-use crate::interner::*;
-use crate::lexer::Located;
-use crate::module::*;
-use crate::scoped_map::ScopedMap;
-use std::error;
-use std::fmt;
+use {
+    crate::{
+        interner::*,
+        lexer::Located,
+        module::*,
+        scoped_map::ScopedMap,
+    },
+    std::{
+        error,
+        fmt,
+    },
+};
 
 ///A Name is a reference to a specific identifier in the program, guaranteed to be unique
 #[derive(Eq, Hash, Clone, Copy, Debug)]
@@ -280,8 +286,10 @@ impl Renamer {
     }
 
     fn rename(&mut self, input_expr: TypedExpr<InternedStr>) -> TypedExpr<Name> {
-        use crate::module::DoBinding::*;
-        use crate::module::Expr::*;
+        use crate::module::{
+            DoBinding::*,
+            Expr::*,
+        };
         let TypedExpr {
             expr,
             typ,
@@ -687,10 +695,21 @@ pub fn rename_modules(
 }
 
 pub mod typ {
-    use super::{name, Name};
-    use crate::interner::intern;
-    use crate::types::{Kind, Type, TypeVariable};
-    use std::iter::repeat;
+    use {
+        super::{
+            name,
+            Name,
+        },
+        crate::{
+            interner::intern,
+            types::{
+                Kind,
+                Type,
+                TypeVariable,
+            },
+        },
+        std::iter::repeat,
+    };
 
     ///Constructs a string which holds the name of an n-tuple
     pub fn tuple_name(n: usize) -> String {
@@ -765,10 +784,17 @@ pub mod typ {
 
 #[cfg(test)]
 pub mod tests {
-    use super::Name;
-    use crate::interner::InternedStr;
-    use crate::module::{Module, TypedExpr};
-    use crate::parser::*;
+    use {
+        super::Name,
+        crate::{
+            interner::InternedStr,
+            module::{
+                Module,
+                TypedExpr,
+            },
+            parser::*,
+        },
+    };
 
     pub fn rename_modules(modules: Vec<Module<InternedStr>>) -> Vec<Module<Name>> {
         super::rename_modules(modules).unwrap()

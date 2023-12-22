@@ -1,7 +1,11 @@
-use crate::interner::intern;
-use crate::module::*;
-use crate::renamer::Name;
-use std::collections::HashMap;
+use {
+    crate::{
+        interner::intern,
+        module::*,
+        renamer::Name,
+    },
+    std::collections::HashMap,
+};
 
 pub struct PrecedenceVisitor {
     precedence: HashMap<Name, (isize, Assoc)>,
@@ -136,12 +140,17 @@ impl PrecedenceVisitor {
 
 #[cfg(test)]
 mod tests {
-    use crate::infix::PrecedenceVisitor;
-    use crate::interner::intern;
-    use crate::module::*;
-    use crate::parser::*;
-    use crate::renamer::tests::{rename_expr, rename_modules};
-    use crate::typecheck::*;
+    use crate::{
+        infix::PrecedenceVisitor,
+        interner::intern,
+        module::*,
+        parser::*,
+        renamer::tests::{
+            rename_expr,
+            rename_modules,
+        },
+        typecheck::*,
+    };
 
     #[test]
     fn operator_precedence() {

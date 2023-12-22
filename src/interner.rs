@@ -1,8 +1,10 @@
-use std::cell::RefCell;
-use std::collections::HashMap;
-use std::fmt;
-use std::ops::Deref;
-use std::rc::Rc;
+use std::{
+    cell::RefCell,
+    collections::HashMap,
+    fmt,
+    ops::Deref,
+    rc::Rc,
+};
 
 #[derive(Eq, PartialEq, Clone, Copy, Default, Hash, Debug)]
 pub struct InternedStr(usize);
