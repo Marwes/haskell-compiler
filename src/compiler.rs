@@ -409,7 +409,7 @@ pub struct Compiler<'a> {
 }
 
 impl<'a> Compiler<'a> {
-    pub fn new() -> Compiler<'a> {
+    pub fn new() -> Self {
         let mut variables = ScopedMap::new();
         for (i, &(name, _)) in builtins().iter().enumerate() {
             variables.insert(
@@ -438,7 +438,7 @@ impl<'a> Compiler<'a> {
                 Var::Primitive(1, instruction),
             );
         }
-        Compiler {
+        Self {
             instance_dictionaries: vec![],
             stack_size: 0,
             assemblies: vec![],

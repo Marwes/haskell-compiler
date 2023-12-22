@@ -53,8 +53,8 @@ pub struct Errors<T> {
     errors: Vec<T>,
 }
 impl<T> Errors<T> {
-    pub fn new() -> Errors<T> {
-        Errors { errors: vec![] }
+    pub fn new() ->Self {
+        Self { errors: vec![] }
     }
     pub fn insert(&mut self, e: T) {
         self.errors.push(e);
@@ -161,8 +161,8 @@ struct Renamer {
 }
 
 impl Renamer {
-    fn new() -> Renamer {
-        Renamer {
+    fn new() -> Self {
+        Self {
             uniques: ScopedMap::new(),
             name_supply: NameSupply::new(),
             errors: Errors::new(),

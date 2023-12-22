@@ -34,7 +34,7 @@ impl MutVisitor<Name> for PrecedenceVisitor {
     }
 }
 impl PrecedenceVisitor {
-    pub fn new() -> PrecedenceVisitor {
+    pub fn new() -> Self {
         let mut map = HashMap::new();
         map.insert(
             Name {
@@ -43,7 +43,7 @@ impl PrecedenceVisitor {
             },
             (5, Assoc::Right),
         );
-        PrecedenceVisitor { precedence: map }
+        Self { precedence: map }
     }
 
     fn get_precedence(&self, name: &Name) -> (isize, Assoc) {

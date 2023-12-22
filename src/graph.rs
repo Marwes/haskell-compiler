@@ -37,8 +37,8 @@ pub struct Graph<T> {
 
 impl<T> Graph<T> {
     ///Creates a new graph
-    pub fn new() -> Graph<T> {
-        Graph {
+    pub fn new() -> Self {
+        Self {
             edges: vec![],
             vertices: vec![],
         }

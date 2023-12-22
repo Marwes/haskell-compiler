@@ -286,9 +286,10 @@ pub struct Constraint<Ident = InternedStr> {
     pub variables: Vec<TypeVariable>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Default)]
 pub enum Kind {
     Function(Box<Kind>, Box<Kind>),
+    #[default]
     Star,
 }
 impl fmt::Display for Kind {
@@ -301,24 +302,18 @@ impl fmt::Display for Kind {
 }
 
 impl Kind {
-    pub fn new(v: isize) -> Kind {
-        let mut kind = Kind::Star.clone();
+    pub fn new(v: isize) -> Self {
+        let mut kind = Self::Star.clone();
         for _ in 1..v {
-            kind = Kind::Function(Box::new(Kind::Star), Box::new(kind));
+            kind = Self::Function(Box::new(Self::Star), Box::new(kind));
         }
         kind
     }
 }
 
-impl Default for Kind {
-    fn default() -> Kind {
-        Kind::Star
-    }
-}
-
 impl<T> Default for Type<T> {
-    fn default() -> Type<T> {
-        Type::Variable(TypeVariable::new(intern("a")))
+    fn default() -> Self {
+        Self::Variable(TypeVariable::new(intern("a")))
     }
 }
 impl fmt::Display for TypeVariable {

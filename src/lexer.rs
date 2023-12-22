@@ -62,8 +62,8 @@ pub struct Location {
 }
 
 impl Location {
-    pub fn eof() -> Location {
-        Location {
+    pub fn eof() -> Self {
+        Self {
             column: -1,
             row: -1,
             absolute: -1,
@@ -101,8 +101,8 @@ pub struct Token {
     pub location: Location,
 }
 impl Token {
-    fn eof() -> Token {
-        Token {
+    fn eof() -> Self {
+        Self {
             token: EOF,
             value: intern(""),
             location: Location {
@@ -113,13 +113,8 @@ impl Token {
         }
     }
 
-    fn new(
-        interner: &Rc<RefCell<Interner>>,
-        token: TokenEnum,
-        value: &str,
-        loc: Location,
-    ) -> Token {
-        Token {
+    fn new(interner: &Rc<RefCell<Interner>>, token: TokenEnum, value: &str, loc: Location) -> Self {
+        Self {
             token,
             value: (**interner).borrow_mut().intern(value),
             location: loc,
@@ -127,8 +122,8 @@ impl Token {
     }
 
     #[cfg(test)]
-    fn new_(token: TokenEnum, value: &str) -> Token {
-        Token::new(
+    fn new_(token: TokenEnum, value: &str) -> Self {
+        Self::new(
             &get_local_interner(),
             token,
             value,
@@ -142,7 +137,7 @@ impl Token {
 }
 
 impl PartialEq for Token {
-    fn eq(&self, rhs: &Token) -> bool {
+    fn eq(&self, rhs: &Self) -> bool {
         self.token == rhs.token && self.value == rhs.value
     }
 }
@@ -200,13 +195,13 @@ pub struct Lexer<Stream: Iterator<Item = char>> {
 
 impl<Stream: Iterator<Item = char>> Lexer<Stream> {
     ///Constructs a new lexer with a default sized token buffer and the local string interner
-    pub fn new(input: Stream) -> Lexer<Stream> {
+    pub fn new(input: Stream) -> Self {
         let start = Location {
             column: 0,
             row: 0,
             absolute: 0,
         };
-        Lexer {
+        Self {
             input: input.peekable(),
             location: start,
             unprocessed_tokens: vec![],

@@ -113,8 +113,8 @@ macro_rules! unexpected (
 );
 
 impl<Iter: Iterator<Item = char>> Parser<Iter> {
-    pub fn new(iterator: Iter) -> Parser<Iter> {
-        Parser {
+    pub fn new(iterator: Iter) -> Self {
+        Self {
             lexer: Lexer::new(iterator),
         }
     }

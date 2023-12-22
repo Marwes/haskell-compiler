@@ -20,8 +20,8 @@ impl<K, V> ScopedMap<K, V>
 where
     K: Eq + Hash + Clone,
 {
-    pub fn new() -> ScopedMap<K, V> {
-        ScopedMap {
+    pub fn new() -> Self {
+        Self {
             map: HashMap::new(),
             scopes: vec![],
         }
