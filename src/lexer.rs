@@ -319,24 +319,19 @@ impl<Stream: Iterator<Item = char>> Lexer<Stream> {
     ///Scans an identifier or a keyword
     fn scan_identifier(&mut self, c: char, start_location: Location) -> Token {
         let mut result = c.to_string();
-        loop {
-            match self.peek_char() {
-                Some(ch) => {
-                    if !ch.is_alphanumeric() && ch != '_' {
-                        break;
-                    }
-                    self.read_char();
-                    result.push(ch);
-                }
-                None => break,
+        while let Some(ch) = self.peek_char() {
+            if !ch.is_alphanumeric() && ch != '_' {
+                break;
             }
+            self.read_char();
+            result.push(ch);
         }
-        return Token::new(
+        Token::new(
             &self.interner,
             name_or_keyword(result.as_ref()),
             result.as_ref(),
             start_location,
-        );
+        )
     }
 
     ///Returns the next token but if it is not an '}' it will attempt to insert a '}' automatically

@@ -116,9 +116,7 @@ impl PrecedenceVisitor {
                         location,
                         expr: rhs,
                     };
-                    while op_stack.len() != 0 {
-                        assert!(expr_stack.len() >= 1);
-                        let lhs = expr_stack.pop().unwrap();
+                    while let Some(lhs) = expr_stack.pop() {
                         let op = op_stack.pop().unwrap();
                         result = TypedExpr::with_location(
                             Expr::OpApply(lhs, op, Box::new(result)),
