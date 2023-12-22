@@ -577,13 +577,9 @@ impl<'a> Compiler<'a> {
                 None => None,
             })
             .or_else(|| {
-                for assembly in self.assemblies.iter() {
-                    match assembly.find_global(identifier) {
-                        Some(var) => return Some(var),
-                        None => (),
-                    }
-                }
-                None
+                self.assemblies
+                    .iter()
+                    .find_map(|assembly| assembly.find_global(identifier))
             })
             .or_else(|| {
                 Compiler::find_builtin_constructor(identifier.name)
@@ -595,13 +591,9 @@ impl<'a> Compiler<'a> {
         self.module
             .and_then(|module| find_constructor(module, identifier))
             .or_else(|| {
-                for assembly in self.assemblies.iter() {
-                    match assembly.find_constructor(identifier) {
-                        Some(var) => return Some(var),
-                        None => (),
-                    }
-                }
-                None
+                self.assemblies
+                    .iter()
+                    .find_map(|assembly| assembly.find_constructor(identifier))
             })
             .or_else(|| Compiler::find_builtin_constructor(identifier.name))
     }

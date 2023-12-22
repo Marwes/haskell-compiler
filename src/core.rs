@@ -1380,7 +1380,7 @@ pub mod translate {
         equations
             .iter()
             .filter(|&&Equation(ps, _)| {
-                ps.len() > 0 && matches!(ps[0].1, Pattern::WildCard | Pattern::Identifier(..))
+                !ps.is_empty() && matches!(ps[0].1, Pattern::WildCard | Pattern::Identifier(..))
             })
             .map(|eq| {
                 let &Equation(ps, _) = eq;

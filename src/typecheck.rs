@@ -774,16 +774,9 @@ impl<'a> TypeEnvironment<'a> {
                         &mut typ2,
                         &mut guard.expression.typ,
                     );
-                    match typ {
-                        Some(mut typ) => unify_location(
-                            self,
-                            subs,
-                            &guard.expression.location,
-                            &mut typ,
-                            &mut typ2,
-                        ),
-                        None => (),
-                    }
+                    if let Some(mut typ) = typ {
+                        unify_location(self, subs, &guard.expression.location, &mut typ, &mut typ2)
+                    };
                     typ = Some(typ2);
                     let mut predicate = self.typecheck(&mut guard.predicate, subs);
                     unify_location(
