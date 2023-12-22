@@ -659,12 +659,8 @@ impl<Iter: Iterator<Item = char>> Parser<Iter> {
         match e {
             Some(mut lhs) => {
                 let mut expressions = vec![];
-                loop {
-                    let expr = self.sub_expression()?;
-                    match expr {
-                        Some(e) => expressions.push(e),
-                        None => break,
-                    }
+                while let Some(expr) = self.sub_expression()? {
+                    expressions.push(expr);
                 }
                 if expressions.len() > 0 {
                     let loc = lhs.location;
@@ -1154,11 +1150,9 @@ impl<Iter: Iterator<Item = char>> Parser<Iter> {
             }
             NAME => {
                 let mut type_arguments = vec![];
-                loop {
-                    match self.sub_type()? {
-                        Some(typ) => type_arguments.push(typ),
-                        None => break,
-                    }
+
+                while let Some(typ) = self.sub_type()? {
+                    type_arguments.push(typ);
                 }
 
                 let this_type = if token
