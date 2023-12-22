@@ -1,6 +1,5 @@
 pub use crate::{
     module::{
-        Constructor,
         DataDefinition,
         LiteralData::{
             Char,
@@ -17,8 +16,6 @@ pub use crate::{
         Qualified,
         Type::{
             self,
-            Application,
-            Variable,
         },
         TypeVariable,
     },

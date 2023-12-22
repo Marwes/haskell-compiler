@@ -1,10 +1,7 @@
 use {
     crate::{
         compiler::*,
-        core::{
-            translate::translate_module,
-            Constructor,
-        },
+        core::translate::translate_module,
         interner::*,
         lambda_lift::do_lambda_lift,
         parser::Parser,
