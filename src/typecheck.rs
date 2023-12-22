@@ -1378,9 +1378,8 @@ fn quantify(start_var_age: isize, typ: &mut Qualified<TcType, Name>) {
             }
             _ => None,
         };
-        match x {
-            Some(var) => *typ = Type::Generic(var),
-            None => (),
+        if let Some(var) = x {
+            *typ = Type::Generic(var);
         }
     }
     for constraint in typ.constraints.iter_mut() {
@@ -1460,9 +1459,8 @@ fn replace(
         }
         _ => None, //panic!("replace called on Generic")
     };
-    match replaced {
-        Some(x) => *old = x,
-        None => (),
+    if let Some(x) = replaced {
+        *old = x;
     }
 }
 
@@ -1493,9 +1491,8 @@ fn freshen(env: &mut TypeEnvironment, subs: &mut Substitution, typ: &mut Qualifi
             }
             _ => None,
         };
-        match result {
-            Some(x) => *typ = x,
-            None => (),
+        if let Some(x) = result {
+            *typ = x;
         }
     }
     freshen_(env, subs, &*typ.constraints, &mut typ.value);
@@ -1616,13 +1613,10 @@ fn bind_variable(
                 for (_, v) in subs.subs.iter_mut() {
                     replace_var(v, var, typ);
                 }
-                match env.constraints.remove(var) {
-                    Some(constraints) => {
-                        for c in constraints.iter() {
-                            env.insert_constraint(var2, c.clone());
-                        }
+                if let Some(constraints) = env.constraints.remove(var) {
+                    for c in constraints.iter() {
+                        env.insert_constraint(var2, c.clone());
                     }
-                    None => (),
                 }
             }
             Ok(())
