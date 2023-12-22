@@ -201,18 +201,15 @@ impl<'a> VM {
     fn deepseq(&'a self, mut stack: Vec<Node<'a>>, assembly_id: usize) -> Node_<'a> {
         static EVALCODE: &'static [Instruction] = &[Instruction::Eval];
         self.execute(&mut stack, EVALCODE, assembly_id);
-        match *stack[0].borrow() {
-            Constructor(tag, ref vals) => {
-                let mut ret = vec![];
-                for v in vals.iter() {
-                    let s = vec![v.clone()];
-                    let x = self.deepseq(s, assembly_id);
-                    ret.push(Node::new(x));
-                }
-                Constructor(tag, ret)
-            }
-            _ => stack[0].borrow().clone(),
-        }
+        let Constructor(tag, ref vals) = *stack[0].borrow() else {
+            return stack[0].borrow().clone();
+        };
+        Constructor(
+            tag,
+            vals.iter()
+                .map(|v| Node::new(self.deepseq(vec![v.clone()], assembly_id)))
+                .collect(),
+        )
     }
 
     ///Executes a sequence of instructions, leaving the result on the top of the stack
