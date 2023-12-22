@@ -409,13 +409,13 @@ impl<Iter: Iterator<Item = char>> Parser<Iter> {
                 } else {
                     let mut expressions = self.sep_by_1(|this| this.expression_(), COMMA)?;
                     expect!(self, RPARENS);
-                    if expressions.len() == 1 {
+                    Some(if expressions.len() == 1 {
                         let expr = expressions.pop().unwrap();
                         let loc = expr.location;
-                        Some(TypedExpr::with_location(Paren(Box::new(expr)), loc))
+                        TypedExpr::with_location(Paren(Box::new(expr)), loc)
                     } else {
-                        Some(new_tuple(expressions))
-                    }
+                        new_tuple(expressions)
+                    })
                 }
             }
             LBRACKET => Some(self.list()?),
@@ -423,10 +423,8 @@ impl<Iter: Iterator<Item = char>> Parser<Iter> {
                 let binds = self.let_bindings()?;
 
                 expect!(self, IN);
-                match self.expression()? {
-                    Some(e) => Some(TypedExpr::new(Let(binds, Box::new(e)))),
-                    None => None,
-                }
+                self.expression()?
+                    .map(|e| TypedExpr::new(Let(binds, Box::new(e))))
             }
             CASE => {
                 let location = self.lexer.current().location;
@@ -434,13 +432,10 @@ impl<Iter: Iterator<Item = char>> Parser<Iter> {
 
                 expect!(self, OF);
                 expect!(self, LBRACE);
-
                 let alts = self.sep_by_1(|this| this.alternative(), SEMICOLON)?;
                 expect!(self, RBRACE);
-                match expr {
-                    Some(e) => Some(TypedExpr::with_location(Case(Box::new(e), alts), location)),
-                    None => None,
-                }
+                self.expression()?
+                    .map(|e| TypedExpr::with_location(Case(Box::new(e), alts), location))
             }
             IF => {
                 let location = self.lexer.current().location;
