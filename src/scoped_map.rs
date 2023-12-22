@@ -105,10 +105,9 @@ where
             Entry::Vacant(entry) => entry.insert(vec![]),
             Entry::Occupied(entry) => entry.into_mut(),
         };
-        if !vec.is_empty() {
-            let r = vec.pop();
+        if let Some(r) = vec.pop() {
             vec.push(v);
-            r
+            r.into()
         } else {
             vec.push(v);
             self.scopes.push(Some(k));

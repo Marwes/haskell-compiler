@@ -1156,24 +1156,13 @@ pub mod translate {
                     let bindings = where_bindings_bindings.iter().map(|x| x.clone()).collect();
                     match *m {
                         module::Match::Simple(ref e) => {
-                            let alt = if ps.is_empty() {
-                                Alternative {
-                                    pattern: Pattern::WildCard,
-                                    expression: make_let(
-                                        bindings,
-                                        self.translate_expr((*e).clone()),
-                                    ),
-                                }
-                            } else {
-                                Alternative {
-                                    pattern: ps[0].1.clone(),
-                                    expression: make_let(
-                                        bindings,
-                                        self.translate_expr((*e).clone()),
-                                    ),
-                                }
-                            };
-                            alts.push(alt);
+                            let pattern =
+                                ps.first().map(|x| x.1.clone()).unwrap_or(Pattern::WildCard);
+
+                            alts.push(Alternative {
+                                pattern,
+                                expression: make_let(bindings, self.translate_expr((*e).clone())),
+                            });
                         }
                         module::Match::Guards(ref guards) => {
                             let fallthrough = if equations.len() == i + 1 {
