@@ -533,19 +533,13 @@ impl<Stream: Iterator<Item = char>> Lexer<Stream> {
         //ie if its an operator then more operators will follow
         if is_operator(c) {
             let mut result = c.to_string();
-            loop {
-                match self.peek_char() {
-                    Some(ch) => {
-                        if !is_operator(ch) {
-                            break;
-                        }
-                        self.read_char();
-                        result.push(ch);
-                    }
-                    None => {
-                        break;
-                    }
+
+            while let Some(ch) = self.peek_char() {
+                if !is_operator(ch) {
+                    break;
                 }
+                self.read_char();
+                result.push(ch);
             }
             let tok = match result.as_ref() {
                 "=" => EQUALSSIGN,

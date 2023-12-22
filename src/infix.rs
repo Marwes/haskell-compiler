@@ -80,33 +80,30 @@ impl PrecedenceVisitor {
                     expr_stack.push(l);
                     input = r;
                     loop {
-                        match op_stack.last().map(|x| *x) {
-                            Some(previous_op) => {
-                                let (op_prec, op_assoc) = self.get_precedence(&op);
-                                let (prev_prec, prev_assoc) = self.get_precedence(&previous_op);
-                                if op_prec > prev_prec {
-                                    op_stack.push(op);
-                                    break;
-                                } else if op_prec == prev_prec {
-                                    match (op_assoc, prev_assoc) {
-                                        (Assoc::Left, Assoc::Left) => {
-                                            reduce(&mut expr_stack, &mut op_stack);
-                                        }
-                                        (Assoc::Right, Assoc::Right) => {
-                                            debug!("Shift op {:?}", op);
-                                            op_stack.push(op);
-                                            break;
-                                        }
-                                        _ => panic!("Syntax error: mismatched associativity"),
-                                    }
-                                } else {
-                                    reduce(&mut expr_stack, &mut op_stack);
-                                }
-                            }
-                            None => {
+                        if let Some(previous_op) = op_stack.last() {
+                            let (op_prec, op_assoc) = self.get_precedence(&op);
+                            let (prev_prec, prev_assoc) = self.get_precedence(&previous_op);
+                            if op_prec > prev_prec {
                                 op_stack.push(op);
                                 break;
+                            } else if op_prec == prev_prec {
+                                match (op_assoc, prev_assoc) {
+                                    (Assoc::Left, Assoc::Left) => {
+                                        reduce(&mut expr_stack, &mut op_stack);
+                                    }
+                                    (Assoc::Right, Assoc::Right) => {
+                                        debug!("Shift op {:?}", op);
+                                        op_stack.push(op);
+                                        break;
+                                    }
+                                    _ => panic!("Syntax error: mismatched associativity"),
+                                }
+                            } else {
+                                reduce(&mut expr_stack, &mut op_stack);
                             }
+                        } else {
+                            op_stack.push(op);
+                            break;
                         }
                     }
                 }
