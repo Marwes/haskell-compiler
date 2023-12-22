@@ -263,21 +263,17 @@ impl<Iter: Iterator<Item = char>> Parser<Iter> {
                 BindOrTypeDecl::Binding(mut bind) => {
                     //Bindings need to have their name altered to distinguish them from
                     //the declarations name
-                    match typ {
-                        Type::Application(ref op, _) => {
-                            let classname = match **op {
-                                Type::Constructor(ref ctor) => ctor.name,
-                                _ => return self.error("Expected type operator".to_string()),
-                            };
-                            bind.name = encode_binding_identifier(classname, bind.name);
-                        }
-                        _ => {
-                            return self.error(
-                                "The name of the class must start with an uppercase letter"
-                                    .to_string(),
-                            )
-                        }
-                    }
+
+                    let Type::Application(ref op, _) = typ else {
+                        return self.error(
+                            "The name of the class must start with an uppercase letter".to_string(),
+                        );
+                    };
+
+                    let Type::Constructor(ref ctor) = **op else {
+                        return self.error("Expected type operator".to_string());
+                    };
+                    bind.name = encode_binding_identifier(ctor.name, bind.name);
                     bindings.push(bind)
                 }
                 BindOrTypeDecl::TypeDecl(decl) => declarations.push(decl),
