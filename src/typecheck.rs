@@ -411,7 +411,7 @@ impl<'a> TypeEnvironment<'a> {
         }
         let data_definitions = module.data_definitions.clone();
         for instance in module.instances.iter_mut() {
-            let (_class_constraints, class_var, class_decls) = module
+            let (_, class_var, class_decls) = module
                 .classes
                 .iter()
                 .find(|class| class.name == instance.classname)

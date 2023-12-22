@@ -232,10 +232,9 @@ impl<Stream: Iterator<Item = char>> Lexer<Stream> {
         if self.offset > 0 {
             //backtrack has been used so simply return the next token from the buffer
             self.offset -= 1;
-            match self.tokens.get(self.tokens.len() - 1 - self.offset) {
-                Some(token) => token,
-                None => panic!("Impossible empty tokens stream"),
-            }
+            self.tokens
+                .get(self.tokens.len() - 1 - self.offset)
+                .expect("Impossible empty tokens stream")
         } else if self.unprocessed_tokens.len() > 0 {
             //Some previous call to next produced more than one token so process those first
             self.layout_independent_token();
@@ -247,10 +246,9 @@ impl<Stream: Iterator<Item = char>> Lexer<Stream> {
 
     ///Returns a reference to the current token
     pub fn current<'a>(&'a self) -> &'a Token {
-        match self.tokens.get(self.tokens.len() - 1 - self.offset) {
-            Some(token) => token,
-            None => panic!("Attempted to access Lexer::current() on when tokens is empty"),
-        }
+        self.tokens
+            .get(self.tokens.len() - 1 - self.offset)
+            .expect("Attempted to access Lexer::current() on when tokens is empty")
     }
 
     ///Moves the lexer back one token
@@ -275,12 +273,11 @@ impl<Stream: Iterator<Item = char>> Lexer<Stream> {
             Some(c) => {
                 self.location.absolute += 1;
                 self.location.column += 1;
-                if c == '\n' || c == '\r' {
+                if matches!(c, '\n' | '\r') {
                     self.location.column = 0;
                     self.location.row += 1;
                     //If this is a \n\r line ending skip the next char without increasing the location
-                    let x = '\n';
-                    if c == '\r' && self.input.peek() == Some(&x) {
+                    if c == '\r' && self.input.peek() == Some(&'\n') {
                         self.input.next();
                     }
                 }

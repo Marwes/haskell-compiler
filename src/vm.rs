@@ -766,7 +766,7 @@ mod primitive {
         eval(vm, stack[0].clone());
         stack[1].clone()
     }
-    fn io_bind<'a>(_vm: &'a VM, stack: &[Node<'a>]) -> Node<'a> {
+    fn io_bind<'a>(_: &'a VM, stack: &[Node<'a>]) -> Node<'a> {
         //IO a -> (a -> IO b) -> IO b
         //IO a = (RealWorld -> (a, RealWorld)
         //((RealWorld -> (a, RealWorld)) -> (a -> RealWorld -> (b, RealWorld)) -> RealWorld -> (b, RealWorld)
@@ -789,7 +789,7 @@ mod primitive {
             rw.clone(),
         ))
     }
-    fn io_return<'a>(_vm: &'a VM, stack: &[Node<'a>]) -> Node<'a> {
+    fn io_return<'a>(_: &'a VM, stack: &[Node<'a>]) -> Node<'a> {
         //a -> RealWorld -> (a, RealWorld)
         Node::new(Constructor(0, vec![stack[0].clone(), stack[1].clone()]))
     }
@@ -803,7 +803,7 @@ mod primitive {
             Err(err) => panic!("error: readFile -> {:?}", err),
         };
         let mut s = ::std::string::String::new();
-        let (begin, _end) = match file.read_to_string(&mut s) {
+        let (begin, _) = match file.read_to_string(&mut s) {
             Ok(_) => create_string(&s),
             Err(err) => panic!("error: readFile -> {:?}", err),
         };
