@@ -374,11 +374,8 @@ impl<Iter: Iterator<Item = char>> Parser<Iter> {
 
     fn list(&mut self) -> ParseResult<TypedExpr> {
         let mut expressions = vec![];
-        loop {
-            match self.expression()? {
-                Some(expr) => expressions.push(expr),
-                None => break,
-            }
+        while let Some(expr) = self.expression()? {
+            expressions.push(expr);
             let comma = self.lexer.next().token;
             if comma != COMMA {
                 self.lexer.backtrack();
