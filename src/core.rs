@@ -119,16 +119,16 @@ impl<T: fmt::Display> fmt::Display for Alternative<T> {
 impl<T: fmt::Display> fmt::Display for Pattern<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            Pattern::Identifier(ref s) => write!(f, "{}", s),
-            Pattern::Number(ref i) => write!(f, "{}", i),
-            Pattern::Constructor(ref name, ref patterns) => {
+            Self::Identifier(ref s) => write!(f, "{}", s),
+            Self::Number(ref i) => write!(f, "{}", i),
+            Self::Constructor(ref name, ref patterns) => {
                 write!(f, "({} ", name)?;
                 for p in patterns.iter() {
                     write!(f, " {}", p)?;
                 }
                 write!(f, ")")
             }
-            Pattern::WildCard => write!(f, "_"),
+            Self::WildCard => write!(f, "_"),
         }
     }
 }
@@ -164,8 +164,7 @@ impl<Ident: Typed> Typed for Pattern<Ident> {
     type Id = Ident::Id;
     fn get_type<'a>(&'a self) -> &'a Type<Ident::Id> {
         match *self {
-            Self::Identifier(ref name) => name.get_type(),
-            Self::Constructor(ref name, _) => name.get_type(),
+            Self::Identifier(ref name) | Self::Constructor(ref name, _) => name.get_type(),
             Self::Number(_) => panic!(),
             Self::WildCard => panic!(),
         }

@@ -596,8 +596,8 @@ macro_rules! vm_error {
     impl fmt::Display for VMError {
         fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
             match *self {
-                VMError::Io(ref e) => write!(f, "{}", e),
-                $(VMError::$post(ref e) => write!(f, "{}", e)),+
+                Self::Io(ref e) => write!(f, "{}", e),
+                $(Self::$post(ref e) => write!(f, "{}", e)),+
             }
         }
     }

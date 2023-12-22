@@ -110,8 +110,8 @@ enum Error {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            Error::MultipleDefinitions(s) => write!(f, "{} is defined multiple times", s),
-            Error::UndefinedModule(s) => write!(f, "Module {} is not defined", s),
+            Self::MultipleDefinitions(s) => write!(f, "{} is defined multiple times", s),
+            Self::UndefinedModule(s) => write!(f, "Module {} is not defined", s),
         }
     }
 }

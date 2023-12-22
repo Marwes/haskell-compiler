@@ -169,8 +169,8 @@ pub enum Match<Ident = InternedStr> {
 impl<Ident> Match<Ident> {
     pub fn location<'a>(&'a self) -> &'a Location {
         match *self {
-            Match::Guards(ref gs) => &gs[0].predicate.location,
-            Match::Simple(ref e) => &e.location,
+            Self::Guards(ref gs) => &gs[0].predicate.location,
+            Self::Simple(ref e) => &e.location,
         }
     }
 }
@@ -272,8 +272,8 @@ impl<T: fmt::Display + AsRef<str>> fmt::Display for Alternative<T> {
 impl<T: fmt::Display + AsRef<str>> fmt::Display for Match<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            Match::Simple(ref e) => write!(f, "{}", *e),
-            Match::Guards(ref gs) => {
+            Self::Simple(ref e) => write!(f, "{}", *e),
+            Self::Guards(ref gs) => {
                 for g in gs.iter() {
                     write!(f, "| {} -> {}\n", g.predicate, g.expression)?;
                 }
@@ -285,10 +285,10 @@ impl<T: fmt::Display + AsRef<str>> fmt::Display for Match<T> {
 impl fmt::Display for LiteralData {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            LiteralData::Integral(i) => write!(f, "{}", i),
-            LiteralData::Fractional(v) => write!(f, "{}", v),
-            LiteralData::String(ref s) => write!(f, "\"{}\"", *s),
-            LiteralData::Char(c) => write!(f, "'{}'", c),
+            Self::Integral(i) => write!(f, "{}", i),
+            Self::Fractional(v) => write!(f, "{}", v),
+            Self::String(ref s) => write!(f, "\"{}\"", *s),
+            Self::Char(c) => write!(f, "'{}'", c),
         }
     }
 }

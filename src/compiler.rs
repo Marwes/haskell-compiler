@@ -102,16 +102,16 @@ static BINARY_PRIMITIVES: &'static [(&'static str, Instruction)] = &[
 ];
 
 impl<'a> Clone for Var<'a> {
-    fn clone(&self) -> Var<'a> {
+    fn clone(&self) -> Self {
         match *self {
-            Var::Stack(x) => Var::Stack(x),
-            Var::Global(x) => Var::Global(x),
-            Var::Constructor(x, y) => Var::Constructor(x, y),
-            Var::Class(x, y, z) => Var::Class(x, y, z),
-            Var::Constraint(x, y, z) => Var::Constraint(x, y, z),
-            Var::Builtin(x) => Var::Builtin(x),
-            Var::Primitive(x, y) => Var::Primitive(x, y),
-            Var::Newtype => Var::Newtype,
+            Self::Stack(x) => Self::Stack(x),
+            Self::Global(x) => Self::Global(x),
+            Self::Constructor(x, y) => Self::Constructor(x, y),
+            Self::Class(x, y, z) => Self::Class(x, y, z),
+            Self::Constraint(x, y, z) => Self::Constraint(x, y, z),
+            Self::Builtin(x) => Self::Builtin(x),
+            Self::Primitive(x, y) => Self::Primitive(x, y),
+            Self::Newtype => Self::Newtype,
         }
     }
 }
