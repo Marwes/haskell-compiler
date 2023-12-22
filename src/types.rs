@@ -65,6 +65,12 @@ impl TypeVariable {
     }
 }
 
+impl<Id: fmt::Display + AsRef<str>> From<&str> for Type<Id> {
+    fn from(value: &str) -> Self {
+        Self::new_var(value.into())
+    }
+}
+
 impl<Id: fmt::Display + AsRef<str>> Type<Id> {
     ///Creates a new type variable with the specified id
     pub fn new_var(id: VarId) -> Self {

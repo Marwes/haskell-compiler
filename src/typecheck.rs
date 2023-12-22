@@ -1182,7 +1182,7 @@ impl<'a> TypeEnvironment<'a> {
                 let bind_index = graph.get_vertex(*index).value;
                 let binds = bindings.get_mut(bind_index);
                 for bind in binds.iter_mut() {
-                    if bind.typ.value == Type::<Name>::new_var("a".into()) {
+                    if bind.typ.value == Type::<Name>::new_var(intern("a")) {
                         bind.typ.value = self.new_var();
                     }
                 }
@@ -2280,7 +2280,7 @@ main x y = primIntAdd (test x) (test y)"
 
         let typ = &module.bindings[0].typ;
         let a = Type::new_var("a".into());
-        let b = Type::new_var(intern("b"));
+        let b = Type::new_var("b".into());
         let test = function_type_(a.clone(), function_type_(b.clone(), int_type()));
         assert_eq!(&typ.value, &test);
         assert_eq!(typ.constraints[0].class.as_ref(), "Test");
@@ -2572,8 +2572,8 @@ test x = do
 
         let var = Type::new_var("a".into());
         let t = function_type_(
-            Type::new_var_args(intern("c"), vec![list_type(var.clone())]),
-            Type::new_var_args(intern("c"), vec![var.clone()]),
+            Type::new_var_args("c".into(), vec![list_type(var.clone())]),
+            Type::new_var_args("c".into(), vec![var.clone()]),
         );
         assert_eq!(module.bindings[0].typ.value, t);
         assert_eq!(
@@ -2591,7 +2591,7 @@ test _ [] = []
 ",
         );
         let a = Type::new_var("a".into());
-        let b = Type::new_var(intern("b"));
+        let b = Type::new_var("b".into());
         let test = function_type_(
             function_type_(a.clone(), b.clone()),
             function_type_(list_type(a), list_type(b)),

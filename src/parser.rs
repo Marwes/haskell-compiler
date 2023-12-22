@@ -1433,8 +1433,8 @@ in test - 2"
         let mut parser = Parser::new(r"(.) :: (b -> c) -> (a -> b) -> (a -> c)".chars());
         let type_decl = parser.type_declaration().unwrap();
         let a = &Type::new_var("a".into());
-        let b = &Type::new_var(intern("b"));
-        let c = &Type::new_var(intern("c"));
+        let b = &Type::new_var("b".into());
+        let c = &Type::new_var("c".into());
         let f = function_type(
             &function_type(b, c),
             &function_type(&function_type(a, b), &function_type(a, c)),

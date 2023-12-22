@@ -1,5 +1,4 @@
 use crate::{
-    interner::intern,
     renamer::{
         name,
         typ::*,

@@ -55,6 +55,12 @@ impl From<&str> for InternedStr {
     }
 }
 
+impl PartialEq<str> for InternedStr {
+    fn eq(&self, other: &str) -> bool {
+        self == &intern(other)
+    }
+}
+
 impl Deref for InternedStr {
     type Target = str;
     fn deref(&self) -> &str {
