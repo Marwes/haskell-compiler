@@ -1385,27 +1385,20 @@ pub fn replace_var(typ: &mut TcType, var: &TypeVariable, replacement: &TcType) {
         }
         Type::Generic(_) => panic!("replace_var called on Generic"),
     };
-    match new {
-        Some(x) => {
-            *typ = x.clone();
-        }
-        None => (),
+    if let Some(x) = new {
+        *typ = x.clone();
     }
 }
 ///Returns true if the type is a function
 fn is_function(typ: &TcType) -> bool {
-    match *typ {
-        Type::Application(ref lhs, _) => match **lhs {
-            Type::Application(ref lhs, _) => {
-                match **lhs {
-                    Type::Constructor(ref op) => op.name == intern("->"),
-                    _ => false,
-                }
+    if let Type::Application(ref lhs, _) = typ {
+        if let Type::Application(ref lhs, _) = **lhs {
+            if let Type::Constructor(ref op) = **lhs {
+                return op.name == intern("->");
             }
-            _ => false,
-        },
-        _ => false,
+        }
     }
+    false
 }
 ///Extracts the final return type of a type
 fn get_returntype(typ: &TcType) -> TcType {

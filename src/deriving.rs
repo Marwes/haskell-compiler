@@ -300,12 +300,11 @@ impl<'a> Iterator for ArgIterator<'a> {
     type Item = &'a Type<Name>;
     fn next(&mut self) -> Option<&'a Type<Name>> {
         use crate::types::try_get_function;
-        match try_get_function(self.typ) {
-            Some((arg, rest)) => {
-                self.typ = rest;
-                Some(arg)
-            }
-            None => None,
+        if let Some((arg, rest)) = try_get_function(self.typ) {
+            self.typ = rest;
+            Some(arg)
+        } else {
+            None
         }
     }
 }
