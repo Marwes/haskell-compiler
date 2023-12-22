@@ -47,7 +47,7 @@ impl<T> Graph<T> {
     pub fn new_vertex(&mut self, value: T) -> VertexIndex {
         self.vertices.push(Vertex {
             edges: vec![],
-            value: value,
+            value,
         });
         VertexIndex(self.vertices.len() - 1)
     }
@@ -79,7 +79,7 @@ impl<T> Graph<T> {
 ///Returns a vector of indices where each group is a separte vector
 pub fn strongly_connected_components<T>(graph: &Graph<T>) -> Vec<Vec<VertexIndex>> {
     let mut tarjan = TarjanComponents {
-        graph: graph,
+        graph,
         index: 1,
         stack: vec![],
         connections: vec![],

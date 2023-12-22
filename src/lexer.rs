@@ -120,7 +120,7 @@ impl Token {
         loc: Location,
     ) -> Token {
         Token {
-            token: token,
+            token,
             value: (**interner).borrow_mut().intern(value),
             location: loc,
         }

@@ -13,8 +13,8 @@ pub struct Interner {
 }
 
 impl Interner {
-    pub fn new() -> Interner {
-        Interner {
+    pub fn new() -> Self {
+        Self {
             indexes: HashMap::new(),
             strings: vec![],
         }

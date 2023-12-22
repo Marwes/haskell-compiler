@@ -914,7 +914,7 @@ pub mod translate {
 
                                 let n = Name {
                                     name: intern(name.as_ref()),
-                                    uid: uid,
+                                    uid,
                                 };
                                 Some(module::Pattern::Identifier(n))
                             }

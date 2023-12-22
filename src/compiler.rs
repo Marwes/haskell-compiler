@@ -482,8 +482,8 @@ impl<'a> Compiler<'a> {
         }
         self.module = None;
         Assembly {
-            super_combinators: super_combinators,
-            instance_dictionaries: instance_dictionaries,
+            super_combinators,
+            instance_dictionaries,
             offset: self
                 .assemblies
                 .iter()

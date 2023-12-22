@@ -114,8 +114,8 @@ impl PrecedenceVisitor {
                 }
                 rhs => {
                     let mut result = TypedExpr {
-                        typ: typ,
-                        location: location,
+                        typ,
+                        location,
                         expr: rhs,
                     };
                     while op_stack.len() != 0 {

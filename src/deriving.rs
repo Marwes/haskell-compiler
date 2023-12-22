@@ -22,7 +22,7 @@ pub fn generate_deriving(instances: &mut Vec<Instance<Id<Name>>>, data: &DataDef
                         name: intern("Eq"),
                         uid: 0,
                     },
-                    bindings: bindings,
+                    bindings,
                 });
             }
             "Ord" => {
@@ -37,7 +37,7 @@ pub fn generate_deriving(instances: &mut Vec<Instance<Id<Name>>>, data: &DataDef
                         name: intern("Ord"),
                         uid: 0,
                     },
-                    bindings: bindings,
+                    bindings,
                 });
             }
             x => panic!("Cannot generate instance for class {:?}", x),
