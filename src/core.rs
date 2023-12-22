@@ -924,7 +924,7 @@ pub mod translate {
                                 ::std::mem::swap(p, &mut x);
                                 let id = match *p {
                                     module::Pattern::Identifier(ref n) => {
-                                        Id::new(n.clone(), Type::new_var(intern("a")), vec![])
+                                        Id::new(n.clone(), Type::new_var("a".into()), vec![])
                                     }
                                     _ => panic!(),
                                 };
@@ -965,7 +965,7 @@ pub mod translate {
             let mut vec = vec![];
             let dummy_var = &[Id::new(
                 self.name_supply.anonymous(),
-                Type::new_var(intern("a")),
+                Type::new_var("a".into()),
                 vec![],
             )];
             let uid = self.name_supply.next_id();
@@ -1297,7 +1297,7 @@ pub mod translate {
         fn translate_pattern(&mut self, pattern: module::Pattern<Name>) -> Pattern<Id<Name>> {
             match pattern {
                 module::Pattern::Identifier(i) => {
-                    Pattern::Identifier(Id::new(i, Type::new_var(intern("a")), vec![]))
+                    Pattern::Identifier(Id::new(i, Type::new_var("a".into()), vec![]))
                 }
                 module::Pattern::Number(n) => Pattern::Number(n),
                 module::Pattern::Constructor(name, patterns) => {
@@ -1305,20 +1305,20 @@ pub mod translate {
                         .into_iter()
                         .map(|pat| match pat {
                             module::Pattern::Identifier(name) => {
-                                Id::new(name, Type::new_var(intern("a")), vec![])
+                                Id::new(name, Type::new_var("a".into()), vec![])
                             }
                             module::Pattern::WildCard => Id::new(
                                 Name {
                                     name: intern("_"),
                                     uid: usize::max_value(),
                                 },
-                                Type::new_var(intern("a")),
+                                Type::new_var("a".into()),
                                 vec![],
                             ),
                             _ => panic!("Nested pattern"),
                         })
                         .collect();
-                    Pattern::Constructor(Id::new(name, Type::new_var(intern("a")), vec![]), ps)
+                    Pattern::Constructor(Id::new(name, Type::new_var("a".into()), vec![]), ps)
                 }
                 module::Pattern::WildCard => Pattern::WildCard,
             }
@@ -1409,7 +1409,7 @@ pub mod translate {
                             name: intern("_"),
                             uid: usize::max_value(),
                         },
-                        Type::new_var(intern("a")),
+                        Type::new_var("a".into()),
                         vec![],
                     ),
                     _ => panic!(),
@@ -1432,7 +1432,7 @@ pub mod translate {
     fn unmatched_guard() -> Expr<Id<Name>> {
         let error_ident = Identifier(Id::new(
             "error".into(),
-            function_type_(list_type(char_type()), Type::new_var(intern("a"))),
+            function_type_(list_type(char_type()), Type::new_var("a".into())),
             vec![],
         ));
         Apply(Box::new(error_ident), Box::new(string("Unmatched guard")))

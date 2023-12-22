@@ -294,7 +294,7 @@ impl<'a> TypeEnvironment<'a> {
             "primDoubleToInt",
             typ::function_type_(typ::double_type(), typ::int_type()),
         );
-        let var = Type::Generic(TypeVariable::new_var_kind(intern("a"), Kind::Star.clone()));
+        let var = Type::Generic(TypeVariable::new_var_kind("a".into(), Kind::Star.clone()));
 
         for (name, typ) in builtins().into_iter() {
             insert_to(&mut globals, name, typ);
@@ -809,7 +809,7 @@ impl<'a> TypeEnvironment<'a> {
 
     ///Typechecks an expression
     fn typecheck(&mut self, expr: &mut TypedExpr<Name>, subs: &mut Substitution) -> TcType {
-        if expr.typ == Type::<Name>::new_var(intern("a")) {
+        if expr.typ == Type::<Name>::new_var("a".into()) {
             expr.typ = self.new_var();
         }
 
@@ -1182,7 +1182,7 @@ impl<'a> TypeEnvironment<'a> {
                 let bind_index = graph.get_vertex(*index).value;
                 let binds = bindings.get_mut(bind_index);
                 for bind in binds.iter_mut() {
-                    if bind.typ.value == Type::<Name>::new_var(intern("a")) {
+                    if bind.typ.value == Type::<Name>::new_var("a".into()) {
                         bind.typ.value = self.new_var();
                     }
                 }
@@ -2207,7 +2207,7 @@ main = case [mult2 123, 0] of
 test x = True";
         let module = do_typecheck(file);
 
-        let typ = function_type_(Type::new_var(intern("a")), bool_type());
+        let typ = function_type_(Type::new_var("a".into()), bool_type());
         assert_eq!(module.bindings[0].typ.value, typ);
     }
 
@@ -2279,7 +2279,7 @@ main x y = primIntAdd (test x) (test y)"
         env.typecheck_module_(&mut module);
 
         let typ = &module.bindings[0].typ;
-        let a = Type::new_var(intern("a"));
+        let a = Type::new_var("a".into());
         let b = Type::new_var(intern("b"));
         let test = function_type_(a.clone(), function_type_(b.clone(), int_type()));
         assert_eq!(&typ.value, &test);
@@ -2335,7 +2335,7 @@ test x y = case x < y of
         env.typecheck_module_(&mut module);
 
         let typ = &module.bindings[0].typ;
-        let a = Type::new_var(intern("a"));
+        let a = Type::new_var("a".into());
         assert_eq!(
             typ.value,
             function_type_(a.clone(), function_type_(a.clone(), bool_type()))
@@ -2484,7 +2484,7 @@ main = fmap add2 3",
         let id_bind = id.unwrap();
         assert_eq!(
             id_bind.typ.value,
-            function_type_(Type::new_var(intern("a")), Type::new_var(intern("a")))
+            function_type_(Type::new_var("a".into()), Type::new_var("a".into()))
         );
     }
 
@@ -2570,7 +2570,7 @@ test x = do
 ";
         let module = do_typecheck_with(file, &[&prelude as &dyn DataTypes]);
 
-        let var = Type::new_var(intern("a"));
+        let var = Type::new_var("a".into());
         let t = function_type_(
             Type::new_var_args(intern("c"), vec![list_type(var.clone())]),
             Type::new_var_args(intern("c"), vec![var.clone()]),
@@ -2590,7 +2590,7 @@ test f (x:xs) = f x : test f xs
 test _ [] = []
 ",
         );
-        let a = Type::new_var(intern("a"));
+        let a = Type::new_var("a".into());
         let b = Type::new_var(intern("b"));
         let test = function_type_(
             function_type_(a.clone(), b.clone()),
@@ -2611,7 +2611,7 @@ if_ p x y
     | True = y
 ",
         );
-        let var = Type::new_var(intern("a"));
+        let var = Type::new_var("a".into());
         let test = function_type_(
             bool_type(),
             function_type_(var.clone(), function_type_(var.clone(), var.clone())),
@@ -2656,7 +2656,7 @@ test x y = [x] == [y]
         )
         .unwrap();
         let module = modules.last().unwrap();
-        let a = Type::new_var(intern("a"));
+        let a = Type::new_var("a".into());
         let cs = vec![Constraint {
             class: intern("Eq"),
             variables: vec![a.var().clone()],

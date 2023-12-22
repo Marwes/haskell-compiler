@@ -321,7 +321,7 @@ impl Kind {
 
 impl<T> Default for Type<T> {
     fn default() -> Self {
-        Self::Variable(TypeVariable::new(intern("a")))
+        Self::Variable(TypeVariable::new("a".into()))
     }
 }
 impl fmt::Display for TypeVariable {

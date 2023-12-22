@@ -1006,7 +1006,7 @@ impl<Iter: Iterator<Item = char>> Parser<Iter> {
 
         let mut definition = DataDefinition {
             constructors: vec![],
-            typ: qualified(vec![], Type::new_var(intern("a"))),
+            typ: qualified(vec![], Type::new_var("a".into())),
             parameters: HashMap::new(),
             deriving: vec![],
         };
@@ -1432,7 +1432,7 @@ in test - 2"
     fn parse_type() {
         let mut parser = Parser::new(r"(.) :: (b -> c) -> (a -> b) -> (a -> c)".chars());
         let type_decl = parser.type_declaration().unwrap();
-        let a = &Type::new_var(intern("a"));
+        let a = &Type::new_var("a".into());
         let b = &Type::new_var(intern("b"));
         let c = &Type::new_var(intern("c"));
         let f = function_type(
@@ -1472,14 +1472,14 @@ in test - 2"
         let mut parser = Parser::new(r"data List a = Cons a (List a) | Nil".chars());
         let data = parser.data_definition().unwrap();
 
-        let list = Type::new_op(intern("List"), vec![Type::new_var(intern("a"))]);
+        let list = Type::new_op(intern("List"), vec![Type::new_var("a".into())]);
         let cons = Constructor {
             name: intern("Cons"),
             tag: 0,
             arity: 2,
             typ: qualified(
                 vec![],
-                function_type(&Type::new_var(intern("a")), &function_type(&list, &list)),
+                function_type(&Type::new_var("a".into()), &function_type(&list, &list)),
             ),
         };
         let nil = Constructor {
@@ -1570,7 +1570,7 @@ instance Eq a => Eq [a] where
         assert_eq!(module.instances[0].constraints[0].class, intern("Eq"));
         assert_eq!(
             module.instances[0].typ,
-            list_type(Type::new_var(intern("a")))
+            list_type(Type::new_var("a".into()))
         );
     }
     #[test]
@@ -1585,7 +1585,7 @@ instance Eq a => Eq [a] where
         let module = parser.module().unwrap();
 
         let cls = &module.classes[0];
-        let a = TypeVariable::new(intern("a"));
+        let a = TypeVariable::new("a".into());
         assert_eq!(cls.name, intern("Ord"));
         assert_eq!(cls.variable, a);
         assert_eq!(cls.constraints[0].class, intern("Eq"));
@@ -1823,7 +1823,7 @@ test = case a of
 newtype IntPair a = IntPair (a, Int)
 ";
         let module = Parser::new(s.chars()).module().unwrap();
-        let a = Type::new_var(intern("a"));
+        let a = Type::new_var("a".into());
         let typ = Type::new_op(intern("IntPair"), vec![a.clone()]);
         assert_eq!(module.newtypes[0].typ, qualified(vec![], typ.clone()));
         assert_eq!(
