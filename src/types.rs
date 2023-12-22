@@ -371,7 +371,7 @@ struct Prec<'a, Id: 'a>(Prec_, &'a Type<Id>);
 pub fn try_get_function<'a, Id: AsRef<str>>(
     typ: &'a Type<Id>,
 ) -> Option<(&'a Type<Id>, &'a Type<Id>)> {
-    let Type::Application(ref xx, ref result) = *typ else {
+    let Type::Application(ref xx, ref result) = typ else {
         return None;
     };
 
@@ -387,12 +387,12 @@ pub fn try_get_function<'a, Id: AsRef<str>>(
         return None;
     }
 
-    Some((&**arg, &**result))
+    Some((arg, result))
 }
 
 impl<'a, Id: fmt::Display + AsRef<str>> fmt::Display for Prec<'a, Id> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let Prec(p, t) = *self;
+        let Self(p, t) = *self;
         match *t {
             Type::Variable(ref var) => write!(f, "{}", *var),
             Type::Constructor(ref op) => write!(f, "{}", *op),
