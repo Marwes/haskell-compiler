@@ -68,9 +68,11 @@ impl<T> Errors<T> {
     pub fn new() -> Self {
         Self { errors: vec![] }
     }
+
     pub fn insert(&mut self, e: T) {
         self.errors.push(e);
     }
+
     pub fn has_errors(&self) -> bool {
         self.errors.len() != 0
     }
@@ -136,14 +138,17 @@ impl NameSupply {
     pub fn new() -> Self {
         Self { unique_id: 1 }
     }
+
     ///Create a unique Name which are anonymous
     pub fn anonymous(&mut self) -> Name {
         self.from_str("_a")
     }
+
     ///Takes a string and returns a new Name which is unique
     pub fn from_str(&mut self, s: &str) -> Name {
         self.from_interned(intern(s))
     }
+
     ///Takes a string and returns a new Name which is unique
     pub fn from_interned(&mut self, s: InternedStr) -> Name {
         Name {
@@ -151,6 +156,7 @@ impl NameSupply {
             uid: self.next_id(),
         }
     }
+
     pub fn next_id(&mut self) -> usize {
         self.unique_id += 1;
         self.unique_id
@@ -400,10 +406,10 @@ impl Renamer {
     }
     ///Turns the string into the Name which is currently in scope
     ///If the name was not found it is assumed to be global
-    fn get_name(&self, s: InternedStr) -> Name {
-        match self.uniques.find(&s) {
-            Some(&Name { uid, .. }) => Name { name: s, uid },
-            None => Name { name: s, uid: 0 }, //Primitive
+    fn get_name(&self, name: InternedStr) -> Name {
+        Name {
+            name,
+            uid: self.uniques.find(&name).map(|n| n.uid).unwrap_or(0), // 0 -> Primitive
         }
     }
 
@@ -441,7 +447,7 @@ impl Renamer {
             constraints,
             value: typ,
         } = typ;
-        let constraints2: Vec<Constraint<Name>> = constraints
+        let constraints2: Vec<_> = constraints
             .into_iter()
             .map(|Constraint { class, variables }| Constraint {
                 class: self.get_name(class),

@@ -1425,7 +1425,7 @@ pub mod translate {
     fn string(s: &str) -> Expr<Id<Name>> {
         Literal(LiteralData {
             typ: list_type(char_type()),
-            value: String(intern(s)),
+            value: String(s.into()),
         })
     }
     ///Creates an expression which reports an unmatched guard error when executed

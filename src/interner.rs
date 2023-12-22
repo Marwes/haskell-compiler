@@ -44,9 +44,15 @@ pub fn get_local_interner() -> Rc<RefCell<Interner>> {
 }
 
 pub fn intern(s: &str) -> InternedStr {
-    let i = get_local_interner();
-    let mut i = i.borrow_mut();
-    i.intern(s)
+    s.into()
+}
+
+impl From<&str> for InternedStr {
+    fn from(s: &str) -> Self {
+        let i = get_local_interner();
+        let mut i = i.borrow_mut();
+        i.intern(s)
+    }
 }
 
 impl Deref for InternedStr {

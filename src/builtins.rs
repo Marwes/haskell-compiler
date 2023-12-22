@@ -15,12 +15,12 @@ use crate::{
 ///Returns an array of all the compiler primitves which exist (not including numeric primitives atm)
 pub fn builtins() -> Vec<(&'static str, Type<Name>)> {
     let var = Type::Generic(TypeVariable {
-        id: intern("a"),
+        id: "a".into(),
         kind: Kind::Star,
         age: 0,
     });
     let var2 = Type::Generic(TypeVariable {
-        id: intern("b"),
+        id: "b".into(),
         kind: Kind::Star,
         age: 0,
     });

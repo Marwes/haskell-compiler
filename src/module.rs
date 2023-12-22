@@ -138,12 +138,9 @@ impl<T: fmt::Display + AsRef<str>> fmt::Display for TypedExpr<T> {
 
 impl TypedExpr {
     pub fn new<T: fmt::Display + AsRef<str>>(expr: Expr<T>) -> TypedExpr<T> {
-        TypedExpr {
-            expr,
-            typ: Type::new_var(intern("a")),
-            location: Location::eof(),
-        }
+        TypedExpr::with_location(expr, Location::eof())
     }
+
     pub fn with_location<T: fmt::Display + AsRef<str>>(
         expr: Expr<T>,
         loc: Location,
