@@ -480,7 +480,7 @@ impl<Iter: Iterator<Item = char>> Parser<Iter> {
                 expect!(self, LBRACE);
                 let mut bindings = self.sep_by_1(|this| this.do_binding(), SEMICOLON)?;
                 expect!(self, RBRACE);
-                if bindings.len() == 0 {
+                if bindings.is_empty() {
                     return Err(ParseError(Located {
                         location: self.lexer.current().location,
                         node: Error::Message(format!(

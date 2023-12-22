@@ -1086,7 +1086,7 @@ impl<'a> Compiler<'a> {
         constraints: &[Constraint<Name>],
         name: Name,
     ) -> Option<usize> {
-        if constraints.len() == 0 {
+        if constraints.is_empty() {
             panic!(
                 "Attempted to push dictionary member '{:?}' with no constraints",
                 name
@@ -1140,7 +1140,7 @@ impl<'a> Compiler<'a> {
             }
         }
 
-        if constraints.len() == 0 {
+        if constraints.is_empty() {
             panic!("Error: Attempted to compile dictionary with no constraints at <unknown>");
         }
         let mut function_indexes = vec![];

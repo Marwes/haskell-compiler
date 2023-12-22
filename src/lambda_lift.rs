@@ -199,7 +199,7 @@ fn remove_empty_let<T>(expr: &mut Expr<T>) {
     ::std::mem::swap(&mut temp, expr);
     temp = match temp {
         Let(bindings, e) => {
-            if bindings.len() == 0 {
+            if bindings.is_empty() {
                 *e
             } else {
                 Let(bindings, e)
@@ -294,7 +294,7 @@ test2 x =
             &Lambda(ref arg, ref body) => {
                 arg.name.name == args[0] && check_args(&**body, &args[1..])
             }
-            _ => args.len() == 0,
+            _ => args.is_empty(),
         }
     }
 

@@ -566,7 +566,7 @@ pub struct Binds<'a, Ident: 'a> {
 impl<'a, Ident: Eq> Iterator for Binds<'a, Ident> {
     type Item = &'a [Binding<Ident>];
     fn next(&mut self) -> Option<&'a [Binding<Ident>]> {
-        if self.vec.len() == 0 {
+        if self.vec.is_empty() {
             None
         } else {
             let end = self

@@ -1106,7 +1106,7 @@ impl<'a> TypeEnvironment<'a> {
             }
             let mut typ = self.typecheck_match(&mut bind.matches, subs);
             fn make_function(arguments: &[TcType], expr: &TcType) -> TcType {
-                if arguments.len() == 0 {
+                if arguments.is_empty() {
                     expr.clone()
                 } else {
                     typ::function_type_(arguments[0].clone(), make_function(&arguments[1..], expr))
@@ -1344,7 +1344,7 @@ pub fn find_specialized_instances(
     );
     let mut result = vec![];
     find_specialized(&mut result, actual_type, typ, constraints);
-    if constraints.len() == 0 {
+    if constraints.is_empty() {
         panic!(
             "Could not find the specialized instance between {:?} <-> {:?}",
             typ, actual_type

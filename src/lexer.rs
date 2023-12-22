@@ -439,7 +439,7 @@ impl<Stream: Iterator<Item = char>> Lexer<Stream> {
                         }
                     }
                     self.unprocessed_tokens.pop();
-                    if self.unprocessed_tokens.len() == 0 {
+                    if self.unprocessed_tokens.is_empty() {
                         self.next_token();
                         return;
                     } else {
@@ -509,7 +509,7 @@ impl<Stream: Iterator<Item = char>> Lexer<Stream> {
                 .push_back(self.unprocessed_tokens.pop().unwrap());
             return;
         } else {
-            if self.indent_levels.len() == 0 {
+            if self.indent_levels.is_empty() {
                 //End of stream
                 return;
             } else if *self.indent_levels.last().unwrap() != 0 {

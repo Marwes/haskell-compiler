@@ -92,7 +92,7 @@ impl<'a> fmt::Debug for Node_<'a> {
             &Indirection(ref n) => write!(f, "(~> {:?})", *n),
             &Constructor(ref tag, ref args) => {
                 let cons = args;
-                if cons.len() > 0 {
+                if !cons.is_empty() {
                     match *cons[0].borrow() {
                         Char(_) => {
                             fn print_string<'a>(

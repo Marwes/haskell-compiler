@@ -1144,7 +1144,7 @@ pub mod translate {
             }
             debug!("In {:?}", equations);
             let &Equation(ps, (where_bindings_bindings, e)) = &equations[0];
-            if ps.len() == 0 {
+            if ps.is_empty() {
                 assert_eq!(equations.len(), 1); //Otherwise multiple matches for this group
                 let bindings = where_bindings_bindings.iter().map(|x| x.clone()).collect();
                 return make_let(bindings, self.translate_match((*e).clone()));
@@ -1156,7 +1156,7 @@ pub mod translate {
                     let bindings = where_bindings_bindings.iter().map(|x| x.clone()).collect();
                     match *m {
                         module::Match::Simple(ref e) => {
-                            let alt = if ps.len() == 0 {
+                            let alt = if ps.is_empty() {
                                 Alternative {
                                     pattern: Pattern::WildCard,
                                     expression: make_let(
@@ -1245,7 +1245,7 @@ pub mod translate {
                                     }
                                     _ => (),
                                 }
-                            } else if patterns.len() == 0 {
+                            } else if patterns.is_empty() {
                                 vec.push(Equation(patterns, expr));
                             }
                         }
@@ -1262,7 +1262,7 @@ pub mod translate {
                     None => break,
                 }
             }
-            if alts.len() == 0 {
+            if alts.is_empty() {
                 for &Equation(patterns, expr) in equations.iter() {
                     vec.push(Equation(&patterns[1..], expr));
                 }
@@ -1385,7 +1385,7 @@ pub mod translate {
     }
     ///Creates a let binding, but if there is no bindings the let is omitted
     fn make_let<T>(bindings: Vec<Binding<T>>, expr: Expr<T>) -> Expr<T> {
-        if bindings.len() == 0 {
+        if bindings.is_empty() {
             expr
         } else {
             Let(bindings, Box::new(expr))
