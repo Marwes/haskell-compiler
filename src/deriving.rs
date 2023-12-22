@@ -133,7 +133,7 @@ impl DerivingGen {
             data.typ.value.clone(),
             function_type_(data.typ.value.clone(), bool_type()),
         );
-        let lambda_expr = Lambda(id_l, Box::new(Lambda(id_r, Box::new(expr)))); //TODO types
+        let lambda_expr = Lambda(id_l, Box::new(Lambda(id_r, expr.into()))); //TODO types
         let data_name = extract_applied_type(&data.typ.value).ctor().name;
         let name = encode_binding_identifier(data_name.name, intern(funcname));
         //Create a constraint for each type parameter
@@ -174,7 +174,7 @@ impl DerivingGen {
             vec![],
         );
         Case(
-            Box::new(cmp),
+            cmp.into(),
             vec![
                 Alternative {
                     pattern: Pattern::Constructor(
@@ -267,8 +267,8 @@ fn compare_tags(lhs: Expr<Id<Name>>, rhs: Expr<Id<Name>>) -> Expr<Id<Name>> {
     );
     let id = Id::new(name("#compare_tags"), typ, vec![]);
     Apply(
-        Box::new(Apply(Box::new(Identifier(id)), Box::new(lhs))),
-        Box::new(rhs),
+        Box::new(Apply(Box::new(Identifier(id)), lhs.into())),
+        rhs.into(),
     )
 }
 
@@ -286,7 +286,7 @@ fn binop(
         function_type_(rhs.get_type().clone(), return_type),
     );
     let f = Identifier(Id::new(name(op), typ, vec![]));
-    Apply(Box::new(Apply(Box::new(f), Box::new(lhs))), Box::new(rhs))
+    Apply(Box::new(Apply(f.into(), lhs.into())), rhs.into())
 }
 
 fn true_expr() -> Expr<Id<Name>> {

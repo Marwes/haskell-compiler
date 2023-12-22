@@ -403,7 +403,7 @@ pub mod result {
             Apply(func, arg) => {
                 let f = visitor.visit_expr(*func);
                 let a = visitor.visit_expr(*arg);
-                Apply(Box::new(f), Box::new(a))
+                Apply(f.into(), a.into())
             }
             Lambda(x, body) => Lambda(x, Box::new(visitor.visit_expr(*body))),
             Let(binds, e) => {
@@ -419,7 +419,7 @@ pub mod result {
                     .into_iter()
                     .map(|alt| visitor.visit_alternative(alt))
                     .collect();
-                Case(Box::new(e2), alts2)
+                Case(e2.into(), alts2)
             }
             expr => expr,
         }
@@ -761,17 +761,14 @@ pub mod translate {
                                     core.get_type().clone(),
                                     result.get_type().clone(),
                                 );
-                                Apply(
-                                    Box::new(Apply(Box::new(x), Box::new(core))),
-                                    Box::new(result),
-                                )
+                                Apply(Box::new(Apply(x.into(), core.into())), result.into())
                             }
                             module::DoBinding::DoBind(pattern, e) => {
                                 let e2 = self.translate_expr(e);
                                 self.do_bind_translate(pattern.node, e2, result)
                             }
                             module::DoBinding::DoLet(bs) => {
-                                Let(self.translate_bindings(bs), Box::new(result))
+                                Let(self.translate_bindings(bs), result.into())
                             }
                         };
                     }
@@ -851,7 +848,7 @@ pub mod translate {
                         Alternative {
                             pattern: Pattern::WildCard,
                             expression: Apply(
-                                Box::new(fail_ident),
+                                fail_ident.into(),
                                 Box::new(string("Unmatched pattern in let")),
                             ),
                         },
@@ -1361,7 +1358,7 @@ pub mod translate {
     ///Creates a function application from a function and its arguments
     fn apply<T, I: Iterator<Item = Expr<T>>>(mut func: Expr<T>, iter: I) -> Expr<T> {
         for arg in iter {
-            func = Apply(Box::new(func), Box::new(arg));
+            func = Apply(func.into(), arg.into());
         }
         func
     }
@@ -1370,7 +1367,7 @@ pub mod translate {
         if bindings.is_empty() {
             expr
         } else {
-            Let(bindings, Box::new(expr))
+            Let(bindings, expr.into())
         }
     }
 
@@ -1417,6 +1414,6 @@ pub mod translate {
             function_type_(list_type(char_type()), "a".into()),
             vec![],
         ));
-        Apply(Box::new(error_ident), Box::new(string("Unmatched guard")))
+        Apply(error_ident.into(), Box::new(string("Unmatched guard")))
     }
 }

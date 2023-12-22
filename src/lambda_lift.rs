@@ -132,7 +132,7 @@ impl FreeVariables {
                 let mut rhs = temp;
                 let mut typ = rhs.get_type().clone();
                 for (_, var) in free_vars.iter() {
-                    rhs = Lambda(var.clone(), Box::new(rhs));
+                    rhs = Lambda(var.clone(), rhs.into());
                     typ = function_type_(var.get_type().clone(), typ);
                 }
                 let id = Id::new(self.name_supply.from_str("#sc"), typ.clone(), vec![]);
@@ -143,7 +143,7 @@ impl FreeVariables {
                 Let(vec![bind], Box::new(Identifier(id)))
             };
             for (_, var) in free_vars.iter() {
-                e = Apply(Box::new(e), Box::new(Identifier(var.clone())));
+                e = Apply(e.into(), Box::new(Identifier(var.clone())));
             }
             *input_expr = e
         }

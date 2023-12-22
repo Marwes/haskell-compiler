@@ -912,7 +912,7 @@ impl<'a> TypeEnvironment<'a> {
                     self.new_var_kind(Kind::Function(Box::new(Kind::Star), Box::new(Kind::Star)));
                 self.constraints
                     .insert(previous.var().clone(), vec!["Monad".into()]);
-                previous = Type::Application(Box::new(previous), Box::new(self.new_var()));
+                previous = Type::Application(previous.into(), Box::new(self.new_var()));
                 for bind in bindings.iter_mut() {
                     match *bind {
                         DoBinding::DoExpr(ref mut e) => {
@@ -1900,7 +1900,7 @@ pub fn identifier(i: &str) -> TypedExpr {
 }
 #[cfg(test)]
 pub fn lambda(arg: &str, body: TypedExpr) -> TypedExpr {
-    TypedExpr::new(Lambda(Pattern::Identifier(intern(arg)), Box::new(body)))
+    TypedExpr::new(Lambda(Pattern::Identifier(intern(arg)), body.into()))
 }
 #[cfg(test)]
 pub fn number(i: isize) -> TypedExpr {
@@ -1912,27 +1912,27 @@ pub fn rational(i: f64) -> TypedExpr {
 }
 #[cfg(test)]
 pub fn apply(func: TypedExpr, arg: TypedExpr) -> TypedExpr {
-    TypedExpr::new(Apply(Box::new(func), Box::new(arg)))
+    TypedExpr::new(Apply(func.into(), arg.into()))
 }
 #[cfg(test)]
 pub fn op_apply(lhs: TypedExpr, op: InternedStr, rhs: TypedExpr) -> TypedExpr {
-    TypedExpr::new(OpApply(Box::new(lhs), op, Box::new(rhs)))
+    TypedExpr::new(OpApply(lhs.into(), op, rhs.into()))
 }
 #[cfg(test)]
 pub fn let_(bindings: Vec<Binding>, expr: TypedExpr) -> TypedExpr {
-    TypedExpr::new(Let(bindings, Box::new(expr)))
+    TypedExpr::new(Let(bindings, expr.into()))
 }
 #[cfg(test)]
 pub fn case(expr: TypedExpr, alts: Vec<Alternative>) -> TypedExpr {
-    TypedExpr::new(Case(Box::new(expr), alts))
+    TypedExpr::new(Case(expr.into(), alts))
 }
 #[cfg(test)]
 pub fn if_else(expr: TypedExpr, t: TypedExpr, f: TypedExpr) -> TypedExpr {
-    TypedExpr::new(IfElse(Box::new(expr), Box::new(t), Box::new(f)))
+    TypedExpr::new(IfElse(expr.into(), t.into(), f.into()))
 }
 #[cfg(test)]
 pub fn paren(expr: TypedExpr) -> TypedExpr {
-    TypedExpr::new(Paren(Box::new(expr)))
+    TypedExpr::new(Paren(expr.into()))
 }
 
 pub fn typecheck_string(module: &str) -> Result<Vec<Module<Name>>, ::std::string::String> {

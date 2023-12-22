@@ -106,14 +106,14 @@ impl<Id: fmt::Display + AsRef<str>> Type<Id> {
     pub fn new_op_kind(name: Id, types: Vec<Self>, kind: Kind) -> Self {
         let mut result = Type::Constructor(TypeConstructor { name, kind });
         for typ in types.into_iter() {
-            result = Type::Application(Box::new(result), Box::new(typ));
+            result = Type::Application(result.into(), typ.into());
         }
         result
     }
     fn new_type_kind(mut result: Self, types: Vec<Self>) -> Self {
         *result.mut_kind() = Kind::new(types.len() as isize + 1);
         for typ in types.into_iter() {
-            result = Type::Application(Box::new(result), Box::new(typ));
+            result = Type::Application(result.into(), typ.into());
         }
         result
     }
@@ -319,7 +319,7 @@ impl Kind {
     pub fn new(v: isize) -> Self {
         let mut kind = Self::Star.clone();
         for _ in 1..v {
-            kind = Self::Function(Box::new(Self::Star), Box::new(kind));
+            kind = Self::Function(Box::new(Self::Star), kind.into());
         }
         kind
     }

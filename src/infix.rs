@@ -21,7 +21,7 @@ impl MutVisitor<Name> for PrecedenceVisitor {
                     name: intern(""),
                 }));
                 ::std::mem::swap(&mut temp, expr);
-                temp = self.rewrite(Box::new(temp));
+                temp = self.rewrite(temp.into());
                 ::std::mem::swap(&mut temp, expr);
             }
             _ => (),
@@ -116,7 +116,7 @@ impl PrecedenceVisitor {
                     while let Some(lhs) = expr_stack.pop() {
                         let op = op_stack.pop().unwrap();
                         result = TypedExpr::with_location(
-                            Expr::OpApply(lhs, op, Box::new(result)),
+                            Expr::OpApply(lhs, op, result.into()),
                             location,
                         );
                     }

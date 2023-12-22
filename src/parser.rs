@@ -355,7 +355,7 @@ impl<Iter: Iterator<Item = char>> Parser<Iter> {
                     let loc = expr.location;
                     Ok(Some(TypedExpr::with_location(
                         TypeSig(
-                            Box::new(expr),
+                            expr.into(),
                             Qualified {
                                 constraints,
                                 value: typ,
@@ -412,7 +412,7 @@ impl<Iter: Iterator<Item = char>> Parser<Iter> {
                     Some(if expressions.len() == 1 {
                         let expr = expressions.pop().unwrap();
                         let loc = expr.location;
-                        TypedExpr::with_location(Paren(Box::new(expr)), loc)
+                        TypedExpr::with_location(Paren(expr.into()), loc)
                     } else {
                         new_tuple(expressions)
                     })
@@ -424,7 +424,7 @@ impl<Iter: Iterator<Item = char>> Parser<Iter> {
 
                 expect!(self, IN);
                 self.expression()?
-                    .map(|e| TypedExpr::new(Let(binds, Box::new(e))))
+                    .map(|e| TypedExpr::new(Let(binds, e.into())))
             }
             CASE => {
                 let location = self.lexer.current().location;
@@ -434,7 +434,7 @@ impl<Iter: Iterator<Item = char>> Parser<Iter> {
                 expect!(self, LBRACE);
                 let alts = self.sep_by_1(|this| this.alternative(), SEMICOLON)?;
                 expect!(self, RBRACE);
-                expr.map(|e| TypedExpr::with_location(Case(Box::new(e), alts), location))
+                expr.map(|e| TypedExpr::with_location(Case(e.into(), alts), location))
             }
             IF => {
                 let location = self.lexer.current().location;
@@ -450,7 +450,7 @@ impl<Iter: Iterator<Item = char>> Parser<Iter> {
                 expect!(self, ELSE);
                 let if_false = self.expression_()?;
                 Some(TypedExpr::with_location(
-                    IfElse(Box::new(pred), Box::new(if_true), Box::new(if_false)),
+                    IfElse(pred.into(), if_true.into(), if_false.into()),
                     location,
                 ))
             }
@@ -482,7 +482,7 @@ impl<Iter: Iterator<Item = char>> Parser<Iter> {
                 };
 
                 Some(TypedExpr::with_location(
-                    Do(bindings, Box::new(expr)),
+                    Do(bindings, expr.into()),
                     location,
                 ))
             }
@@ -603,14 +603,14 @@ impl<Iter: Iterator<Item = char>> Parser<Iter> {
         Ok(match (lhs, rhs) {
             (Some(lhs), Some(rhs)) => {
                 Some(TypedExpr::with_location(
-                    OpApply(Box::new(lhs), op, Box::new(rhs)),
+                    OpApply(lhs.into(), op, rhs.into()),
                     loc,
                 ))
             }
             (Some(lhs), None) => {
                 let name = TypedExpr::with_location(Identifier(op), loc);
                 Some(TypedExpr::with_location(
-                    Apply(Box::new(name), Box::new(lhs)),
+                    Apply(name.into(), lhs.into()),
                     loc,
                 ))
             }
@@ -1030,7 +1030,7 @@ impl<Iter: Iterator<Item = char>> Parser<Iter> {
         });
         while self.lexer.next().token == NAME {
             typ = Type::Application(
-                Box::new(typ),
+                typ.into(),
                 Box::new(Type::new_var(self.lexer.current().value)),
             );
         }
@@ -1202,7 +1202,7 @@ fn make_application<I: Iterator<Item = TypedExpr>>(f: TypedExpr, args: I) -> Typ
     let mut func = f;
     for a in args {
         let loc = func.location.clone();
-        func = TypedExpr::with_location(Apply(Box::new(func), Box::new(a)), loc);
+        func = TypedExpr::with_location(Apply(func.into(), a.into()), loc);
     }
     func
 }
@@ -1214,7 +1214,7 @@ fn make_lambda<Iter: DoubleEndedIterator<Item = Pattern<InternedStr>>>(
     let mut body = body;
     for a in args.rev() {
         let loc = body.location.clone();
-        body = TypedExpr::with_location(Lambda(a, Box::new(body)), loc);
+        body = TypedExpr::with_location(Lambda(a, body.into()), loc);
     }
     body
 }

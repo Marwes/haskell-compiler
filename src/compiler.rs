@@ -678,7 +678,7 @@ impl<'a> Compiler<'a> {
                             typ: int_type(),
                             value: Integral(i),
                         });
-                        let apply = Apply(Box::new(from_integer), Box::new(number));
+                        let apply = Apply(from_integer.into(), number.into());
                         self.compile(&apply, instructions, strict);
                     }
                 }
@@ -697,7 +697,7 @@ impl<'a> Compiler<'a> {
                             typ: double_type(),
                             value: Fractional(f),
                         });
-                        let apply = Apply(Box::new(from_rational), Box::new(number));
+                        let apply = Apply(from_rational.into(), number.into());
                         self.compile(&apply, instructions, strict);
                     }
                 }
