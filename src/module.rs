@@ -467,30 +467,30 @@ pub fn walk_binding_mut<Ident, V: MutVisitor<Ident>>(
 pub fn walk_expr_mut<Ident, V: MutVisitor<Ident>>(visitor: &mut V, expr: &mut TypedExpr<Ident>) {
     match expr.expr {
         Apply(ref mut func, ref mut arg) => {
-            visitor.visit_expr(&mut **func);
-            visitor.visit_expr(&mut **arg);
+            visitor.visit_expr(func);
+            visitor.visit_expr(arg);
         }
         OpApply(ref mut lhs, _, ref mut rhs) => {
-            visitor.visit_expr(&mut **lhs);
-            visitor.visit_expr(&mut **rhs);
+            visitor.visit_expr(lhs);
+            visitor.visit_expr(rhs);
         }
-        Lambda(_, ref mut body) => visitor.visit_expr(&mut **body),
+        Lambda(_, ref mut body) => visitor.visit_expr(body),
         Let(ref mut binds, ref mut e) => {
             for b in binds.iter_mut() {
                 visitor.visit_binding(b);
             }
-            visitor.visit_expr(&mut **e);
+            visitor.visit_expr(e);
         }
         Case(ref mut e, ref mut alts) => {
-            visitor.visit_expr(&mut **e);
+            visitor.visit_expr(e);
             for alt in alts.iter_mut() {
                 visitor.visit_alternative(alt);
             }
         }
         IfElse(ref mut pred, ref mut if_true, ref mut if_false) => {
-            visitor.visit_expr(&mut **pred);
-            visitor.visit_expr(&mut **if_true);
-            visitor.visit_expr(&mut **if_false);
+            visitor.visit_expr(pred);
+            visitor.visit_expr(if_true);
+            visitor.visit_expr(if_false);
         }
         Do(ref mut binds, ref mut expr) => {
             for bind in binds.iter_mut() {
@@ -507,10 +507,10 @@ pub fn walk_expr_mut<Ident, V: MutVisitor<Ident>>(visitor: &mut V, expr: &mut Ty
                     DoBinding::DoExpr(ref mut e) => visitor.visit_expr(e),
                 }
             }
-            visitor.visit_expr(&mut **expr);
+            visitor.visit_expr(expr);
         }
-        TypeSig(ref mut expr, _) => visitor.visit_expr(&mut **expr),
-        Paren(ref mut expr) => visitor.visit_expr(&mut **expr),
+        TypeSig(ref mut expr, _) => visitor.visit_expr(expr),
+        Paren(ref mut expr) => visitor.visit_expr(expr),
         Literal(..) | Identifier(..) => (),
     }
 }

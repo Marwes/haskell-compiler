@@ -839,40 +839,35 @@ impl<'a> TypeEnvironment<'a> {
                 None => panic!("Undefined identifier '{:?}' at {:?}", *name, expr.location),
             },
             Apply(ref mut func, ref mut arg) => {
-                let func_type = self.typecheck(&mut **func, subs);
-                self.typecheck_apply(&expr.location, subs, func_type, &mut **arg)
+                let func_type = self.typecheck(func, subs);
+                self.typecheck_apply(&expr.location, subs, func_type, arg)
             }
             OpApply(ref mut lhs, ref op, ref mut rhs) => {
                 let op_type = match self.fresh(op) {
                     Some(typ) => typ,
                     None => panic!("Undefined identifier '{:?}' at {:?}", *op, expr.location),
                 };
-                let first = self.typecheck_apply(&expr.location, subs, op_type, &mut **lhs);
-                self.typecheck_apply(&expr.location, subs, first, &mut **rhs)
+                let first = self.typecheck_apply(&expr.location, subs, op_type, lhs);
+                self.typecheck_apply(&expr.location, subs, first, rhs)
             }
             Lambda(ref arg, ref mut body) => {
                 let mut arg_type = self.new_var();
                 let mut result = typ::function_type_(arg_type.clone(), self.new_var());
 
                 self.typecheck_pattern(&expr.location, subs, arg, &mut arg_type);
-                let body_type = self.typecheck(&mut **body, subs);
+                let body_type = self.typecheck(body, subs);
                 with_arg_return(&mut result, |_, return_type| {
                     *return_type = body_type.clone();
                 });
                 result
             }
             Let(ref mut bindings, ref mut body) => {
-                self.typecheck_local_bindings(
-                    subs,
-                    &mut BindingsWrapper {
-                        value: &mut **bindings,
-                    },
-                );
+                self.typecheck_local_bindings(subs, &mut BindingsWrapper { value: bindings });
                 self.apply_locals(subs);
-                self.typecheck(&mut **body, subs)
+                self.typecheck(body, subs)
             }
             Case(ref mut case_expr, ref mut alts) => {
-                let mut match_type = self.typecheck(&mut **case_expr, subs);
+                let mut match_type = self.typecheck(case_expr, subs);
                 self.typecheck_pattern(
                     &alts[0].pattern.location,
                     subs,
@@ -880,12 +875,8 @@ impl<'a> TypeEnvironment<'a> {
                     &mut match_type,
                 );
                 match *&mut alts[0].where_bindings {
-                    Some(ref mut bindings) => self.typecheck_local_bindings(
-                        subs,
-                        &mut BindingsWrapper {
-                            value: &mut **bindings,
-                        },
-                    ),
+                    Some(ref mut bindings) => self
+                        .typecheck_local_bindings(subs, &mut BindingsWrapper { value: bindings }),
                     None => (),
                 }
                 let mut alt0_ = self.typecheck_match(&mut alts[0].matches, subs);
@@ -899,9 +890,7 @@ impl<'a> TypeEnvironment<'a> {
                     match alt.where_bindings {
                         Some(ref mut bindings) => self.typecheck_local_bindings(
                             subs,
-                            &mut BindingsWrapper {
-                                value: &mut **bindings,
-                            },
+                            &mut BindingsWrapper { value: bindings },
                         ),
                         None => (),
                     }
@@ -911,10 +900,10 @@ impl<'a> TypeEnvironment<'a> {
                 alt0_
             }
             IfElse(ref mut pred, ref mut if_true, ref mut if_false) => {
-                let mut p = self.typecheck(&mut **pred, subs);
+                let mut p = self.typecheck(pred, subs);
                 unify_location(self, subs, &expr.location, &mut p, &mut typ::bool_type());
-                let mut t = self.typecheck(&mut **if_true, subs);
-                let mut f = self.typecheck(&mut **if_false, subs);
+                let mut t = self.typecheck(if_true, subs);
+                let mut f = self.typecheck(if_false, subs);
                 unify_location(self, subs, &expr.location, &mut t, &mut f);
                 t
             }
@@ -933,9 +922,7 @@ impl<'a> TypeEnvironment<'a> {
                         DoBinding::DoLet(ref mut bindings) => {
                             self.typecheck_local_bindings(
                                 subs,
-                                &mut BindingsWrapper {
-                                    value: &mut **bindings,
-                                },
+                                &mut BindingsWrapper { value: bindings },
                             );
                             self.apply_locals(subs);
                         }
@@ -950,7 +937,7 @@ impl<'a> TypeEnvironment<'a> {
                                 &pattern.location,
                                 subs,
                                 &pattern.node,
-                                &mut **inner_type,
+                                inner_type,
                             );
                         }
                     }
@@ -961,12 +948,12 @@ impl<'a> TypeEnvironment<'a> {
                         _ => panic!(),
                     }
                 }
-                let mut typ = self.typecheck(&mut **last_expr, subs);
+                let mut typ = self.typecheck(last_expr, subs);
                 unify_location(self, subs, &last_expr.location, &mut typ, &mut previous);
                 typ
             }
             TypeSig(ref mut expr, ref mut qualified_type) => {
-                let mut typ = self.typecheck(&mut **expr, subs);
+                let mut typ = self.typecheck(expr, subs);
                 self.freshen_qualified_type(qualified_type, HashMap::new());
                 match_or_fail(
                     self,
@@ -977,7 +964,7 @@ impl<'a> TypeEnvironment<'a> {
                 );
                 typ
             }
-            Paren(ref mut expr) => self.typecheck(&mut **expr, subs),
+            Paren(ref mut expr) => self.typecheck(expr, subs),
         };
         debug!("{:?}\nas\n{:?}", expr, x);
         expr.typ = x.clone();
@@ -1081,12 +1068,7 @@ impl<'a> TypeEnvironment<'a> {
                 self.typecheck_pattern(&Location::eof(), subs, arg, typ);
             }
             if let Some(ref mut bindings) = bind.where_bindings {
-                self.typecheck_local_bindings(
-                    subs,
-                    &mut BindingsWrapper {
-                        value: bindings,
-                    },
-                )
+                self.typecheck_local_bindings(subs, &mut BindingsWrapper { value: bindings })
             }
             let mut typ = self.typecheck_match(&mut bind.matches, subs);
             fn make_function(arguments: &[TcType], expr: &TcType) -> TcType {
@@ -1363,15 +1345,16 @@ fn find_specialized(
 ///A quantified variable will when it is instantiated have new type variables
 fn quantify(start_var_age: isize, typ: &mut Qualified<TcType, Name>) {
     fn quantify_(start_var_age: isize, typ: &mut TcType) {
-        let x = match *typ {
-            Type::Variable(ref id) if id.age >= start_var_age => Some(id.clone()),
-            Type::Application(ref mut lhs, ref mut rhs) => {
-                quantify_(start_var_age, &mut **lhs);
-                quantify_(start_var_age, &mut **rhs);
-                None
-            }
-            _ => None,
-        };
+        let x =
+            match *typ {
+                Type::Variable(ref id) if id.age >= start_var_age => Some(id.clone()),
+                Type::Application(ref mut lhs, ref mut rhs) => {
+                    quantify_(start_var_age, lhs);
+                    quantify_(start_var_age, rhs);
+                    None
+                }
+                _ => None,
+            };
         if let Some(var) = x {
             *typ = Type::Generic(var);
         }
@@ -1396,8 +1379,8 @@ pub fn replace_var(typ: &mut TcType, var: &TypeVariable, replacement: &TcType) {
         }
         Type::Constructor(_) => None,
         Type::Application(ref mut lhs, ref mut rhs) => {
-            replace_var(&mut **lhs, var, replacement);
-            replace_var(&mut **rhs, var, replacement);
+            replace_var(lhs, var, replacement);
+            replace_var(rhs, var, replacement);
             None
         }
         Type::Generic(_) => panic!("replace_var called on Generic"),
@@ -1447,8 +1430,8 @@ fn replace(
     let replaced = match *old {
         Type::Variable(ref id) => subs.subs.get(id).map(|new| new.clone()),
         Type::Application(ref mut lhs, ref mut rhs) => {
-            replace(constraints, &mut **lhs, subs);
-            replace(constraints, &mut **rhs, subs);
+            replace(constraints, lhs, subs);
+            replace(constraints, rhs, subs);
             None
         }
         _ => None, //panic!("replace called on Generic")
@@ -1479,8 +1462,8 @@ fn freshen(env: &mut TypeEnvironment, subs: &mut Substitution, typ: &mut Qualifi
         let result = match *typ {
             Type::Generic(ref id) => freshen_var(env, subs, constraints, id),
             Type::Application(ref mut lhs, ref mut rhs) => {
-                freshen_(env, subs, constraints, &mut **lhs);
-                freshen_(env, subs, constraints, &mut **rhs);
+                freshen_(env, subs, constraints, lhs);
+                freshen_(env, subs, constraints, rhs);
                 None
             }
             _ => None,
@@ -1501,8 +1484,8 @@ fn freshen_all(env: &mut TypeEnvironment, subs: &mut Substitution, typ: &mut TcT
     let result = match *typ {
         Type::Variable(ref id) => freshen_var(env, subs, &[], id),
         Type::Application(ref mut lhs, ref mut rhs) => {
-            freshen_all(env, subs, &mut **lhs);
-            freshen_all(env, subs, &mut **rhs);
+            freshen_all(env, subs, lhs);
+            freshen_all(env, subs, rhs);
             None
         }
         _ => None,
@@ -1682,10 +1665,10 @@ fn unify(
         (
             &mut Type::Application(ref mut l1, ref mut r1),
             &mut Type::Application(ref mut l2, ref mut r2),
-        ) => unify(env, subs, &mut **l1, &mut **l2).and_then(|_| {
-            replace(&mut env.constraints, &mut **r1, subs);
-            replace(&mut env.constraints, &mut **r2, subs);
-            unify(env, subs, &mut **r1, &mut **r2)
+        ) => unify(env, subs, l1, l2).and_then(|_| {
+            replace(&mut env.constraints, r1, subs);
+            replace(&mut env.constraints, r2, subs);
+            unify(env, subs, r1, r2)
         }),
         (&mut Type::Variable(ref mut lhs), &mut Type::Variable(ref mut rhs)) => {
             //If both are variables we choose that they younger variable is replaced by the oldest
@@ -1767,9 +1750,9 @@ fn match_(
 ) -> Result<(), Error> {
     match (lhs, rhs) {
         (&mut Type::Application(ref mut l1, ref mut r1), &Type::Application(ref l2, ref r2)) => {
-            match_(env, subs, &mut **l1, l2).and_then(|_| {
-                replace(&mut env.constraints, &mut **r1, subs);
-                match_(env, subs, &mut **r1, r2)
+            match_(env, subs, l1, l2).and_then(|_| {
+                replace(&mut env.constraints, r1, subs);
+                match_(env, subs, r1, r2)
             })
         }
         (&mut Type::Variable(ref mut lhs), &Type::Variable(ref rhs)) => {
@@ -1912,13 +1895,15 @@ where
     F: FnOnce(&mut TcType, &mut TcType),
 {
     match *func_type {
-        Type::Application(ref mut lhs, ref mut return_type) => match **lhs {
-            Type::Application(_, ref mut arg_type) => {
-                func(&mut **arg_type, &mut **return_type);
-                true
+        Type::Application(ref mut lhs, ref mut return_type) => {
+            match **lhs {
+                Type::Application(_, ref mut arg_type) => {
+                    func(arg_type, return_type);
+                    true
+                }
+                _ => false,
             }
-            _ => false,
-        },
+        }
         _ => false,
     }
 }

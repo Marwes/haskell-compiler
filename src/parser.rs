@@ -1053,9 +1053,7 @@ impl<Iter: Iterator<Item = char>> Parser<Iter> {
 
     fn set_kind(typ: &mut Type, kind: isize) {
         match typ {
-            &mut Type::Application(ref mut lhs, _) => {
-                Parser::<Iter>::set_kind(&mut **lhs, kind + 1)
-            }
+            &mut Type::Application(ref mut lhs, _) => Parser::<Iter>::set_kind(lhs, kind + 1),
             _ => *typ.mut_kind() = Kind::new(kind),
         }
     }

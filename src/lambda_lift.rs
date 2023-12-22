@@ -56,8 +56,8 @@ impl FreeVariables {
                 }
             }
             Apply(ref mut func, ref mut arg) => {
-                self.free_variables(variables, free_vars, &mut **func);
-                self.free_variables(variables, free_vars, &mut **arg);
+                self.free_variables(variables, free_vars, func);
+                self.free_variables(variables, free_vars, arg);
             }
             Lambda(ref mut arg, ref mut body) => {
                 match variables.entry(arg.name.clone()) {
@@ -66,7 +66,7 @@ impl FreeVariables {
                     }
                     Entry::Occupied(mut entry) => *entry.get_mut() += 1,
                 }
-                self.free_variables(variables, free_vars, &mut **body);
+                self.free_variables(variables, free_vars, body);
                 *variables.get_mut(&arg.name).unwrap() -= 1;
                 free_vars.remove(&arg.name); //arg was not actually a free variable
             }
@@ -89,14 +89,14 @@ impl FreeVariables {
                     }
                     self.abstract_(&free_vars2, &mut bind.expression);
                 }
-                self.free_variables(variables, free_vars, &mut **expr);
+                self.free_variables(variables, free_vars, expr);
                 for bind in bindings.iter() {
                     *variables.get_mut(&bind.name.name).unwrap() -= 1;
                     free_vars.remove(&bind.name.name);
                 }
             }
             Case(ref mut expr, ref mut alts) => {
-                self.free_variables(variables, free_vars, &mut **expr);
+                self.free_variables(variables, free_vars, expr);
                 for alt in alts.iter_mut() {
                     each_pattern_variables(&alt.pattern, &mut |name| match variables
                         .entry(name.clone())
@@ -173,7 +173,7 @@ pub fn lift_lambdas<T>(mut module: Module<T>) -> Module<T> {
                         }
                     }
                     *bindings = new_binds;
-                    self.visit_expr(&mut **body);
+                    self.visit_expr(body);
                 }
                 _ => walk_expr(self, expr),
             }

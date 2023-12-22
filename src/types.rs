@@ -176,7 +176,7 @@ impl<Id: fmt::Display + AsRef<str>> Type<Id> {
             Self::Variable(ref mut v) => &mut v.kind,
             Self::Constructor(ref mut v) => &mut v.kind,
             Self::Application(ref mut lhs, _) => match *lhs.mut_kind() {
-                Kind::Function(_, ref mut kind) => &mut **kind,
+                Kind::Function(_, ref mut kind) => kind,
                 _ => panic!("Type application must have a kind of Kind::Function"),
             },
             Self::Generic(ref mut v) => &mut v.kind,

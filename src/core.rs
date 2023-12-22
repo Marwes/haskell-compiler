@@ -320,18 +320,18 @@ pub mod mutable {
     pub fn walk_expr<Ident, V: Visitor<Ident>>(visitor: &mut V, expr: &mut Expr<Ident>) {
         match expr {
             &mut Apply(ref mut func, ref mut arg) => {
-                visitor.visit_expr(&mut **func);
-                visitor.visit_expr(&mut **arg);
+                visitor.visit_expr(func);
+                visitor.visit_expr(arg);
             }
-            &mut Lambda(_, ref mut body) => visitor.visit_expr(&mut **body),
+            &mut Lambda(_, ref mut body) => visitor.visit_expr(body),
             &mut Let(ref mut binds, ref mut e) => {
                 for b in binds.iter_mut() {
                     visitor.visit_binding(b);
                 }
-                visitor.visit_expr(&mut **e);
+                visitor.visit_expr(e);
             }
             &mut Case(ref mut e, ref mut alts) => {
-                visitor.visit_expr(&mut **e);
+                visitor.visit_expr(e);
                 for alt in alts.iter_mut() {
                     visitor.visit_alternative(alt);
                 }
