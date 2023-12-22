@@ -2139,7 +2139,7 @@ pub mod test {
                 arguments: vec![],
                 name: intern("test"),
                 matches: Match::Simple(unary_bind),
-                typ: Default::default(),
+                typ: <_>::default(),
                 where_bindings: None,
             }],
             identifier("test"),

@@ -732,7 +732,7 @@ impl<Iter: Iterator<Item = char>> Parser<Iter> {
         };
         Ok(Binding {
             name: name.clone(),
-            typ: Default::default(),
+            typ: <_>::default(),
             arguments,
             where_bindings,
             matches,
@@ -1387,13 +1387,14 @@ in test - 2"
                 .chars(),
         );
         let expr = parser.expression_().unwrap();
-        let bind = Binding {
-            arguments: vec![],
-            name: intern("test"),
-            typ: Default::default(),
-            matches: Match::Simple(apply(apply(identifier("add"), number(3)), number(2))),
-            where_bindings: None,
-        };
+        let bind =
+            Binding {
+                arguments: vec![],
+                name: intern("test"),
+                typ: <_>::default(),
+                matches: Match::Simple(apply(apply(identifier("add"), number(3)), number(2))),
+                where_bindings: None,
+            };
         assert_eq!(
             expr,
             let_(
@@ -1688,7 +1689,7 @@ test x
         let b2 = Binding {
             arguments: vec![Pattern::Identifier(intern("x"))],
             name: intern("test"),
-            typ: Default::default(),
+            typ: <_>::default(),
             matches: Match::Guards(vec![
                 Guard {
                     predicate: identifier("x"),

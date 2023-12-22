@@ -402,7 +402,7 @@ impl Renamer {
     ///If the name was not found it is assumed to be global
     fn get_name(&self, s: InternedStr) -> Name {
         match self.uniques.find(&s) {
-            Some(&Name { uid, .. }) => Name { name: s, uid: uid },
+            Some(&Name { uid, .. }) => Name { name: s, uid },
             None => Name { name: s, uid: 0 }, //Primitive
         }
     }
