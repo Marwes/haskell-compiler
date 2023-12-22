@@ -250,16 +250,16 @@ impl<T: fmt::Display + AsRef<str>> fmt::Display for Expr<T> {
 impl<T: fmt::Display + AsRef<str>> fmt::Display for Pattern<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            &Pattern::Identifier(ref s) => write!(f, "{}", s),
-            &Pattern::Number(ref i) => write!(f, "{}", i),
-            &Pattern::Constructor(ref name, ref patterns) => {
+            &Self::Identifier(ref s) => write!(f, "{}", s),
+            &Self::Number(ref i) => write!(f, "{}", i),
+            &Self::Constructor(ref name, ref patterns) => {
                 write!(f, "({} ", name)?;
                 for p in patterns.iter() {
                     write!(f, " {}", p)?;
                 }
                 write!(f, ")")
             }
-            &Pattern::WildCard => write!(f, "_"),
+            &Self::WildCard => write!(f, "_"),
         }
     }
 }

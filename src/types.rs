@@ -79,7 +79,7 @@ impl<Id: fmt::Display + AsRef<str>> Type<Id> {
         Self::Variable(TypeVariable::new_var_kind(id, kind))
     }
     ///Creates a new type constructor with the specified argument and kind
-    pub fn new_op(name: Id, types: Vec<Type<Id>>) -> Self {
+    pub fn new_op(name: Id, types: Vec<Self>) -> Self {
         Self::new_type_kind(
             Type::Constructor(TypeConstructor {
                 name,
@@ -107,7 +107,7 @@ impl<Id: fmt::Display + AsRef<str>> Type<Id> {
     ///Returns a reference to the type variable or fails if it is not a variable
     pub fn var(&self) -> &TypeVariable {
         match self {
-            &Type::Variable(ref var) => var,
+            &Self::Variable(ref var) => var,
             _ => panic!("Tried to unwrap {} as a TypeVariable", self),
         }
     }
@@ -116,7 +116,7 @@ impl<Id: fmt::Display + AsRef<str>> Type<Id> {
     #[allow(dead_code)]
     pub fn ctor(&self) -> &TypeConstructor<Id> {
         match self {
-            &Type::Constructor(ref op) => op,
+            &Self::Constructor(ref op) => op,
             _ => panic!("Tried to unwrap {} as a TypeConstructor", self),
         }
     }
@@ -125,7 +125,7 @@ impl<Id: fmt::Display + AsRef<str>> Type<Id> {
     #[allow(dead_code)]
     pub fn appl(&self) -> &Self {
         match self {
-            &Type::Application(ref lhs, _) => &**lhs,
+            &Self::Application(ref lhs, _) => &**lhs,
             _ => panic!("Error: Tried to unwrap {} as TypeApplication", self),
         }
     }
@@ -133,7 +133,7 @@ impl<Id: fmt::Display + AsRef<str>> Type<Id> {
     ///Returns a reference to the the type argument or fails if it is not an application
     pub fn appr(&self) -> &Self {
         match self {
-            &Type::Application(_, ref rhs) => &**rhs,
+            &Self::Application(_, ref rhs) => &**rhs,
             _ => panic!("Error: Tried to unwrap TypeApplication"),
         }
     }
@@ -142,9 +142,9 @@ impl<Id: fmt::Display + AsRef<str>> Type<Id> {
     ///Fails only if the type is a type application with an invalid kind
     pub fn kind(&self) -> &Kind {
         match self {
-            &Type::Variable(ref v) => &v.kind,
-            &Type::Constructor(ref v) => &v.kind,
-            &Type::Application(ref lhs, _) => {
+            &Self::Variable(ref v) => &v.kind,
+            &Self::Constructor(ref v) => &v.kind,
+            &Self::Application(ref lhs, _) => {
                 match lhs.kind() {
                     &Kind::Function(_, ref kind) => &**kind,
                     _ => panic!(
@@ -153,19 +153,19 @@ impl<Id: fmt::Display + AsRef<str>> Type<Id> {
                     ),
                 }
             }
-            &Type::Generic(ref v) => &v.kind,
+            &Self::Generic(ref v) => &v.kind,
         }
     }
     ///Returns a mutable reference to the types kind
     pub fn mut_kind(&mut self) -> &mut Kind {
         match *self {
-            Type::Variable(ref mut v) => &mut v.kind,
-            Type::Constructor(ref mut v) => &mut v.kind,
-            Type::Application(ref mut lhs, _) => match *lhs.mut_kind() {
+            Self::Variable(ref mut v) => &mut v.kind,
+            Self::Constructor(ref mut v) => &mut v.kind,
+            Self::Application(ref mut lhs, _) => match *lhs.mut_kind() {
                 Kind::Function(_, ref mut kind) => &mut **kind,
                 _ => panic!("Type application must have a kind of Kind::Function"),
             },
-            Type::Generic(ref mut v) => &mut v.kind,
+            Self::Generic(ref mut v) => &mut v.kind,
         }
     }
 }
@@ -181,17 +181,17 @@ impl<Id> Type<Id> {
         F: FnMut(Id) -> Id2,
     {
         match self {
-            Type::Variable(v) => Type::Variable(v),
-            Type::Constructor(TypeConstructor { name, kind }) => {
+            Self::Variable(v) => Type::Variable(v),
+            Self::Constructor(TypeConstructor { name, kind }) => {
                 Type::Constructor(TypeConstructor {
                     name: f(name),
                     kind,
                 })
             }
-            Type::Application(lhs, rhs) => {
+            Self::Application(lhs, rhs) => {
                 Type::Application(Box::new(lhs.map_(f)), Box::new(rhs.map_(f)))
             }
-            Type::Generic(v) => Type::Generic(v),
+            Self::Generic(v) => Type::Generic(v),
         }
     }
 }
@@ -295,8 +295,8 @@ pub enum Kind {
 impl fmt::Display for Kind {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            &Kind::Star => write!(f, "*"),
-            &Kind::Function(ref lhs, ref rhs) => write!(f, "({} -> {})", *lhs, *rhs),
+            &Self::Star => write!(f, "*"),
+            &Self::Function(ref lhs, ref rhs) => write!(f, "({} -> {})", *lhs, *rhs),
         }
     }
 }

@@ -143,9 +143,9 @@ impl<Ident: Typed<Id = Name>> Typed for Expr<Ident> {
     type Id = Name;
     fn get_type<'a>(&'a self) -> &'a Type<Name> {
         match self {
-            &Expr::Identifier(ref i) => i.get_type(),
-            &Expr::Literal(ref lit) => &lit.typ,
-            &Expr::Apply(ref func, _) => {
+            &Self::Identifier(ref i) => i.get_type(),
+            &Self::Literal(ref lit) => &lit.typ,
+            &Self::Apply(ref func, _) => {
                 match func.get_type() {
                     &Type::Application(_, ref a) => &**a,
                     x => panic!(
@@ -154,9 +154,9 @@ impl<Ident: Typed<Id = Name>> Typed for Expr<Ident> {
                     ),
                 }
             }
-            &Expr::Lambda(ref arg, _) => arg.get_type(),
-            &Expr::Let(_, ref body) => body.get_type(),
-            &Expr::Case(_, ref alts) => alts[0].expression.get_type(),
+            &Self::Lambda(ref arg, _) => arg.get_type(),
+            &Self::Let(_, ref body) => body.get_type(),
+            &Self::Case(_, ref alts) => alts[0].expression.get_type(),
         }
     }
 }
@@ -164,10 +164,10 @@ impl<Ident: Typed> Typed for Pattern<Ident> {
     type Id = Ident::Id;
     fn get_type<'a>(&'a self) -> &'a Type<Ident::Id> {
         match *self {
-            Pattern::Identifier(ref name) => name.get_type(),
-            Pattern::Constructor(ref name, _) => name.get_type(),
-            Pattern::Number(_) => panic!(),
-            Pattern::WildCard => panic!(),
+            Self::Identifier(ref name) => name.get_type(),
+            Self::Constructor(ref name, _) => name.get_type(),
+            Self::Number(_) => panic!(),
+            Self::WildCard => panic!(),
         }
     }
 }
