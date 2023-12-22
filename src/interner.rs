@@ -1,21 +1,23 @@
-use std::collections::HashMap;
-use std::rc::Rc;
 use std::cell::RefCell;
-use std::ops::Deref;
+use std::collections::HashMap;
 use std::fmt;
+use std::ops::Deref;
+use std::rc::Rc;
 
 #[derive(Eq, PartialEq, Clone, Copy, Default, Hash, Debug)]
 pub struct InternedStr(usize);
 
 pub struct Interner {
     indexes: HashMap<String, usize>,
-    strings: Vec<String>
+    strings: Vec<String>,
 }
 
 impl Interner {
-
     pub fn new() -> Interner {
-        Interner { indexes: HashMap::new(), strings: vec![] }
+        Interner {
+            indexes: HashMap::new(),
+            strings: vec![],
+        }
     }
 
     pub fn intern(&mut self, s: &str) -> InternedStr {
@@ -33,8 +35,7 @@ impl Interner {
     pub fn get_str<'a>(&'a self, InternedStr(i): InternedStr) -> &'a str {
         if i < self.strings.len() {
             &*self.strings[i]
-        }
-        else {
+        } else {
             panic!("Invalid InternedStr {:?}", i)
         }
     }
