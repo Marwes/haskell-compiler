@@ -260,7 +260,7 @@ fn id(s: &str, typ: Type<Name>) -> Id<Name> {
 }
 
 fn compare_tags(lhs: Expr<Id<Name>>, rhs: Expr<Id<Name>>) -> Expr<Id<Name>> {
-    let var = Type::new_var("a".into());
+    let var: Type<_> = "a".into();
     let typ = function_type_(
         var.clone(),
         function_type_(var.clone(), Type::new_op(name("Ordering"), vec![])),

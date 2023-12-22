@@ -2204,7 +2204,7 @@ main = case [mult2 123, 0] of
 test x = True";
         let module = do_typecheck(file);
 
-        let typ = function_type_(Type::new_var("a".into()), bool_type());
+        let typ = function_type_("a".into(), bool_type());
         assert_eq!(module.bindings[0].typ.value, typ);
     }
 
@@ -2276,8 +2276,8 @@ main x y = primIntAdd (test x) (test y)"
         env.typecheck_module_(&mut module);
 
         let typ = &module.bindings[0].typ;
-        let a = Type::new_var("a".into());
-        let b = Type::new_var("b".into());
+        let a: Type<_> = "a".into();
+        let b: Type<_> = "b".into();
         let test = function_type_(a.clone(), function_type_(b.clone(), int_type()));
         assert_eq!(&typ.value, &test);
         assert_eq!(typ.constraints[0].class.as_ref(), "Test");
@@ -2332,7 +2332,7 @@ test x y = case x < y of
         env.typecheck_module_(&mut module);
 
         let typ = &module.bindings[0].typ;
-        let a = Type::new_var("a".into());
+        let a: Type<_> = "a".into();
         assert_eq!(
             typ.value,
             function_type_(a.clone(), function_type_(a.clone(), bool_type()))
@@ -2479,10 +2479,7 @@ main = fmap add2 3",
             .find(|bind| bind.name.as_ref() == "id");
         assert!(id != None);
         let id_bind = id.unwrap();
-        assert_eq!(
-            id_bind.typ.value,
-            function_type_(Type::new_var("a".into()), Type::new_var("a".into()))
-        );
+        assert_eq!(id_bind.typ.value, function_type_("a".into(), "a".into()));
     }
 
     #[test]
@@ -2567,7 +2564,7 @@ test x = do
 ";
         let module = do_typecheck_with(file, &[&prelude as &dyn DataTypes]);
 
-        let var = Type::new_var("a".into());
+        let var: Type<_> = "a".into();
         let t = function_type_(
             Type::new_var_args("c".into(), vec![list_type(var.clone())]),
             Type::new_var_args("c".into(), vec![var.clone()]),
@@ -2587,8 +2584,8 @@ test f (x:xs) = f x : test f xs
 test _ [] = []
 ",
         );
-        let a = Type::new_var("a".into());
-        let b = Type::new_var("b".into());
+        let a: Type<_> = "a".into();
+        let b: Type<_> = "b".into();
         let test = function_type_(
             function_type_(a.clone(), b.clone()),
             function_type_(list_type(a), list_type(b)),
@@ -2608,7 +2605,7 @@ if_ p x y
     | True = y
 ",
         );
-        let var = Type::new_var("a".into());
+        let var: Type<_> = "a".into();
         let test = function_type_(
             bool_type(),
             function_type_(var.clone(), function_type_(var.clone(), var.clone())),
@@ -2653,7 +2650,7 @@ test x y = [x] == [y]
         )
         .unwrap();
         let module = modules.last().unwrap();
-        let a = Type::new_var("a".into());
+        let a: Type<_> = "a".into();
         let cs = vec![Constraint {
             class: intern("Eq"),
             variables: vec![a.var().clone()],

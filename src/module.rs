@@ -147,7 +147,7 @@ impl TypedExpr {
     ) -> TypedExpr<T> {
         TypedExpr {
             expr,
-            typ: Type::new_var("a".into()),
+            typ: "a".into(),
             location: loc,
         }
     }

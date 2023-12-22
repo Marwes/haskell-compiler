@@ -1004,12 +1004,13 @@ impl<Iter: Iterator<Item = char>> Parser<Iter> {
     fn data_definition(&mut self) -> ParseResult<DataDefinition> {
         expect!(self, DATA);
 
-        let mut definition = DataDefinition {
-            constructors: vec![],
-            typ: qualified(vec![], Type::new_var("a".into())),
-            parameters: HashMap::new(),
-            deriving: vec![],
-        };
+        let mut definition =
+            DataDefinition {
+                constructors: vec![],
+                typ: qualified(vec![], "a".into()),
+                parameters: HashMap::new(),
+                deriving: vec![],
+            };
         definition.typ.value = self.data_lhs()?;
         expect!(self, EQUALSSIGN);
 
@@ -1432,7 +1433,7 @@ in test - 2"
     fn parse_type() {
         let mut parser = Parser::new(r"(.) :: (b -> c) -> (a -> b) -> (a -> c)".chars());
         let type_decl = parser.type_declaration().unwrap();
-        let a = &Type::new_var("a".into());
+        let a = &"a".into();
         let b = &Type::new_var("b".into());
         let c = &Type::new_var("c".into());
         let f = function_type(
@@ -1472,14 +1473,14 @@ in test - 2"
         let mut parser = Parser::new(r"data List a = Cons a (List a) | Nil".chars());
         let data = parser.data_definition().unwrap();
 
-        let list = Type::new_op(intern("List"), vec![Type::new_var("a".into())]);
+        let list = Type::new_op(intern("List"), vec!["a".into()]);
         let cons = Constructor {
             name: intern("Cons"),
             tag: 0,
             arity: 2,
             typ: qualified(
                 vec![],
-                function_type(&Type::new_var("a".into()), &function_type(&list, &list)),
+                function_type(&"a".into(), &function_type(&list, &list)),
             ),
         };
         let nil = Constructor {
@@ -1568,10 +1569,7 @@ instance Eq a => Eq [a] where
         assert_eq!(module.classes[0].declarations[1].name, intern("/="));
         assert_eq!(module.instances[0].classname, intern("Eq"));
         assert_eq!(module.instances[0].constraints[0].class, intern("Eq"));
-        assert_eq!(
-            module.instances[0].typ,
-            list_type(Type::new_var("a".into()))
-        );
+        assert_eq!(module.instances[0].typ, list_type("a".into()));
     }
     #[test]
     fn parse_super_class() {
@@ -1823,7 +1821,7 @@ test = case a of
 newtype IntPair a = IntPair (a, Int)
 ";
         let module = Parser::new(s.chars()).module().unwrap();
-        let a = Type::new_var("a".into());
+        let a: Type<_> = "a".into();
         let typ = Type::new_op(intern("IntPair"), vec![a.clone()]);
         assert_eq!(module.newtypes[0].typ, qualified(vec![], typ.clone()));
         assert_eq!(

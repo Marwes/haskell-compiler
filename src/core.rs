@@ -924,7 +924,7 @@ pub mod translate {
                                 ::std::mem::swap(p, &mut x);
                                 let id = match *p {
                                     module::Pattern::Identifier(ref n) => {
-                                        Id::new(n.clone(), Type::new_var("a".into()), vec![])
+                                        Id::new(n.clone(), "a".into(), vec![])
                                     }
                                     _ => panic!(),
                                 };
@@ -963,11 +963,7 @@ pub mod translate {
             alts: Vec<module::Alternative<Name>>,
         ) -> Expr<Id<Name>> {
             let mut vec = vec![];
-            let dummy_var = &[Id::new(
-                self.name_supply.anonymous(),
-                Type::new_var("a".into()),
-                vec![],
-            )];
+            let dummy_var = &[Id::new(self.name_supply.anonymous(), "a".into(), vec![])];
             let uid = self.name_supply.next_id();
             for module::Alternative {
                 pattern,
@@ -1395,7 +1391,7 @@ pub mod translate {
                             name: intern("_"),
                             uid: usize::max_value(),
                         },
-                        Type::new_var("a".into()),
+                        "a".into(),
                         vec![],
                     ),
                     _ => panic!(),
@@ -1418,7 +1414,7 @@ pub mod translate {
     fn unmatched_guard() -> Expr<Id<Name>> {
         let error_ident = Identifier(Id::new(
             "error".into(),
-            function_type_(list_type(char_type()), Type::new_var("a".into())),
+            function_type_(list_type(char_type()), "a".into()),
             vec![],
         ));
         Apply(Box::new(error_ident), Box::new(string("Unmatched guard")))
