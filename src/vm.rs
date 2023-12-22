@@ -169,7 +169,7 @@ pub struct VM {
 }
 
 impl<'a> VM {
-    pub fn new() -> VM {
+    pub fn new() -> Self {
         Self {
             assembly: vec![],
             globals: vec![],

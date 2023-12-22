@@ -275,7 +275,7 @@ fn add_primitives(globals: &mut HashMap<Name, Qualified<TcType, Name>>, typename
 
 impl<'a> TypeEnvironment<'a> {
     ///Creates a new TypeEnvironment and adds all the primitive types
-    pub fn new() -> TypeEnvironment<'a> {
+    pub fn new() -> Self {
         let mut globals = HashMap::new();
         add_primitives(&mut globals, "Int");
         add_primitives(&mut globals, "Double");
@@ -306,7 +306,7 @@ impl<'a> TypeEnvironment<'a> {
             let (name, typ) = typ::tuple_type(i);
             insert_to(&mut globals, name.as_ref(), typ);
         }
-        TypeEnvironment {
+        Self {
             assemblies: vec![],
             named_types: globals,
             local_types: HashMap::new(),

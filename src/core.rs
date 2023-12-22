@@ -192,8 +192,8 @@ impl fmt::Display for Id {
 }
 
 impl<T> Id<T> {
-    pub fn new(name: T, typ: TcType, constraints: Vec<Constraint<Name>>) -> Id<T> {
-        Id {
+    pub fn new(name: T, typ: TcType, constraints: Vec<Constraint<Name>>) -> Self {
+        Self {
             name,
             typ: module::qualified(constraints, typ),
         }

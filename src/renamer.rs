@@ -53,7 +53,7 @@ pub struct Errors<T> {
     errors: Vec<T>,
 }
 impl<T> Errors<T> {
-    pub fn new() ->Self {
+    pub fn new() -> Self {
         Self { errors: vec![] }
     }
     pub fn insert(&mut self, e: T) {
@@ -121,8 +121,8 @@ pub struct NameSupply {
     unique_id: usize,
 }
 impl NameSupply {
-    pub fn new() -> NameSupply {
-        NameSupply { unique_id: 1 }
+    pub fn new() -> Self {
+        Self { unique_id: 1 }
     }
     ///Create a unique Name which are anonymous
     pub fn anonymous(&mut self) -> Name {
