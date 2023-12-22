@@ -371,20 +371,23 @@ struct Prec<'a, Id: 'a>(Prec_, &'a Type<Id>);
 pub fn try_get_function<'a, Id: AsRef<str>>(
     typ: &'a Type<Id>,
 ) -> Option<(&'a Type<Id>, &'a Type<Id>)> {
-    match *typ {
-        Type::Application(ref xx, ref result) => {
-            match **xx {
-                Type::Application(ref xx, ref arg) => match **xx {
-                    Type::Constructor(ref op) if "->" == op.name.as_ref() => {
-                        Some((&**arg, &**result))
-                    }
-                    _ => None,
-                },
-                _ => None,
-            }
-        }
-        _ => None,
+    let Type::Application(ref xx, ref result) = *typ else {
+        return None;
+    };
+
+    let Type::Application(ref xx, ref arg) = **xx else {
+        return None;
+    };
+
+    let Type::Constructor(ref op) = **xx else {
+        return None;
+    };
+
+    if op.name.as_ref() != "->" {
+        return None;
     }
+
+    Some((&**arg, &**result))
 }
 
 impl<'a, Id: fmt::Display + AsRef<str>> fmt::Display for Prec<'a, Id> {
