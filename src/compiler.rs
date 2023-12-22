@@ -795,12 +795,7 @@ impl<'a> Compiler<'a> {
         //Unroll the applications until the function is found
         match *expr {
             Apply(ref func, ref arg) => {
-                return self.compile_apply(
-                    func,
-                    ArgList::Cons(arg, &args),
-                    instructions,
-                    strict,
-                )
+                return self.compile_apply(func, ArgList::Cons(arg, &args), instructions, strict)
             }
             _ => (),
         }

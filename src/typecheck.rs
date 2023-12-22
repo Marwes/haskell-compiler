@@ -649,13 +649,12 @@ impl<'a> TypeEnvironment<'a> {
         }
         for &(ref constraints, ref name, ref typ) in self.instances.iter() {
             if class == *name {
-                let result =
-                    self.check_instance_constraints(
-                        constraints,
-                        typ,
-                        searched_type,
-                        new_constraints,
-                    );
+                let result = self.check_instance_constraints(
+                    constraints,
+                    typ,
+                    searched_type,
+                    new_constraints,
+                );
                 if result.is_ok() {
                     return result;
                 }
@@ -1484,9 +1483,7 @@ fn replace(
 fn occurs(type_var: &TypeVariable, in_type: &TcType) -> bool {
     match in_type {
         &Type::Variable(ref var) => type_var.id == var.id,
-        &Type::Application(ref lhs, ref rhs) => {
-            occurs(type_var, lhs) || occurs(type_var, rhs)
-        }
+        &Type::Application(ref lhs, ref rhs) => occurs(type_var, lhs) || occurs(type_var, rhs),
         _ => false,
     }
 }

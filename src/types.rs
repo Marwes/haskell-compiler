@@ -405,30 +405,28 @@ impl<'a, Id: fmt::Display + AsRef<str>> fmt::Display for Prec<'a, Id> {
                         write!(f, "{} -> {}", Prec(Prec_::Function, arg), result)
                     }
                 }
-                None => {
-                    match **lhs {
-                        Type::Constructor(ref op) if "[]" == op.name.as_ref() => {
-                            write!(f, "[{}]", rhs)
-                        }
-                        _ => {
-                            if p >= Prec_::Constructor {
-                                write!(
-                                    f,
-                                    "({} {})",
-                                    Prec(Prec_::Function, lhs),
-                                    Prec(Prec_::Constructor, rhs)
-                                )
-                            } else {
-                                write!(
-                                    f,
-                                    "{} {}",
-                                    Prec(Prec_::Function, lhs),
-                                    Prec(Prec_::Constructor, rhs)
-                                )
-                            }
+                None => match **lhs {
+                    Type::Constructor(ref op) if "[]" == op.name.as_ref() => {
+                        write!(f, "[{}]", rhs)
+                    }
+                    _ => {
+                        if p >= Prec_::Constructor {
+                            write!(
+                                f,
+                                "({} {})",
+                                Prec(Prec_::Function, lhs),
+                                Prec(Prec_::Constructor, rhs)
+                            )
+                        } else {
+                            write!(
+                                f,
+                                "{} {}",
+                                Prec(Prec_::Function, lhs),
+                                Prec(Prec_::Constructor, rhs)
+                            )
                         }
                     }
-                }
+                },
             },
         }
     }
