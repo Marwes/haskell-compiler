@@ -1208,47 +1208,46 @@ pub mod translate {
                     }
                     last_index += 1;
                 }
-                match pattern_test {
-                    Some(pattern_test) => {
-                        vec.clear();
-                        let mut variable_bindings = vec![];
-                        //Gather all patterns which matches the pattern
-                        for &Equation(patterns, expr) in equations.iter() {
-                            if patterns.len() > 0 && matching(pattern_test, &patterns[0]) {
-                                vec.push(Equation(&patterns[1..], expr));
-                                //If the patter_test is a constructor we need to add the variables
-                                //of the other patterns in a let binding to make sure that all names exist
-                                match (&patterns[0].1, &pattern_test.1) {
-                                    (
-                                        &Pattern::Constructor(_, ref l_vars),
-                                        &Pattern::Constructor(_, ref r_vars),
-                                    ) => {
-                                        for (l_var, r_var) in l_vars.iter().zip(r_vars.iter()) {
-                                            if l_var != r_var {
-                                                variable_bindings.push(Binding {
-                                                    name: l_var.clone(),
-                                                    expression: Identifier(r_var.clone()),
-                                                });
-                                            }
+                if let Some(pattern_test) = pattern_test {
+                    vec.clear();
+                    let mut variable_bindings = vec![];
+                    //Gather all patterns which matches the pattern
+                    for &Equation(patterns, expr) in equations.iter() {
+                        if patterns.len() > 0 && matching(pattern_test, &patterns[0]) {
+                            vec.push(Equation(&patterns[1..], expr));
+                            //If the patter_test is a constructor we need to add the variables
+                            //of the other patterns in a let binding to make sure that all names exist
+                            match (&patterns[0].1, &pattern_test.1) {
+                                (
+                                    &Pattern::Constructor(_, ref l_vars),
+                                    &Pattern::Constructor(_, ref r_vars),
+                                ) => {
+                                    for (l_var, r_var) in l_vars.iter().zip(r_vars.iter()) {
+                                        if l_var != r_var {
+                                            variable_bindings.push(Binding {
+                                                name: l_var.clone(),
+                                                expression: Identifier(r_var.clone()),
+                                            });
                                         }
                                     }
-                                    _ => (),
                                 }
-                            } else if patterns.is_empty() {
-                                vec.push(Equation(patterns, expr));
+                                _ => (),
                             }
+                        } else if patterns.is_empty() {
+                            vec.push(Equation(patterns, expr));
                         }
-                        //For all the pattern that match the pattern we need to generate new case expressions
-                        let e = make_let(variable_bindings, self.translate_equations(vec.as_ref()));
-
-                        let arg_id = &ps[0].0;
-                        let bs = needed_variables(arg_id, equations);
-                        alts.push(Alternative {
-                            pattern: pattern_test.1.clone(),
-                            expression: make_let(bs, e),
-                        });
                     }
-                    None => break,
+                    //For all the pattern that match the pattern we need to generate new case expressions
+                    let e = make_let(variable_bindings, self.translate_equations(vec.as_ref()));
+
+                    let arg_id = &ps[0].0;
+                    let bs = needed_variables(arg_id, equations);
+                    alts.push(Alternative {
+                        pattern: pattern_test.1.clone(),
+                        expression: make_let(bs, e),
+                    });
+                } else {
+                    break;
                 }
             }
             if alts.is_empty() {
