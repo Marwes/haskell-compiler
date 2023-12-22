@@ -188,18 +188,6 @@ impl PartialEq<str> for Name {
     }
 }
 
-impl From<&str> for TcType {
-    fn from(value: &str) -> Self {
-        Self::new_var(value.into())
-    }
-}
-
-// impl<Id: fmt::Display + AsRef<str>> From<&str> for Type<Id> {
-//     fn from(value: &str) -> Self {
-//         Self::new_var(value.into())
-//     }
-// }
-
 ///Id is a Name combined with a type
 #[derive(PartialEq, Eq, Hash, Clone, Debug)]
 pub struct Id<T = Name> {

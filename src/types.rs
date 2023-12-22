@@ -56,6 +56,12 @@ pub fn qualified<Ident>(
     }
 }
 
+impl<Id: fmt::Display + AsRef<str>> From<&str> for Type<Id> {
+    fn from(value: &str) -> Self {
+        Self::new_var(value.into())
+    }
+}
+
 impl TypeVariable {
     pub fn new(id: VarId) -> Self {
         Self::new_var_kind(id, Kind::Star)
