@@ -400,7 +400,7 @@ impl<Iter: Iterator<Item = char>> Parser<Iter> {
     fn sub_expression(&mut self) -> ParseResult<Option<TypedExpr>> {
         let token = self.lexer.next().token;
         debug!("Begin SubExpr {:?}", self.lexer.current());
-        let expr = match token {
+        Ok(match token {
             LPARENS => {
                 let location = self.lexer.current().location;
                 if self.lexer.peek().token == RPARENS {
@@ -525,8 +525,7 @@ impl<Iter: Iterator<Item = char>> Parser<Iter> {
                 self.lexer.backtrack();
                 None
             }
-        };
-        Ok(expr)
+        })
     }
 
     fn do_binding(&mut self) -> ParseResult<DoBinding> {
@@ -575,7 +574,7 @@ impl<Iter: Iterator<Item = char>> Parser<Iter> {
     }
 
     fn alternative(&mut self) -> ParseResult<Alternative> {
-        let pat = self.located_pattern()?;
+        let pattern = self.located_pattern()?;
         static GUARD_TOKENS: &'static [TokenEnum] = &[ARROW, PIPE];
         let matches = self.expr_or_guards(GUARD_TOKENS)?;
         let where_bindings = if self.lexer.peek().token == WHERE {
@@ -585,7 +584,7 @@ impl<Iter: Iterator<Item = char>> Parser<Iter> {
             None
         };
         Ok(Alternative {
-            pattern: pat,
+            pattern,
             matches,
             where_bindings,
         })
