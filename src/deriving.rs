@@ -28,10 +28,7 @@ pub fn generate_deriving(instances: &mut Vec<Instance<Id<Name>>>, data: &DataDef
                 instances.push(Instance {
                     constraints: vec![],
                     typ: data.typ.value.clone(),
-                    classname: Name {
-                        name: intern("Eq"),
-                        uid: 0,
-                    },
+                    classname: "Eq".into(),
                     bindings,
                 });
             }
@@ -43,10 +40,7 @@ pub fn generate_deriving(instances: &mut Vec<Instance<Id<Name>>>, data: &DataDef
                 instances.push(Instance {
                     constraints: vec![],
                     typ: data.typ.value.clone(),
-                    classname: Name {
-                        name: intern("Ord"),
-                        uid: 0,
-                    },
+                    classname: "Ord".into(),
                     bindings,
                 });
             }
@@ -249,10 +243,7 @@ impl DerivingGen {
                             Alternative {
                                 pattern: Pattern::WildCard,
                                 expression: Identifier(Id::new(
-                                    Name {
-                                        uid: 0,
-                                        name: intern("False"),
-                                    },
+                                    "False".into(),
                                     bool_type(),
                                     vec![],
                                 )),
@@ -271,10 +262,7 @@ impl DerivingGen {
 
 fn id(s: &str, typ: Type<Name>) -> Id<Name> {
     Id::new(
-        Name {
-            name: intern(s),
-            uid: 0,
-        },
+        s.into(),
         typ,
         vec![],
     )

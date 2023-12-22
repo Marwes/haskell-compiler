@@ -254,10 +254,7 @@ impl<'a> Bindings for BindingsWrapper<'a> {
 
 fn insert_to(map: &mut HashMap<Name, Qualified<TcType, Name>>, name: &str, typ: TcType) {
     map.insert(
-        Name {
-            name: intern(name),
-            uid: 0,
-        },
+        name.into(),
         qualified(vec![], typ),
     );
 }
@@ -943,10 +940,7 @@ impl<'a> TypeEnvironment<'a> {
                     self.new_var_kind(Kind::Function(Box::new(Kind::Star), Box::new(Kind::Star)));
                 self.constraints.insert(
                     previous.var().clone(),
-                    vec![Name {
-                        name: intern("Monad"),
-                        uid: 0,
-                    }],
+                    vec!["Monad".into()],
                 );
                 previous = Type::Application(Box::new(previous), Box::new(self.new_var()));
                 for bind in bindings.iter_mut() {

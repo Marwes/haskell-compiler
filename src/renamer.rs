@@ -19,10 +19,7 @@ pub struct Name {
 }
 
 pub fn name(s: &str) -> Name {
-    Name {
-        uid: 0,
-        name: intern(s),
-    }
+    s.into()
 }
 
 impl From<&str> for Name {

@@ -434,28 +434,19 @@ impl<'a> Compiler<'a> {
         let mut variables = ScopedMap::new();
         for (i, &(name, _)) in builtins().iter().enumerate() {
             variables.insert(
-                Name {
-                    name: intern(name),
-                    uid: 0,
-                },
+                name.into(),
                 Var::Builtin(i),
             );
         }
         for &(name, instruction) in BINARY_PRIMITIVES.iter() {
             variables.insert(
-                Name {
-                    name: intern(name),
-                    uid: 0,
-                },
+                name.into(),
                 Var::Primitive(2, instruction),
             );
         }
         for &(name, instruction) in UNARY_PRIMITIVES.iter() {
             variables.insert(
-                Name {
-                    name: intern(name),
-                    uid: 0,
-                },
+                name.into(),
                 Var::Primitive(1, instruction),
             );
         }
@@ -536,10 +527,7 @@ impl<'a> Compiler<'a> {
         let mut arity = 0;
         self.scope(&mut |this| {
             if dict_arg == 1 {
-                this.new_stack_var(Name {
-                    name: intern("$dict"),
-                    uid: 0,
-                });
+                this.new_stack_var("$dict".into());
             }
             debug!("{:?} {:?}\n {:?}", bind.name, dict_arg, bind.expression);
             arity = this.compile_lambda_binding(&bind.expression, &mut instructions) + dict_arg;
@@ -700,10 +688,7 @@ impl<'a> Compiler<'a> {
                         instructions.push(PushFloat(i as f64));
                     } else {
                         let from_integer = Identifier(Id {
-                            name: Name {
-                                name: intern("fromInteger"),
-                                uid: 0,
-                            },
+                            name: "fromInteger".into(),
                             typ: qualified(vec![], function_type_(int_type(), literal.typ.clone())),
                         });
                         let number = Literal(LiteralData {
@@ -719,10 +704,7 @@ impl<'a> Compiler<'a> {
                         instructions.push(PushFloat(f));
                     } else {
                         let from_rational = Identifier(Id {
-                            name: Name {
-                                name: intern("fromRational"),
-                                uid: 0,
-                            },
+                            name: "fromRational".into(),
                             typ: qualified(
                                 vec![],
                                 function_type_(double_type(), literal.typ.clone()),
@@ -911,7 +893,7 @@ impl<'a> Compiler<'a> {
                             }
                             ArgList::Nil => {
                                 //translate into id application
-                                let x = self.find(Name { name: intern("id"), uid: 0 })
+                                let x = self.find("id".into())
                                     .expect("Compiler error: Prelude.id must be in scope for compilation of newtype");
                                 match x {
                                     Var::Global(index) => {
@@ -1018,10 +1000,7 @@ impl<'a> Compiler<'a> {
         constraints: &[Constraint<Name>],
         instructions: &mut Vec<Instruction>,
     ) {
-        match self.find(Name {
-            name: intern("$dict"),
-            uid: 0,
-        }) {
+        match self.find("$dict".into()) {
             Some(Var::Stack(_)) => {
                 //Push dictionary or member of dictionary
                 match self.push_dictionary_member(constraints, name) {

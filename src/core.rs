@@ -48,11 +48,7 @@ impl Module<Id> {
             newtypes: vec![],
             instances: vec![],
             bindings: vec![Binding {
-                name: Id::new(
-                    Name {
-                        name: intern("main"),
-                        uid: 0,
-                    },
+                name: Id::new("main".into(),
                     expr.get_type().clone(),
                     vec![],
                 ),
@@ -804,20 +800,14 @@ pub mod translate {
             debug!("m_a {}", m_a);
             let c = match *m_a.appl() {
                 Type::Variable(ref var) => vec![Constraint {
-                    class: Name {
-                        name: intern("Monad"),
-                        uid: 0,
-                    },
+                    class: "Monad".into(),
                     variables: vec![var.clone()],
                 }],
                 _ => vec![],
             };
             let typ = function_type_(m_a, function_type_(m_b.clone(), m_b));
             Identifier(Id::new(
-                Name {
-                    name: intern(">>"),
-                    uid: 0,
-                },
+                ">>".into(),
                 typ,
                 c,
             ))
@@ -839,10 +829,7 @@ pub mod translate {
             debug!("m_a {}", m_a);
             let c = match *m_a.appl() {
                 Type::Variable(ref var) => vec![Constraint {
-                    class: Name {
-                        name: intern("Monad"),
-                        uid: 0,
-                    },
+                    class: "Monad".into(),
                     variables: vec![var.clone()],
                 }],
                 _ => vec![],
@@ -850,10 +837,7 @@ pub mod translate {
             let arg2_type = function_type_(a.clone(), m_b.clone());
             let bind_typ = function_type_(m_a, function_type_(arg2_type.clone(), m_b.clone()));
             let bind_ident = Identifier(Id::new(
-                Name {
-                    name: intern(">>="),
-                    uid: 0,
-                },
+                ">>=".into(),
                 bind_typ,
                 c.clone(),
             ));
@@ -870,10 +854,7 @@ pub mod translate {
                 c.clone(),
             ); //Constraints for a
             let fail_ident = Identifier(Id::new(
-                Name {
-                    name: intern("fail"),
-                    uid: 0,
-                },
+                "fail".into(),
                 function_type_(list_type(char_type()), m_b),
                 c,
             ));
@@ -1369,10 +1350,7 @@ pub mod translate {
     fn bool_pattern(s: &str) -> Pattern<Id<Name>> {
         Pattern::Constructor(
             Id::new(
-                Name {
-                    name: intern(s),
-                    uid: 0,
-                },
+                s.into(),
                 bool_type(),
                 vec![],
             ),
@@ -1484,10 +1462,7 @@ pub mod translate {
     ///Creates an expression which reports an unmatched guard error when executed
     fn unmatched_guard() -> Expr<Id<Name>> {
         let error_ident = Identifier(Id::new(
-            Name {
-                name: intern("error"),
-                uid: 0,
-            },
+            "error".into(),
             function_type_(list_type(char_type()), Type::new_var(intern("a"))),
             vec![],
         ));
