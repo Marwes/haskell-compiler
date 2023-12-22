@@ -1086,12 +1086,11 @@ impl<'a> Compiler<'a> {
         constraints: &[Constraint<Name>],
         name: Name,
     ) -> Option<usize> {
-        if constraints.is_empty() {
-            panic!(
-                "Attempted to push dictionary member '{:?}' with no constraints",
-                name
-            )
-        }
+        assert!(
+            !constraints.is_empty(),
+            "Attempted to push dictionary member '{:?}' with no constraints",
+            name
+        );
         let mut ii = 0;
         for c in constraints.iter() {
             let result =
@@ -1140,9 +1139,10 @@ impl<'a> Compiler<'a> {
             }
         }
 
-        if constraints.is_empty() {
-            panic!("Error: Attempted to compile dictionary with no constraints at <unknown>");
-        }
+        assert!(
+            !constraints.is_empty(),
+            "Error: Attempted to compile dictionary with no constraints at <unknown>"
+        );
         let mut function_indexes = vec![];
         self.add_class(constraints, &mut function_indexes);
         self.instance_dictionaries

@@ -966,7 +966,7 @@ impl<'a> TypeEnvironment<'a> {
                         }
                     }
                     match previous {
-                        Type::Application(ref mut _monad, ref mut typ) => {
+                        Type::Application(_, ref mut typ) => {
                             **typ = self.new_var();
                         }
                         _ => panic!(),
@@ -1004,14 +1004,13 @@ impl<'a> TypeEnvironment<'a> {
         let arg_type = self.typecheck(arg, subs);
         let mut result = typ::function_type_(arg_type, self.new_var());
         unify_location(self, subs, location, &mut func_type, &mut result);
-        result = match result {
+        match result {
             Type::Application(_, x) => *x,
             _ => panic!(
                 "Must be a type application (should be a function type), found {:?}",
                 result
             ),
-        };
-        result
+        }
     }
     ///Typechecks a pattern.
     ///Checks that the pattern has the type 'match_type' and adds all variables in the pattern.
@@ -1084,12 +1083,11 @@ impl<'a> TypeEnvironment<'a> {
             };
         let mut previous_type = None;
         for bind in bindings.iter_mut() {
-            if argument_types.len() != bind.arguments.len() {
-                panic!(
-                    "Binding {:?} do not have the same number of arguments",
-                    bind.name
-                ); //TODO re add location
-            }
+            assert!(
+                argument_types.len() == bind.arguments.len(),
+                "Binding {:?} do not have the same number of arguments",
+                bind.name
+            ); //TODO re add location
             for (arg, typ) in bind.arguments.iter_mut().zip(argument_types.iter_mut()) {
                 self.typecheck_pattern(&Location::eof(), subs, arg, typ);
             }
@@ -1344,12 +1342,12 @@ pub fn find_specialized_instances(
     );
     let mut result = vec![];
     find_specialized(&mut result, actual_type, typ, constraints);
-    if constraints.is_empty() {
-        panic!(
-            "Could not find the specialized instance between {:?} <-> {:?}",
-            typ, actual_type
-        );
-    }
+    assert!(
+        !constraints.is_empty(),
+        "Could not find the specialized instance between {:?} <-> {:?}",
+        typ,
+        actual_type
+    );
     result
 }
 fn find_specialized(
