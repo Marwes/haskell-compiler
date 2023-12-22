@@ -712,7 +712,7 @@ pub mod translate {
                         r,
                     )
                 }
-                module::Expr::Literal(l) => Literal(LiteralData { typ: typ, value: l }),
+                module::Expr::Literal(l) => Literal(LiteralData { typ, value: l }),
                 module::Expr::Lambda(arg, body) => match arg {
                     module::Pattern::Identifier(arg) => Lambda(
                         Id::new(arg, typ, vec![]),
@@ -1335,29 +1335,29 @@ pub mod translate {
     impl<'a, Id: AsRef<str>> Iterator for LambdaIterator<'a, Id> {
         type Item = &'a Type<Id>;
         fn next(&mut self) -> Option<&'a Type<Id>> {
-            match *self.typ {
-                Type::Application(ref lhs, ref rhs) => match **lhs {
-                    Type::Application(ref func, _) => {
-                        match **func {
-                            Type::Constructor(ref op) if op.name.as_ref() == "->" => {
-                                let func = self.typ;
-                                self.typ = &**rhs;
-                                Some(func)
-                            }
-                            _ => None,
-                        }
-                    }
-                    _ => None,
-                },
-                _ => None,
+            let Type::Application(ref lhs, ref rhs) = self.typ else {
+                return None;
+            };
+
+            let Type::Application(ref func, _) = **lhs else {
+                return None;
+            };
+
+            let Type::Constructor(ref op) = **func else {
+                return None;
+            };
+
+            if op.name.as_ref() != "->" {
+                return None;
             }
+            std::mem::replace(&mut self.typ, rhs).into()
         }
     }
     //Creates an iterator which walks through all the function types that are needed
     //when creating a lambda with make_lambda
     //Ex: (a -> b -> c) generates [(a -> b -> c), (b -> c)]
     fn lambda_iterator<'a, Id: AsRef<str>>(typ: &'a Type<Id>) -> LambdaIterator<'a, Id> {
-        LambdaIterator { typ: typ }
+        LambdaIterator { typ }
     }
     ///Tests that the binding has no patterns for its arguments
     fn simple_binding(binding: &module::Binding<Name>) -> bool {
