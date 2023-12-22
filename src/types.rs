@@ -40,6 +40,7 @@ pub enum Type<Ident = InternedStr> {
     Application(Box<Self>, Box<Self>),
     Generic(TypeVariable),
 }
+
 #[derive(Clone, Debug, Default, Hash)]
 pub struct Qualified<T, Ident = InternedStr> {
     pub constraints: Vec<Constraint<Ident>>,

@@ -162,14 +162,11 @@ impl<Iter: Iterator<Item = char>> Parser<Iter> {
         };
 
         let mut imports = vec![];
-        loop {
-            if self.lexer.peek().token == IMPORT {
-                imports.push(self.import()?);
-                if self.lexer.peek().token == SEMICOLON {
-                    self.lexer.next();
-                } else {
-                    break;
-                }
+
+        while self.lexer.peek().token == IMPORT {
+            imports.push(self.import()?);
+            if self.lexer.peek().token == SEMICOLON {
+                self.lexer.next();
             } else {
                 break;
             }
