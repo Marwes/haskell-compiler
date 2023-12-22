@@ -282,22 +282,19 @@ impl<Iter: Iterator<Item = char>> Parser<Iter> {
 
         expect!(self, RBRACE);
 
-        match typ {
-            Type::Application(l, r) => match (*l, *r) {
-                (Type::Constructor(classname), Type::Variable(var)) => {
-                    return Ok(Class {
-                        constraints,
-                        name: classname.name,
-                        variable: var,
-                        declarations,
-                        bindings,
-                    });
-                }
-                _ => (),
-            },
-            _ => (),
-        }
-        self.error("Parse error in class declaration header".to_string())
+        let Type::Application(l, r) = typ else {
+            return self.error("Parse error in class declaration header".to_string());
+        };
+        let (Type::Constructor(classname), Type::Variable(var)) = (*l, *r) else {
+            return self.error("Parse error in class declaration header".to_string());
+        };
+        Ok(Class {
+            constraints,
+            name: classname.name,
+            variable: var,
+            declarations,
+            bindings,
+        })
     }
 
     fn instance(&mut self) -> ParseResult<Instance> {
