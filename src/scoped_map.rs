@@ -40,13 +40,8 @@ where
     ///Exits the current scope, removing anything inserted since the
     ///matching enter_scope call
     pub fn exit_scope(&mut self) {
-        loop {
-            match self.scopes.pop() {
-                Some(Some(key)) => {
-                    self.map.get_mut(&key).map(|x| x.pop());
-                }
-                _ => break,
-            }
+        while let Some(key) = self.scopes.pop().flatten() {
+            self.map.get_mut(&key).map(|x| x.pop());
         }
     }
     ///Removes a previusly inserted value from the map.

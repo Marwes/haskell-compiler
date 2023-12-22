@@ -290,17 +290,13 @@ impl<Stream: Iterator<Item = char>> Lexer<Stream> {
     ///Scans digits into a string
     fn scan_digits(&mut self) -> String {
         let mut result = String::new();
-        loop {
-            match self.peek_char() {
-                Some(x) => {
-                    if !x.is_digit(10) {
-                        break;
-                    }
-                    self.read_char();
-                    result.push(x)
-                }
-                None => break,
+
+        while let Some(x) = self.peek_char() {
+            if !x.is_digit(10) {
+                break;
             }
+            self.read_char();
+            result.push(x)
         }
         result
     }
