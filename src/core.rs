@@ -92,10 +92,8 @@ pub enum Pattern<Ident> {
 #[derive(Clone, Debug, PartialEq)]
 pub struct LiteralData {
     pub typ: TcType,
-    pub value: Literal_,
+    pub value: module::LiteralData,
 }
-
-pub type Literal_ = module::LiteralData;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Expr<Ident> {
@@ -179,8 +177,7 @@ impl<Ident: Typed> Typed for Pattern<Ident> {
     fn get_type<'a>(&'a self) -> &'a Type<Ident::Id> {
         match *self {
             Self::Identifier(ref name) | Self::Constructor(ref name, _) => name.get_type(),
-            Self::Number(_) => panic!(),
-            Self::WildCard => panic!(),
+            Self::Number(_) | Self::WildCard => panic!(),
         }
     }
 }
