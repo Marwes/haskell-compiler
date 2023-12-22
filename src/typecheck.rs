@@ -361,12 +361,9 @@ impl<'a> TypeEnvironment<'a> {
                 };
                 //If we found the variable, update it immediatly since the kind of th variable
                 //matters when looking for constraints, etc
-                match var_kind {
-                    Some(ref k) => {
-                        class.variable.kind.clone_from(k);
-                    }
-                    None => (),
-                }
+                if let Some(ref k) = var_kind {
+                    class.variable.kind.clone_from(k);
+                };
 
                 let c = Constraint {
                     class: class.name.clone(),
@@ -1133,11 +1130,8 @@ impl<'a> TypeEnvironment<'a> {
                 &mut bindings[0].typ.value,
             );
         }
-        match type_var {
-            Some(var) => {
-                subs.subs.insert(var, final_type);
-            }
-            None => (),
+        if let Some(var) = type_var {
+            subs.subs.insert(var, final_type);
         }
         for bind in bindings.iter_mut() {
             match bind.matches {
@@ -1506,9 +1500,8 @@ fn freshen(env: &mut TypeEnvironment, subs: &mut Substitution, typ: &mut Qualifi
     }
     freshen_(env, subs, &*typ.constraints, &mut typ.value);
     for constraint in typ.constraints.iter_mut() {
-        match subs.subs.get(&constraint.variables[0]) {
-            Some(new) => constraint.variables[0] = new.var().clone(),
-            None => (),
+        if let Some(new) = subs.subs.get(&constraint.variables[0]) {
+            constraint.variables[0] = new.var().clone();
         }
     }
 }
@@ -1523,9 +1516,8 @@ fn freshen_all(env: &mut TypeEnvironment, subs: &mut Substitution, typ: &mut TcT
         }
         _ => None,
     };
-    match result {
-        Some(x) => *typ = x,
-        None => (),
+    if let Some(x) = result {
+        *typ = x;
     }
 }
 ///Updates the variable var, also making sure the constraints are updated appropriately
@@ -1857,13 +1849,13 @@ fn add_edges<T: 'static>(
     }
     impl<'a, T: 'static> Visitor<Name> for EdgeVisitor<'a, T> {
         fn visit_expr(&mut self, expr: &TypedExpr<Name>) {
-            match expr.expr {
-                Identifier(ref n) => match self.map.get(n) {
-                    Some(index) => self.graph.connect(self.function_index, *index),
-                    None => (),
-                },
-                _ => walk_expr(self, expr),
-            }
+            let Identifier(ref n) = expr.expr else {
+                return walk_expr(self, expr);
+            };
+
+            self.map
+                .get(n)
+                .map(|index| self.graph.connect(self.function_index, *index));
         }
     }
     EdgeVisitor {
