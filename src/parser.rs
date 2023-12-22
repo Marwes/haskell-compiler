@@ -434,8 +434,7 @@ impl<Iter: Iterator<Item = char>> Parser<Iter> {
                 expect!(self, LBRACE);
                 let alts = self.sep_by_1(|this| this.alternative(), SEMICOLON)?;
                 expect!(self, RBRACE);
-                self.expression()?
-                    .map(|e| TypedExpr::with_location(Case(Box::new(e), alts), location))
+                expr.map(|e| TypedExpr::with_location(Case(Box::new(e), alts), location))
             }
             IF => {
                 let location = self.lexer.current().location;
@@ -465,7 +464,8 @@ impl<Iter: Iterator<Item = char>> Parser<Iter> {
                 expect!(self, LBRACE);
                 let mut bindings = self.sep_by_1(|this| this.do_binding(), SEMICOLON)?;
                 expect!(self, RBRACE);
-                if bindings.is_empty() {
+
+                let Some(expr) = bindings.pop() else {
                     return Err(ParseError(Located {
                         location: self.lexer.current().location,
                         node: Error::Message(format!(
@@ -473,16 +473,14 @@ impl<Iter: Iterator<Item = char>> Parser<Iter> {
                             self.lexer.current().location
                         )),
                     }));
-                }
-                let expr =
-                    match bindings.pop().unwrap() {
-                        DoBinding::DoExpr(e) => e,
-                        _ => {
-                            return self.error(
-                                "Parse error: Last binding in do must be an expression".to_string(),
-                            )
-                        }
-                    };
+                };
+
+                let DoBinding::DoExpr(expr) = expr else {
+                    return self.error(
+                        "Parse error: Last binding in do must be an expression".to_string(),
+                    );
+                };
+
                 Some(TypedExpr::with_location(
                     Do(bindings, Box::new(expr)),
                     location,
