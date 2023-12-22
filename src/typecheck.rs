@@ -615,11 +615,7 @@ impl<'a> TypeEnvironment<'a> {
                 walk_expr_mut(self, expr);
             }
         }
-        SubVisitor {
-            env: self,
-            subs: subs,
-        }
-        .visit_expr(expr);
+        SubVisitor { env: self, subs }.visit_expr(expr);
     }
 
     ///Returns whether the type 'searched_type' has an instance for 'class'
@@ -1584,7 +1580,7 @@ fn unify_location(
             location: location.clone(),
             lhs: lhs.clone(),
             rhs: rhs.clone(),
-            error: error,
+            error,
         }),
     }
 }
@@ -1789,7 +1785,7 @@ fn match_or_fail(
             location: location.clone(),
             lhs: lhs.clone(),
             rhs: rhs.clone(),
-            error: error,
+            error,
         }),
     }
 }
@@ -1883,9 +1879,9 @@ fn add_edges<T: 'static>(
         }
     }
     EdgeVisitor {
-        graph: graph,
-        map: map,
-        function_index: function_index,
+        graph,
+        map,
+        function_index,
     }
     .visit_expr(expr)
 }

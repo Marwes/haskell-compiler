@@ -352,7 +352,7 @@ impl Renamer {
                         DoBind(pattern, expr) => {
                             let Located { location, node } = pattern;
                             let loc = Located {
-                                location: location,
+                                location,
                                 node: self.rename_pattern(node),
                             };
                             DoBind(loc, self.rename(expr))
@@ -431,7 +431,7 @@ impl Renamer {
             .into_iter()
             .map(|Constraint { class, variables }| Constraint {
                 class: self.get_name(class),
-                variables: variables,
+                variables,
             })
             .collect();
         qualified(constraints2, self.rename_type(typ))
@@ -509,20 +509,19 @@ fn rename_module_(
         fixity_declarations,
     } = module;
 
-    let imports2: Vec<Import<Name>> =
-        imports
-            .into_iter()
-            .map(|import| {
-                let imports = import.imports.as_ref().map(|x| {
-                    let is: Vec<Name> = x.iter().map(|&x| renamer.get_name(x)).collect();
-                    is
-                });
-                Import {
-                    module: import.module,
-                    imports: imports,
-                }
-            })
-            .collect();
+    let imports2: Vec<Import<Name>> = imports
+        .into_iter()
+        .map(|import| {
+            let imports = import.imports.as_ref().map(|x| {
+                let is: Vec<Name> = x.iter().map(|&x| renamer.get_name(x)).collect();
+                is
+            });
+            Import {
+                module: import.module,
+                imports,
+            }
+        })
+        .collect();
 
     let data_definitions2: Vec<DataDefinition<Name>> = data_definitions
         .into_iter()
@@ -545,8 +544,8 @@ fn rename_module_(
                     Constructor {
                         name: renamer.get_name(name),
                         typ: renamer.rename_qualified_type(typ),
-                        tag: tag,
-                        arity: arity,
+                        tag,
+                        arity,
                     }
                 })
                 .collect();
@@ -554,7 +553,7 @@ fn rename_module_(
 
             DataDefinition {
                 typ: renamer.rename_qualified_type(typ),
-                parameters: parameters,
+                parameters,
                 constructors: c,
                 deriving: d,
             }
@@ -572,7 +571,7 @@ fn rename_module_(
             } = newtype;
             let deriving2: Vec<Name> = deriving.into_iter().map(|s| renamer.get_name(s)).collect();
             Newtype {
-                typ: typ,
+                typ,
                 constructor_name: renamer.get_name(constructor_name),
                 constructor_type: renamer.rename_qualified_type(constructor_type),
                 deriving: deriving2,
@@ -589,14 +588,13 @@ fn rename_module_(
                 typ,
                 classname,
             } = instance;
-            let constraints2: Vec<Constraint<Name>> =
-                constraints
-                    .into_iter()
-                    .map(|Constraint { class, variables }| Constraint {
-                        class: renamer.get_name(class),
-                        variables: variables,
-                    })
-                    .collect();
+            let constraints2: Vec<Constraint<Name>> = constraints
+                .into_iter()
+                .map(|Constraint { class, variables }| Constraint {
+                    class: renamer.get_name(class),
+                    variables,
+                })
+                .collect();
             Instance {
                 bindings: renamer.rename_bindings(bindings, true),
                 constraints: constraints2,
@@ -616,14 +614,13 @@ fn rename_module_(
                 declarations,
                 bindings,
             } = class;
-            let constraints2: Vec<Constraint<Name>> =
-                constraints
-                    .into_iter()
-                    .map(|Constraint { class, variables }| Constraint {
-                        class: renamer.get_name(class),
-                        variables: variables,
-                    })
-                    .collect();
+            let constraints2: Vec<Constraint<Name>> = constraints
+                .into_iter()
+                .map(|Constraint { class, variables }| Constraint {
+                    class: renamer.get_name(class),
+                    variables,
+                })
+                .collect();
             Class {
                 constraints: constraints2,
                 name: renamer.get_name(name),

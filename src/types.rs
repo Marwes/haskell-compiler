@@ -185,7 +185,7 @@ impl<Id> Type<Id> {
             Type::Constructor(TypeConstructor { name, kind }) => {
                 Type::Constructor(TypeConstructor {
                     name: f(name),
-                    kind: kind,
+                    kind,
                 })
             }
             Type::Application(lhs, rhs) => {

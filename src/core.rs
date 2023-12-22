@@ -529,9 +529,9 @@ pub mod translate {
                 .into_iter()
                 .collect();
             new_instances.push(Instance {
-                constraints: constraints,
-                typ: typ,
-                classname: classname,
+                constraints,
+                typ,
+                classname,
                 bindings: bs,
             });
         }
@@ -553,8 +553,8 @@ pub mod translate {
         }
         Module {
             classes: classes2,
-            data_definitions: data_definitions,
-            newtypes: newtypes,
+            data_definitions,
+            newtypes,
             bindings: bs,
             instances: new_instances,
         }

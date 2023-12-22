@@ -443,7 +443,7 @@ impl<'a> Compiler<'a> {
             stack_size: 0,
             assemblies: vec![],
             module: None,
-            variables: variables,
+            variables,
             context: vec![],
         }
     }
@@ -499,7 +499,7 @@ impl<'a> Compiler<'a> {
                     )
                 })
                 .collect(),
-            data_definitions: data_definitions,
+            data_definitions,
         }
     }
 
@@ -536,8 +536,8 @@ impl<'a> Compiler<'a> {
             assembly_id: self.assemblies.len(),
             typ: bind.name.typ.clone(),
             name: bind.name.name,
-            arity: arity,
-            instructions: instructions,
+            arity,
+            instructions,
         }
     }
 

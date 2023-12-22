@@ -211,14 +211,14 @@ impl<Iter: Iterator<Item = char>> Parser<Iter> {
 
         Ok(Module {
             name: modulename,
-            imports: imports,
-            bindings: bindings,
-            type_declarations: type_declarations,
-            classes: classes,
-            instances: instances,
-            data_definitions: data_definitions,
-            newtypes: newtypes,
-            fixity_declarations: fixity_declarations,
+            imports,
+            bindings,
+            type_declarations,
+            classes,
+            instances,
+            data_definitions,
+            newtypes,
+            fixity_declarations,
         })
     }
 
@@ -241,7 +241,7 @@ impl<Iter: Iterator<Item = char>> Parser<Iter> {
         };
         Ok(Import {
             module: module_name,
-            imports: imports,
+            imports,
         })
     }
 
@@ -286,11 +286,11 @@ impl<Iter: Iterator<Item = char>> Parser<Iter> {
             Type::Application(l, r) => match (*l, *r) {
                 (Type::Constructor(classname), Type::Variable(var)) => {
                     return Ok(Class {
-                        constraints: constraints,
+                        constraints,
                         name: classname.name,
                         variable: var,
-                        declarations: declarations,
-                        bindings: bindings,
+                        declarations,
+                        bindings,
                     });
                 }
                 _ => (),
@@ -326,9 +326,9 @@ impl<Iter: Iterator<Item = char>> Parser<Iter> {
                 expect!(self, RBRACE);
                 Ok(Instance {
                     typ: *arg,
-                    classname: classname,
-                    bindings: bindings,
-                    constraints: constraints,
+                    classname,
+                    bindings,
+                    constraints,
                 })
             }
             _ => return self.error("TypeVariable in instance".to_string()),
@@ -360,7 +360,7 @@ impl<Iter: Iterator<Item = char>> Parser<Iter> {
                         TypeSig(
                             Box::new(expr),
                             Qualified {
-                                constraints: constraints,
+                                constraints,
                                 value: typ,
                             },
                         ),
@@ -599,8 +599,8 @@ impl<Iter: Iterator<Item = char>> Parser<Iter> {
         };
         Ok(Alternative {
             pattern: pat,
-            matches: matches,
-            where_bindings: where_bindings,
+            matches,
+            where_bindings,
         })
     }
 
@@ -682,7 +682,7 @@ impl<Iter: Iterator<Item = char>> Parser<Iter> {
             name,
             typ: qualified(vec![], typ),
             tag: 0,
-            arity: arity,
+            arity,
         })
     }
 
@@ -718,9 +718,9 @@ impl<Iter: Iterator<Item = char>> Parser<Iter> {
         Ok(Binding {
             name: name.clone(),
             typ: Default::default(),
-            arguments: arguments,
-            where_bindings: where_bindings,
-            matches: matches,
+            arguments,
+            where_bindings,
+            matches,
         })
     }
 
@@ -769,9 +769,9 @@ impl<Iter: Iterator<Item = char>> Parser<Iter> {
         };
         let operators = self.sep_by_1(|this| Ok(expect!(this, OPERATOR).value), COMMA)?;
         Ok(FixityDeclaration {
-            assoc: assoc,
-            precedence: precedence,
-            operators: operators,
+            assoc,
+            precedence,
+            operators,
         })
     }
 
@@ -853,7 +853,7 @@ impl<Iter: Iterator<Item = char>> Parser<Iter> {
         let location = self.lexer.next().location;
         self.lexer.backtrack();
         self.pattern().map(|pattern| Located {
-            location: location,
+            location,
             node: pattern,
         })
     }
