@@ -341,30 +341,30 @@ pub fn walk_binding<Ident, V: Visitor<Ident>>(visitor: &mut V, binding: &Binding
 pub fn walk_expr<Ident, V: Visitor<Ident>>(visitor: &mut V, expr: &TypedExpr<Ident>) {
     match &expr.expr {
         &Apply(ref func, ref arg) => {
-            visitor.visit_expr(&**func);
-            visitor.visit_expr(&**arg);
+            visitor.visit_expr(func);
+            visitor.visit_expr(arg);
         }
         &OpApply(ref lhs, _, ref rhs) => {
-            visitor.visit_expr(&**lhs);
-            visitor.visit_expr(&**rhs);
+            visitor.visit_expr(lhs);
+            visitor.visit_expr(rhs);
         }
-        &Lambda(_, ref body) => visitor.visit_expr(&**body),
+        &Lambda(_, ref body) => visitor.visit_expr(body),
         &Let(ref binds, ref e) => {
             for b in binds.iter() {
                 visitor.visit_binding(b);
             }
-            visitor.visit_expr(&**e);
+            visitor.visit_expr(e);
         }
         &Case(ref e, ref alts) => {
-            visitor.visit_expr(&**e);
+            visitor.visit_expr(e);
             for alt in alts.iter() {
                 visitor.visit_alternative(alt);
             }
         }
         &IfElse(ref pred, ref if_true, ref if_false) => {
-            visitor.visit_expr(&**pred);
-            visitor.visit_expr(&**if_true);
-            visitor.visit_expr(&**if_false);
+            visitor.visit_expr(pred);
+            visitor.visit_expr(if_true);
+            visitor.visit_expr(if_false);
         }
         &Do(ref binds, ref expr) => {
             for bind in binds.iter() {
@@ -381,10 +381,10 @@ pub fn walk_expr<Ident, V: Visitor<Ident>>(visitor: &mut V, expr: &TypedExpr<Ide
                     DoBinding::DoExpr(ref e) => visitor.visit_expr(e),
                 }
             }
-            visitor.visit_expr(&**expr);
+            visitor.visit_expr(expr);
         }
-        &TypeSig(ref expr, _) => visitor.visit_expr(&**expr),
-        &Paren(ref expr) => visitor.visit_expr(&**expr),
+        &TypeSig(ref expr, _) => visitor.visit_expr(expr),
+        &Paren(ref expr) => visitor.visit_expr(expr),
         &Literal(..) | &Identifier(..) => (),
     }
 }

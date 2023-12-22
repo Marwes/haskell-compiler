@@ -292,7 +292,7 @@ test2 x =
     fn check_args(expr: &Expr<Id>, args: &[InternedStr]) -> bool {
         match expr {
             &Lambda(ref arg, ref body) => {
-                arg.name.name == args[0] && check_args(&**body, &args[1..])
+                arg.name.name == args[0] && check_args(body, &args[1..])
             }
             _ => args.is_empty(),
         }
@@ -309,7 +309,7 @@ test2 x =
                     Identifier(ref i) => args.push(i.name.name),
                     _ => panic!("Expected identifier as argument"),
                 }
-                get_let(&**f, args)
+                get_let(f, args)
             }
             _ => expr,
         }
@@ -385,7 +385,7 @@ test2 x =
     fn no_local_lambdas() {
         fn skip_lambdas<T>(expr: &Expr<T>) -> &Expr<T> {
             match expr {
-                &Lambda(_, ref body) => skip_lambdas(&**body),
+                &Lambda(_, ref body) => skip_lambdas(body),
                 _ => expr,
             }
         }

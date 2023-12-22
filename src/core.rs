@@ -159,7 +159,7 @@ impl<Ident: Typed<Id = Name>> Typed for Expr<Ident> {
             &Self::Literal(ref lit) => &lit.typ,
             &Self::Apply(ref func, _) => {
                 match func.get_type() {
-                    &Type::Application(_, ref a) => &**a,
+                    &Type::Application(_, ref a) => a,
                     x => panic!(
                         "The function in Apply must be a type application, found {}",
                         x
@@ -260,18 +260,18 @@ pub mod ref_ {
     pub fn walk_expr<V: Visitor<Ident>, Ident>(visitor: &mut V, expr: &Expr<Ident>) {
         match expr {
             &Apply(ref func, ref arg) => {
-                visitor.visit_expr(&**func);
-                visitor.visit_expr(&**arg);
+                visitor.visit_expr(func);
+                visitor.visit_expr(arg);
             }
-            &Lambda(_, ref body) => visitor.visit_expr(&**body),
+            &Lambda(_, ref body) => visitor.visit_expr(body),
             &Let(ref binds, ref e) => {
                 for b in binds.iter() {
                     visitor.visit_binding(b);
                 }
-                visitor.visit_expr(&**e);
+                visitor.visit_expr(e);
             }
             &Case(ref e, ref alts) => {
-                visitor.visit_expr(&**e);
+                visitor.visit_expr(e);
                 for alt in alts.iter() {
                     visitor.visit_alternative(alt);
                 }
@@ -653,7 +653,7 @@ pub mod translate {
         fn translate_match(&mut self, matches: module::Match<Name>) -> Expr<Id<Name>> {
             match matches {
                 module::Match::Simple(e) => self.translate_expr(e),
-                module::Match::Guards(ref gs) => self.translate_guards(unmatched_guard(), &**gs),
+                module::Match::Guards(ref gs) => self.translate_guards(unmatched_guard(), gs),
             }
         }
 
@@ -1051,7 +1051,7 @@ pub mod translate {
                 for _ in 0..binding0.arguments.len() {
                     arg_ids.push(Id::new(self.name_supply.from_str("arg"), typ.clone(), vec![]));
                     typ = match *typ {
-                        Type::Application(_, ref next) => &**next,
+                        Type::Application(_, ref next) => next,
                         _ => typ, //We dont actually have a function type which we need, so we are likely in a unittest
                                   //just reuse the same type so we do not crash
                     };
@@ -1185,7 +1185,7 @@ pub mod translate {
                                 pattern: ps[0].1.clone(),
                                 expression: make_let(
                                     bindings,
-                                    self.translate_guards(fallthrough, &**guards),
+                                    self.translate_guards(fallthrough, guards),
                                 ),
                             });
                         }

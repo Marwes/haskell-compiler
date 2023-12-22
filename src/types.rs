@@ -139,7 +139,7 @@ impl<Id: fmt::Display + AsRef<str>> Type<Id> {
     #[allow(dead_code)]
     pub fn appl(&self) -> &Self {
         match self {
-            &Self::Application(ref lhs, _) => &**lhs,
+            &Self::Application(ref lhs, _) => lhs,
             _ => panic!("Error: Tried to unwrap {} as TypeApplication", self),
         }
     }
@@ -147,7 +147,7 @@ impl<Id: fmt::Display + AsRef<str>> Type<Id> {
     ///Returns a reference to the the type argument or fails if it is not an application
     pub fn appr(&self) -> &Self {
         match self {
-            &Self::Application(_, ref rhs) => &**rhs,
+            &Self::Application(_, ref rhs) => rhs,
             _ => panic!("Error: Tried to unwrap TypeApplication"),
         }
     }
@@ -160,7 +160,7 @@ impl<Id: fmt::Display + AsRef<str>> Type<Id> {
             &Self::Constructor(ref v) => &v.kind,
             &Self::Application(ref lhs, _) => {
                 match lhs.kind() {
-                    &Kind::Function(_, ref kind) => &**kind,
+                    &Kind::Function(_, ref kind) => kind,
                     _ => panic!(
                         "Type application must have a kind of Kind::Function, {}",
                         self
@@ -415,15 +415,15 @@ impl<'a, Id: fmt::Display + AsRef<str>> fmt::Display for Prec<'a, Id> {
                                 write!(
                                     f,
                                     "({} {})",
-                                    Prec(Prec_::Function, &**lhs),
-                                    Prec(Prec_::Constructor, &**rhs)
+                                    Prec(Prec_::Function, lhs),
+                                    Prec(Prec_::Constructor, rhs)
                                 )
                             } else {
                                 write!(
                                     f,
                                     "{} {}",
-                                    Prec(Prec_::Function, &**lhs),
-                                    Prec(Prec_::Constructor, &**rhs)
+                                    Prec(Prec_::Function, lhs),
+                                    Prec(Prec_::Constructor, rhs)
                                 )
                             }
                         }
@@ -460,7 +460,7 @@ where
         (&Type::Constructor(ref l), &Type::Constructor(ref r)) => l.name == r.name,
         (&Type::Variable(ref r), &Type::Variable(ref l)) => var_eq(mapping, r, l),
         (&Type::Application(ref lhs1, ref rhs1), &Type::Application(ref lhs2, ref rhs2)) => {
-            type_eq(mapping, &**lhs1, &**lhs2) && type_eq(mapping, &**rhs1, &**rhs2)
+            type_eq(mapping, lhs1, lhs2) && type_eq(mapping, rhs1, rhs2)
         }
         _ => false,
     }
@@ -504,7 +504,7 @@ where
 
 pub fn extract_applied_type<Id>(typ: &Type<Id>) -> &Type<Id> {
     match *typ {
-        Type::Application(ref lhs, _) => extract_applied_type(&**lhs),
+        Type::Application(ref lhs, _) => extract_applied_type(lhs),
         _ => typ,
     }
 }

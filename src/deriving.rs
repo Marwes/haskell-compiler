@@ -151,7 +151,7 @@ impl DerivingGen {
                         },
                         variables: vec![param.var().clone()],
                     });
-                    make_constraints(result, class, &**f)
+                    make_constraints(result, class, f)
                 }
                 _ => result,
             }
@@ -311,7 +311,7 @@ impl<'a> Iterator for ArgIterator<'a> {
 }
 fn extract_applied_type<'a, Id>(typ: &'a Type<Id>) -> &'a Type<Id> {
     match typ {
-        &Type::Application(ref lhs, _) => extract_applied_type(&**lhs),
+        &Type::Application(ref lhs, _) => extract_applied_type(lhs),
         _ => typ,
     }
 }

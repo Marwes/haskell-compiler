@@ -228,7 +228,7 @@ fn find_global<'a>(module: &'a Module<Id>, offset: usize, name: Name) -> Option<
             let typ = bind.expression.get_type();
             let constraints = &bind.name.typ.constraints;
             if constraints.len() > 0 {
-                Var::Constraint(offset + global_index, typ, &**constraints)
+                Var::Constraint(offset + global_index, typ, constraints)
             } else {
                 Var::Global(offset + global_index)
             }
@@ -379,11 +379,11 @@ impl Types for Assembly {
         for &(ref constraints, ref op) in self.instances.iter() {
             match op {
                 &Type::Application(ref op, ref t) => {
-                    let x = match extract_applied_type(&**op) {
+                    let x = match extract_applied_type(op) {
                         &Type::Constructor(ref x) => x,
                         _ => panic!(),
                     };
-                    let y = match extract_applied_type(&**t) {
+                    let y = match extract_applied_type(t) {
                         &Type::Constructor(ref x) => x,
                         _ => panic!(),
                     };
@@ -392,7 +392,7 @@ impl Types for Assembly {
                         _ => panic!(),
                     };
                     if classname.name == x.name && y.name == z.name {
-                        return Some((constraints.as_ref(), &**t));
+                        return Some((constraints.as_ref(), t));
                     }
                 }
                 _ => (),
@@ -549,7 +549,7 @@ impl<'a> Compiler<'a> {
         match expr {
             &Lambda(ref ident, ref body) => {
                 self.new_stack_var(ident.name.clone());
-                1 + self.compile_lambda_binding(&**body, instructions)
+                1 + self.compile_lambda_binding(body, instructions)
             }
             _ => {
                 self.compile(expr, instructions, true);
@@ -731,12 +731,12 @@ impl<'a> Compiler<'a> {
                         this.compile(&bind.expression, instructions, false);
                         this.stack_size += 1;
                     }
-                    this.compile(&**body, instructions, strict);
+                    this.compile(body, instructions, strict);
                     instructions.push(Slide(bindings.len()));
                 });
             }
             &Case(ref body, ref alternatives) => {
-                self.compile(&**body, instructions, true);
+                self.compile(body, instructions, true);
                 self.stack_size += 1;
                 //Dummy variable for the case expression
                 //Storage for all the jumps that should go to the end of the case expression
@@ -796,8 +796,8 @@ impl<'a> Compiler<'a> {
         match *expr {
             Apply(ref func, ref arg) => {
                 return self.compile_apply(
-                    &**func,
-                    ArgList::Cons(&**arg, &args),
+                    func,
+                    ArgList::Cons(arg, &args),
                     instructions,
                     strict,
                 )
@@ -1045,8 +1045,8 @@ impl<'a> Compiler<'a> {
                 debug!("App for ({:?} {:?})", lhs, rhs);
                 //For function in functions
                 // Mkap function fold_dictionary(rhs)
-                self.fold_dictionary(class, &**lhs, instructions);
-                self.fold_dictionary(class, &**rhs, instructions);
+                self.fold_dictionary(class, lhs, instructions);
+                self.fold_dictionary(class, rhs, instructions);
                 instructions.push(MkapDictionary);
             }
             Type::Variable(ref var) => {
@@ -1247,8 +1247,8 @@ fn try_find_instance_type<'a>(
             None
         }
         (&Type::Application(ref lhs1, ref rhs1), &Type::Application(ref lhs2, ref rhs2)) => {
-            try_find_instance_type(class_var, &**lhs1, &**lhs2)
-                .or_else(|| try_find_instance_type(class_var, &**rhs1, &**rhs2))
+            try_find_instance_type(class_var, lhs1, lhs2)
+                .or_else(|| try_find_instance_type(class_var, rhs1, rhs2))
         }
         _ => None,
     }

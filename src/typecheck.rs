@@ -651,7 +651,7 @@ impl<'a> TypeEnvironment<'a> {
             if class == *name {
                 let result =
                     self.check_instance_constraints(
-                        &**constraints,
+                        constraints,
                         typ,
                         searched_type,
                         new_constraints,
@@ -708,7 +708,7 @@ impl<'a> TypeEnvironment<'a> {
                         .filter(|c| c.variables[0] == *rvar)
                         .map(|constraint| {
                             let result =
-                                self.has_instance(constraint.class, &**rtype, new_constraints);
+                                self.has_instance(constraint.class, rtype, new_constraints);
                             if result.is_ok() {
                                 match **rtype {
                                     Type::Variable(ref var) => {
@@ -726,8 +726,8 @@ impl<'a> TypeEnvironment<'a> {
                         .unwrap_or_else(|| {
                             self.check_instance_constraints(
                                 constraints,
-                                &**lvar,
-                                &**ltype,
+                                lvar,
+                                ltype,
                                 new_constraints,
                             )
                         })
@@ -1042,7 +1042,7 @@ impl<'a> TypeEnvironment<'a> {
                 unify_location(self, subs, location, &mut data_type, match_type);
                 replace(&mut self.constraints, &mut t, subs);
                 self.apply_locals(subs);
-                self.pattern_rec(0, location, subs, &**patterns, &mut t);
+                self.pattern_rec(0, location, subs, patterns, &mut t);
             }
             &Pattern::WildCard => {}
         }
@@ -1365,8 +1365,8 @@ fn find_specialized(
             }
         }
         (&Type::Application(ref lhs1, ref rhs1), &Type::Application(ref lhs2, ref rhs2)) => {
-            find_specialized(result, &**lhs1, &**lhs2, constraints);
-            find_specialized(result, &**rhs1, &**rhs2, constraints);
+            find_specialized(result, lhs1, lhs2, constraints);
+            find_specialized(result, rhs1, rhs2, constraints);
         }
         (_, &Type::Generic(ref var)) => {
             for c in constraints.iter().filter(|c| c.variables[0] == *var) {
@@ -1450,7 +1450,7 @@ fn get_returntype(typ: &TcType) -> TcType {
     match typ {
         &Type::Application(_, ref rhs) => {
             if is_function(typ) {
-                get_returntype(&**rhs)
+                get_returntype(rhs)
             } else {
                 typ.clone()
             }
@@ -1485,7 +1485,7 @@ fn occurs(type_var: &TypeVariable, in_type: &TcType) -> bool {
     match in_type {
         &Type::Variable(ref var) => type_var.id == var.id,
         &Type::Application(ref lhs, ref rhs) => {
-            occurs(type_var, &**lhs) || occurs(type_var, &**rhs)
+            occurs(type_var, lhs) || occurs(type_var, rhs)
         }
         _ => false,
     }
@@ -1797,9 +1797,9 @@ fn match_(
 ) -> Result<(), Error> {
     match (lhs, rhs) {
         (&mut Type::Application(ref mut l1, ref mut r1), &Type::Application(ref l2, ref r2)) => {
-            match_(env, subs, &mut **l1, &**l2).and_then(|_| {
+            match_(env, subs, &mut **l1, l2).and_then(|_| {
                 replace(&mut env.constraints, &mut **r1, subs);
-                match_(env, subs, &mut **r1, &**r2)
+                match_(env, subs, &mut **r1, r2)
             })
         }
         (&mut Type::Variable(ref mut lhs), &Type::Variable(ref rhs)) => {
@@ -1901,8 +1901,8 @@ fn each_type_<Id>(
         &Type::Variable(ref var) => (*var_fn)(var),
         &Type::Constructor(ref op) => (*op_fn)(op),
         &Type::Application(ref lhs, ref rhs) => {
-            each_type_(&**lhs, var_fn, op_fn);
-            each_type_(&**rhs, var_fn, op_fn);
+            each_type_(lhs, var_fn, op_fn);
+            each_type_(rhs, var_fn, op_fn);
         }
         _ => (),
     }
@@ -1928,7 +1928,7 @@ fn find_kind(
             None => Ok(Some(var.kind.clone())),
         },
         Type::Application(ref lhs, ref rhs) => {
-            find_kind(test, expected, &**lhs).and_then(|result| find_kind(test, result, &**rhs))
+            find_kind(test, expected, lhs).and_then(|result| find_kind(test, result, rhs))
         }
         _ => Ok(expected),
     }
