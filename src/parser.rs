@@ -930,11 +930,11 @@ impl<Iter: Iterator<Item = char>> Parser<Iter> {
             }
         }
         expect!(self, TYPEDECL);
-        let (context, typ) = self.constrained_type()?;
+        let (constraints, typ) = self.constrained_type()?;
         Ok(TypeDeclaration {
             name,
             typ: Qualified {
-                constraints: context,
+                constraints,
                 value: typ,
             },
         })

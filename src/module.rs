@@ -141,11 +141,7 @@ impl TypedExpr {
         TypedExpr {
             expr,
             typ: Type::new_var(intern("a")),
-            location: Location {
-                column: -1,
-                row: -1,
-                absolute: -1,
-            },
+            location: Location::eof(),
         }
     }
     pub fn with_location<T: fmt::Display + AsRef<str>>(

@@ -58,7 +58,7 @@ pub enum TokenEnum {
     ELSE,
 }
 
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug, Default)]
 pub struct Location {
     pub column: isize,
     pub row: isize,
@@ -109,11 +109,7 @@ impl Token {
         Self {
             token: EOF,
             value: intern(""),
-            location: Location {
-                column: -1,
-                row: -1,
-                absolute: -1,
-            },
+            location: Location::eof(),
         }
     }
 
@@ -127,16 +123,7 @@ impl Token {
 
     #[cfg(test)]
     fn new_(token: TokenEnum, value: &str) -> Self {
-        Self::new(
-            &get_local_interner(),
-            token,
-            value,
-            Location {
-                column: -1,
-                row: -1,
-                absolute: -1,
-            },
-        )
+        Self::new(&get_local_interner(), token, value, Location::eof())
     }
 }
 
@@ -200,14 +187,9 @@ pub struct Lexer<Stream: Iterator<Item = char>> {
 impl<Stream: Iterator<Item = char>> Lexer<Stream> {
     ///Constructs a new lexer with a default sized token buffer and the local string interner
     pub fn new(input: Stream) -> Self {
-        let start = Location {
-            column: 0,
-            row: 0,
-            absolute: 0,
-        };
         Self {
             input: input.peekable(),
-            location: start,
+            location: <_>::default(),
             unprocessed_tokens: vec![],
             tokens: VecDeque::with_capacity(20),
             indent_levels: vec![],
