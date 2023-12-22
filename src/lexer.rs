@@ -161,10 +161,10 @@ fn name_or_keyword(tok: &str) -> TokenEnum {
 }
 ///Returns whether the character is a haskell operator
 fn is_operator(first_char: char) -> bool {
-    match first_char {
-        '+' | '-' | '*' | '/' | '.' | '$' | ':' | '=' | '<' | '>' | '|' | '&' | '!' => true,
-        _ => false,
-    }
+    matches!(
+        first_char,
+        '+' | '-' | '*' | '/' | '.' | '$' | ':' | '=' | '<' | '>' | '|' | '&' | '!'
+    )
 }
 
 pub struct Lexer<Stream: Iterator<Item = char>> {
@@ -261,11 +261,7 @@ impl<Stream: Iterator<Item = char>> Lexer<Stream> {
 
     ///Returns true if the lexer is still valid (it has not hit EOF)
     pub fn valid(&self) -> bool {
-        self.offset > 0
-            || match self.tokens.back() {
-                None => true,
-                Some(x) => x.token != EOF,
-            }
+        self.offset > 0 || self.tokens.back().map(|x| x.token != EOF).unwrap_or(true)
     }
 
     ///Peeks at the next character in the input

@@ -164,10 +164,7 @@ pub fn lift_lambdas<T>(mut module: Module<T>) -> Module<T> {
                     let mut bs = vec![];
                     ::std::mem::swap(&mut bs, bindings);
                     for mut bind in bs.into_iter() {
-                        let is_lambda = match bind.expression {
-                            Lambda(..) => true,
-                            _ => false,
-                        };
+                        let is_lambda = matches!(bind.expression, Lambda(..));
                         walk_expr(self, &mut bind.expression);
                         if is_lambda {
                             self.out_lambdas.push(bind);

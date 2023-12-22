@@ -666,11 +666,7 @@ pub mod translate {
         pub fn translate_expr(&mut self, input_expr: module::TypedExpr<Name>) -> Expr<Id<Name>> {
             //Checks if the expression is lambda not bound by a let binding
             //if it is then we wrap the lambda in a let binding
-            let is_lambda =
-                match &input_expr.expr {
-                    &module::Expr::Lambda(_, _) => true,
-                    _ => false,
-                };
+            let is_lambda = matches!(&input_expr.expr, &module::Expr::Lambda(_, _));
             if is_lambda {
                 let module::TypedExpr { typ, expr, .. } = input_expr;
                 match expr {
@@ -1142,15 +1138,15 @@ pub mod translate {
         fn translate_equations(&mut self, equations: &[Equation]) -> Expr<Id<Name>> {
             ///Returns true if the two patterns would match for the same values
             fn matching<T: PartialEq>(lhs: &(T, Pattern<T>), rhs: &(T, Pattern<T>)) -> bool {
-                if lhs.0 != rhs.0 {
-                    return false;
-                }
-                match (&lhs.1, &rhs.1) {
-                    (&Pattern::Constructor(ref l, _), &Pattern::Constructor(ref r, _)) => *l == *r,
-                    (&Pattern::Constructor(..), &Pattern::Number(..)) => false,
-                    (&Pattern::Number(..), &Pattern::Constructor(..)) => false,
-                    _ => true,
-                }
+                lhs.0 == rhs.0
+                    && match (&lhs.1, &rhs.1) {
+                        (&Pattern::Constructor(ref l, _), &Pattern::Constructor(ref r, _)) => {
+                            *l == *r
+                        }
+                        (&Pattern::Constructor(..), &Pattern::Number(..))
+                        | (&Pattern::Number(..), &Pattern::Constructor(..)) => false,
+                        _ => true,
+                    }
             }
             debug!("In {:?}", equations);
             let &Equation(ps, (where_bindings_bindings, e)) = &equations[0];
@@ -1285,10 +1281,7 @@ pub mod translate {
                     .iter()
                     .filter(|&&Equation(ps, _)| {
                         ps.len() > 0
-                            && (match ps[0].1 {
-                                Pattern::WildCard | Pattern::Identifier(..) => true,
-                                _ => false,
-                            })
+                            && matches!(ps[0].1, Pattern::WildCard | Pattern::Identifier(..))
                     })
                     .map(|&Equation(ps, e)| Equation(&ps[1..], e))
                     .collect();
@@ -1374,9 +1367,11 @@ pub mod translate {
     }
     ///Tests that the binding has no patterns for its arguments
     fn simple_binding(binding: &module::Binding<Name>) -> bool {
-        binding.arguments.iter().all(|arg| match *arg {
-            module::Pattern::WildCard | module::Pattern::Identifier(..) => true,
-            _ => false,
+        binding.arguments.iter().all(|arg| {
+            matches!(
+                *arg,
+                module::Pattern::WildCard | module::Pattern::Identifier(..)
+            )
         })
     }
 
@@ -1409,11 +1404,7 @@ pub mod translate {
         equations
             .iter()
             .filter(|&&Equation(ps, _)| {
-                ps.len() > 0
-                    && (match ps[0].1 {
-                        Pattern::WildCard | Pattern::Identifier(..) => true,
-                        _ => false,
-                    })
+                ps.len() > 0 && matches!(ps[0].1, Pattern::WildCard | Pattern::Identifier(..))
             })
             .map(|eq| {
                 let &Equation(ps, _) = eq;

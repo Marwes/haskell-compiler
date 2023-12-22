@@ -109,15 +109,6 @@ macro_rules! expect1 {
     }};
 }
 
-macro_rules! matches {
-    ($e: expr, $p: pat) => {
-        match $e {
-            $p => true,
-            _ => false,
-        }
-    };
-}
-
 macro_rules! unexpected (
     ($parser: expr, [$($expected: expr),+]) => { unexpected!($parser, $parser.lexer.current().token, $($expected),+) };
     ($parser: expr, $token: expr, $($expected: expr),+) => { {

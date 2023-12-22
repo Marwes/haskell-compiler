@@ -40,10 +40,7 @@ pub trait Types {
         &'a [TypeDeclaration<Name>],
     )>;
     fn has_instance(&self, classname: Name, typ: &TcType) -> bool {
-        match self.find_instance(classname, typ) {
-            Some(_) => true,
-            None => false,
-        }
+        self.find_instance(classname, typ).is_some()
     }
     fn find_instance<'a>(
         &'a self,
