@@ -147,7 +147,7 @@ pub fn module(&mut self) -> ParseResult<Module> {
         _ => unexpected!(self, [LBRACE])
     };
 
-    let mut imports = Vec::new();
+    let mut imports = vec![];
     loop {
         if self.lexer.peek().token == IMPORT {
             imports.push(self.import()?);
@@ -163,13 +163,13 @@ pub fn module(&mut self) -> ParseResult<Module> {
         }
     }
 
-    let mut classes = Vec::new();
-    let mut bindings = Vec::new();
-    let mut instances = Vec::new();
-    let mut type_declarations = Vec::new();
-    let mut data_definitions = Vec::new();
-    let mut newtypes = Vec::new();
-    let mut fixity_declarations = Vec::new();
+    let mut classes = vec![];
+    let mut bindings = vec![];
+    let mut instances = vec![];
+    let mut type_declarations = vec![];
+    let mut data_definitions = vec![];
+    let mut newtypes = vec![];
+    let mut fixity_declarations = vec![];
 	loop {
 		//Do a lookahead to see what the next top level binding is
 		let token = self.lexer.peek().token;
@@ -229,7 +229,7 @@ fn import(&mut self) -> ParseResult<Import<InternedStr>> {
         self.lexer.next();
         let x = if self.lexer.peek().token == RPARENS {
             self.lexer.next();
-            Vec::new()
+            vec![]
         }
         else {
             let imports = self.sep_by_1(|this| Ok(expect!(this, NAME).value), COMMA)?;
@@ -251,8 +251,8 @@ fn class(&mut self) -> ParseResult<Class> {
 	expect!(self, WHERE);
 	expect!(self, LBRACE);
 	let x = self.sep_by_1(|this| this.binding_or_type_declaration(), SEMICOLON)?;
-    let mut bindings = Vec::new();
-    let mut declarations = Vec::new();
+    let mut bindings = vec![];
+    let mut declarations = vec![];
     for decl_or_binding in x.into_iter() {
         match decl_or_binding {
             BindOrTypeDecl::Binding(mut bind) => {
@@ -357,7 +357,7 @@ pub fn expression(&mut self) -> ParseResult<Option<TypedExpr>> {
 
 
 fn list(&mut self) -> ParseResult<TypedExpr> {
-	let mut expressions = Vec::new();
+	let mut expressions = vec![];
 	loop {
 		match self.expression()? {
             Some(expr) => expressions.push(expr),
@@ -590,7 +590,7 @@ fn application(&mut self) -> ParseResult<Option<TypedExpr>> {
     let e = self.sub_expression()?;
 	match e {
         Some(mut lhs) => {
-            let mut expressions = Vec::new();
+            let mut expressions = vec![];
             loop {
                 let expr = self.sub_expression()?;
                 match expr {
@@ -743,7 +743,7 @@ fn make_pattern<F>(&mut self, name: InternedStr, args: F) -> ParseResult<Pattern
 }
 
 fn pattern_arguments(&mut self) -> ParseResult<Vec<Pattern>> {
-	let mut parameters = Vec::new();
+	let mut parameters = vec![];
 	loop {
 		let token = self.lexer.next().token;
 		match token {
@@ -859,13 +859,13 @@ fn constrained_type(&mut self) -> ParseResult<(Vec<Constraint>, Type)> {
         CONTEXTARROW => self.parse_type(),
         ARROW => {
             self.lexer.backtrack();
-            let mut args = Vec::new();
+            let mut args = vec![];
             swap(&mut args, &mut maybe_constraints);
             self.parse_return_type(make_tuple_type(args))
         }
         _ => {//If no => was found, translate the constraint list into a type
             self.lexer.backtrack();
-            let mut args = Vec::new();
+            let mut args = vec![];
             swap(&mut args, &mut maybe_constraints);
             Ok(make_tuple_type(args))
         }
@@ -882,7 +882,7 @@ fn constructor_type(&mut self, arity : &mut isize, data_def: &DataDefinition) ->
             Type::new_var(self.lexer.current().value)
 		}
 		else {
-			Type::new_op(self.lexer.current().value.clone(), Vec::new())
+			Type::new_op(self.lexer.current().value.clone(), vec![])
         };
         function_type_(arg, self.constructor_type(arity, data_def)?)
 	}
@@ -903,10 +903,10 @@ fn data_definition(&mut self) -> ParseResult<DataDefinition> {
 	expect!(self, DATA);
 
 	let mut definition = DataDefinition {
-        constructors : Vec::new(),
+        constructors : vec![],
         typ : qualified(vec![], Type::new_var(intern("a"))),
         parameters : HashMap::new(),
-        deriving: Vec::new()
+        deriving: vec![]
     };
     definition.typ.value = self.data_lhs()?;
     expect!(self, EQUALSSIGN);
@@ -932,9 +932,9 @@ fn newtype(&mut self) -> ParseResult<Newtype> {
     };
     
     Ok(Newtype {
-        typ: qualified(Vec::new(), typ.clone()),
+        typ: qualified(vec![], typ.clone()),
         constructor_name: name,
-        constructor_type: qualified(Vec::new(), function_type_(arg_type, typ)),
+        constructor_type: qualified(vec![], function_type_(arg_type, typ)),
         deriving: self.deriving()?
     })
 }
@@ -959,7 +959,7 @@ fn deriving(&mut self) -> ParseResult<Vec<InternedStr>> {
     }
     else {
 	    self.lexer.backtrack();
-        Ok(Vec::new())
+        Ok(vec![])
     }
 }
 
@@ -987,7 +987,7 @@ fn sub_type(&mut self) -> ParseResult<Option<Type>> {
 		}
 	    NAME => {
 			if token.value.chars().next().expect("char at 0").is_uppercase() {
-				Some(Type::new_op(token.value, Vec::new()))
+				Some(Type::new_op(token.value, vec![]))
 			}
 			else {
 				Some(Type::new_var(token.value))
@@ -1039,7 +1039,7 @@ fn parse_type(&mut self) -> ParseResult<Type> {
             }
 		}
 	    NAME => {
-			let mut type_arguments = Vec::new();
+			let mut type_arguments = vec![];
             loop {
                 match self.sub_type()? {
                     Some(typ) => type_arguments.push(typ),
@@ -1077,7 +1077,7 @@ fn sep_by_1<T, F>(&mut self, f : F, sep : TokenEnum) -> ParseResult<Vec<T>>
 
 fn sep_by_1_func<T, F, P>(&mut self, mut f : F, mut sep: P) -> ParseResult<Vec<T>>
     where F: FnMut(&mut Parser<Iter>) -> ParseResult<T>, P : FnMut(&Token) -> bool {
-    let mut result = Vec::new();
+    let mut result = vec![];
     loop {
         result.push(f(self)?);
         if !sep(self.lexer.next()) {
@@ -1134,7 +1134,7 @@ fn make_tuple_type(mut types : Vec<Type>) -> Type {
 }
 
 pub fn parse_string(contents: &str) -> ParseResult<Vec<Module>> {
-    let mut modules = Vec::new();
+    let mut modules = vec![];
     let mut visited = HashSet::new();
     parse_modules_(&mut visited, &mut modules, "<input>", contents)?;
     Ok(modules)
@@ -1143,7 +1143,7 @@ pub fn parse_string(contents: &str) -> ParseResult<Vec<Module>> {
 ///Parses a module and all its imports
 ///If the modules contain a cyclic dependency fail is called.
 pub fn parse_modules(modulename: &str) -> ParseResult<Vec<Module>> {
-    let mut modules = Vec::new();
+    let mut modules = vec![];
     let mut visited = HashSet::new();
     let contents = get_contents(modulename)?;
     parse_modules_(&mut visited, &mut modules, modulename, contents.as_ref())?;
@@ -1406,7 +1406,7 @@ import Prelude (id, sum)
     assert_eq!(module.imports[0].module.as_ref(), "Hello");
     assert_eq!(module.imports[0].imports, None);
     assert_eq!(module.imports[1].module.as_ref(), "World");
-    assert_eq!(module.imports[1].imports, Some(Vec::new()));
+    assert_eq!(module.imports[1].imports, Some(vec![]));
     assert_eq!(module.imports[2].module.as_ref(), "Prelude");
     assert_eq!(module.imports[2].imports, Some(vec![intern("id"), intern("sum")]));
 }
@@ -1467,7 +1467,7 @@ dummy = 1
 ".chars());
     let module = parser.module().unwrap();
     let data = &module.data_definitions[0];
-    assert_eq!(data.typ, qualified(Vec::new(), Type::new_op(intern("Test"), Vec::new())));
+    assert_eq!(data.typ, qualified(vec![], Type::new_op(intern("Test"), vec![])));
     assert_eq!(data.deriving, [intern("Eq"), intern("Debug")]);
 }
 
@@ -1535,7 +1535,7 @@ newtype IntPair a = IntPair (a, Int)
     let module = Parser::new(s.chars()).module().unwrap();
     let a = Type::new_var(intern("a"));
     let typ = Type::new_op(intern("IntPair"), vec![a.clone()]);
-    assert_eq!(module.newtypes[0].typ, qualified(Vec::new(), typ.clone()));
+    assert_eq!(module.newtypes[0].typ, qualified(vec![], typ.clone()));
     assert_eq!(module.newtypes[0].constructor_type.value, function_type_(Type::new_op(intern("(,)"), vec![a, int_type()]), typ));
 }
 

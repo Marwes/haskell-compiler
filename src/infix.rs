@@ -53,8 +53,8 @@ impl PrecedenceVisitor {
             let loc = lhs.location;
             expr_stack.push(Box::new(TypedExpr::with_location(Expr::OpApply(lhs, op, rhs), loc)));
         }
-        let mut expr_stack = Vec::new();
-        let mut op_stack = Vec::new();
+        let mut expr_stack = vec![];
+        let mut op_stack = vec![];
         loop {
             //FIXME should destructure instead of clone
             let TypedExpr { typ, location, expr } = (*input).clone();

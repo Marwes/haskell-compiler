@@ -374,22 +374,22 @@ impl <'a> Compiler<'a> {
         for &(name, instruction) in UNARY_PRIMITIVES.iter() {
             variables.insert(Name { name: intern(name), uid: 0 }, Var::Primitive(1, instruction));
         }
-        Compiler { instance_dictionaries: Vec::new(),
-            stack_size : 0, assemblies: Vec::new(),
+        Compiler { instance_dictionaries: vec![],
+            stack_size : 0, assemblies: vec![],
             module: None,
             variables: variables,
-            context: Vec::new()
+            context: vec![]
         }
     }
     
     pub fn compile_module(&mut self, module : &'a Module<Id>) -> Assembly {
         self.module = Some(module);
-        let mut super_combinators = Vec::new();
-        let mut instance_dictionaries = Vec::new();
-        let mut data_definitions = Vec::new();
+        let mut super_combinators = vec![];
+        let mut instance_dictionaries = vec![];
+        let mut data_definitions = vec![];
 
         for def in module.data_definitions.iter() {
-            let mut constructors = Vec::new();
+            let mut constructors = vec![];
             for ctor in def.constructors.iter() {
                 constructors.push(ctor.clone());
             }
@@ -426,7 +426,7 @@ impl <'a> Compiler<'a> {
         debug!("Compiling binding {:?} :: {:?}", bind.name, bind.name.typ);
         let dict_arg = if bind.name.typ.constraints.len() > 0 { 1 } else { 0 };
         self.context = bind.name.typ.constraints.clone();
-        let mut instructions = Vec::new();
+        let mut instructions = vec![];
         let mut arity = 0;
         self.scope(&mut |this| {
             if dict_arg == 1 {
@@ -631,13 +631,13 @@ impl <'a> Compiler<'a> {
                 self.stack_size += 1;
                 //Dummy variable for the case expression
                 //Storage for all the jumps that should go to the end of the case expression
-                let mut end_branches = Vec::new();
+                let mut end_branches = vec![];
                 for i in 0..alternatives.len() {
                     let alt = &alternatives[i];
 
                     self.scope(&mut |this| {
                         let pattern_start = instructions.len() as isize;
-                        let mut branches = Vec::new();
+                        let mut branches = vec![];
                         let i = this.stack_size - 1;
                         let stack_increase = this.compile_pattern(&alt.pattern, &mut branches, instructions, i);
                         let pattern_end = instructions.len() as isize;
@@ -924,7 +924,7 @@ impl <'a> Compiler<'a> {
         if constraints.len() == 0 {
             panic!("Error: Attempted to compile dictionary with no constraints at <unknown>");
         }
-        let mut function_indexes = Vec::new();
+        let mut function_indexes = vec![];
         self.add_class(constraints, &mut function_indexes);
         self.instance_dictionaries.push((constraints.to_owned(), function_indexes));
         dict_len
@@ -1067,7 +1067,7 @@ fn compile_module_(modules: Vec<crate::module::Module<Name>>) -> Result<Vec<Asse
         .into_iter()
         .map(|module| do_lambda_lift(module))
         .collect();
-    let mut assemblies = Vec::new();
+    let mut assemblies = vec![];
     for module in core_modules.iter() {
         let x = {
             let mut compiler = Compiler::new();

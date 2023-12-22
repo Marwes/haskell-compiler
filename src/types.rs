@@ -183,7 +183,7 @@ pub fn tuple_name(n: usize) -> String {
 
 ///Returns the type of an n-tuple constructor as well as the name of the tuple
 pub fn tuple_type(n: usize) -> (String, Type) {
-    let mut var_list = Vec::new();
+    let mut var_list = vec![];
     assert!(n < 26);
     for i in 0..n {
         let c = (('a' as u8) + i as u8) as char;

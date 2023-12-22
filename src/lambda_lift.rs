@@ -109,7 +109,7 @@ fn abstract_(&mut self, free_vars: &HashMap<Name, TypeAndStr>, input_expr: &mut 
                 rhs = Lambda(var.clone(), Box::new(rhs));
                 typ = function_type_(var.get_type().clone(), typ);
             }
-            let id = Id::new(self.name_supply.from_str("#sc"), typ.clone(), Vec::new());
+            let id = Id::new(self.name_supply.from_str("#sc"), typ.clone(), vec![]);
             let bind = Binding {
                 name: id.clone(),
                 expression: rhs
@@ -132,7 +132,7 @@ pub fn lift_lambdas<T>(mut module: Module<T>) -> Module<T> {
         fn visit_expr(&mut self, expr: &mut Expr<T>) {
             match *expr {
                 Let(ref mut bindings, ref mut body) => {
-                    let mut new_binds = Vec::new();
+                    let mut new_binds = vec![];
                     let mut bs = vec![];
                     ::std::mem::swap(&mut bs, bindings);
                     for mut bind in bs.into_iter() {
@@ -156,9 +156,9 @@ pub fn lift_lambdas<T>(mut module: Module<T>) -> Module<T> {
             remove_empty_let(expr);
         }
     }
-    let mut visitor = LambdaLifter { out_lambdas: Vec::new() };
+    let mut visitor = LambdaLifter { out_lambdas: vec![] };
     visitor.visit_module(&mut module);
-    let mut temp = Vec::new();
+    let mut temp = vec![];
     ::std::mem::swap(&mut temp, &mut module.bindings);
     let vec : Vec<Binding<T>> = temp.into_iter()
         .chain(visitor.out_lambdas.into_iter())
@@ -276,7 +276,7 @@ test2 x =
     impl Visitor<Id> for CheckAbstract {
         fn visit_binding(&mut self, bind: &Binding<Id>) {
             if intern("f") == bind.name.name.name {
-                let mut args = Vec::new();
+                let mut args = vec![];
                 match get_let(&bind.expression, &mut args) {
                     &Let(ref binds, ref body) => {
                         //Push the argument of the function itself
@@ -289,7 +289,7 @@ test2 x =
                 self.count += 1;
             }
             else if intern("g") == bind.name.name.name {
-                let mut args = Vec::new();
+                let mut args = vec![];
                 match get_let(&bind.expression, &mut args) {
                     &Let(ref binds, ref body) => {
                         args.push(intern("y"));

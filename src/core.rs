@@ -21,7 +21,7 @@ impl Module<Id> {
         Module {
             classes: vec![],
             data_definitions: vec![],
-            newtypes: Vec::new(),
+            newtypes: vec![],
             instances: vec![],
             bindings: vec![Binding {
                 name: Id::new(Name { name: intern("main"), uid: 0 }, expr.get_type().clone(), vec![]),
@@ -448,7 +448,7 @@ pub mod translate {
             fixity_declarations : _fixity_declarations
         } = module;
 
-        let mut new_instances: Vec<Instance<Id<Name>>> = Vec::new();
+        let mut new_instances: Vec<Instance<Id<Name>>> = vec![];
 
         let classes2 : Vec<Class<Id>> = classes.into_iter().map(|class| {
             let module::Class {
@@ -489,7 +489,7 @@ pub mod translate {
         for instance in new_instances.iter_mut() {
             let (class_var, class_decls) = (translator.functions_in_class)(instance.classname);
             let defaults = create_default_stubs(class_var, class_decls, instance);
-            let mut temp = Vec::new();
+            let mut temp = vec![];
             ::std::mem::swap(&mut temp, &mut instance.bindings);
             let vec: Vec<Binding<Id<Name>>> = temp.into_iter().chain(defaults.into_iter()).collect();
             instance.bindings = vec;
@@ -514,7 +514,7 @@ pub mod translate {
                 let mut typ = decl.typ.clone();
                 crate::typecheck::replace_var(&mut typ.value, class_var, &instance.typ);
                 {
-                    let context = ::std::mem::replace(&mut typ.constraints, Vec::new());
+                    let context = ::std::mem::replace(&mut typ.constraints, vec![]);
                     //Remove all constraints which refer to the class's variable
                     let vec_context: Vec<Constraint<Name>> = context.into_iter()
                         .filter(|c| c.variables[0] != *class_var)
@@ -678,12 +678,12 @@ impl <'a> Translator<'a> {
     }
 
     fn translate_bindings(&mut self, bindings: Vec<module::Binding<Name>>) -> Vec<Binding<Id<Name>>> {
-        let mut result = Vec::new();
-        let mut vec: Vec<module::Binding<Name>> = Vec::new();
+        let mut result = vec![];
+        let mut vec: Vec<module::Binding<Name>> = vec![];
         for bind in bindings.into_iter() {
             if vec.len() > 0 && vec[0].name != bind.name {
                 result.push(self.translate_matching_groups(vec));
-                vec = Vec::new();
+                vec = vec![];
             }
             vec.push(bind);
         }
@@ -735,7 +735,7 @@ impl <'a> Translator<'a> {
     ///Translates a pattern list of patterns into a list of patterns which are not nested.
     ///The first argument of each tuple is the identifier that is expected to be passed to the case.
     fn unwrap_patterns(&mut self, uid: usize, arg_ids: &[Id<Name>], arguments: &[module::Pattern<Name>]) -> Vec<(Id<Name>, Pattern<Id<Name>>)> {
-        let mut result = Vec::new();
+        let mut result = vec![];
         for (p, id) in arguments.iter().zip(arg_ids.iter()) {
             self.unwrap_pattern(uid, id.clone(), p.clone(), &mut result);
         }
@@ -746,11 +746,11 @@ impl <'a> Translator<'a> {
     ///Since the core language do not have nested patterns the patterns are unwrapped into
     ///multiple case expressions.
     fn translate_case(&mut self, expr: module::TypedExpr<Name>, alts: Vec<module::Alternative<Name>>) -> Expr<Id<Name>> {
-        let mut vec = Vec::new();
+        let mut vec = vec![];
         let dummy_var = &[Id::new(self.name_supply.anonymous(), Type::new_var(intern("a")), vec![])];
         let uid = self.name_supply.next_id();
         for module::Alternative { pattern, matches, where_bindings } in alts.into_iter() {
-            let bindings = where_bindings.map_or(Vec::new(), |bs| self.translate_bindings(bs));
+            let bindings = where_bindings.map_or(vec![], |bs| self.translate_bindings(bs));
             vec.push((self.unwrap_patterns(uid, dummy_var, &[pattern.node]), bindings, matches));
         }
         let mut x = self.translate_equations_(vec);
@@ -789,7 +789,7 @@ impl <'a> Translator<'a> {
                     .map(|(typ, arg)| {
                     Id::new(arg, typ.clone(), vec![])
                 });
-                let where_bindings_binds = where_bindings.map_or(Vec::new(), |bs| self.translate_bindings(bs).into_iter().collect());
+                let where_bindings_binds = where_bindings.map_or(vec![], |bs| self.translate_bindings(bs).into_iter().collect());
                 make_lambda(lambda_ids, make_let(where_bindings_binds, self.translate_match(matches)))
             };
             return Binding {
@@ -798,7 +798,7 @@ impl <'a> Translator<'a> {
             }
         }
         //Generate new names for each of the arguments (since it is likely that not all arguments have a name)
-        let mut arg_ids = Vec::new();
+        let mut arg_ids = vec![];
         let name;
         {
             let binding0 = &bindings[0];
@@ -823,7 +823,7 @@ impl <'a> Translator<'a> {
                 where_bindings,
                 ..
             } = bind;
-            let where_bindings_binds = where_bindings.map_or(Vec::new(), |bs| self.translate_bindings(bs));
+            let where_bindings_binds = where_bindings.map_or(vec![], |bs| self.translate_bindings(bs));
             (self.unwrap_patterns(uid, arg_ids.as_ref(), &*arguments), where_bindings_binds, matches)
         }).collect();
         let mut expr = self.translate_equations_(equations);
@@ -835,7 +835,7 @@ impl <'a> Translator<'a> {
         }
     }
     fn translate_equations_(&mut self, equations: Vec<(Vec<(Id<Name>, Pattern<Id<Name>>)>, Vec<Binding<Id<Name>>>, module::Match<Name>)>) -> Expr<Id<Name>> {
-        let mut eqs: Vec<Equation> = Vec::new();
+        let mut eqs: Vec<Equation> = vec![];
         for &(ref ps, ref bs, ref e) in equations.iter() {
             eqs.push(Equation(ps.as_ref(), (bs.as_ref(), e)));
         }
@@ -878,7 +878,7 @@ impl <'a> Translator<'a> {
             return make_let(bindings, self.translate_match((*e).clone()));
         }
         if ps.len() == 1 {
-            let mut alts: Vec<Alternative<Id<Name>>> = Vec::new();
+            let mut alts: Vec<Alternative<Id<Name>>> = vec![];
             for (i, &Equation(ps, (where_bindings_bindings, m))) in equations.iter().enumerate() {
                 let bindings = where_bindings_bindings.iter().map(|x| x.clone()).collect();
                 match *m {
@@ -916,9 +916,9 @@ impl <'a> Translator<'a> {
         }
         
         let mut last_index = 0;
-        let mut vec: Vec<Equation> = Vec::new();
-        let mut alts: Vec<Alternative<Id<Name>>> = Vec::new();
-        let mut visited = Vec::new();
+        let mut vec: Vec<Equation> = vec![];
+        let mut alts: Vec<Alternative<Id<Name>>> = vec![];
+        let mut visited = vec![];
         loop {
             //Find the first pattern which does a test and is not already used
             let mut pattern_test = None;
@@ -942,7 +942,7 @@ impl <'a> Translator<'a> {
             match pattern_test {
                 Some(pattern_test) => {
                     vec.clear();
-                    let mut variable_bindings = Vec::new();
+                    let mut variable_bindings = vec![];
                     //Gather all patterns which matches the pattern
                     for &Equation(patterns, expr) in equations.iter() {
                         if patterns.len() > 0 && matching(pattern_test, &patterns[0]) {

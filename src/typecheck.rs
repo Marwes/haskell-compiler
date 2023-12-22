@@ -255,13 +255,13 @@ impl <'a> TypeEnvironment<'a> {
             insert_to(&mut globals, name.as_ref(), typ);
         }
         TypeEnvironment {
-            assemblies: Vec::new(),
+            assemblies: vec![],
             named_types : globals,
             local_types : HashMap::new(),
             constraints: HashMap::new(),
-            instances: Vec::new(),
-            classes: Vec::new(),
-            data_definitions : Vec::new(),
+            instances: vec![],
+            classes: vec![],
+            data_definitions : vec![],
             variable_age : 0 ,
             errors: Errors::new()
         }
@@ -387,7 +387,7 @@ impl <'a> TypeEnvironment<'a> {
                 let mut missing_super_classes = self.find_class_constraints(instance.classname)
                     .unwrap_or_else(|| panic!("Error: Missing class {:?}", instance.classname))
                     .iter()//Make sure we have an instance for all of the constraints
-                    .filter(|constraint| self.has_instance(constraint.class, &instance.typ, &mut Vec::new()).is_err())
+                    .filter(|constraint| self.has_instance(constraint.class, &instance.typ, &mut vec![]).is_err())
                     .peekable();
                 if missing_super_classes.peek().is_some() {
                     let mut buffer = ::std::string::String::new();
@@ -440,7 +440,7 @@ impl <'a> TypeEnvironment<'a> {
 
     ///Finds all the constraints for a type
     pub fn find_constraints(&self, typ: &TcType) -> Vec<Constraint<Name>> {
-        let mut result : Vec<Constraint<Name>> = Vec::new();
+        let mut result : Vec<Constraint<Name>> = vec![];
         each_type(typ,
         |var| {
             match self.constraints.get(var) {
@@ -999,7 +999,7 @@ impl <'a> TypeEnvironment<'a> {
     
     
     fn insert_constraint(&mut self, var: &TypeVariable, classname: Name) {
-        let mut constraints = self.constraints.remove(var).unwrap_or(Vec::new());
+        let mut constraints = self.constraints.remove(var).unwrap_or(vec![]);
         self.insert_constraint_(&mut constraints, classname);
         self.constraints.insert(var.clone(), constraints);
     }
@@ -1038,7 +1038,7 @@ impl <'a> TypeEnvironment<'a> {
 ///Searches through a type, comparing it with the type on the identifier, returning all the specialized constraints
 pub fn find_specialized_instances(typ: &TcType, actual_type: &TcType, constraints: &[Constraint<Name>]) -> Vec<(Name, TcType)> {
     debug!("Finding specialization {:?} => {:?} <-> {:?}", constraints, typ, actual_type);
-    let mut result = Vec::new();
+    let mut result = vec![];
     find_specialized(&mut result, actual_type, typ, constraints);
     if constraints.len() == 0 {
         panic!("Could not find the specialized instance between {:?} <-> {:?}", typ, actual_type);
@@ -1328,7 +1328,7 @@ fn bind_variable(env: &mut TypeEnvironment, subs: &mut Substitution, var: &TypeV
                     replace_var(replaced, var, typ);
                 }
                 subs.subs.insert(var.clone(), typ.clone());
-                let mut new_constraints = Vec::new();
+                let mut new_constraints = vec![];
                 match env.constraints.get(var) {
                     Some(constraints) => {
                         for c in constraints.iter() {
@@ -2210,7 +2210,7 @@ makeEven i
 "
 ).unwrap();
     let module = modules.last().unwrap();
-    assert_eq!(un_name(module.bindings[0].typ.clone()), qualified(Vec::new(), function_type_(int_type(), Type::new_op(intern("Even"), Vec::new()))));
+    assert_eq!(un_name(module.bindings[0].typ.clone()), qualified(vec![], function_type_(int_type(), Type::new_op(intern("Even"), vec![]))));
 }
 
 

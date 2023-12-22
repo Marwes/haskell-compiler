@@ -15,7 +15,7 @@ pub struct Interner {
 impl Interner {
 
     pub fn new() -> Interner {
-        Interner { indexes: HashMap::new(), strings: Vec::new() }
+        Interner { indexes: HashMap::new(), strings: vec![] }
     }
 
     pub fn intern(&mut self, s: &str) -> InternedStr {

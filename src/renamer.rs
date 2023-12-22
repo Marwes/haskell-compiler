@@ -52,7 +52,7 @@ pub struct Errors<T> {
 }
 impl <T> Errors<T> {
     pub fn new() -> Errors<T> {
-        Errors { errors: Vec::new() }
+        Errors { errors: vec![] }
     }
     pub fn insert(&mut self, e: T) {
         self.errors.push(e);
@@ -543,7 +543,7 @@ pub fn prelude_name(s: &str) -> Name {
 ///If any errors are encounterd while renaming, an error message is output and fail is called
 pub fn rename_modules(modules: Vec<Module<InternedStr>>) -> Result<Vec<Module<Name>>, RenamerError> {
     let mut renamer = Renamer::new();
-    let mut ms = Vec::new();
+    let mut ms = vec![];
     for module in modules.into_iter() {
         let m = rename_module_(&mut renamer, ms.as_ref(), module);
         ms.push(m);
@@ -568,7 +568,7 @@ pub mod typ {
     }
     ///Returns the type of an n-tuple constructor as well as the name of the tuple
     pub fn tuple_type(n: usize) -> (String, Type<Name>) {
-        let mut var_list = Vec::new();
+        let mut var_list = vec![];
         assert!(n < 26);
         for i in 0..n {
             let c = (('a' as u8) + i as u8) as char;

@@ -63,8 +63,8 @@ pub struct Node<'a> {
 
 impl <'a> Node<'a> {
     ///Creates a new node
-    fn new(n : Node_<'a>) -> Node<'a> {
-        Node { node: Rc::new(RefCell::new(n)) }
+    fn new(n : Node_<'a>) -> Self {
+        Self { node: Rc::new(RefCell::new(n)) }
     }
     fn borrow<'b>(&'b self) -> Ref<'b, Node_<'a>> {
         (*self.node).borrow()
@@ -148,8 +148,8 @@ impl fmt::Debug for InstanceDictionary {
 impl fmt::Debug for DictionaryEntry {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            DictionaryEntry::Function(index) => write!(f, "{:?}", index),
-            DictionaryEntry::App(ref func, ref arg) => write!(f, "({:?} {:?})", *func, *arg)
+            Self::Function(index) => write!(f, "{:?}", index),
+            Self::App(ref func, ref arg) => write!(f, "({:?} {:?})", *func, *arg)
         }
     }
 }
@@ -163,7 +163,7 @@ pub struct VM {
 
 impl <'a> VM {
     pub fn new() -> VM {
-        VM { assembly : Vec::new(), globals: Vec::new() }
+        Self { assembly : vec![], globals: vec![] }
     }
 
     ///Adds an assembly to the VM, adding entries to the global table as necessary
@@ -182,7 +182,7 @@ impl <'a> VM {
 
     ///Evaluates the code into Head Normal Form (HNF)
     pub fn evaluate(&self, code: &[Instruction], assembly_id: usize) -> Node_ {
-        let mut stack = Vec::new();
+        let mut stack = vec![];
         self.execute(&mut stack, code, assembly_id);
         self.deepseq(stack, assembly_id)
     }
@@ -193,7 +193,7 @@ impl <'a> VM {
         self.execute(&mut stack, EVALCODE, assembly_id);
         match *stack[0].borrow() {
             Constructor(tag, ref vals) => {
-                let mut ret = Vec::new();
+                let mut ret = vec![];
                 for v in vals.iter() {
                     let s = vec!(v.clone());
                     let x = self.deepseq(s, assembly_id);
@@ -223,21 +223,21 @@ impl <'a> VM {
                 Multiply => primitive(stack, |l, r| { l * r }),
                 Divide => primitive(stack, |l, r| { l / r }),
                 Remainder => primitive(stack, |l, r| { l % r }),
-                IntEQ => primitive_int(stack, |l, r| { if l == r { Constructor(0, Vec::new()) } else { Constructor(1, Vec::new()) } }),
-                IntLT => primitive_int(stack, |l, r| { if l < r { Constructor(0, Vec::new()) } else { Constructor(1, Vec::new()) } }),
-                IntLE => primitive_int(stack, |l, r| { if l <= r { Constructor(0, Vec::new()) } else { Constructor(1, Vec::new()) } }),
-                IntGT => primitive_int(stack, |l, r| { if l > r { Constructor(0, Vec::new()) } else { Constructor(1, Vec::new()) } }),
-                IntGE => primitive_int(stack, |l, r| { if l >= r { Constructor(0, Vec::new()) } else { Constructor(1, Vec::new()) } }),
+                IntEQ => primitive_int(stack, |l, r| { if l == r { Constructor(0, vec![]) } else { Constructor(1, vec![]) } }),
+                IntLT => primitive_int(stack, |l, r| { if l < r { Constructor(0, vec![]) } else { Constructor(1, vec![]) } }),
+                IntLE => primitive_int(stack, |l, r| { if l <= r { Constructor(0, vec![]) } else { Constructor(1, vec![]) } }),
+                IntGT => primitive_int(stack, |l, r| { if l > r { Constructor(0, vec![]) } else { Constructor(1, vec![]) } }),
+                IntGE => primitive_int(stack, |l, r| { if l >= r { Constructor(0, vec![]) } else { Constructor(1, vec![]) } }),
                 DoubleAdd => primitive_float(stack, |l, r| { Float(l + r) }),
                 DoubleSub => primitive_float(stack, |l, r| { Float(l - r) }),
                 DoubleMultiply => primitive_float(stack, |l, r| { Float(l * r) }),
                 DoubleDivide => primitive_float(stack, |l, r| { Float(l / r) }),
                 DoubleRemainder => primitive_float(stack, |l, r| { Float(l % r) }),
-                DoubleEQ => primitive_float(stack, |l, r| { if l == r { Constructor(0, Vec::new()) } else { Constructor(1, Vec::new()) } }),
-                DoubleLT => primitive_float(stack, |l, r| { if l < r { Constructor(0, Vec::new()) } else { Constructor(1, Vec::new()) } }),
-                DoubleLE => primitive_float(stack, |l, r| { if l <= r { Constructor(0, Vec::new()) } else { Constructor(1, Vec::new()) } }),
-                DoubleGT => primitive_float(stack, |l, r| { if l > r { Constructor(0, Vec::new()) } else { Constructor(1, Vec::new()) } }),
-                DoubleGE => primitive_float(stack, |l, r| { if l >= r { Constructor(0, Vec::new()) } else { Constructor(1, Vec::new()) } }),
+                DoubleEQ => primitive_float(stack, |l, r| { if l == r { Constructor(0, vec![]) } else { Constructor(1, vec![]) } }),
+                DoubleLT => primitive_float(stack, |l, r| { if l < r { Constructor(0, vec![]) } else { Constructor(1, vec![]) } }),
+                DoubleLE => primitive_float(stack, |l, r| { if l <= r { Constructor(0, vec![]) } else { Constructor(1, vec![]) } }),
+                DoubleGT => primitive_float(stack, |l, r| { if l > r { Constructor(0, vec![]) } else { Constructor(1, vec![]) } }),
+                DoubleGE => primitive_float(stack, |l, r| { if l >= r { Constructor(0, vec![]) } else { Constructor(1, vec![]) } }),
                 IntToDouble => {
                     let top = stack.pop().unwrap();
                     stack.push(match *top.borrow() {
@@ -315,7 +315,7 @@ impl <'a> VM {
                                 stack[j] = temp;
                             }
                             let value = {
-                                let mut new_stack = Vec::new();
+                                let mut new_stack = vec![];
                                 for i in 0..arity {
                                     let index = stack.len() - i - 2;
                                     new_stack.push(stack[index].clone());
@@ -373,7 +373,7 @@ impl <'a> VM {
                     }
                 }
                 Pack(tag, arity) => {
-                    let mut args = Vec::new();
+                    let mut args = vec![];
                     for _ in 0..arity {
                         args.push(stack.pop().unwrap());
                     }
@@ -444,7 +444,7 @@ impl <'a> VM {
                         _ => panic!()
                     };
                     let func = stack.pop().unwrap();
-                    let mut new_dict = InstanceDictionary { entries: Vec::new() };
+                    let mut new_dict = InstanceDictionary { entries: vec![] };
                     match *func.borrow() {
                         Dictionary(ref d) => {
                             for entry in d.entries.iter() {
@@ -461,7 +461,7 @@ impl <'a> VM {
                     stack.push(Node::new(Dictionary(new_dict)));
                 }
                 ConstructDictionary(size) => {
-                    let mut new_dict = InstanceDictionary { entries: Vec::new() };
+                    let mut new_dict = InstanceDictionary { entries: vec![] };
                     for _ in 0..size {
                         let temp = stack.pop().unwrap();
                         let temp = temp.borrow();
@@ -475,7 +475,7 @@ impl <'a> VM {
                     stack.push(Node::new(Dictionary(new_dict)));
                 }
                 PushDictionaryRange(start, size) => {
-                    let mut new_dict = InstanceDictionary { entries: Vec::new() };
+                    let mut new_dict = InstanceDictionary { entries: vec![] };
                     match *stack[0].borrow() {
                         Dictionary(ref d) => {
                             new_dict.entries.extend(d.entries.iter().skip(start).take(size).map(|x| x.clone()));
@@ -600,7 +600,7 @@ fn extract_result(node: Node_) -> Option<VMResult> {
         // TODO: Application result
 
         Constructor(tag, fields) => {
-            let mut result = Vec::new();
+            let mut result = vec![];
             for field in fields.iter() {
                 match extract_result((*field.borrow()).clone()) {
                     Some(x) => result.push(x),
@@ -677,14 +677,14 @@ mod primitive {
     pub type BuiltinFun = for <'a> extern "Rust" fn (&'a VM, &[Node<'a>]) -> Node<'a>;
 
     fn error<'a>(vm: &'a VM, stack: &[Node<'a>]) -> Node<'a> {
-        let mut vec = Vec::new();
+        let mut vec = vec![];
         vec.push(stack[0].clone());
         let node = vm.deepseq(vec, 123);
         panic!("error: {:?}", node)
     }
     fn eval<'a>(vm: &'a VM, node: Node<'a>) -> Node<'a> {
         static EVALCODE : &'static [Instruction] = &[Eval];
-        let mut temp = Vec::new();
+        let mut temp = vec![];
         temp.push(node);
         vm.execute(&mut temp, EVALCODE, 123);
         temp.pop().unwrap()
@@ -718,7 +718,7 @@ mod primitive {
         Node::new(Constructor(0, vec!(stack[0].clone(), stack[1].clone())))
     }
     fn readFile<'a>(vm: &'a VM, stack: &[Node<'a>]) -> Node<'a> {
-        let mut temp = Vec::new();
+        let mut temp = vec![];
         temp.push(stack[0].clone());
         let node_filename = vm.deepseq(temp, 123);
         let filename = get_string(&node_filename);
@@ -736,7 +736,7 @@ mod primitive {
     }
 
     fn putStrLn<'a>(vm: &'a VM, stack: &[Node<'a>]) -> Node<'a> {
-        let mut temp = Vec::new();
+        let mut temp = vec![];
         temp.push(stack[0].clone());
         let msg_node = vm.deepseq(temp, 123);
         let msg = get_string(&msg_node);
@@ -770,7 +770,7 @@ mod primitive {
                 Constructor(ref mut tag, ref mut args) => {
                     *tag = 1;
                     args.push(Node::new(Char(c)));
-                    args.push(Node::new(Constructor(0, Vec::new())));
+                    args.push(Node::new(Constructor(0, vec![])));
                     args[1].clone()
                 }
                 _ => panic!()
@@ -793,7 +793,7 @@ mod primitive {
             },
             (_, _) => 1//EQ
         };
-        Node::new(Constructor(tag, Vec::new()))
+        Node::new(Constructor(tag, vec![]))
     }
 }
 
@@ -829,7 +829,7 @@ fn test_primitive()
     let s = 
 r"data Bool = True | False
 main = primIntLT 1 2";
-    assert_eq!(execute_main(s.chars()), Some(VMResult::Constructor(0, Vec::new())));
+    assert_eq!(execute_main(s.chars()), Some(VMResult::Constructor(0, vec![])));
 }
 
 #[test]
@@ -1002,7 +1002,7 @@ fn instance_super_class() {
         }
         None => None
     };
-    assert_eq!(result, Some(VMResult::Constructor(1, Vec::new())));
+    assert_eq!(result, Some(VMResult::Constructor(1, vec![])));
 }
 
 #[test]
@@ -1057,7 +1057,7 @@ test [] = False
 main = test [True, True]
 ")
     .unwrap();
-    assert_eq!(result, Some(VMResult::Constructor(0, Vec::new())));
+    assert_eq!(result, Some(VMResult::Constructor(0, vec![])));
 }
 #[test]
 fn pattern_guards() {
@@ -1129,7 +1129,7 @@ import Prelude
 test x y = (x == y) || (x < y)
 main = (test (0 :: Int) 2) && not (test (1 :: Int) 0)")
         .unwrap_or_else(|err| panic!("{:?}", err));
-    assert_eq!(result, Some(VMResult::Constructor(0, Vec::new())));
+    assert_eq!(result, Some(VMResult::Constructor(0, vec![])));
 }
 #[test]
 fn implement_class() {
@@ -1147,7 +1147,7 @@ test x y = x == y
 
 main = A == B && test A A")
         .unwrap_or_else(|err| panic!("{:?}", err));
-    assert_eq!(result, Some(VMResult::Constructor(1, Vec::new())));
+    assert_eq!(result, Some(VMResult::Constructor(1, vec![])));
 }
 
 #[test]
@@ -1160,7 +1160,7 @@ data Test = A Int | B
 
 main = A 0 == A 2 || A 0 == B
 ").unwrap();
-    assert_eq!(result, Some(VMResult::Constructor(1, Vec::new())));
+    assert_eq!(result, Some(VMResult::Constructor(1, vec![])));
 }
 #[test]
 fn deriving_ord() {
@@ -1172,7 +1172,7 @@ data Test = A Int | B
 
 main = compare (A 0) (A 2) == LT && compare B (A 123) == GT
 ").unwrap();
-    assert_eq!(result, Some(VMResult::Constructor(0, Vec::new())));
+    assert_eq!(result, Some(VMResult::Constructor(0, vec![])));
 }
 
 #[test]
@@ -1183,7 +1183,7 @@ import Prelude
 test x y = x == y
 main = test [1 :: Int] [3]
 ").unwrap();
-    assert_eq!(result, Some(VMResult::Constructor(1, Vec::new())));
+    assert_eq!(result, Some(VMResult::Constructor(1, vec![])));
 }
 #[test]
 fn build_dictionary() {
@@ -1195,7 +1195,7 @@ test :: Eq a => a -> a -> Bool
 test x y = [x] == [y]
 main = test [1 :: Int] [3]
 ").unwrap();
-    assert_eq!(result, Some(VMResult::Constructor(1, Vec::new())));
+    assert_eq!(result, Some(VMResult::Constructor(1, vec![])));
 }
 
 #[test]

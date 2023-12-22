@@ -33,11 +33,11 @@ pub struct Graph<T> {
 impl <T> Graph<T> {
     ///Creates a new graph
     pub fn new() -> Graph<T> {
-        Graph { edges: Vec::new(), vertices: Vec::new() }
+        Graph { edges: vec![], vertices: vec![] }
     }
     ///Creates a new vertex and returns the index which refers to it
     pub fn new_vertex(&mut self, value: T) -> VertexIndex {
-        self.vertices.push(Vertex { edges:Vec::new(), value: value });
+        self.vertices.push(Vertex { edges:vec![], value: value });
         VertexIndex(self.vertices.len() - 1)
     }
     
@@ -66,7 +66,7 @@ impl <T> Graph<T> {
 ///Returns a vector of indices where each group is a separte vector
 pub fn strongly_connected_components<T>(graph: &Graph<T>) -> Vec<Vec<VertexIndex>> {
     
-    let mut tarjan = TarjanComponents { graph: graph, index: 1, stack: Vec::new(), connections: Vec::new(),
+    let mut tarjan = TarjanComponents { graph: graph, index: 1, stack: vec![], connections: vec![],
         valid: repeat(0).take(graph.len()).collect(),
         lowlink: repeat(0).take(graph.len()).collect()
     };
@@ -109,7 +109,7 @@ impl <'a, T> TarjanComponents<'a, T> {
         }
 
         if self.lowlink.get(v.get()) == self.valid.get(v.get()) {
-            let mut connected = Vec::new();
+            let mut connected = vec![];
             loop {
                 
                 let w = self.stack.pop().unwrap();

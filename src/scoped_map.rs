@@ -20,7 +20,7 @@ impl <K, V> ScopedMap<K, V>
     where K: Eq + Hash + Clone {
 
     pub fn new() -> ScopedMap<K, V> {
-        ScopedMap { map: HashMap::new(), scopes: Vec::new() }
+        ScopedMap { map: HashMap::new(), scopes: vec![] }
     }
     ///Introduces a new scope
     pub fn enter_scope(&mut self) {
@@ -87,7 +87,7 @@ impl <K, V> ScopedMap<K, V>
     ///Swaps the value stored at key, or inserts it if it is not present
     pub fn swap(&mut self, k: K, v: V) -> Option<V> {
         let vec = match self.map.entry(k.clone()) {
-            Entry::Vacant(entry) => entry.insert(Vec::new()),
+            Entry::Vacant(entry) => entry.insert(vec![]),
             Entry::Occupied(entry) => entry.into_mut()
         };
         if vec.len() != 0 {
@@ -121,7 +121,7 @@ impl <K, V> ScopedMap<K, V>
     }
     pub fn insert(&mut self, k: K, v: V) -> bool {
         let vec = match self.map.entry(k.clone()) {
-            Entry::Vacant(entry) => entry.insert(Vec::new()),
+            Entry::Vacant(entry) => entry.insert(vec![]),
             Entry::Occupied(entry) => entry.into_mut()
         };
         vec.push(v);

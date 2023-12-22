@@ -178,9 +178,9 @@ impl <Stream : Iterator<Item=char>> Lexer<Stream> {
         Lexer { 
             input : input.peekable(),
             location : start,
-            unprocessed_tokens : Vec::new(),
+            unprocessed_tokens : vec![],
             tokens : VecDeque::with_capacity(20),
-            indent_levels : Vec::new(),
+            indent_levels : vec![],
             offset : 0,
             interner: get_local_interner()
         }
