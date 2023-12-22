@@ -25,6 +25,15 @@ pub fn name(s: &str) -> Name {
     }
 }
 
+impl From<&str> for Name {
+    fn from(s: &str) -> Self {
+        Self {
+            uid: 0,
+            name: intern(s),
+        }
+    }
+}
+
 impl PartialEq<Name> for Name {
     fn eq(&self, other: &Name) -> bool {
         self.uid == other.uid && self.name == other.name

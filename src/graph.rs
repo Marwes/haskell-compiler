@@ -10,14 +10,12 @@ pub struct EdgeIndex(usize);
 
 impl VertexIndex {
     fn get(&self) -> usize {
-        let VertexIndex(v) = *self;
-        v
+        self.0
     }
 }
 impl EdgeIndex {
     fn get(&self) -> usize {
-        let EdgeIndex(v) = *self;
-        v
+        self.0
     }
 }
 

@@ -39,15 +39,9 @@ impl MutVisitor<Name> for PrecedenceVisitor {
 }
 impl PrecedenceVisitor {
     pub fn new() -> Self {
-        let mut map = HashMap::new();
-        map.insert(
-            Name {
-                uid: 0,
-                name: intern(":"),
-            },
-            (5, Assoc::Right),
-        );
-        Self { precedence: map }
+        Self {
+            precedence: [(":".into(), (5, Assoc::Right))].into_iter().collect(),
+        }
     }
 
     fn get_precedence(&self, name: &Name) -> (isize, Assoc) {
