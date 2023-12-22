@@ -557,9 +557,7 @@ impl<Stream: Iterator<Item = char>> Lexer<Stream> {
             return self.scan_identifier(c, start_location);
         } else if c == '`' {
             let x = self.read_char().expect("Unexpected end of input");
-            if !x.is_alphabetic() && x != '_' {
-                panic!("Parse error on '{:?}'", x);
-            }
+            assert!(x.is_alphanumeric() || x == '_', "Parse error on '{:?}'", x);
             let mut token = self.scan_identifier(x, start_location);
             let end_tick = self.read_char();
             match end_tick {
@@ -581,17 +579,12 @@ impl<Stream: Iterator<Item = char>> Lexer<Stream> {
                 }
             }
         } else if c == '\'' {
-            match self.read_char() {
-                Some(x) => {
-                    if self.read_char() == Some('\'') {
-                        //FIXME: Slow
-                        return Token::new(&self.interner, CHAR, &*x.to_string(), start_location);
-                    } else {
-                        panic!("Multi char character")
-                    }
-                }
-                None => panic!("Unexpected EOF"),
+            let x = self.read_char().expect("Unexpected EOF");
+            if self.read_char() != Some('\'') {
+                panic!("Multi char character")
             }
+            //FIXME: Slow
+            return Token::new(&self.interner, CHAR, &*x.to_string(), start_location);
         }
         let tok = match c {
             ';' => SEMICOLON,
