@@ -70,10 +70,10 @@ impl<'a> Node<'a> {
         }
     }
     fn borrow<'b>(&'b self) -> Ref<'b, Node_<'a>> {
-        (*self.node).borrow()
+        self.node.borrow()
     }
     fn borrow_mut<'b>(&'b self) -> RefMut<'b, Node_<'a>> {
-        (*self.node).borrow_mut()
+        self.node.borrow_mut()
     }
 }
 impl<'a> fmt::Debug for Node<'a> {

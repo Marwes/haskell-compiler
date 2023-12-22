@@ -33,7 +33,7 @@ impl Interner {
 
     pub fn get_str<'a>(&'a self, InternedStr(i): InternedStr) -> &'a str {
         assert!(i < self.strings.len(), "Invalid InternedStr {:?}", i);
-        &*self.strings[i]
+        &self.strings[i]
     }
 }
 

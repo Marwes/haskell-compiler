@@ -37,7 +37,7 @@ pub struct TypeVariable {
 pub enum Type<Ident = InternedStr> {
     Variable(TypeVariable),
     Constructor(TypeConstructor<Ident>),
-    Application(Box<Type<Ident>>, Box<Type<Ident>>),
+    Application(Box<Self>, Box<Self>),
     Generic(TypeVariable),
 }
 #[derive(Clone, Debug, Default, Hash)]
@@ -45,6 +45,7 @@ pub struct Qualified<T, Ident = InternedStr> {
     pub constraints: Vec<Constraint<Ident>>,
     pub value: T,
 }
+
 pub fn qualified<Ident>(
     constraints: Vec<Constraint<Ident>>,
     typ: Type<Ident>,
@@ -73,7 +74,7 @@ impl<Id: fmt::Display + AsRef<str>> Type<Id> {
     ///Gives the typevariable the correct kind arity.
     pub fn new_var_args(id: VarId, types: Vec<Self>) -> Self {
         Self::new_type_kind(
-            Type::Variable(TypeVariable {
+            Self::Variable(TypeVariable {
                 id,
                 kind: Kind::Star,
                 age: 0,
@@ -88,7 +89,7 @@ impl<Id: fmt::Display + AsRef<str>> Type<Id> {
     ///Creates a new type constructor with the specified argument and kind
     pub fn new_op(name: Id, types: Vec<Self>) -> Self {
         Self::new_type_kind(
-            Type::Constructor(TypeConstructor {
+            Self::Constructor(TypeConstructor {
                 name,
                 kind: Kind::Star,
             }),

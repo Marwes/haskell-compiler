@@ -105,7 +105,7 @@ where
             Entry::Vacant(entry) => entry.insert(vec![]),
             Entry::Occupied(entry) => entry.into_mut(),
         };
-        if vec.len() != 0 {
+        if !vec.is_empty() {
             let r = vec.pop();
             vec.push(v);
             r
