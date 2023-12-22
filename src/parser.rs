@@ -592,48 +592,47 @@ impl<Iter: Iterator<Item = char>> Parser<Iter> {
 
     fn binary_expression(&mut self, lhs: Option<TypedExpr>) -> ParseResult<Option<TypedExpr>> {
         debug!("Parse operator expression, {:?}", self.lexer.current());
-        if self.lexer.next().token == OPERATOR {
-            let op = self.lexer.current().value;
-            let loc = self.lexer.current().location;
-            let rhs = self.application()?;
-            let rhs = self.binary_expression(rhs)?;
-            let expr = match (lhs, rhs) {
-                (Some(lhs), Some(rhs)) => Some(TypedExpr::with_location(
+        if self.lexer.next().token != OPERATOR {
+            self.lexer.backtrack();
+            return Ok(lhs);
+        };
+        let op = self.lexer.current().value;
+        let loc = self.lexer.current().location;
+        let rhs = self.application()?;
+        let rhs = self.binary_expression(rhs)?;
+        Ok(match (lhs, rhs) {
+            (Some(lhs), Some(rhs)) => {
+                Some(TypedExpr::with_location(
                     OpApply(Box::new(lhs), op, Box::new(rhs)),
                     loc,
-                )),
-                (Some(lhs), None) => {
-                    let name = TypedExpr::with_location(Identifier(op), loc);
-                    Some(TypedExpr::with_location(
-                        Apply(Box::new(name), Box::new(lhs)),
-                        loc,
+                ))
+            }
+            (Some(lhs), None) => {
+                let name = TypedExpr::with_location(Identifier(op), loc);
+                Some(TypedExpr::with_location(
+                    Apply(Box::new(name), Box::new(lhs)),
+                    loc,
+                ))
+            }
+            (None, Some(rhs)) => {
+                if op == intern("-") {
+                    let name = TypedExpr::with_location(Identifier(intern("negate")), loc);
+                    let args = vec![rhs];
+                    Some(make_application(name, args.into_iter()))
+                } else {
+                    let name = TypedExpr::with_location(Identifier(intern("negate")), loc);
+                    let args = vec![TypedExpr::with_location(Identifier(intern("#")), loc), rhs];
+                    let mut apply = make_application(name, args.into_iter());
+                    apply.location = loc;
+                    let params = vec![intern("#")];
+                    Some(make_lambda(
+                        params.into_iter().map(|a| Pattern::Identifier(a)),
+                        apply,
                     ))
                 }
-                (None, Some(rhs)) => {
-                    if op == intern("-") {
-                        let name = TypedExpr::with_location(Identifier(intern("negate")), loc);
-                        let args = vec![rhs];
-                        Some(make_application(name, args.into_iter()))
-                    } else {
-                        let name = TypedExpr::with_location(Identifier(intern("negate")), loc);
-                        let args =
-                            vec![TypedExpr::with_location(Identifier(intern("#")), loc), rhs];
-                        let mut apply = make_application(name, args.into_iter());
-                        apply.location = loc;
-                        let params = vec![intern("#")];
-                        Some(make_lambda(
-                            params.into_iter().map(|a| Pattern::Identifier(a)),
-                            apply,
-                        ))
-                    }
-                }
-                (None, None) => return Ok(None),
-            };
-            Ok(expr)
-        } else {
-            self.lexer.backtrack();
-            Ok(lhs)
-        }
+            }
+            (None, None) => return Ok(None),
+        })
     }
 
     fn application(&mut self) -> ParseResult<Option<TypedExpr>> {
