@@ -679,7 +679,7 @@ impl<Iter: Iterator<Item = char>> Parser<Iter> {
         let typ = self.constructor_type(&mut arity, data_def)?;
         self.lexer.backtrack();
         Ok(Constructor {
-            name: name,
+            name,
             typ: qualified(vec![], typ),
             tag: 0,
             arity: arity,
@@ -919,7 +919,7 @@ impl<Iter: Iterator<Item = char>> Parser<Iter> {
         expect!(self, TYPEDECL);
         let (context, typ) = self.constrained_type()?;
         Ok(TypeDeclaration {
-            name: name,
+            name,
             typ: Qualified {
                 constraints: context,
                 value: typ,
@@ -1043,7 +1043,7 @@ impl<Iter: Iterator<Item = char>> Parser<Iter> {
     fn data_lhs(&mut self) -> ParseResult<Type> {
         let name = expect!(self, NAME).value.clone();
         let mut typ = Type::Constructor(TypeConstructor {
-            name: name,
+            name,
             kind: Kind::Star.clone(),
         });
         while self.lexer.next().token == NAME {

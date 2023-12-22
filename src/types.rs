@@ -43,35 +43,31 @@ pub fn qualified<Ident>(
     typ: Type<Ident>,
 ) -> Qualified<Type<Ident>, Ident> {
     Qualified {
-        constraints: constraints,
+        constraints,
         value: typ,
     }
 }
 
 impl TypeVariable {
-    pub fn new(id: VarId) -> TypeVariable {
-        TypeVariable::new_var_kind(id, Kind::Star)
+    pub fn new(id: VarId) -> Self {
+        Self::new_var_kind(id, Kind::Star)
     }
-    pub fn new_var_kind(id: VarId, kind: Kind) -> TypeVariable {
-        TypeVariable {
-            id: id,
-            kind: kind,
-            age: 0,
-        }
+    pub fn new_var_kind(id: VarId, kind: Kind) -> Self {
+        Self { id, kind, age: 0 }
     }
 }
 
 impl<Id: fmt::Display + AsRef<str>> Type<Id> {
     ///Creates a new type variable with the specified id
-    pub fn new_var(id: VarId) -> Type<Id> {
-        Type::new_var_kind(id, Kind::Star)
+    pub fn new_var(id: VarId) -> Self {
+        Self::new_var_kind(id, Kind::Star)
     }
     ///Creates a new type which is a type variable which takes a number of types as arguments
     ///Gives the typevariable the correct kind arity.
-    pub fn new_var_args(id: VarId, types: Vec<Type<Id>>) -> Type<Id> {
-        Type::new_type_kind(
+    pub fn new_var_args(id: VarId, types: Vec<Self>) -> Self {
+        Self::new_type_kind(
             Type::Variable(TypeVariable {
-                id: id,
+                id,
                 kind: Kind::Star,
                 age: 0,
             }),
@@ -79,31 +75,28 @@ impl<Id: fmt::Display + AsRef<str>> Type<Id> {
         )
     }
     ///Creates a new type variable with the specified kind
-    pub fn new_var_kind(id: VarId, kind: Kind) -> Type<Id> {
-        Type::Variable(TypeVariable::new_var_kind(id, kind))
+    pub fn new_var_kind(id: VarId, kind: Kind) -> Self {
+        Self::Variable(TypeVariable::new_var_kind(id, kind))
     }
     ///Creates a new type constructor with the specified argument and kind
-    pub fn new_op(name: Id, types: Vec<Type<Id>>) -> Type<Id> {
-        Type::new_type_kind(
+    pub fn new_op(name: Id, types: Vec<Type<Id>>) -> Self {
+        Self::new_type_kind(
             Type::Constructor(TypeConstructor {
-                name: name,
+                name,
                 kind: Kind::Star,
             }),
             types,
         )
     }
     ///Creates a new type constructor applied to the types and with a specific kind
-    pub fn new_op_kind(name: Id, types: Vec<Type<Id>>, kind: Kind) -> Type<Id> {
-        let mut result = Type::Constructor(TypeConstructor {
-            name: name,
-            kind: kind,
-        });
+    pub fn new_op_kind(name: Id, types: Vec<Self>, kind: Kind) -> Self {
+        let mut result = Type::Constructor(TypeConstructor { name, kind });
         for typ in types.into_iter() {
             result = Type::Application(Box::new(result), Box::new(typ));
         }
         result
     }
-    fn new_type_kind(mut result: Type<Id>, types: Vec<Type<Id>>) -> Type<Id> {
+    fn new_type_kind(mut result: Self, types: Vec<Self>) -> Self {
         *result.mut_kind() = Kind::new(types.len() as isize + 1);
         for typ in types.into_iter() {
             result = Type::Application(Box::new(result), Box::new(typ));
@@ -130,7 +123,7 @@ impl<Id: fmt::Display + AsRef<str>> Type<Id> {
 
     ///Returns a reference to the the type function or fails if it is not an application
     #[allow(dead_code)]
-    pub fn appl(&self) -> &Type<Id> {
+    pub fn appl(&self) -> &Self {
         match self {
             &Type::Application(ref lhs, _) => &**lhs,
             _ => panic!("Error: Tried to unwrap {} as TypeApplication", self),
@@ -138,7 +131,7 @@ impl<Id: fmt::Display + AsRef<str>> Type<Id> {
     }
     #[allow(dead_code)]
     ///Returns a reference to the the type argument or fails if it is not an application
-    pub fn appr(&self) -> &Type<Id> {
+    pub fn appr(&self) -> &Self {
         match self {
             &Type::Application(_, ref rhs) => &**rhs,
             _ => panic!("Error: Tried to unwrap TypeApplication"),

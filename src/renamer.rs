@@ -627,7 +627,7 @@ fn rename_module_(
             Class {
                 constraints: constraints2,
                 name: renamer.get_name(name),
-                variable: variable,
+                variable,
                 declarations: renamer.rename_type_declarations(declarations),
                 bindings: renamer.rename_bindings(bindings, true),
             }
@@ -636,29 +636,27 @@ fn rename_module_(
 
     let bindings2 = renamer.rename_bindings(bindings, true);
 
-    let fixity_declarations2: Vec<FixityDeclaration<Name>> =
-        fixity_declarations
-            .into_iter()
-            .map(
-                |FixityDeclaration {
-                     assoc,
-                     precedence,
-                     operators,
-                 }| {
-                    let ops: Vec<Name> =
-                        operators.into_iter().map(|s| renamer.get_name(s)).collect();
-                    FixityDeclaration {
-                        assoc: assoc,
-                        precedence: precedence,
-                        operators: ops,
-                    }
-                },
-            )
-            .collect();
+    let fixity_declarations2: Vec<FixityDeclaration<Name>> = fixity_declarations
+        .into_iter()
+        .map(
+            |FixityDeclaration {
+                 assoc,
+                 precedence,
+                 operators,
+             }| {
+                let ops: Vec<Name> = operators.into_iter().map(|s| renamer.get_name(s)).collect();
+                FixityDeclaration {
+                    assoc,
+                    precedence,
+                    operators: ops,
+                }
+            },
+        )
+        .collect();
     let decls2 = renamer.rename_type_declarations(type_declarations);
     renamer.uniques.exit_scope();
     Module {
-        name: name,
+        name,
         imports: imports2,
         classes: classes2,
         data_definitions: data_definitions2,

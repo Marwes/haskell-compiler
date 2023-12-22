@@ -155,7 +155,7 @@ impl DerivingGen {
         let constraints = make_constraints(vec![], intern(class), &data.typ.value);
         Binding {
             name: Id::new(
-                Name { name: name, uid: 0 },
+                Name { name, uid: 0 },
                 lambda_expr.get_type().clone(),
                 constraints,
             ),

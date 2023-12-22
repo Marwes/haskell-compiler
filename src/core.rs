@@ -194,7 +194,7 @@ impl fmt::Display for Id {
 impl<T> Id<T> {
     pub fn new(name: T, typ: TcType, constraints: Vec<Constraint<Name>>) -> Id<T> {
         Id {
-            name: name,
+            name,
             typ: module::qualified(constraints, typ),
         }
     }
@@ -377,7 +377,7 @@ pub mod result {
     ) -> Binding<Ident> {
         let Binding { name, expression } = binding;
         Binding {
-            name: name,
+            name,
             expression: visitor.visit_expr(expression),
         }
     }
@@ -508,10 +508,10 @@ pub mod translate {
                     bindings,
                 } = class;
                 Class {
-                    constraints: constraints,
-                    name: name,
-                    variable: variable,
-                    declarations: declarations,
+                    constraints,
+                    name,
+                    variable,
+                    declarations,
                     bindings: translator.translate_bindings(bindings),
                 }
             })
@@ -1083,7 +1083,7 @@ pub mod translate {
             expr = make_lambda(arg_ids.into_iter(), expr);
             debug!("Desugared {} :: {}\n {}", name.name, name.typ, expr);
             Binding {
-                name: name,
+                name,
                 expression: expr,
             }
         }
