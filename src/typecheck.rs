@@ -1894,18 +1894,13 @@ pub fn with_arg_return<F>(func_type: &mut TcType, func: F) -> bool
 where
     F: FnOnce(&mut TcType, &mut TcType),
 {
-    match *func_type {
-        Type::Application(ref mut lhs, ref mut return_type) => {
-            match **lhs {
-                Type::Application(_, ref mut arg_type) => {
-                    func(arg_type, return_type);
-                    true
-                }
-                _ => false,
-            }
+    if let Type::Application(ref mut lhs, ref mut return_type) = func_type {
+        if let Type::Application(_, ref mut arg_type) = **lhs {
+            func(arg_type, return_type);
+            return true;
         }
-        _ => false,
     }
+    false
 }
 
 #[cfg(test)]
