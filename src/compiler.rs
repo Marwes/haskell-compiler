@@ -156,17 +156,19 @@ impl Globals for Assembly {
             }
         }
 
-        let mut index = 0;
-        for sc in self.super_combinators.iter() {
-            if name == sc.name {
-                return Some(if sc.typ.constraints.len() > 0 {
-                    Var::Constraint(self.offset + index, &sc.typ.value, &sc.typ.constraints)
-                } else {
-                    Var::Global(self.offset + index)
-                });
-            }
-            index += 1;
+        if let Some((index, sc)) = self
+            .super_combinators
+            .iter()
+            .enumerate()
+            .find(|(_, sc)| sc.name == name)
+        {
+            return Some(if !sc.typ.constraints.is_empty() {
+                Var::Constraint(self.offset + index, &sc.typ.value, &sc.typ.constraints)
+            } else {
+                Var::Global(self.offset + index)
+            });
         }
+
         self.find_constructor(name)
             .map(|(tag, arity)| Var::Constructor(tag, arity))
     }
@@ -186,7 +188,7 @@ fn find_global<'a>(module: &'a Module<Id>, offset: usize, name: Name) -> Option<
     for class in module.classes.iter() {
         for decl in class.declarations.iter() {
             if decl.name == name {
-                return Some(Var::Class(&decl.typ.value, &decl.typ.constraints, &class.variable));
+                return Some(Var::Class(&decl.typ.value, &*decl.typ.constraints, &class.variable));
             }
         }
     }
@@ -956,7 +958,7 @@ impl<'a> Compiler<'a> {
                     None => {
                         let dictionary_key =
                             find_specialized_instances(function_type, actual_type, constraints);
-                        self.push_dictionary(constraints, &dictionary_key, instructions);
+                        self.push_dictionary(constraints, &*dictionary_key, instructions);
                     }
                 }
             }
@@ -965,7 +967,7 @@ impl<'a> Compiler<'a> {
                 //push dictionary
                 let dictionary_key =
                     find_specialized_instances(function_type, actual_type, constraints);
-                self.push_dictionary(constraints, &dictionary_key, instructions);
+                self.push_dictionary(constraints, &*dictionary_key, instructions);
             }
         }
     }
