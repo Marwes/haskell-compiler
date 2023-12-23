@@ -897,43 +897,40 @@ impl<'a> Compiler<'a> {
         constraints: &[Constraint<Name>],
         var: &TypeVariable,
     ) {
-        match try_find_instance_type(var, function_type, actual_type) {
-            Some(typename) => {
-                //We should be able to retrieve the instance directly
-                let mut b = "#".to_string();
-                b.push_str(typename);
-                b.push_str(name.as_ref());
-                let instance_fn_name = Name {
-                    name: intern(b.as_ref()),
-                    uid: name.uid,
-                };
-                match self.find(instance_fn_name) {
-                    Some(Var::Global(index)) => {
-                        instructions.push(PushGlobal(index));
-                    }
-                    Some(Var::Constraint(index, function_type, constraints)) => {
-                        self.compile_with_constraints(
-                            instance_fn_name,
-                            actual_type,
-                            function_type,
-                            constraints,
-                            instructions,
-                        );
-                        instructions.push(PushGlobal(index));
-                        instructions.push(Mkap);
-                    }
-                    _ => panic!("Unregistered instance function {:?}", instance_fn_name),
+        if let Some(typename) = try_find_instance_type(var, function_type, actual_type) {
+            //We should be able to retrieve the instance directly
+            let mut b = "#".to_string();
+            b.push_str(typename);
+            b.push_str(name.as_ref());
+            let instance_fn_name = Name {
+                name: intern(b.as_ref()),
+                uid: name.uid,
+            };
+            match self.find(instance_fn_name) {
+                Some(Var::Global(index)) => {
+                    instructions.push(PushGlobal(index));
                 }
+                Some(Var::Constraint(index, function_type, constraints)) => {
+                    self.compile_with_constraints(
+                        instance_fn_name,
+                        actual_type,
+                        function_type,
+                        constraints,
+                        instructions,
+                    );
+                    instructions.push(PushGlobal(index));
+                    instructions.push(Mkap);
+                }
+                _ => panic!("Unregistered instance function {:?}", instance_fn_name),
             }
-            None => {
-                self.compile_with_constraints(
-                    name,
-                    actual_type,
-                    function_type,
-                    constraints,
-                    instructions,
-                )
-            }
+        } else {
+            self.compile_with_constraints(
+                name,
+                actual_type,
+                function_type,
+                constraints,
+                instructions,
+            )
         }
     }
 
