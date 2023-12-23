@@ -633,22 +633,20 @@ impl<Iter: Iterator<Item = char>> Parser<Iter> {
     }
 
     fn application(&mut self) -> ParseResult<Option<TypedExpr>> {
-        let e = self.sub_expression()?;
-        match e {
-            Some(mut lhs) => {
-                let mut expressions = vec![];
-                while let Some(expr) = self.sub_expression()? {
-                    expressions.push(expr);
-                }
-                if expressions.len() > 0 {
-                    let loc = lhs.location;
-                    lhs = make_application(lhs, expressions.into_iter()); //, loc);
-                    lhs.location = loc;
-                }
-                Ok(Some(lhs))
+        Ok(if let Some(mut lhs) = self.sub_expression()? {
+            let mut expressions = vec![];
+            while let Some(expr) = self.sub_expression()? {
+                expressions.push(expr);
             }
-            None => Ok(None),
-        }
+            if !expressions.is_empty() {
+                let loc = lhs.location;
+                lhs = make_application(lhs, expressions.into_iter()); //, loc);
+                lhs.location = loc;
+            }
+            Some(lhs)
+        } else {
+            None
+        })
     }
 
     fn constructor(&mut self, data_def: &DataDefinition) -> ParseResult<Constructor> {
@@ -1580,7 +1578,7 @@ instance Eq a => Eq [a] where
                     identifier("getContents"),
                 ),
             ],
-            apply(identifier("return".into(), identifier("s"))),
+            apply(identifier("return"), identifier("s")).into(),
         ));
         assert_eq!(module.bindings[0].matches, Match::Simple(b));
     }
@@ -1594,7 +1592,7 @@ instance Eq a => Eq [a] where
         );
         assert_eq!(
             expr,
-            TypedExpr::new(Lambda(pattern, identifier("x"))).into()
+            TypedExpr::new(Lambda(pattern, identifier("x").into())).into()
         );
     }
 
