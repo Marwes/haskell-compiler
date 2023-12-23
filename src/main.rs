@@ -7,9 +7,9 @@ extern crate getopts;
 extern crate test;
 
 #[cfg(not(test))]
-use vm::execute_main_module;
-#[cfg(not(test))]
 use getopts::Options;
+#[cfg(not(test))]
+use vm::execute_main_module;
 
 macro_rules! write_core_expr(
     ($e:expr, $f:expr, $($p:pat),*) => ({
@@ -37,24 +37,24 @@ macro_rules! write_core_expr(
     })
 );
 
-mod types;
-mod module;
-mod compiler;
-mod typecheck;
-mod lexer;
-mod parser;
-mod graph;
-mod vm;
-mod scoped_map;
-mod core;
-mod lambda_lift;
-mod renamer;
-mod infix;
 mod builtins;
-mod interner;
+mod compiler;
+mod core;
 mod deriving;
+mod graph;
+mod infix;
+mod interner;
+mod lambda_lift;
+mod lexer;
+mod module;
+mod parser;
+mod renamer;
 #[cfg(not(test))]
 mod repl;
+mod scoped_map;
+mod typecheck;
+mod types;
+mod vm;
 
 #[cfg(not(test))]
 fn main() {
@@ -82,10 +82,9 @@ fn main() {
         return;
     }
 
-    let modulename = &*matches.free[0];
+    let modulename = &matches.free[0];
     match execute_main_module(modulename.as_ref()).unwrap() {
         Some(x) => println!("{:?}", x),
-        None => println!("Error running module {}", modulename)
+        None => println!("Error running module {}", modulename),
     }
 }
-

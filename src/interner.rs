@@ -1,42 +1,39 @@
-use std::collections::HashMap;
-use std::rc::Rc;
-use std::cell::RefCell;
-use std::ops::Deref;
-use std::fmt;
+use std::{
+    cell::RefCell,
+    collections::HashMap,
+    fmt,
+    ops::Deref,
+    rc::Rc,
+};
 
 #[derive(Eq, PartialEq, Clone, Copy, Default, Hash, Debug)]
 pub struct InternedStr(usize);
 
 pub struct Interner {
     indexes: HashMap<String, usize>,
-    strings: Vec<String>
+    strings: Vec<String>,
 }
 
 impl Interner {
-
-    pub fn new() -> Interner {
-        Interner { indexes: HashMap::new(), strings: Vec::new() }
+    pub fn new() -> Self {
+        Self {
+            indexes: HashMap::new(),
+            strings: vec![],
+        }
     }
 
     pub fn intern(&mut self, s: &str) -> InternedStr {
-        match self.indexes.get(s).map(|x| *x) {
-            Some(index) => InternedStr(index),
-            None => {
-                let index = self.strings.len();
-                self.indexes.insert(s.to_string(), index);
-                self.strings.push(s.to_string());
-                InternedStr(index)
-            }
-        }
+        InternedStr(self.indexes.get(s).cloned().unwrap_or_else(|| {
+            let index = self.strings.len();
+            self.indexes.insert(s.to_string(), index);
+            self.strings.push(s.to_string());
+            index
+        }))
     }
 
     pub fn get_str<'a>(&'a self, InternedStr(i): InternedStr) -> &'a str {
-        if i < self.strings.len() {
-            &*self.strings[i]
-        }
-        else {
-            panic!("Invalid InternedStr {:?}", i)
-        }
+        assert!(i < self.strings.len(), "Invalid InternedStr {:?}", i);
+        &self.strings[i]
     }
 }
 
@@ -47,9 +44,21 @@ pub fn get_local_interner() -> Rc<RefCell<Interner>> {
 }
 
 pub fn intern(s: &str) -> InternedStr {
-    let i = get_local_interner();
-    let mut i = i.borrow_mut();
-    i.intern(s)
+    s.into()
+}
+
+impl From<&str> for InternedStr {
+    fn from(s: &str) -> Self {
+        let i = get_local_interner();
+        let mut i = i.borrow_mut();
+        i.intern(s)
+    }
+}
+
+impl PartialEq<str> for InternedStr {
+    fn eq(&self, other: &str) -> bool {
+        self == &intern(other)
+    }
 }
 
 impl Deref for InternedStr {

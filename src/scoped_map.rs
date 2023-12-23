@@ -1,6 +1,13 @@
-use std::collections::HashMap;
-use std::collections::hash_map::{Entry, IterMut};
-use std::hash::Hash;
+use std::{
+    collections::{
+        hash_map::{
+            Entry,
+            IterMut,
+        },
+        HashMap,
+    },
+    hash::Hash,
+};
 
 ///A map struct which allows for the isizeroduction of different scopes
 ///Introducing a new scope will make it possible to isizeroduce additional
@@ -12,30 +19,33 @@ pub struct ScopedMap<K, V> {
     map: HashMap<K, Vec<V>>,
     ///A vector of scopes, when entering a scope, None is added as a marker
     ///when later exiting a scope, values are removed from the map until the marker is found
-    scopes: Vec<Option<K>>
+    scopes: Vec<Option<K>>,
 }
 
 #[allow(dead_code)]
-impl <K, V> ScopedMap<K, V>
-    where K: Eq + Hash + Clone {
-
-    pub fn new() -> ScopedMap<K, V> {
-        ScopedMap { map: HashMap::new(), scopes: Vec::new() }
+impl<K, V> ScopedMap<K, V>
+where
+    K: Eq + Hash + Clone,
+{
+    pub fn new() -> Self {
+        Self {
+            map: HashMap::new(),
+            scopes: vec![],
+        }
     }
     ///Introduces a new scope
     pub fn enter_scope(&mut self) {
         self.scopes.push(None);
     }
+
     ///Exits the current scope, removing anything inserted since the
     ///matching enter_scope call
     pub fn exit_scope(&mut self) {
-        loop {
-            match self.scopes.pop() {
-                Some(Some(key)) => { self.map.get_mut(&key).map(|x| x.pop()); }
-                _ => break
-            }
+        while let Some(key) = self.scopes.pop().flatten() {
+            self.map.get_mut(&key).map(|x| x.pop());
         }
     }
+
     ///Removes a previusly inserted value from the map.
     pub fn remove(&mut self, k: &K) -> bool {
         match self.map.get_mut(k).map(|x| x.pop()) {
@@ -49,7 +59,7 @@ impl <K, V> ScopedMap<K, V>
                 }
                 true
             }
-            None => false
+            None => false,
         }
     }
 
@@ -59,7 +69,7 @@ impl <K, V> ScopedMap<K, V>
             match *n {
                 Some(ref name) if name == k => return true,
                 None => break,
-                _ => ()
+                _ => (),
             }
         }
         false
@@ -76,7 +86,9 @@ impl <K, V> ScopedMap<K, V>
 
     ///Returns the number of elements in the container.
     ///Shadowed elements are not counted
-    pub fn len(&self) -> usize { self.map.len() }
+    pub fn len(&self) -> usize {
+        self.map.len()
+    }
 
     ///Removes all elements
     pub fn clear(&mut self) {
@@ -87,15 +99,13 @@ impl <K, V> ScopedMap<K, V>
     ///Swaps the value stored at key, or inserts it if it is not present
     pub fn swap(&mut self, k: K, v: V) -> Option<V> {
         let vec = match self.map.entry(k.clone()) {
-            Entry::Vacant(entry) => entry.insert(Vec::new()),
-            Entry::Occupied(entry) => entry.into_mut()
+            Entry::Vacant(entry) => entry.insert(vec![]),
+            Entry::Occupied(entry) => entry.into_mut(),
         };
-        if vec.len() != 0 {
-            let r  = vec.pop();
+        if let Some(r) = vec.pop() {
             vec.push(v);
-            r
-        }
-        else {
+            r.into()
+        } else {
             vec.push(v);
             self.scopes.push(Some(k));
             None
@@ -113,7 +123,7 @@ impl <K, V> ScopedMap<K, V>
                 }
                 Some(v)
             }
-            None => None
+            None => None,
         }
     }
     pub fn find_mut<'a>(&'a mut self, key: &K) -> Option<&'a mut V> {
@@ -121,8 +131,8 @@ impl <K, V> ScopedMap<K, V>
     }
     pub fn insert(&mut self, k: K, v: V) -> bool {
         let vec = match self.map.entry(k.clone()) {
-            Entry::Vacant(entry) => entry.insert(Vec::new()),
-            Entry::Occupied(entry) => entry.into_mut()
+            Entry::Vacant(entry) => entry.insert(vec![]),
+            Entry::Occupied(entry) => entry.into_mut(),
         };
         vec.push(v);
         self.scopes.push(Some(k));

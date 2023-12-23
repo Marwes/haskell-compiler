@@ -1,8 +1,7 @@
+use std::cmp::min;
 ///Graph module, contains a simple graph structure which is when typechecking to find
 ///functions which are mutually recursive
-
 use std::iter::repeat;
-use std::cmp::min;
 
 #[derive(PartialEq, Copy, Clone, Debug)]
 pub struct VertexIndex(usize);
@@ -10,40 +9,52 @@ pub struct VertexIndex(usize);
 pub struct EdgeIndex(usize);
 
 impl VertexIndex {
-    fn get(&self) -> usize { let VertexIndex(v) = *self; v }
+    fn get(&self) -> usize {
+        self.0
+    }
 }
 impl EdgeIndex {
-    fn get(&self) -> usize { let EdgeIndex(v) = *self; v }
+    fn get(&self) -> usize {
+        self.0
+    }
 }
 
 pub struct Vertex<T> {
     pub value: T,
-    edges: Vec<EdgeIndex>
+    edges: Vec<EdgeIndex>,
 }
 pub struct Edge {
     from: VertexIndex,
-    to: VertexIndex
+    to: VertexIndex,
 }
 
 pub struct Graph<T> {
     edges: Vec<Edge>,
-    vertices: Vec<Vertex<T>>
+    vertices: Vec<Vertex<T>>,
 }
 
-impl <T> Graph<T> {
+impl<T> Graph<T> {
     ///Creates a new graph
-    pub fn new() -> Graph<T> {
-        Graph { edges: Vec::new(), vertices: Vec::new() }
+    pub fn new() -> Self {
+        Self {
+            edges: vec![],
+            vertices: vec![],
+        }
     }
     ///Creates a new vertex and returns the index which refers to it
     pub fn new_vertex(&mut self, value: T) -> VertexIndex {
-        self.vertices.push(Vertex { edges:Vec::new(), value: value });
+        self.vertices.push(Vertex {
+            edges: vec![],
+            value,
+        });
         VertexIndex(self.vertices.len() - 1)
     }
-    
+
     ///Connects two vertices with an edge
     pub fn connect(&mut self, from: VertexIndex, to: VertexIndex) {
-        self.vertices[from.get()].edges.push(EdgeIndex(self.edges.len()));
+        self.vertices[from.get()]
+            .edges
+            .push(EdgeIndex(self.edges.len()));
         self.edges.push(Edge { from: from, to: to });
     }
     ///Returns the vertex at the index
@@ -65,12 +76,14 @@ impl <T> Graph<T> {
 ///Analyzes the graph for strongly connect components.
 ///Returns a vector of indices where each group is a separte vector
 pub fn strongly_connected_components<T>(graph: &Graph<T>) -> Vec<Vec<VertexIndex>> {
-    
-    let mut tarjan = TarjanComponents { graph: graph, index: 1, stack: Vec::new(), connections: Vec::new(),
+    let mut tarjan = TarjanComponents {
+        graph,
+        index: 1,
+        stack: vec![],
+        connections: vec![],
         valid: repeat(0).take(graph.len()).collect(),
-        lowlink: repeat(0).take(graph.len()).collect()
+        lowlink: repeat(0).take(graph.len()).collect(),
     };
-    
 
     for vert in 0..graph.len() {
         if tarjan.valid[vert] == 0 {
@@ -81,16 +94,16 @@ pub fn strongly_connected_components<T>(graph: &Graph<T>) -> Vec<Vec<VertexIndex
     tarjan.connections
 }
 
-struct TarjanComponents<'a, T: 'a>{
+struct TarjanComponents<'a, T: 'a> {
     index: usize,
     graph: &'a Graph<T>,
     valid: Vec<usize>,
     lowlink: Vec<usize>,
     stack: Vec<VertexIndex>,
-    connections: Vec<Vec<VertexIndex>>
+    connections: Vec<Vec<VertexIndex>>,
 }
 ///Implementation of "Tarjan's strongly connected components algorithm"
-impl <'a, T> TarjanComponents<'a, T> {
+impl<'a, T> TarjanComponents<'a, T> {
     fn strong_connect(&mut self, v: VertexIndex) {
         self.valid[v.get()] = self.index;
         self.lowlink[v.get()] = self.index;
@@ -101,28 +114,25 @@ impl <'a, T> TarjanComponents<'a, T> {
             let edge = self.graph.get_edge(*edge_index);
             if self.valid[edge.to.get()] == 0 {
                 self.strong_connect(edge.to);
-                    self.lowlink[v.get()] = min(self.lowlink[v.get()], self.lowlink[edge.to.get()]); 
-            }
-            else if self.stack.iter().any(|x| *x == edge.to) {
+                self.lowlink[v.get()] = min(self.lowlink[v.get()], self.lowlink[edge.to.get()]);
+            } else if self.stack.iter().any(|x| *x == edge.to) {
                 self.lowlink[v.get()] = min(self.lowlink[v.get()], self.valid[edge.to.get()]);
             }
         }
 
         if self.lowlink.get(v.get()) == self.valid.get(v.get()) {
-            let mut connected = Vec::new();
+            let mut connected = vec![];
             loop {
-                
                 let w = self.stack.pop().unwrap();
                 connected.push(w);
                 if w == v {
-                    break
+                    break;
                 }
             }
             self.connections.push(connected);
         }
     }
 }
-
 
 #[test]
 fn test_tarjan() {
