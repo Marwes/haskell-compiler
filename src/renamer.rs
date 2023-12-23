@@ -310,22 +310,22 @@ impl Renamer {
         let e = match expr {
             Literal(l) => Literal(l),
             Identifier(i) => Identifier(self.get_name(i)),
-            Apply(func, arg) => Apply(Box::new(self.rename(*func)), Box::new(self.rename(*arg))),
+            Apply(func, arg) => Apply(self.rename(*func).into(), self.rename(*arg).into()),
             OpApply(lhs, op, rhs) => OpApply(
-                Box::new(self.rename(*lhs)),
+                self.rename(*lhs).into(),
                 self.get_name(op),
-                Box::new(self.rename(*rhs)),
+                self.rename(*rhs).into(),
             ),
             Lambda(arg, body) => {
                 self.uniques.enter_scope();
-                let l = Lambda(self.rename_pattern(arg), Box::new(self.rename(*body)));
+                let l = Lambda(self.rename_pattern(arg), self.rename(*body).into());
                 self.uniques.exit_scope();
                 l
             }
             Let(bindings, expr) => {
                 self.uniques.enter_scope();
                 let bs = self.rename_bindings(bindings, false);
-                let l = Let(bs, Box::new(self.rename(*expr)));
+                let l = Let(bs, self.rename(*expr).into());
                 self.uniques.exit_scope();
                 l
             }

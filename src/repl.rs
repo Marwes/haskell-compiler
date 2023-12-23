@@ -21,13 +21,12 @@ use crate::{
 
 ///Returns whether the type in question is an IO action
 fn is_io(typ: &Type<Name>) -> bool {
-    match *typ {
-        Type::Application(ref lhs, _) => match **lhs {
-            Type::Constructor(ref op) => op.name.as_ref() == "IO",
-            _ => false,
-        },
-        _ => false,
+    if let Type::Application(ref lhs, _) = *typ {
+        if let Type::Constructor(ref op) = **lhs {
+            return op.name.as_ref() == "IO";
+        }
     }
+    false
 }
 
 ///Compiles an expression into an assembly
@@ -100,10 +99,7 @@ pub fn start() {
 
     let stdin = ::std::io::stdin();
     for line in stdin.lock().lines() {
-        let expr_str = match line {
-            Ok(l) => l,
-            Err(e) => panic!("Reading line failed with '{:?}'", e),
-        };
+        let expr_str = line.unwrap_or_else(|e| panic!("Reading line failed with '{:?}'", e));
         let assembly = match compile_expr(vm.get_assembly(0), expr_str.as_ref()) {
             Ok(assembly) => assembly,
             Err(err) => {

@@ -140,10 +140,10 @@ impl FreeVariables {
                     name: id.clone(),
                     expression: rhs,
                 };
-                Let(vec![bind], Box::new(Identifier(id)))
+                Let(vec![bind], Identifier(id).into())
             };
             for (_, var) in free_vars.iter() {
-                e = Apply(e.into(), Box::new(Identifier(var.clone())));
+                e = Apply(e.into(), Identifier(var.clone()).into());
             }
             *input_expr = e
         }

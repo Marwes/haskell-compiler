@@ -57,7 +57,7 @@ impl DerivingGen {
         self.make_binop("Eq", "==", data, &mut |this, id_l, id_r| {
             let alts =
                 this.match_same_constructors(data, &id_r, &mut |this, l, r| this.eq_fields(l, r));
-            Case(Box::new(Identifier(id_l.clone())), alts)
+            Case(Identifier(id_l.clone()).into(), alts)
         })
     }
 

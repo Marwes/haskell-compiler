@@ -82,7 +82,7 @@ pub enum Instruction {
     ConstructDictionary(usize),
     PushDictionaryRange(usize, usize),
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 enum Var<'a> {
     Stack(usize),
     Global(usize),
@@ -122,21 +122,6 @@ static BINARY_PRIMITIVES: &'static [(&'static str, Instruction)] = &[
     ("primDoubleGE", DoubleGE),
 ];
 
-impl<'a> Clone for Var<'a> {
-    fn clone(&self) -> Self {
-        match *self {
-            Self::Stack(x) => Self::Stack(x),
-            Self::Global(x) => Self::Global(x),
-            Self::Constructor(x, y) => Self::Constructor(x, y),
-            Self::Class(x, y, z) => Self::Class(x, y, z),
-            Self::Constraint(x, y, z) => Self::Constraint(x, y, z),
-            Self::Builtin(x) => Self::Builtin(x),
-            Self::Primitive(x, y) => Self::Primitive(x, y),
-            Self::Newtype => Self::Newtype,
-        }
-    }
-}
-
 pub struct SuperCombinator {
     pub arity: usize,
     pub name: Name,
@@ -174,13 +159,11 @@ impl Globals for Assembly {
         let mut index = 0;
         for sc in self.super_combinators.iter() {
             if name == sc.name {
-                if sc.typ.constraints.len() > 0 {
-                    return Some(
-                        Var::Constraint(self.offset + index, &sc.typ.value, &*sc.typ.constraints)
-                    );
+                return Some(if sc.typ.constraints.len() > 0 {
+                    Var::Constraint(self.offset + index, &sc.typ.value, &*sc.typ.constraints)
                 } else {
-                    return Some(Var::Global(self.offset + index));
-                }
+                    Var::Global(self.offset + index)
+                });
             }
             index += 1;
         }

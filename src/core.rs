@@ -705,34 +705,33 @@ pub mod translate {
                         function_type_(r.get_type().clone(), typ),
                     );
                     Apply(
-                        Box::new(Apply(
-                            Box::new(Identifier(Id::new(op, func_type, vec![]))),
-                            l,
-                        )),
+                        Apply(Identifier(Id::new(op, func_type, vec![])).into(), l).into(),
                         r,
                     )
                 }
                 module::Expr::Literal(l) => Literal(LiteralData { typ, value: l }),
-                module::Expr::Lambda(arg, body) => match arg {
-                    module::Pattern::Identifier(arg) => Lambda(
-                        Id::new(arg, typ, vec![]),
-                        Box::new(self.translate_expr_rest(*body)),
-                    ),
-                    module::Pattern::WildCard => Lambda(
-                        Id::new(
-                            Name {
-                                name: intern("_"),
-                                uid: usize::max_value(),
-                            },
-                            typ,
-                            vec![],
+                module::Expr::Lambda(arg, body) => {
+                    match arg {
+                        module::Pattern::Identifier(arg) => Lambda(
+                            Id::new(arg, typ, vec![]),
+                            self.translate_expr_rest(*body).into(),
                         ),
-                        Box::new(self.translate_expr_rest(*body)),
-                    ),
-                    _ => {
-                        panic!("Core translation of pattern matches in lambdas are not implemented")
+                        module::Pattern::WildCard => Lambda(
+                            Id::new(
+                                Name {
+                                    name: intern("_"),
+                                    uid: usize::max_value(),
+                                },
+                                typ,
+                                vec![],
+                            ),
+                            self.translate_expr_rest(*body).into(),
+                        ),
+                        _ => {
+                            panic!("Core translation of pattern matches in lambdas are not implemented")
+                        }
                     }
-                },
+                }
                 module::Expr::Let(bindings, body) => {
                     let bs = self.translate_bindings(bindings);
                     Let(bs, Box::new(self.translate_expr(*body)))

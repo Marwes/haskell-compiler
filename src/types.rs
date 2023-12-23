@@ -204,7 +204,7 @@ impl<Id> Type<Id> {
                 })
             }
             Self::Application(lhs, rhs) => {
-                Type::Application(Box::new(lhs.map_(f)), Box::new(rhs.map_(f)))
+                Type::Application(lhs.map_(f).into(), rhs.map_(f).into())
             }
             Self::Generic(v) => Type::Generic(v),
         }

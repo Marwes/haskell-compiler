@@ -443,7 +443,7 @@ impl<'a> TypeEnvironment<'a> {
                         .map(|data| extract_applied_type(&data.typ.value).kind().clone())
                         .unwrap_or_else(|| {
                             if intern("[]") == op.name {
-                                Kind::Function(Box::new(Kind::Star), Box::new(Kind::Star))
+                                Kind::Function(Kind::Star.into(), Kind::Star.into())
                             } else {
                                 Kind::Star
                             }
