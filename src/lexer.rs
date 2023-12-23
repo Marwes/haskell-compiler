@@ -235,7 +235,7 @@ impl<Stream: Iterator<Item = char>> Lexer<Stream> {
             self.tokens
                 .get(self.tokens.len() - 1 - self.offset)
                 .expect("Impossible empty tokens stream")
-        } else if self.unprocessed_tokens.len() > 0 {
+        } else if !self.unprocessed_tokens.is_empty() {
             //Some previous call to next produced more than one token so process those first
             self.layout_independent_token();
             self.tokens.back().unwrap()
@@ -337,7 +337,7 @@ impl<Stream: Iterator<Item = char>> Lexer<Stream> {
         //before the current token and set the current token to the '}'
         //Credits to the HUGS source code for the solution
         if self.next().token != RBRACE {
-            if self.indent_levels.len() != 0 {
+            if !self.indent_levels.is_empty() {
                 //L (t:ts) (m:ms) 	= 	} : (L (t:ts) ms) 	if m /= 0 and parse-error(t)
                 let m = *self.indent_levels.last().unwrap();
                 if m != 0 {
@@ -433,7 +433,7 @@ impl<Stream: Iterator<Item = char>> Lexer<Stream> {
                 INDENTSTART => {
                     //{n} token
                     let n = tok.location.column;
-                    if self.indent_levels.len() != 0 {
+                    if !self.indent_levels.is_empty() {
                         //m:ms
                         let m = *self.indent_levels.last().unwrap();
                         if n > m {
@@ -471,7 +471,7 @@ impl<Stream: Iterator<Item = char>> Lexer<Stream> {
                     return;
                 }
                 RBRACE => {
-                    if self.indent_levels.len() > 0 && *self.indent_levels.last().unwrap() == 0 {
+                    if !self.indent_levels.is_empty() && *self.indent_levels.last().unwrap() == 0 {
                         self.tokens
                             .push_back(self.unprocessed_tokens.pop().unwrap());
                         self.indent_levels.pop();

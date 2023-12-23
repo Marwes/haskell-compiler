@@ -212,7 +212,7 @@ fn find_global<'a>(module: &'a Module<Id>, offset: usize, name: Name) -> Option<
             global_index -= 1;
             let typ = bind.expression.get_type();
             let constraints = &bind.name.typ.constraints;
-            if constraints.len() > 0 {
+            if !constraints.is_empty() {
                 Var::Constraint(offset + global_index, typ, constraints)
             } else {
                 Var::Global(offset + global_index)

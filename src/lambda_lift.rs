@@ -122,7 +122,7 @@ impl FreeVariables {
         free_vars: &HashMap<Name, TypeAndStr>,
         input_expr: &mut Expr<TypeAndStr>,
     ) {
-        if free_vars.len() != 0 {
+        if !free_vars.is_empty() {
             let mut temp = Literal(LiteralData {
                 typ: Type::new_var(self.name_supply.from_str("a").name),
                 value: Integral(0),

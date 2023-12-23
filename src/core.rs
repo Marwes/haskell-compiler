@@ -872,13 +872,13 @@ pub mod translate {
             let mut result = vec![];
             let mut vec: Vec<module::Binding<Name>> = vec![];
             for bind in bindings.into_iter() {
-                if vec.len() > 0 && vec[0].name != bind.name {
+                if !vec.is_empty() && vec[0].name != bind.name {
                     result.push(self.translate_matching_groups(vec));
                     vec = vec![];
                 }
                 vec.push(bind);
             }
-            if vec.len() > 0 {
+            if !vec.is_empty() {
                 result.push(self.translate_matching_groups(vec));
             }
             result
@@ -1254,12 +1254,12 @@ pub mod translate {
                 let defaults: Vec<Equation> = equations
                     .iter()
                     .filter(|&&Equation(ps, _)| {
-                        ps.len() > 0
+                        !ps.is_empty()
                             && matches!(ps[0].1, Pattern::WildCard | Pattern::Identifier(..))
                     })
                     .map(|&Equation(ps, e)| Equation(&ps[1..], e))
                     .collect();
-                if defaults.len() != 0 {
+                if !defaults.is_empty() {
                     let arg_id = &ps[0].0;
                     let bs = needed_variables(arg_id, equations);
                     let e = make_let(bs, self.translate_equations(defaults.as_ref()));

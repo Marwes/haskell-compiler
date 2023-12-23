@@ -74,7 +74,7 @@ impl<T> Errors<T> {
     }
 
     pub fn has_errors(&self) -> bool {
-        self.errors.len() != 0
+        !self.errors.is_empty()
     }
 
     pub fn into_result<V>(&mut self, value: V) -> Result<V, Errors<T>> {

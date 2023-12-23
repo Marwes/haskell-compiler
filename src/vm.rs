@@ -143,7 +143,7 @@ impl<'a> fmt::Debug for Node_<'a> {
 impl fmt::Debug for InstanceDictionary {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "[")?;
-        if self.entries.len() > 0 {
+        if !self.entries.is_empty() {
             write!(f, "{:?}", *self.entries[0])?;
         }
         for entry in self.entries.iter().skip(1) {

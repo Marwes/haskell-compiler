@@ -344,13 +344,13 @@ impl<I: fmt::Display> fmt::Display for TypeConstructor<I> {
 
 impl<T: fmt::Display, I: fmt::Display + AsRef<str>> fmt::Display for Qualified<T, I> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        if self.constraints.len() != 0 {
+        if !self.constraints.is_empty() {
             write!(f, "(")?;
         }
         for constraint in &self.constraints {
             write!(f, "{}, ", constraint)?;
         }
-        if self.constraints.len() != 0 {
+        if !self.constraints.is_empty() {
             write!(f, ") => {}", self.value)
         } else {
             write!(f, "{}", self.value)
