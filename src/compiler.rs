@@ -239,10 +239,8 @@ fn find_constructor(module: &Module<Id>, name: Name) -> Option<(u16, u16)> {
 
 impl Types for Module<Id> {
     fn find_type<'a>(&'a self, name: &Name) -> Option<&'a Qualified<Type<Name>, Name>> {
-        for bind in self.bindings.iter() {
-            if bind.name.name == *name {
-                return Some(&bind.name.typ);
-            }
+        if let Some(bind) = self.bindings.iter().find(|bind| bind.name.name == *name) {
+            return Some(&bind.name.typ);
         }
 
         for class in self.classes.iter() {
@@ -291,15 +289,12 @@ impl Types for Module<Id> {
         typ: &Type<Name>,
     ) -> Option<(&'a [Constraint<Name>], &'a Type<Name>)> {
         for instance in self.instances.iter() {
-            let y = match extract_applied_type(&instance.typ) {
-                &Type::Constructor(ref x) => x,
-                _ => panic!(),
+            let Type::Constructor(ref y) = extract_applied_type(&instance.typ) else {
+                panic!();
             };
-            let z =
-                match extract_applied_type(typ) {
-                    &Type::Constructor(ref x) => x,
-                    _ => panic!(),
-                };
+            let Type::Constructor(ref z) = extract_applied_type(typ) else {
+                panic!();
+            };
             if classname == instance.classname && y.name == z.name {
                 return Some((instance.constraints.as_ref(), &instance.typ));
             }
@@ -332,7 +327,7 @@ impl Types for Assembly {
                 }
             }
         }
-        return None;
+        None
     }
 
     fn find_class<'a>(
@@ -360,25 +355,20 @@ impl Types for Assembly {
         typ: &Type<Name>,
     ) -> Option<(&'a [Constraint<Name>], &'a Type<Name>)> {
         for &(ref constraints, ref op) in self.instances.iter() {
-            match op {
-                &Type::Application(ref op, ref t) => {
-                    let x = match extract_applied_type(op) {
-                        &Type::Constructor(ref x) => x,
-                        _ => panic!(),
-                    };
-                    let y = match extract_applied_type(t) {
-                        &Type::Constructor(ref x) => x,
-                        _ => panic!(),
-                    };
-                    let z = match extract_applied_type(typ) {
-                        &Type::Constructor(ref x) => x,
-                        _ => panic!(),
-                    };
-                    if classname.name == x.name && y.name == z.name {
-                        return Some((constraints.as_ref(), t));
-                    }
-                }
-                _ => (),
+            let &Type::Application(ref op, ref t) = op else {
+                continue;
+            };
+            let Type::Constructor(ref x) = extract_applied_type(op) else {
+                panic!();
+            };
+            let Type::Constructor(ref y) = extract_applied_type(t) else {
+                panic!();
+            };
+            let Type::Constructor(ref z) = extract_applied_type(typ) else {
+                panic!();
+            };
+            if classname.name == x.name && y.name == z.name {
+                return Some((constraints.as_ref(), t));
             }
         }
         None
