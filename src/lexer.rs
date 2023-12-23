@@ -512,15 +512,14 @@ impl<Stream: Iterator<Item = char>> Lexer<Stream> {
         let mut c = ' ';
         //Skip all whitespace before the token
         while c.is_whitespace() {
-            match self.read_char() {
-                Some(x) => {
-                    c = x;
-                    if self.location.column == 0 {
-                        //newline detected
-                        *newline = true;
-                    }
+            if let Some(x) = self.read_char() {
+                c = x;
+                if self.location.column == 0 {
+                    //newline detected
+                    *newline = true;
                 }
-                None => return Token::eof(),
+            } else {
+                return Token::eof();
             }
         }
         let start_location = self.location;

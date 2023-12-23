@@ -896,13 +896,12 @@ mod tests {
             .iter()
             .flat_map(|a| a.super_combinators.iter())
             .find(|sc| sc.name.name == intern("main"));
-        match x {
-            Some(sc) => {
-                assert!(sc.arity == 0);
-                let result = vm.evaluate(&*sc.instructions, sc.assembly_id);
-                extract_result(result)
-            }
-            None => None,
+        if let Some(sc) = x {
+            assert!(sc.arity == 0);
+            let result = vm.evaluate(&*sc.instructions, sc.assembly_id);
+            extract_result(result)
+        } else {
+            None
         }
     }
 
