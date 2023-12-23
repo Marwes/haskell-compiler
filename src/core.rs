@@ -405,13 +405,13 @@ pub mod result {
                 let a = visitor.visit_expr(*arg);
                 Apply(f.into(), a.into())
             }
-            Lambda(x, body) => Lambda(x, Box::new(visitor.visit_expr(*body))),
+            Lambda(x, body) => Lambda(x, visitor.visit_expr(*body).into()),
             Let(binds, e) => {
                 let bs: Vec<Binding<Ident>> = binds
                     .into_iter()
                     .map(|b| visitor.visit_binding(b))
                     .collect();
-                Let(bs, Box::new(visitor.visit_expr(*e)))
+                Let(bs, visitor.visit_expr(*e).into())
             }
             Case(e, alts) => {
                 let e2 = visitor.visit_expr(*e);
@@ -905,7 +905,7 @@ pub mod translate {
                                 //as the same since their binding variable are the same
                                 name.truncate(base_length);
                                 name.push('_');
-                                name.push_str(&i.to_string());
+                                name.push_str(&*i.to_string());
 
                                 let n = Name {
                                     name: intern(name.as_ref()),
@@ -1064,7 +1064,7 @@ pub mod translate {
                     let where_bindings_binds =
                         where_bindings.map_or(vec![], |bs| self.translate_bindings(bs));
                     (
-                        self.unwrap_patterns(uid, arg_ids.as_ref(), &arguments),
+                        self.unwrap_patterns(uid, arg_ids.as_ref(), &*arguments),
                         where_bindings_binds,
                         matches,
                     )

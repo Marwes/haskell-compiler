@@ -320,7 +320,7 @@ impl Kind {
     pub fn new(v: isize) -> Self {
         let mut kind = Self::Star.clone();
         for _ in 1..v {
-            kind = Self::Function(Box::new(Self::Star), kind.into());
+            kind = Self::Function(Self::Star.into(), kind.into());
         }
         kind
     }

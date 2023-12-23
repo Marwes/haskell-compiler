@@ -909,10 +909,10 @@ impl<'a> TypeEnvironment<'a> {
             }
             Do(ref mut bindings, ref mut last_expr) => {
                 let mut previous =
-                    self.new_var_kind(Kind::Function(Box::new(Kind::Star), Box::new(Kind::Star)));
+                    self.new_var_kind(Kind::Function(Kind::Star.into(), Kind::Star.into()));
                 self.constraints
                     .insert(previous.var().clone(), vec!["Monad".into()]);
-                previous = Type::Application(previous.into(), Box::new(self.new_var()));
+                previous = Type::Application(previous.into(), self.new_var().into());
                 for bind in bindings.iter_mut() {
                     match *bind {
                         DoBinding::DoExpr(ref mut e) => {
@@ -1463,7 +1463,7 @@ fn freshen(env: &mut TypeEnvironment, subs: &mut Substitution, typ: &mut Qualifi
             *typ = x;
         }
     }
-    freshen_(env, subs, &typ.constraints, &mut typ.value);
+    freshen_(env, subs, &*typ.constraints, &mut typ.value);
     for constraint in typ.constraints.iter_mut() {
         if let Some(new) = subs.subs.get(&constraint.variables[0]) {
             constraint.variables[0] = new.var().clone();

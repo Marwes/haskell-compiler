@@ -230,7 +230,7 @@ impl DerivingGen {
                     iter.typ.clone(),
                     constructor.typ.constraints.clone(),
                 );
-                let expr = f(self, &args_l, &args_r);
+                let expr = f(self, &*args_l, &*args_r);
                 let pattern_r = Pattern::Constructor(ctor_id.clone(), args_r);
                 let inner = Case(
                     Box::new(Identifier(id_r.clone())),
@@ -286,7 +286,7 @@ fn binop(
         function_type_(rhs.get_type().clone(), return_type),
     );
     let f = Identifier(Id::new(name(op), typ, vec![]));
-    Apply(Box::new(Apply(f.into(), lhs.into())), rhs.into())
+    Apply(Apply(f.into(), lhs.into()).into(), rhs.into())
 }
 
 fn true_expr() -> Expr<Id<Name>> {
