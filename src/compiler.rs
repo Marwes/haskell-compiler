@@ -1194,9 +1194,10 @@ fn try_find_instance_type<'a>(
     match (class_type, actual_type) {
         (&Type::Variable(ref var), _) if var == class_var => {
             //Found the class variable so return the name of the type
-            match extract_applied_type(actual_type) {
-                &Type::Constructor(ref op) => Some(op.name.as_ref()),
-                _ => None,
+            if let Type::Constructor(ref op) = extract_applied_type(actual_type) {
+                Some(op.name.as_ref())
+            } else {
+                None
             }
         }
         (&Type::Constructor(ref class_op), &Type::Constructor(ref actual_op)) => {

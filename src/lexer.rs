@@ -116,7 +116,7 @@ impl Token {
     fn new(interner: &Rc<RefCell<Interner>>, token: TokenEnum, value: &str, loc: Location) -> Self {
         Self {
             token,
-            value: (**interner).borrow_mut().intern(value),
+            value: interner.borrow_mut().intern(value),
             location: loc,
         }
     }
@@ -269,22 +269,19 @@ impl<Stream: Iterator<Item = char>> Lexer<Stream> {
 
     ///Reads a character from the input and increments the current position
     fn read_char(&mut self) -> Option<char> {
-        match self.input.next() {
-            Some(c) => {
-                self.location.absolute += 1;
-                self.location.column += 1;
-                if matches!(c, '\n' | '\r') {
-                    self.location.column = 0;
-                    self.location.row += 1;
-                    //If this is a \n\r line ending skip the next char without increasing the location
-                    if c == '\r' && self.input.peek() == Some(&'\n') {
-                        self.input.next();
-                    }
+        self.input.next().map(|c| {
+            self.location.absolute += 1;
+            self.location.column += 1;
+            if matches!(c, '\n' | '\r') {
+                self.location.column = 0;
+                self.location.row += 1;
+                //If this is a \n\r line ending skip the next char without increasing the location
+                if c == '\r' && self.input.peek() == Some(&'\n') {
+                    self.input.next();
                 }
-                Some(c)
             }
-            None => None,
-        }
+            c
+        })
     }
 
     ///Scans digits into a string

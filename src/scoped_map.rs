@@ -37,6 +37,7 @@ where
     pub fn enter_scope(&mut self) {
         self.scopes.push(None);
     }
+
     ///Exits the current scope, removing anything inserted since the
     ///matching enter_scope call
     pub fn exit_scope(&mut self) {
@@ -44,6 +45,7 @@ where
             self.map.get_mut(&key).map(|x| x.pop());
         }
     }
+
     ///Removes a previusly inserted value from the map.
     pub fn remove(&mut self, k: &K) -> bool {
         match self.map.get_mut(k).map(|x| x.pop()) {
