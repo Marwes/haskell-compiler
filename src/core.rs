@@ -1185,12 +1185,12 @@ pub mod translate {
                 let mut pattern_test = None;
                 while last_index < equations.len() {
                     let &Equation(ps, _) = &equations[last_index];
-                    if ps.len() > 0 {
-                        match ps[0].1 {
+                    if let Some(head) = ps.first() {
+                        match head.1 {
                             Pattern::Constructor(..) | Pattern::Number(..) => {
-                                if visited.iter().find(|x| matching(**x, &ps[0])).is_none() {
-                                    pattern_test = Some(&ps[0]);
-                                    visited.push(&ps[0]);
+                                if visited.iter().find(|x| matching(**x, &head)).is_none() {
+                                    pattern_test = Some(head);
+                                    visited.push(&head);
                                     last_index += 1;
                                     break;
                                 }
@@ -1205,7 +1205,7 @@ pub mod translate {
                     let mut variable_bindings = vec![];
                     //Gather all patterns which matches the pattern
                     for &Equation(patterns, expr) in equations.iter() {
-                        if patterns.len() > 0 && matching(pattern_test, &patterns[0]) {
+                        if !patterns.is_empty() && matching(pattern_test, &patterns[0]) {
                             vec.push(Equation(&patterns[1..], expr));
                             //If the patter_test is a constructor we need to add the variables
                             //of the other patterns in a let binding to make sure that all names exist

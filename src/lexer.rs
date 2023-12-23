@@ -391,13 +391,12 @@ impl<Stream: Iterator<Item = char>> Lexer<Stream> {
     ///Looks at the next unprocessed token and applies the indentation rules on it
     ///and returns a token which is not affected by indentation
     fn layout_independent_token(&mut self) {
-        if self.unprocessed_tokens.len() > 0 {
-            let tok = self.unprocessed_tokens.last().unwrap().clone(); //TODO dont use clone
+        //TODO dont use clone
+        if let Some(tok) = self.unprocessed_tokens.last().cloned() {
             match tok.token {
                 INDENTLEVEL => {
-                    if self.indent_levels.len() > 0 {
+                    if let Some(m) = self.indent_levels.last().cloned() {
                         //m:ms
-                        let m = *self.indent_levels.last().unwrap();
                         //m == n
                         if m == tok.location.column {
                             debug!("Indents are same, inserted semicolon");

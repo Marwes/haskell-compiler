@@ -483,11 +483,7 @@ impl<'a> Compiler<'a> {
 
     fn compile_binding(&mut self, bind: &Binding<Id>) -> SuperCombinator {
         debug!("Compiling binding {:?} :: {:?}", bind.name, bind.name.typ);
-        let dict_arg = if bind.name.typ.constraints.len() > 0 {
-            1
-        } else {
-            0
-        };
+        let dict_arg: usize = (!bind.name.typ.constraints.is_empty()).into();
         self.context = bind.name.typ.constraints.clone();
         let mut instructions = vec![];
         let mut arity = 0;
