@@ -82,7 +82,7 @@ fn main() {
         return;
     }
 
-    let modulename = &*matches.free[0];
+    let modulename = &matches.free[0];
     match execute_main_module(modulename.as_ref()).unwrap() {
         Some(x) => println!("{:?}", x),
         None => println!("Error running module {}", modulename),

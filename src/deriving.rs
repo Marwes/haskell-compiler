@@ -230,7 +230,7 @@ impl DerivingGen {
                     iter.typ.clone(),
                     constructor.typ.constraints.clone(),
                 );
-                let expr = f(self, &*args_l, &*args_r);
+                let expr = f(self, &args_l, &args_r);
                 let pattern_r = Pattern::Constructor(ctor_id.clone(), args_r);
                 let inner = Case(
                     Box::new(Identifier(id_r.clone())),

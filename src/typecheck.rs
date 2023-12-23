@@ -1463,7 +1463,7 @@ fn freshen(env: &mut TypeEnvironment, subs: &mut Substitution, typ: &mut Qualifi
             *typ = x;
         }
     }
-    freshen_(env, subs, &*typ.constraints, &mut typ.value);
+    freshen_(env, subs, &typ.constraints, &mut typ.value);
     for constraint in typ.constraints.iter_mut() {
         if let Some(new) = subs.subs.get(&constraint.variables[0]) {
             constraint.variables[0] = new.var().clone();

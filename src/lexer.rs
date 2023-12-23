@@ -581,7 +581,7 @@ impl<Stream: Iterator<Item = char>> Lexer<Stream> {
                 panic!("Multi char character")
             }
             //FIXME: Slow
-            return Token::new(&self.interner, CHAR, &*x.to_string(), start_location);
+            return Token::new(&self.interner, CHAR, &x.to_string(), start_location);
         }
         let tok = match c {
             ';' => SEMICOLON,

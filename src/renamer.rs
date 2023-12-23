@@ -207,7 +207,7 @@ impl Renamer {
                 Some(class.name)
                     .into_iter()
                     .chain(class.declarations.iter().map(|decl| decl.name))
-                    .chain(binding_groups(&*class.bindings).map(|binds| binds[0].name))
+                    .chain(binding_groups(&class.bindings).map(|binds| binds[0].name))
             }))
             .chain(binding_groups(module.bindings.as_ref()).map(|binds| binds[0].name));
         for name in names {

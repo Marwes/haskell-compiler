@@ -311,7 +311,7 @@ impl<Iter: Iterator<Item = char>> Parser<Iter> {
 
                 let mut bindings = self.sep_by_1(|this| this.binding(), SEMICOLON)?;
                 {
-                    let inner_type = extract_applied_type(&*arg);
+                    let inner_type = extract_applied_type(&arg);
                     for bind in bindings.iter_mut() {
                         bind.name = encode_binding_identifier(inner_type.ctor().name, bind.name);
                     }
