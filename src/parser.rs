@@ -1026,10 +1026,7 @@ impl<Iter: Iterator<Item = char>> Parser<Iter> {
             kind: Kind::Star.clone(),
         });
         while self.lexer.next().token == NAME {
-            typ = Type::Application(
-                typ.into(),
-                Box::new(Type::new_var(self.lexer.current().value)),
-            );
+            typ = Type::Application(typ.into(), Type::new_var(self.lexer.current().value).into());
         }
         self.lexer.backtrack();
         Parser::<Iter>::set_kind(&mut typ, 1);
@@ -1488,7 +1485,7 @@ in test - 2"
             expr,
             case(
                 TypedExpr::new(TypeSig(
-                    Box::new(identifier("()")),
+                    identifier("()").into(),
                     qualified(vec![], Type::new_op(intern("()"), vec![]))
                 )),
                 vec![Alternative {
@@ -1583,7 +1580,7 @@ instance Eq a => Eq [a] where
                     identifier("getContents"),
                 ),
             ],
-            Box::new(apply(identifier("return"), identifier("s"))),
+            apply(identifier("return".into(), identifier("s"))),
         ));
         assert_eq!(module.bindings[0].matches, Match::Simple(b));
     }
@@ -1597,7 +1594,7 @@ instance Eq a => Eq [a] where
         );
         assert_eq!(
             expr,
-            TypedExpr::new(Lambda(pattern, Box::new(identifier("x"))))
+            TypedExpr::new(Lambda(pattern, identifier("x"))).into()
         );
     }
 

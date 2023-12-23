@@ -216,9 +216,11 @@ pub fn abstract_module(mut module: Module<TypeAndStr>) -> Module<TypeAndStr> {
     use crate::core::mutable::*;
     impl Visitor<TypeAndStr> for FreeVariables {
         fn visit_binding(&mut self, bind: &mut Binding<TypeAndStr>) {
-            let mut variables = HashMap::new();
-            let mut free_vars = HashMap::new();
-            self.free_variables(&mut variables, &mut free_vars, &mut bind.expression);
+            self.free_variables(
+                &mut <_>::default(),
+                &mut <_>::default(),
+                &mut bind.expression,
+            );
         }
     }
     let mut this =
