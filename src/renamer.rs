@@ -241,20 +241,17 @@ impl Renamer {
                 }
             };
             let uid = imported_module.name.uid;
-            match import.imports {
-                Some(ref imports) => {
-                    for &imported_str in imports.iter() {
-                        self.declare_global(imported_str, uid);
-                    }
+            if let Some(ref imports) = import.imports {
+                for &imported_str in imports.iter() {
+                    self.declare_global(imported_str, uid);
                 }
-                None => {
-                    //Import everything
-                    self.import_globals(
-                        imported_module,
-                        &mut |name| name.name,
-                        imported_module.name.uid,
-                    )
-                }
+            } else {
+                //Import everything
+                self.import_globals(
+                    imported_module,
+                    &mut |name| name.name,
+                    imported_module.name.uid,
+                )
             }
         }
     }
